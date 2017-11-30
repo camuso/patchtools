@@ -1,0 +1,180 @@
+#!/bin/bash
+
+remove_spaces()
+{
+    local sp=" "
+    ls | while read -r FILE
+    do
+	[[ $FILE == *$sp* ]] || continue
+	mv -v "$FILE" `echo $FILE | tr ' ' '_' `
+    done
+}
+
+# strtok - tokenizes a string and returns an array
+#
+# $1 - the string to tokenize
+# $2 - the string of delimiters
+# $3 - returns the tokenized string as an array
+#
+# examples:
+#
+# strtok kernel-pegas-4.11.0-2.el7.x86_64 ".-" array
+#
+# ${array[@]} will contain all the tokens.
+#
+strtok() {
+	IFS="$2" read -r -a $3 <<< "$1"
+}
+
+function usage {
+	echo
+	echo "renmutpat <directory>"
+	echo
+	echo -e "\tRenames files in the <directory>, creating a filename from"
+	echo -e "\tthe \"Subject: \" line and adding \".patch\" to the end of"
+	echo -e "\tthe filename"
+	echo
+	exit
+}
+[ $# -ge 1 ] || usage
+
+cd $1
+echo "Changing directory to "$PWD""
+
+declare -i count=1
+declare -i total=$(ls -1 | wc -l)
+declare -i windex
+declare -i fldwid=0
+declare -a subary
+declare -a wary
+declare subject
+declare word
+declare iszero=false
+declare patcnt
+declare patnum
+
+echo "$PWD has $total files."
+
+if [ $total -eq 0 ]; then
+	echo "No files to rename. Exiting ..."
+	echo
+	exit 1
+fi
+
+# Enable extglob for more specific directory actions
+#
+shopt -s extglob
+
+# remove spaces from filenames
+#
+remove_spaces
+
+# Don't try to rename files that have ".patch" endings, because
+# these have already been renamed.
+#
+# for filename in $(ls !(*.patch) | sort -t'_' -k2 -h); do
+for filename in $(ls -1 !(*.patch)); do
+
+	iszero=false
+	word=""
+	windex=0
+
+	# Extract the subject line.
+	#
+	subject=$(grep -m1 "Subject: " "$filename")
+
+	# Remove the word "Subject: " from the line
+	#
+	subject=$(echo "$subject" | cut -d' ' -f2-)
+
+	# If the next character is not '[', then it is not a patch.
+	#
+	[ "${subject:0:1}" == "[" ] || continue
+
+	# Tokenize the subject line.
+	# Look for the first token with a '/' in it.
+	# If all the characters leading up to the '/' are zero, then it
+	# is a prologue, not a patch.
+	#
+	strtok "$subject" " " subary
+	for ((i = 0; i < ${#subary[@]}; i++)); do
+		word=${subary[$i]}
+		[[ $word == *"/"* ]] && windex=$i && break
+	done
+
+	for ((i = 0; i < ${#word}; i++)); do
+		[[ ${word:$i:1} == "/" ]] && break
+		[[ ${word:$i:1} != "0" ]] && iszero=false && break
+		[[ ${word:$i:1} == "0" ]] && iszero=true
+	done
+
+	$iszero && continue
+
+	# Some posters do not provide padding zeroes in their PATCH n/m
+	# subject lines. This will cause out-of-order processing, since
+	# 1/n will be immediately followed by 10/n, 11/n, etc. Padding
+	# the first number with leading zeroes will preclude this.
+	#
+	# If we found a "/" in the subject string, then windex is nonzero.
+	# In that case, we need to determine the correct number of padding
+	# zeroes required in the first number.
+	#
+	if [ $windex -gt 0 ]; then
+
+		# Tokenize the word with the "/" in it. We need to pad the
+		# leading number with zeroes to make it the same width as
+		# the number of patches in the set.
+		#
+		strtok "$word" "/" wary
+
+		# We only need to do this once per patchset
+		#
+		if [ $fldwid -eq 0 ]; then
+
+			# The total number of patches is in the second word
+			# of the wary stripped of any non-alphanumeric chars.
+			#
+			patcnt=$(echo ${wary[1]} | sed 's/[][<>(),"]//g')
+
+			# Determine the fieldwidth of the total number of
+			# patches.
+			#
+			fldwid=${#patcnt}
+		fi
+
+		# Determine the fieldwidth of the patch number and pad it
+		# with leading zeroes if necessary.
+		#
+		patnum="${wary[0]}"
+		for ((j = $fldwid - ${#patnum}; j > 0; --j )); do
+			wary[0]="0${wary[0]}"
+		done
+
+		# Replace the patch's n/m with the new padded n/m word.
+		# The new word will have a space where there was a '/', but
+		# that will be handled when we strip the non-alphanumeric
+		# characters from the subject string.
+		#
+		subary[$windex]="${wary[@]}"
+		subject=${subary[@]}
+	fi
+
+	# replace leading bracket with nothing
+	#
+	# Replace non-alphanumerics with a hyphen, then delete the leading
+	# hyphen.
+	#
+	subject=$(echo "$subject" | sed 's/[^[:alnum:]]\+/-/g')
+	subject=$(echo "$subject" | sed 's/-//')
+
+	# If the last character is a hyphen, remove it.
+	#
+	[ "${subject:(-1)}" = "-" ] && subject=${subject%?}
+
+	newname=$(echo "$subject"".patch")
+	echo "mv "$filename" -> "$newname""
+	mv "$filename" "$newname"
+	count=$((count+1))
+done
+cd -
+exit 0

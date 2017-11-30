@@ -1,0 +1,500 @@
+#!/bin/bash
+#
+# patbatcmpmgr
+#
+
+declare version="v2.0"
+
+# run if user hits control-c
+#
+control_c()
+{
+	echo -en "\nCtrl-c detected\nCleaning up and exiting.\n"
+	[ -e /dev/shm/lasttag ] && rm -f /dev/shm/lasttag
+	exit 130
+}
+
+# Trap for control-c
+#
+trap control_c SIGINT
+
+# Enable extglob for more specific directory actions
+#
+shopt -s extglob
+
+declare MYDIR=$(dirname $(which $(basename $0)))
+declare MYLIB=$MYDIR/lib
+declare MYDATA=$MYDIR/.data
+LIB="$MYLIB"
+
+#######################################
+# External Source Files
+#######################################
+source $LIB/ui.source
+source $LIB/project.source
+
+#######################################
+# Global variables
+#######################################
+declare -i prj_entries=0
+declare -i index=0
+declare -i boolcount=0
+declare -i boolindex=0
+
+declare b_found_first_bool=false
+declare b_nopaths
+declare b_strict
+declare b_exec_exit=false
+declare b_extern_rhdir=false
+declare b_extern_usdir=false
+
+declare -i verbosemode
+declare -i vmode_off=0
+declare -i vmode_on=1
+declare -i vmode_very=2
+
+# Project file offsets
+#
+declare -i prj_verbosemode
+declare -i prj_rhdir
+declare -i prj_usdir
+declare -i prj_ofile
+declare -i prj_b_nodiffst
+declare -i prj_b_nopaths
+declare -i prj_b_strict
+
+declare prj_dir="$MYDATA"
+declare prj_file="$prj_dir/patbatcmpmgr.prj"
+
+declare rhdir		# directory containing RHEL patch files
+declare usdir		# directory containing upstream patch files
+declare ofile		# output file, default is /dev/stdout
+declare pfile=		# passed output file takes precedence over the
+			# : output file stored in the project file
+declare -i rhfcount=0
+declare -i usfcount=0
+
+declare lasttag=
+declare rmlasttag=false
+
+declare rhdirstr="RHEL patches"
+declare usdirstr="Upstream patches"
+declare usagestr=$(
+cat <<EOF
+
+$(basename $0) [-h -R -U -X -o <file>]
+
+  Version $version
+
+  Performs a batch comparison of the patches in two different directories.
+  Comparison for any given pair of files stops at the first mismatched
+  line.
+
+  Commit logs and diffstats are not included in the line-by-line comparisons.
+  Line-by-line comparisons start at the first instance of 'diff --git'.
+
+  All files are compared up to the first detected mismatched line.
+
+  A report is generated to the screen and optionally to a user-defined
+  output file.
+
+  -h        - Uses the less command to print this help text
+  -R rhdir  - optional directory containing the RHEL patches
+  -U usdir  - optional directory containing the Upstream patches
+  -o ofile  - optional output file. Default is /dev/stdout
+  -X        - execute saved options and exit without presenting the menu
+
+  The rhdir and usdir must have the same number of patch files.
+
+  Each patchfile in the rhdir is compared with its complement in the
+  usdir. If a mismatched line is found, the sequence number of that
+  patch pair is printed to the ofile, which is /dev/stdout by default.
+
+  Verbose output options are available
+
+  Menu choices
+  ------------
+
+  All menu items are sticky, persisting across invocations of this script.
+  You can use the verbose options to test the results.
+
+  R - Change the directory containing the RHEL patch files
+  U - Change the directory containing the Upstream patch files
+
+      IF these directories were not passed as option arguments (-R and -U),
+      AND this the first invocation of this script,
+      OR either of these directories does not exist,
+      THEN you will be prompted for the missing directory or directories
+      before being presented with the menu.
+
+  o - Change the output file.
+      Default: /dev/stdout
+
+  p - When true, excludes path lines from the comparison
+      You will want to do this if the file being patched has been renamed
+      or moved to a different directory.
+      Default: true
+
+  s - When true, excludes lines that do not begin with + or -
+      You will want to do this if you are only concerned about the lines
+      that are actually being changed by the patch. When true, this will
+      automatically exclude the diff stat lines, but WILL NOT exclude
+      the path lines.
+      Default: true
+
+  v - Cycles through the verbose modes, which is the amount of information
+      printed to the output file.
+
+      OFF: Only the incongruent patch numbers are printed
+
+      Verbose:  All patch numbers are printed with a line that tells whether
+                they were congruent.
+
+      Very Verbose: All patch numbers are printed as well as the lines that
+                    are congruent. Printing of a given patch pair stops at
+                    the first mismatched line in the files.
+
+  r - run the comparison
+  e - less the output file. Only visible if the output is not /dev/stdout
+  i - init controls and output file to defaults
+  h - less this help text
+  x - spawn a shell
+  q - quit and return to previous execution environment
+\0
+EOF
+)
+
+########################################
+# Function Return Codes
+########################################
+declare rc_continue=0	# Continue for another pass
+declare rc_run=1	# Run comparison
+
+#######################################
+# Functions
+#######################################
+
+
+usage() {
+	echo -e "$usagestr"
+	exit $1
+}
+
+init_booleans() {
+	prj_set_item $prj_b_nodiffst true
+	prj_set_item $prj_b_nopaths true
+	prj_set_item $prj_b_strict true
+}
+
+# get_booleans
+#
+# Read the values of the program flow control booleans from the
+# project file.
+#
+get_booleans() {
+	index=$boolindex
+	for bool in \
+	b_nopaths \
+	b_strict
+	do
+		eval $bool=$(prj_get_item $index)
+		ui_digit2bool $bool
+		let index++
+	done
+}
+
+# set_booleans
+#
+# Write the current values of the program flow booleans into the
+# project file.
+#
+set_booleans() {
+	index=$boolindex
+	for bool in \
+	b_nopaths \
+	b_strict
+	do
+		prj_set_item $index ${!bool}
+		let index++
+	done
+	return 0
+}
+
+show_verbosemode() {
+	local _mode_=$1
+
+	case $_mode_ in
+		$vmode_off  ) echo "OFF"; b_verbose=false; b_veryverb=false ;;
+		$vmode_on   ) echo "Verbose"; b_verbose=true; b_veryberb=false ;;
+		$vmode_very ) echo "Very Verbose"; b_verbose=true; b_veryverb=true ;;
+	esac
+}
+
+show_read_ofile() {
+	read_ofile_str=$(
+cat <<EOF
+
+  e  examine output file (less $OFF"$ofile"$BLD)
+EOF
+)
+	[ "$ofile" != "/dev/stdout" ] && echo -e "$read_ofile_str"
+}
+
+show_settings() {
+	settingstr=$(
+cat <<EOF
+$BLD
+     $UND\0Batch Comparison of RHEL Patches with Upstream - $version$OFF$BLD
+
+     $UND\0Environment       $OFF$BLD
+     Most Recent Tag            : $OFF$lasttag$BLD
+  R  $rhdirstr directory     : $OFF$rhdir$BLD has $OFF$rhfcount$BLD patch files
+  U  $usdirstr directory : $OFF$usdir$BLD has$OFF $usfcount$BLD patch files
+  o  Output file.               : $OFF$ofile$BLD
+
+     $UND\0Lines to exclude  $OFF$BLD
+  p  file paths                 : $OFF$b_nopaths$BLD
+  s  without leading + or -     : $OFF$b_strict$BLD
+
+     $UND\0Output Parameters $OFF$BLD
+  v  Verbose mode               : $OFF$(show_verbosemode $verbosemode)$BLD
+
+     $UND\0Control           $OFF$BLD
+  r  run the comparison $(show_read_ofile)
+  i  init to defaults
+  h  print the help (uses less command)
+  x  spawn a shell
+  q  quit and return to previous execution environment
+$OFF
+EOF
+)
+	echo -e "$settingstr"
+}
+
+menu_parser() {
+	local setting
+
+	rhfcount=$(ls -1 $rhdir/*.patch | wc -l)
+	usfcount=$(ls -1 $usdir/*.patch | wc -l)
+	show_settings
+	promptgetchar ""$BLD"Enter one of the above: "$OFF"" setting
+
+	case $setting in
+		R )	prj_set_directory "$rhdirstr" $prj_rhdir rhdir quiet
+			;;
+		U )	prj_set_directory "$usdirstr" $prj_usdir usdir quiet
+			;;
+		o )	getuser "Output file: " ofile
+			prj_set_item $prj_ofile $ofile
+			;;
+		p )	ui_toggle b_nopaths
+			;;
+		s )	ui_toggle b_strict
+			;;
+		v )	ui_cycle_state verbosemode 3
+			prj_set_item $prj_verbosemode $verbosemode
+			;;
+		r )	set_booleans
+			return $rc_run
+			;;
+		e )	[ "$ofile" != "/dev/stdout" ] && less $ofile
+			;;
+		i )	init_booleans
+			get_booleans
+			verbosemode=$vmode_off
+			prj_set_item $prj_verbosemode $verbosemode
+			;;
+		h )	usage | less
+			;;
+		x )	ui_sh_spawn
+			;;
+		q )	set_booleans
+			$rmlasttag && rm -f /dev/shm/lasttag
+			exit 0
+			;;
+	esac
+	return $rc_continue
+}
+
+# check_dir
+# 	Checks whether the directory coming from the project file is valid.
+# 	If not, calls prj_set_directory to get the new directory name.
+# 	The prj_set_directory routine calls ui_getnewdir, which will ask
+# 	if the user wants to create the directory if it does not already
+# 	exist.
+#
+# $1 - index into the project file where the directory name string goes
+# $2 - string representing the directory type, e.g. "RHEL" or "Upstream"
+# $3 - returns the name of the directory
+#
+check_dir() {
+	local index=$1
+	local dirtype="$2"
+	local dirname=$(prj_get_item $index)
+	local blank="\n$dirtype$BLD is blank$OFF\n"
+	local nofil="\n$dirname$BLD does not exist.$OFF\n"
+	local getit=false
+
+	# If the filename is blank, print the blank statement
+	# Else if the filename does not exist, print the doesn't exist statement
+	#
+	[ "$dirname" ] || { getit=true; echo -e "$blank"; }
+	[ "$dirname" ] && [ -d "$dirname" ] || { getit=true; echo -e "$nofil"; }
+
+	if $getit; then
+		prj_set_directory "$dirtype" $index dirname quiet
+		dirname=$(prj_get_item $index)
+	fi
+
+	eval $3=$dirname
+}
+
+getlasttag() {
+	local _mypid_
+	echo -n "Getting last git tag.."
+	git describe --tags --abbrev=0 > /dev/shm/lasttag &
+	_mypid_=$!
+	ui_waitonproc $_mypid_ .1
+	echo
+	rmlasttag=true
+}
+
+exit_invdir() {
+
+	exit 1
+}
+
+#############################
+# Start of Script Execution
+#############################
+
+[ -e /dev/shm/lasttag ] || getlasttag
+lasttag=$(cat /dev/shm/lasttag)
+
+# Parse the options, if any
+#
+while getopts hXR:U:o: OPTION; do
+    case "$OPTION" in
+
+	h ) usage | less
+	    ;;
+	R ) rhdir=$OPTARG
+	    b_extern_rhdir=true
+	    ;;
+	U ) usdir=$OPTARG
+	    b_extern_usdir=true
+	    ;;
+	o ) pfile=$OPTARG
+	    ;;
+	X ) b_exec_exit=true
+	    ;;
+	* ) echo "unrecognized option"
+	    usage 127
+    esac
+done
+
+###########################################
+# Parameter Initialization
+###########################################
+
+# This loop enumerates and counts the items in the project file.
+# Add new booleans to the end of the list.
+# Add new non-boolean parameters to the top of the list.
+#
+for offset in \
+prj_verbosemode \
+prj_rhdir \
+prj_usdir \
+prj_ofile \
+prj_b_nodiffst \
+prj_b_nopaths \
+prj_b_strict
+do
+	let index++
+	let $offset=$index
+	if [ "${offset:3:3}" == "_b_" ]; then
+		let boolcount++
+		if ! $b_found_first_bool; then
+			boolindex=$index
+			b_found_first_bool=true
+		fi
+	fi
+done
+
+prj_entries=$index
+[ -d "$prj_dir" ] || mkdir $prj_dir
+[ -f "$prj_file" ] || touch $prj_file
+
+prj_init_prjfile $prj_file $prj_entries
+stat=$?
+
+# If the above call to prj_init_prjfile returns nonzero, it means that a
+# new project file has been created and its values must be initialized.
+#
+if [ $stat -ne 0 ]; then
+	[ -d "$rhdir" ] && prj_set_item $prj_rhdir $rhdir \
+			|| prj_set_directory "$rhdirstr" $prj_rhdir rhdir quiet
+
+	[ -d "$usdir" ] && prj_set_item $prj_usdir $usdir \
+			|| prj_set_directory "$usdirstr" $prj_usdir usdir quiet
+	init_booleans
+	verbosemode=$vmode_off
+	prj_set_item $prj_verbosemode $verbosemode
+fi
+
+$b_extern_rhdir && prj_set_item $prj_rhdir $rhdir
+$b_extern_usdir && prj_set_item $prj_usdir $usdir
+
+# If the caller passed a desired output file name (pfile), then use that
+# Else, if the ofile saved in the project file is an empty string,
+# use the default /dev/stdout
+#
+[ "$pfile" ] && ofile="$pfile" || ofile="$(prj_get_item $prj_ofile)"
+[ "$ofile" ] || ofile="/dev/stdout"
+prj_set_item $prj_ofile $ofile
+
+##############################################
+# Main Program Loop
+##############################################
+
+while true; do
+	declare optstr=""
+
+	get_booleans
+
+	check_dir $prj_rhdir "$rhdirstr" rhdir
+	check_dir $prj_usdir "$usdirstr" usdir
+
+	ofile="$(prj_get_item $prj_ofile)"
+	verbosemode=$(prj_get_item $prj_verbosemode)
+
+	while true; do
+
+		# Don't bother with the menu if we just want to execute
+		# and exit. See -X option.
+		#
+		$b_exec_exit && break
+
+		menu_parser
+		[ $? -eq $rc_run ] && break
+	done
+
+	$b_nopaths  && optstr="$optstr""-p "
+	$b_strict   && optstr="$optstr""-s "
+
+	case $verbosemode in
+	    $vmode_on   ) optstr="$optstr""-v ";;
+	    $vmode_very ) optstr="$optstr""-V ";;
+	esac
+
+	echo "patbatcmp $optstr -o $ofile $rhdir $usdir"
+	patbatcmp $optstr -o $ofile $rhdir $usdir
+
+	# Only one pass if all we want is to execute and exit.
+	# See -X option.
+	#
+	if $b_exec_exit; then
+		$rmlasttag && rm -f /dev/shm/lasttag
+		exit 0
+	fi
+done

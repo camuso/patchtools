@@ -1,0 +1,374 @@
+=================
+Patchdevelop v6.0
+=================
+
+This menu-driven script allows the user to compare his set of patches
+with patches from upstream.
+
+------------
+Installation
+------------
+
+The patchdevelp script and its dependencies can be untarred into any
+directory, however that directory must be in your executable path.
+
+For example:
+
+	$ cd $HOME
+	$ mkdir mybin
+	$ export PATH=$PATH:$HOME/mybin
+	$ cd mybin
+	$ tar -xvf patchrevdev.tar
+
+-----------------
+Runing the script
+-----------------
+
+The script must be run from the top of a git tree. If not, it will exit
+with an error message.
+
+A directory containing the RHEL patches must be scpecified as well as a
+directroy for the upstream patches. These directories must not be the
+same.
+
+These directories are identified by the script as follows.
+
+Patch directory: the directory containing the patches being backported or
+                 developed.
+
+Work directory: the directory into which the script will put upstream
+                patches that were formatted using the upstream commit
+                hashes in the commit logs of the patches in the Patch
+                directory.
+
+The first two items in the "Environment" section reflect the current
+state of the git tree.
+
+   - most recent tag in the current git branch.
+   - current head of the current git branch.
+
+The first time the script is run, the user is queried for the following
+items.
+
+* The RHEL patch directory
+
+* The Upstream patch directory
+
+* The user's preferred diff editor.
+  vimdiff, emacs, and tkdiff are supported.
+
+_________________________________________________________________________
+
+    Environment
+    ------------------
+    Most recent tag         : kernel-3.10.0-658.el7
+    Current head            : 8761009 powerpc/mm: Add support for runtime config
+ b  Current git branch      : rh7.work
+ d  Patch directory         : /home/tcamuso/Maildir/work/cur has 7 files
+ w  Work directory          : ../temp
+ e  Diff Editor             : vimdiff
+
+    Run Parameters
+    ------------------
+ 1  Rename input files      : true
+ 2  Format upstream patches : true
+ 3  Size of commit hash     : 40 digits
+ 4  Compare mode            : Interactive Only
+ 5  Patch apply mode        : git am
+
+    Control
+    ------------------
+ r  Run patch review
+ i  Init to defaults
+ h  help text
+ x  Exit to a shell
+ q  Quit this script
+
+Enter one of the above:
+_________________________________________________________________________
+
+---------------
+Menu selections
+---------------
+
+Some menu items are sticky and retain their values between invocations of
+the script. Sticky items will be indicated with a * in the help text below.
+
+The "Evironment" section of the menu sets up the operating environment
+for the patchreview script with the following selections.
+
+b* - Sets the git branch from which you will be operating. It is assumed
+     that you have at least one RHEL branch and one upstream branch in
+     your git directory. When selecting this option, you will be
+     presented with a numbered choice as follows.
+
+ 1  master
+ 2  * rh7
+ 3  rh7.kabi
+
+ The current branch is indicated with a *
+ To select a different branch from the choices, simply type the number of
+ the desired branch at the prompt.
+
+d * RHEL directory, as described above in "Running the script".
+
+w * Upstream directory, as described above in "Running the script".
+
+e * This is the diff editor that will be used to perform an interactive
+    diff of the files.
+
+The "Run Parameters" section controls what happens when the 'r' (Run)
+menu selection is pressed. These options can be cycled through their
+states by pressing the corresponding option number.
+
+1 * When true, the files extracted from the mail client and residing in
+    the "RHEL directory" are renamed using their subject line for the
+    name.
+
+    Resets to false after a run.
+
+2 * If true, recreates the upstream patches in the "Upstream" directory
+    set by the "w" menu option or when the script is invoked for the
+    first time.
+
+    Resets to false after a run.
+
+3 * Size of the upstream commit hash, default is 40.
+
+    Pressing this key toggles it to accept hexadecimal numbers ranging
+    in size from 7 to 40 digits.
+
+    If the script encounters more than one string that could be a commit
+    hash, the user is presented with a list of candidate hashes from
+    which to choose.
+
+    These commit hashes are written into a file that is then used to
+    format patches from the list of upstream commit hashes it contains.
+
+    The formatted upstream patches are named with sequence numbers
+    corresponding to the patches in the "Patch directory" followed by the
+    summary line of the patch and are written into the Work directory.
+
+4 * The Comparison Mode is selected by a state switch. The user cycles
+    through the modes by repeatedly pressing this key.
+
+    Batch - (default) This will invoke an automatic batch comparison
+            of the patches.
+
+	    The utility will compare the files and create a list of
+	    those patch pairs that are not congruent according to the
+	    settings in the utility.  The list of incongruent patch
+	    pairs is then sent to the interactive comparison script for
+	    human inspection.
+
+    Batch Setup - Invokes the setup menu of the batch compare utility
+            which allows the user to set operating parameters. The
+	    parameters are sticky across invocations of the utility.
+
+    Interactive Only - In this mode, the batch comparison utility is
+            bypassed, and all the patch pairs are presented for human
+            inspection.
+
+    OFF - In the OFF mode, the pairs of patches are not diff'd after any
+          preceding operations.
+
+5 * The Patch apply mode is secleted by a state switch. The user cycles
+    through the modes by repeatedly pressing this key.
+
+    git am - (default) Applies the patches in the Patch directory to the
+             current branch using "git am".
+
+    git am 3-way merge - Applies the patches using "git am -3"
+
+    patch --fuzz=3 -p1 - Applies the patches using the patch application.
+
+    OFF - does not attempt to apply the RHEL patches.
+
+
+The "Control" section of the menu executes operations as follows.
+
+r - Run the script on the patches according to the parameter settings as
+    described above.
+
+i - Initialize the script's Parameters to their default settings.
+
+h - Display this help file.
+
+x - Exit to a shell. Return to the running script by typing exit or ctrl-d in
+    the new shell.
+
+q - Exit the script and return to bash.
+
+_________________________________________________________________________
+
+---------
+Sub Menus
+---------
+
+These menus are presented when "r" (run) is pressed and option 4 is not
+in the OFF state.
+
+These menus compare the patches in the RHEL directory with those in
+the Upstream directory.
+
+The following menu only appears if the Compare Mode in the top menu is
+set to "Batch compare setup".
+
+     Batch Comparison of RHEL Patches with Upstream
+     ----------------------------------------------
+
+     Batch Comparison of RHEL Patches with Upstream
+
+     Environment
+     ----------------------
+     Most Recent Tag            : kernel-3.10.0-516.el7
+  R  RHEL directory             : /home/tcamuso/Maildir/work/cur has 9 patch files
+  U  Upstream directory         : ../temp has 9 patch files
+  o  Optional output file.      : ../temp/mm.log
+
+     Lines to exclude
+     ----------------------
+  d  diff stats                 : true
+  p  file paths                 : true
+  s  without leading + or -     : true
+
+     Output Parameters
+     ----------------------
+  v  verbose                    : false
+  V  Very verbose               : false
+
+     Control
+     ----------------------
+  r  run the comparison
+  l  if output file is not /dev/stdout, less the output file
+  i  init to defaults
+  h  print the help using less command
+  x  spawn a shell
+  q  quit and return to previous execution environment
+
+Enter one of the above:
+_________________________________________________________________________
+
+  Each patchfile in the RHEL directory is compared with its complement in
+  the Upstream directory. If a mismatched line is found, the sequence
+  number of that patch pair is printed to the ofile, which is /dev/stdout
+  by default.
+
+  Verbose output options are available for examination of the files that
+  are congruent and the ones that differ.
+
+  Menu choices
+  ------------
+
+  All menu items are sticky, persisting across invocations of this script.
+  You can use the verbose options to test the results.
+
+  When you get the results you want, set the verbose options to false and
+  press q to return to the previous execution environment.
+
+  R - change the directory containing the RHEL patch files
+  U - change the directory containing the Upstream patch files
+
+  o - change the output file.
+      The default is /dev/stdout, but the patchreview and patcmp scripts
+      will call this with an output file defined that will exist in the
+      Upstream patch directory as mm.log. You may change the name and
+      location of this file with this option.
+
+  d - when true, excludes diff stat lines from the comparison.
+      It is possible for the patches to still be congruent even when
+      the diff stats are different. For example, when the RHEL patch is
+      a subset of the upstream patch
+      Default: true
+
+  p - when true, excludes path lines from the comparison
+      You will want to do this if the file being patched has been renamed
+      or moved to a different directory.
+      Default: true
+
+  s - when true, excludes lines that do not begin with + or -
+      You will want to do this if you are only concerned about the lines
+      that are actually being changed by the patch. When true, this will
+      automatically exclude the diff stat lines, but WILL NOT exclude
+      the path lines.
+      Default: true
+
+  v - verbose prints the sequence numbers of all files and indicates which
+      are congruent and which are not
+      Default: false
+
+  V - Very verbose prints the sequence numbers of all the files, all the
+      lines being compared in each file, and indicates whether the files
+      are congruent or not.
+      Default: false
+
+      If Very verbose is true, then verbose will automatically be set true.
+      If verbose is false, then Very verbose will automatically be set false.
+
+  r - run the comparison
+  l - run less on the output file
+  i - init the controls and output file to defaults
+  h - less this help text
+  x - spawn a shell
+  q - quit and return to previous execution environment
+
+
+If the Comparison Mode is set to "Batch", the following menu appears upon
+quitting from the Batch Comparison menu.
+
+If the Batch Comparison mode is set to "Interactive Only", then this menu
+will appear after pressing "r" for "run" from the top menu.
+
+Interactively Compare Patch Pairs
+-----------------------------------------------------------------
+Compare : RHEL7.4-net-PATCH-01-20-net--sctp--keep-owned-chunk-in.patch
+   With : 0001-net-sctp-keep-owned-chunk-in-destructor_arg-instead-.patch
+
+            Last Tag : kernel-3.10.0-604.el7
+            RHEL dir : /home/tcamuso/Maildir/work/cur
+        Upstream dir : ../temp
+-----------------------------------------------------------------
+        c - run batch file comparison to find mismatched patch pairs
+        m - only examine mismatched patch pairs: true
+        s - show mismatched patch pair numbers
+        b - back to the previous patch
+        n - prompt for a number for a specific patch
+        p - replace current upstream patch with a different commit
+        x - spawns a secondary shell
+        q - quit and return to previous execution environment
+        or any other key moves forward to the next patch ...
+
+All the menu items are pretty much self-explanatory, except for the first
+three.
+
+c - invokes the batch comparison script to generate a list of files that
+    are sufficiently different to warrant human inspection. When the
+    associated key is pressed, the Batch Comparison menu is presented.
+
+m - Option only appears if a list of incongruent patch pairs was
+    generated by the batch comparison script.
+    This opton is set to true by default after running a batch
+    comparison. When true, only the incongruous patch pairs will be
+    diffed by the editor. When off, all patches are considered.
+
+s - Option only appears if a list of incongruent patch pairs was
+    generated by the batch comparison script.
+    When the associated key is pressed, a list of numbers of the patch
+    pairs that were incongruent is printed to the screen.
+
+b - Steps back to the previously examined patch.
+
+n - Prompts for a patch number to examine. This can be any patch pair
+    in the set.
+
+p - Prompts for a different commit hash for the most recently examined
+    patch.
+
+x - Spawns a secondary cell. Press control-d or type "exit" to return.
+
+q - Quits and returns to the caller.
+
+Any other key advances the patch counter to present the next RHEL/upstream
+pair of patches to examine.
+_________________________________________________________________________
+

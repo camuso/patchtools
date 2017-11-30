@@ -1,0 +1,775 @@
+#!/bin/bash
+#
+# ui.source
+#
+# v0.1
+#
+# bash library
+#
+# when adding routines to this library, be sure to declare local variables
+# as local. You may otherwise experience behavior that is difficult to debug.
+#
+
+##############################
+# Global Variables and Consts
+##############################
+
+#
+# Text attributes
+#
+attr_bold="\033[1m"
+attr_under="\033[4m"
+attr_OFF="\033[0m"
+
+BLD="\033[1m"
+UND="\033[4m"
+OFF="\033[0m"
+
+# Errors
+#
+declare ui_err_invargc=1
+declare ui_err_notdigit=2
+declare ui_err_invfile=3
+declare ui_err_invdir=4
+declare ui_err_invlinec=5
+
+# Contlol-C exit code
+# see http://www.tldp.org/LDP/abs/html/exitcodes.html
+#
+declare -i CTLC_EXIT=130
+
+declare -i tlines=$(tput lines)	# number of lines in the terminal
+declare -i tcols=$(tput cols)	# number of columns in the terminal
+
+declare qstr="'$BLD\0q$OFF\0'"
+declare msgretry="$msgretry Try again or type $qstr to quit trying: "
+
+#########################
+# Shell Routines
+#########################
+
+# ui_waitonproc
+#
+# Prints a dot to the screen every half second until the passed PID
+# completes.
+#
+# $1 - PID of process we are waiting for.
+# $2 - optional time argument
+#
+ui_waitonproc () {
+    __pid__=$1;
+    __time__=1
+
+    [ $# -eq 2 ] && __time__=$2
+    while kill -0 $__pid__ > /dev/null 2>&1; do
+        echo -n '.';
+        sleep $__time__;
+    done
+}
+
+# ui_sh_backout
+# Back out of all shells until you are down to the one you want.
+# Takes one parameter, the shell you want to back out to.
+#
+function ui_sh_backout {
+	while [ $SHLVL -gt $1 ]; do
+		echo "Exiting shell level $SHLVL"
+		exit 0
+	done
+}
+
+# ui_sh_spawn
+# Spawns a new shell.
+# $1 - Additional message sent by caller
+# $2 - logfile to capture all session output. In this case,
+#      $1 would at least have to be an empty string.
+# Returns the value the user exited with.
+#
+function ui_sh_spawn {
+	local message="$1"
+	local logfile="$2"
+	local ret=0
+	echo "Leaving shell $SHLVL, spawning shell $(($SHLVL + 1))."
+	[ "$message" ] && echo -e ""$message""
+	echo "Type \"exit\" or \"ctrl-D\" to return to this point in the script."
+	if [ "$logfile" ]; then
+		bash 3>&2>&1 | tee $logfile
+		ret=$?
+	else
+		bash
+		ret=$?
+	fi
+
+	return $ret
+}
+
+function ui_sh_myshlvl {
+	echo "Shell level: $SHLVL"
+
+}
+
+function buhbye() {
+	local exitstr=$1
+	local exitfun=$2
+	echo -e "$exitstr"
+	exit 0
+}
+
+# END shell routines
+#####################
+
+#######################
+# User Input Routines
+#######################
+
+# getyn() $1 [$2]
+#
+# Takes $1 for a prompt string
+# Places true or false command into $2, which is an optional argument.
+# User is prompted for (y/n) answer at the end of the prompt string.
+#
+# On the very first call of this function in a script, the user is advised
+# that he may also pres "q" to quit the script immediately, or "x" to exit
+# the script to a child shell.
+#
+# If a child shell is chosen, the global variable ui_shexit is set upon
+# return, and if $2 was passed, it will be set to false.
+#
+# Optionally, $2 can be passed as the default answer. It will be over-
+# written with the boolean answer upon return.
+
+b_ui_int_first_getyn=false
+b_ui_int_firstpass=true
+
+function getyn {
+
+	local promptstring="$1"
+	local __answer__
+	local __stat__
+
+	while true; do
+
+		echo -en "$attr_bold$promptstring (y/n) : $attr_OFF"
+		read -n1 __answer__
+		echo
+
+		if [ "$__answer__" == "y" ]; then
+			__stat__=true
+			break
+		fi
+
+		if [ "$__answer__" == "n" ]; then
+			__stat__=false
+			break
+		fi
+	done
+
+	[ $# -eq 2 ] && eval $2=$__stat__
+}
+
+# doyn() $1 $2 [$3] [$4]
+#
+# $1 -	Calls getyn() with $1 for a prompt string.
+# $2 -	A string containing the command that will be executed if the user
+#	responded "y"
+# $3 -	Optional. A string containing the command that will be executed if
+#	the user responded "n"
+# $4 - 	Optional. Will contain the value of the user's response. If there is
+#	no action for $3 to do, then a null string "" must be passed for $3.
+#
+function doyn {
+	local promptstring=$1
+	local y_command=$2
+	local n_command=$3
+	local response
+
+	getyn "$promptstring" response
+	[ $# -lt 3 ] && n_command=""
+
+	if $response ; then
+		$y_command
+	fi
+
+	if ! $response ; then
+		$n_command
+	fi
+
+	[ $# -eq 4 ] && eval $4=$response
+}
+
+function getuser {
+	local promptstring="$1"
+	local var
+
+	echo -ne "$attr_bold$promptstring$attr_OFF"
+	read var
+	# [ "$var" == "q" ] && buhbye "Exiting ..."
+	# [ "$var" == "x" ] && ui_sh_spawn
+	eval $2=$var
+}
+
+# getch()
+#
+# Returns character in $1, no echo
+#
+function getchar {
+	local char
+	read -n1 char
+
+	# In order to receive special characters, like '>', pass quotes
+	# to eval by escaping them on the command line.
+	#
+	[ $# -gt 0 ] && eval $1=\"$char\"
+}
+
+# getchar()
+#
+# Returns character in $1 followed by echo
+#
+function getchar {
+	local char
+	read -n1 char
+	echo
+
+	# In order to receive special characters, like '>', pass quotes
+	# to eval by escaping them on the command line.
+	#
+	[ $# -gt 0 ] && eval $1=\"$char\"
+}
+
+# promptgetchar()
+#
+# Prints a prompt passed in $1 and returns the char in $2
+#
+function promptgetchar {
+	local prompt=$1
+	echo -ne "$prompt"
+	getchar $2
+}
+
+# loop_yn()
+#
+# Loop until user gives either a y or n answer.
+# Simpler than the getyn() routine above.
+#
+# $1 - prompt string
+# $2 - the character to be returned
+#
+loop_yn() {
+	local ans
+	local x
+	while true; do
+		promptgetchar "$1" ans
+		for x in {y,Y,n,N}; do
+			[[ $x == $ans ]] && eval $2=$ans && return
+		done
+		echo -e "Please enter 'y' or 'n'."
+	done
+}
+
+# loop_range()
+#
+# Loop until user gives a number in the range defined by the args
+#
+# $1 - minimum
+# $2 - maximum
+# $3 - the value to be returned
+#
+loop_range() {
+	local min=$1
+	local max=$2
+	local number
+	local cmd
+	local pstr=\
+"$OFF\0Please enter a number between $BLD$min$OFF and $BLD$max$OFF or $qstr: "
+
+	[ $max -lt 10 ] && cmd=promptgetchar || cmd=getuser
+	# echo "cmd: $cmd"
+
+	while true; do
+		$cmd "$pstr" number
+
+		if [[ $number =~ ^-?[0-9]+$ ]]  && \
+		   [[ $number -ge $min ]]       && \
+		   [[ $number -le $max ]]; then
+			eval $3=$number
+			echo
+			return 0
+		fi
+	done
+}
+
+# loop_range_q()
+#
+# Loop until user gives a number in the range defined by the args or
+# enters 'q' to quit and return to the caller with the 'q'
+#
+# $1 - minimum
+# $2 - maximum
+# $3 - the value to be returned
+#
+loop_range_q() {
+	local min=$1
+	local max=$2
+	local number
+	local cmd
+	local pstr=\
+"$OFF\0Please enter a number between $BLD$min$OFF and $BLD$max$OFF or $qstr: "
+
+	echo -e "Press $qstr to return without making a selection."
+	[ $max -lt 10 ] && cmd=promptgetchar || cmd=getuser
+	# echo "cmd: $cmd"
+
+	while true; do
+		$cmd "$pstr" number
+
+		[ "$number" = "q" ] && { eval $3=$number; return 1; }
+
+		if [[ $number =~ ^-?[0-9]+$ ]]  && \
+		   [[ $number -ge $min ]]       && \
+		   [[ $number -le $max ]]; then
+			eval $3=$number
+			echo
+			return 0
+		fi
+	done
+}
+
+#############################
+# Directory Routines
+#############################
+
+# ui_getfilespec - get a pathname to a file and loop until we get
+#                  a legitimate file name
+# $1 - prompt
+# $2 - returned filespec
+#
+function ui_getfilespec {
+	local prompt="$1"
+	local filespec
+	local found=false
+	local retval=0
+	local msginvfilnam="Invalid file name. $msgretry"
+
+	while :; do
+		getuser "$prompt" filespec
+		[ "$filespec" ] || echo -e "$msginvfilnam"
+		[ "$filespec" = "q" ] && return 1
+		[ -f "$filespec" ] && break
+		echo -e "$BLD$filespec$OFF is not a valid file."
+	done
+
+	eval $2=$filespec
+	return $retval
+}
+
+# ui_chkdir "$string"
+# where string is a string representation of a directory
+# returns
+#	0 if the string exists as a valid directory
+#	1 if directory does not exist
+#	2 if the string exists as a file
+#	3 if the string is "q" for "quit trying"
+#	4 if the string was empty
+#
+function ui_chkdir {
+	[ "$1" ]      || return 4
+	[ "$1" = "q" ] && return 3
+	[ -d "$1" ]   && return 2
+	[ -f "$1" ]   && return 1
+	return 0
+}
+
+# ui_getnewdir prompt name
+#
+# $1 - prompt
+# $2 - will contain the new directory name
+#
+# Prompts the user for a name to create a new directory and passes
+# it back to the caller in the "name" argument.
+# If the name already exists as a file, prompts for a new name.
+# If the name already exists as a directory, asks if user wants to
+# use that directory, warning that all its contents may be altered.
+#
+
+function ui_getnewdir {
+	local prompt="$1"
+	local newdir
+	local stat
+	local ans=true
+
+	while true; do
+		getuser "$prompt" newdir
+
+		ui_chkdir "$newdir"
+		local stat=$?
+
+		case $stat in
+		1 )	echo -e "\"$newdir\" already exists as a file. $msgretry"
+			;;
+		2   ) 	eval $2="$newdir"	# valid existing directory
+			return $stat
+			;;
+		3 )	# echo "ui_getnewdir: newdir: $newdir"
+			return $stat	# user wants to quit trying
+			;;
+		4 )	echo -e "No directory selected. $msgretry"
+			;;
+		0 )	echo "\"$newdir\" does not exist."
+			getyn "Want to create "$newdir" now?" ans
+			if $ans; then
+				mkdir -p "$newdir"
+				stat=$?
+				if [ $stat -ne 0 ]; then
+					echo "Could not create directory "$newdir""
+					continue
+				fi
+			else
+				continue
+			fi
+			eval $2="$newdir"
+			return $stat
+			;;
+		esac
+	done
+
+}
+
+function ui_testdir {
+	local prompt="$1"
+	local tstdir
+	local stat
+	local createstr="Want to create it now?"
+	local shellstr="\nYou can exit to a shell by pressing \"x\" now."
+
+	while true; do
+		getuser "$prompt" tstdir
+		ui_chkdir "$tstdir"
+		stat=$?
+
+		if [ $stat -eq 0 ]; then
+			echo "$tstdir does not exist."
+			doyn "$createstr" "mkdir -p $tstdir"
+			eval $2="$tstdir"
+			return $stat
+		fi
+
+		if [ $stat -eq 1 ]; then
+			echo "$tstdir exists as a file. Try again."
+			continue;
+		fi
+
+		if [ $stat -eq 2 ]; then
+			eval $2="$tstdir"
+			return $stat
+		fi
+	done
+}
+
+# ui_getdirspec - extract directory name from a path to a file.
+#
+# NOTE: Must be a filename including a path to a file.
+#
+# Use command substitution for this function, i.e.
+# 	dirspec=$(getdirspec arg)
+#
+# $1 - filename including directory path
+#
+function ui_getdirspec() {
+	local str="$1"
+	local isdir=$(echo "$str" | grep "/")
+	if [ "$isdir" != "" ]; then
+		local rts=$(echo "$str" | rev)
+		local ds=$(echo "${rts#*/}" | rev)
+	else
+		ds="./"
+	fi
+	echo "$ds"
+}
+
+##########################
+# Miscellaneous
+##########################
+
+# ui_catoneline
+# cat the nth line of a file.
+# $1 - the file
+# $2 - one-based number of the line
+#
+function ui_catoneline {
+	echo $(cat $1 | head -$2 | tail -1)
+}
+
+# ui_replaceline
+# Replaces one line in a file, using only the line number instead of
+# pattern matching.
+# $1 - Line number
+# $2 - Text to write over the existing text in the line
+# $3 - File
+#
+# Returns 1 if the line number exceeds the number of lines in the file.
+#
+function ui_replaceline {
+
+	awk -v line=$1 -v new_content="$2" '{
+		if (NR == line) {
+			print new_content;
+		} else {
+			print $0;
+		}
+	}' $3 > __temp__file__
+	mv __temp__file__ "$3"
+}
+
+check_lineargs() {
+	local number=$1
+	local file="$2"
+	local lines
+	local argc=$#
+
+	[ $argc -eq 2 ] || return $ui_err_invargc
+
+	ui_isdigit $number
+	[ $? -eq 0 ] || return $ui_err_notdigit
+
+	[ -f "$file" ] || return $ui_err_notfile
+
+	lines=$(cat "$file" | wc -l)
+	((number > lines)) && return $ui_err_invlinec
+	return 0
+}
+
+# ui_readline
+# Reads one line in a file given the line number.
+# $1 - line number
+# $2 - file to read
+#
+# Returns 1 if the line number exceeds the number of lines in the file.
+#
+# call: line=$(ui_readline line file)
+#
+# The line of text will be echoed to stdout
+#
+function ui_readline {
+	local __line__
+	local stat
+
+	check_lineargs $1 $2
+	stat=$?
+	[ $stat -eq 0 ] || return $stat
+
+	awk -v __line__="$1" '{
+		if (NR == __line__) {
+			print $0;
+		}
+	}' $2
+}
+
+# ui_insertline
+# Insert a line into a file at the given line number.
+# If the line number is greater than the number of lines in the file,
+# the line is appended to the end of the file.
+#
+# $1 - line number
+# $2 - text to insert
+# $3 - file
+#
+function ui_insertline {
+	lc=$(cat $3 | wc -l)
+
+	[ $# -eq 3 ] || return $ui_err_invargc
+
+	ui_isdigit $1
+	[ $? -eq 0 ] || return $ui_err_notdigit
+
+	[ -f "$3" ] || return $ui_err_notfile
+
+	if [ $1 -gt $lc ]; then
+		echo "$2" >> $3
+	else
+		awk -v line=$1 -v new_content="$2" '{
+			if (NR == line) {
+				print new_content;
+			}
+			print $0;
+		}' $3 > __temp__file__
+		mv -f __temp__file__ "$3"
+	fi
+}
+
+# ui_deleteline
+# Delete a line in the file at the given line number.
+#
+# $1 - line number
+# $2 - file
+#
+function ui_deleteline {
+	local stat
+
+	check_lineargs $1 $2
+	stat=$?
+	[ $stat -eq 0 ] || return $stat
+
+	awk -v line=$1 '{
+		if (NR != line) {
+			print $0;
+		}
+	}' $2 > __temp__file__
+	mv -f __temp__file__ $2
+}
+
+# ui_toggle - toggle a boolean value
+#
+function ui_toggle {
+	local boolean=${!1}
+	$boolean && eval $1=false || eval $1=true
+}
+
+# ui_cycle_state - cycle through the states of a variable
+#
+# $1 - variable
+# $2 - number of states
+#
+ui_cycle_state() {
+	local _var_=$1
+	local _states_=$2
+
+	let ++_var_
+	[ $_var_ -lt $_states_ ] && eval $1=$_var_ || eval $1=0
+}
+
+# ui_digit2bool - convert 0 and 1 to true and false
+#
+# $1 digit to convert to boolean, must be 0 or 1
+#
+function ui_digit2bool {
+	local boolean=${!1}
+	$boolean && eval $1=true || eval $1=false
+}
+
+# ui_strindex string-1 string-2
+#
+# Return zero-based index of string-2 in string-1
+# Returns -1 if string-2 is not found in string-1
+#
+function ui_strindex {
+	local x="${1%%$2*}"
+	[[ $x = $1 ]] && echo -1 || echo ${#x}
+}
+
+# ui_inarray()
+#
+# Looks for an integer in an integer array
+# Returns 0 if found, 1  if not.
+# Optionally returns the index of the item in the array or -1 if not found.
+#
+# $1 value
+# $2 array, must be passed by reference, without leading '$'
+# $3 optional return value will contain the zero-based index of where the
+#    value parameter was found. Will be left unmolested if not found.
+#
+# Examples:
+#
+#   declare -a array=(3 8 12 7 16 9 3)
+#
+#   # The following will echo "found"
+#   #
+#   inarray 12 array[@]
+#   [ $? -eq 0 ] && echo "found" || echo "not found"
+#
+#   # The following will echo '2', because 12 is at index 2
+#   #
+#   ui_inarray 12 array[@] index
+#   echo $index
+#
+# returns 0 if found, nonzero if not found
+#
+ui_inarray() {
+	local i
+	local j=0
+	local ary=(${!2})
+
+	for i in ${ary[@]}; do
+		if [ $i -eq $1 ]; then
+
+			# If there is a third argument, then give it the value
+			# of the current index, j.
+			#
+			[ $# -eq 3 ] && eval $3=$j
+			return 0
+		fi
+		let j++
+	done
+
+	return 1
+}
+
+# ui_isdigit - determines if $1 is a digit
+#
+# returns 0 if digit, 1 if not
+#
+# example:
+#
+# $(isdigit $foo) && echo yup || echo nope
+#
+ui_isdigit() {
+	[[ $1 =~ ^-?[0-9]+$ ]] && return 0 || return 1
+}
+
+# ui_isxdigit - determines if $1 is a hexacecimal digit
+#
+# returns 0 if hex digit, 1 if not
+#
+# example:
+#
+# $(isxdigit $foo) && echo yup || echo nope
+#
+ui_isxdigit() {
+	[[ $1 =~ ^-?[0-9a-fA-F]+$ ]] && return 0 || return 1
+}
+
+# ui_strtok - tokenizes a string and returns an array
+#
+# $1 - the string to tokenize
+# $2 - the string of delimiters
+# $3 - returns the tokenized string as an array
+#
+# examples:
+#
+# ui_strtok kernel-pegas-4.11.0-2.el7.x86_64 ".-" array
+#
+# ${array[@]} will contain all the tokens separated by delimiters "."
+# and "-", and the delimiters will be replaced by spaces.
+#
+ui_strtok() {
+	IFS="$2" read -r -a $3 <<< "$1"
+}
+
+#===  FUNCTION  ================================================================
+#          NAME:  ui_trunc_string
+#   DESCRIPTION:  truncates the given string according to the number of columns
+#                 in the terminal less the "pad" parameter. If the pad parameter
+#                 wasn't passed or is zero, then the string will be truncated to
+#                 the number of columns in the terminal.
+#    PARAMETERS:  $1 - string to truncate
+#                 $2 - padding characters to subtract from terminal columns
+#       GLOBALS:  tcols - set at script load time by tcols=$(tput cols)
+#       RETURNS:  none
+#===============================================================================
+ui_trunc_string() {
+	local str="$1"
+	local pad=$2
+	local strlen
+
+	[ $# -lt 2 ] && pad=0
+
+	strlen=$((tcols - pad))
+	echo "${str:0:$strlen}"
+}
+
+ui_press_any() {
+	echo -n "Press any key to continue ... "
+	read -n1
+}
+
+ui_source_loaded=true

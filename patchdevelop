@@ -1,0 +1,378 @@
+#!/bin/bash
+#
+# patchdevelop - based on patchreview
+
+# This script assumes that you have already extracted your patches into
+# the directory named as "indir" below. Only files named "*.patch" will
+# be considered.
+#
+# To create a patch set from email ...
+# In mutt, tag the thread you want to extract with esc-t. Untag the
+# prologue, as it's not a patch. Then extract the thread into text
+# files using ;-esc-C (uppercase C). When prompted for the directory,
+# type the name of the mailbox directory or uparrow to the previous
+# save.
+#
+# This script can also be used to compare any two patch sets.
+
+# Calls on the following external scripts.
+#
+# ./githead
+# ./renpat
+# ./patcmp
+# ./patbatcmp
+# ./patbatcmpmgr
+#
+# Requires to run ...
+#
+# ./lib/*.source
+# ./.data/patchreview.prj
+# ./man/patchreview.man
+
+#######################################
+# Default file locations
+#######################################
+#
+# Whatever directory this script and its companions are located in
+# must be in the executable path.
+#
+# export PATH=$PATH:MYDIR
+#
+# Where MYDIR is the directory in which this script and its companions
+# are located.
+#
+declare MYDIR=$(dirname $(which $(basename $0)))
+declare MYLIB=$MYDIR/lib
+declare MYDATA=$MYDIR/.data
+
+#######################################
+# External Source Files
+#######################################
+source $MYLIB/ui.source
+source $MYLIB/project.source
+source $MYLIB/gitutilities.source
+source $MYLIB/patch-common.source
+
+#########################################
+# Functions
+#########################################
+
+function init_booleans {
+	for ((index=boolindex; index <= prj_entries; index++)); do
+		prj_set_item $index true
+	done
+}
+
+# get_booleans
+#
+# Read the values of the program flow control booleans from the
+# project file.
+#
+# removed in v4.4
+# 	b_patcmp
+# 	b_patbatcmp
+#
+# added in v4.4
+# 	b_40digit
+#
+function get_booleans {
+	index=$boolindex
+	for bool in \
+	b_rename_infiles \
+	b_save_githead \
+	b_fmt_upstream \
+	b_gitam_err_abort \
+	b_40digit
+	do
+		eval $bool=$(prj_get_item $index)
+		ui_digit2bool $bool
+		let index++
+	done
+}
+
+
+# set_booleans
+#
+# Write the current values of the program flow booleans into the
+# project file.
+#
+# removed in v4.4
+# 	b_patcmp
+# 	b_patbatcmp
+#
+# added in v4.4
+# 	b_40digit
+#
+function set_booleans {
+	index=$boolindex
+	for bool in \
+	b_rename_infiles \
+	b_save_githead \
+	b_fmt_upstream \
+	b_gitam_err_abort \
+	b_40digit
+	do
+		prj_set_item $index ${!bool}
+		let index++
+	done
+	return 0
+}
+
+function show_settings {
+	local current_head=$(git log --oneline -n1)
+	local current_head_trunc=${current_head:0:50}
+	local s	settingstr=$(
+cat <<EOF
+$BLD
+    $UND\0Environment       $OFF$BLD
+    Most recent tag         :$OFF $lasttag$BLD
+    Current head            :$OFF $current_head_trunc$BLD
+ b  Current git branch      :$OFF $gitbranch$BLD
+ d  $indirstr directory         :$OFF $indir$BLD has$OFF $infilecount$BLD files
+ w  $outdirstr directory          :$OFF $outdir$BLD
+ e  Diff Editor             :$OFF $editor$BLD
+
+    $UND\0Run Parameters    $OFF$BLD
+ 1  Rename input files      :$OFF $b_rename_infiles$BLD
+ 2  Format upstream patches :$OFF $b_fmt_upstream$BLD
+ 3  Size of commit hash     :$OFF $(show_hash_size $b_40digit)$BLD digits
+ 4  Compare mode            :$OFF $(show_cmpmode $cmpmode)$BLD
+ 5  Patch apply mode        :$OFF $(show_applymode)$BLD
+
+    $UND\0Control           $OFF$BLD
+ r  Run patch review
+ i  Init to defaults
+ h  help text
+ x  Exit to a shell
+ q  Quit this script
+$OFF
+EOF
+)
+	echo -e "$settingstr"
+}
+
+function menu_parser {
+
+	infilecount=$(ls "$indir" | wc -l)
+	show_settings
+	promptgetchar ""$BLD"Enter one of the above: "$OFF"" setting
+
+	case $setting in
+
+		b )	git_setbranch
+			git_get_lasttag lasttag $last_tag_file
+			;;
+		m )	set_mailclient
+			;;
+		d )	prj_set_directory "$indirstr" $prj_indir indir quiet
+			;;
+		w )	prj_set_directory "$outdirstr" $prj_outdir outdir quiet
+			;;
+		e )	set_editor
+			;;
+		1 )	ui_toggle b_rename_infiles
+			;;
+		2 )	ui_toggle b_fmt_upstream
+			;;
+		3 )	ui_toggle b_40digit
+			;;
+		4 )	ui_cycle_state cmpmode 4
+			prj_set_item $prj_cmpmode $cmpmode
+			;;
+		5 )	ui_cycle_state applymode 4
+			prj_set_item $prj_applymode $applymode
+			;;
+		i )	init_booleans
+			get_booleans
+			applymode=$applymode_norm
+			prj_set_item $prj_applymode $applymode
+			;;
+		q )	exit_me 0
+			;;
+		x )	set_booleans
+			ui_sh_spawn
+			;;
+		r )	set_booleans
+			return $rc_run
+			;;
+		h )	less $manual
+			;;
+	esac
+	return $rc_continue
+}
+
+function menu_loop {
+	get_booleans
+
+	# get the patch and work directories.
+	#
+	check_dir $prj_indir "$indirstr" indir
+	check_dir $prj_outdir "$outdirstr" outdir
+	bp_commits="$indir/$bp_commits_name"
+	us_commits="$outdir/$us_commits_name"
+
+	# get the editor
+	#
+	editor=$(prj_get_item $prj_editor)
+
+	# get the comparison mode
+	#
+	cmpmode=$(prj_get_item $prj_cmpmode)
+	applymode=$(prj_get_item $prj_applymode)
+
+	# delete any "scratch" file from the indir
+	#
+	rm -f "$indir"/scratch
+
+	local stat=0
+
+	while true; do
+		menu_parser
+		stat=$?
+		# echo "menu_parser_stat: $stat"
+		[ $stat -eq $rc_run ] && break
+	done
+	return $stat
+}
+
+#############################
+# Start of Script Execution
+#############################
+
+# Trap for control-c
+#
+trap control_c SIGINT
+
+# Save our current shell level.
+#
+myshlvl=$SHLVL
+
+# Print the Herald
+#
+echo -e ""$BLD""$UND""
+echo "Patch Develop $version  Check backported patches with upstream"
+echo -e "$OFF"
+
+! $(git_checkrepo) && git_invrepomsg && exit 1
+
+###########################################
+# Parameter Initialization
+###########################################
+
+git_get_lasttag lasttag $last_tag_file
+
+# This loop enumerates and counts the items in the project file.
+# Add new booleans to the end of the list.
+# Add new non-boolean parameters to the top of the list.
+#
+for offset in \
+prj_applymode \
+prj_cmpmode \
+prj_editor \
+prj_indir \
+prj_outdir \
+prj_b_rename_infiles \
+prj_b_fmt_upstream \
+prj_b_gitam_err_abort \
+prj_b_40digit
+do
+	let index++
+	let $offset=$index
+	if [ "${offset:3:3}" == "_b_" ]; then
+		let boolcount++
+		if ! $b_found_first_bool; then
+			boolindex=$index
+			b_found_first_bool=true
+		fi
+	fi
+done
+
+prj_entries=$index
+[ -d "$MYDATA" ] || mkdir $MYDATA
+[ -e "$MYDATA/patchdevelop.prj" ] || touch $MYDATA/patchdevelop.prj
+prj_init_prjfile $MYDATA/patchdevelop.prj $prj_entries
+
+# If the above call to prj_init_prjfile returns nonzero, it means that a
+# new project file has been created and its values must be initialized.
+#
+if [ $? -ne 0 ]; then
+	echo
+	echo "A new project file has been created."
+	echo "We will need to know where your patches will be and where you"
+	echo "want us to put the output of this script."
+	prj_set_directory "$indirstr" $prj_indir indir quiet
+	prj_set_directory "$outdirstr" $prj_outdir outdir quiet
+	set_editor
+	init_booleans
+	cmpmode=$cmpmode_batch
+	applymode=$applymode_norm
+	prj_set_item $prj_cmpmode $cmpmode
+	prj_set_item $prj_applymode $applymode
+fi
+
+##############################################
+# Main Program Loop
+##############################################
+
+while true; do
+	menu_loop
+	menu_stat=$?
+	# echo "menu_loop_stat: $menu_stat"
+
+	if $b_rename_infiles; then
+		exec_boolean b_rename_infiles false "renpat $indir"
+		[ $? -ne 0 ] && continue
+	fi
+
+	if [ $applymode -ne $applymode_off ]; then
+		git am --abort 2>&1>/dev/null
+		patchcount=0
+		check_patchvbranch
+		apply_patches
+		applymode=$applymode_off
+		prj_set_item $prj_applymode $applymode
+ 	fi
+
+	# Generate a patch set from the original upstream patches.
+	#
+	if $b_fmt_upstream; then
+		rm -vf "$outdir"/*.patch
+		echo "" > "$us_commits"
+		echo
+		git_comment2commitsfile $indir "$us_commits" $b_40digit
+		echo
+		cat "$us_commits"
+		echo
+		exec_boolean b_fmt_upstream false \
+			"git_file2patchset "$us_commits" ${outdir}"
+	fi
+
+	if [ $cmpmode -ne $cmpmode_off ]; then
+
+		mmfile="$outdir/$mismatch_file"
+
+		# Mismatch file might be stale, so delete it first,
+		# if it exists. Better to create a new one.
+		#
+		[ -f $mmfile ] && rm -f $mmfile
+
+		case $cmpmode in
+			$cmpmode_batch ) exec_patcmp "-X" ;;
+			$cmpmode_setup ) exec_patcmp ;;
+			$cmpmode_inter ) patcmp $indir $outdir $editor ;;
+			             * ) cmpmode=$cmpmode_off
+		esac
+	fi
+
+	if [ $menu_stat -eq $rc_run ]; then
+
+		# Backout of any residual child shells.
+		#
+		ui_sh_backout $myshlvl
+	fi
+done
+
+# Done with the patch review
+#
+exit_me 0
+

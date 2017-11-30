@@ -1,0 +1,445 @@
+#!/bin/bash
+#
+# gitutilities.src
+#
+# NOTE: ~/bin/ui.source must be included before this file.
+#
+
+declare scratchdir=/dev/shm
+declare scratchfile=$scratchdir/scratch
+
+# git_commit2patchset
+# 	creates a patchset from contiguous commits starting with the most
+#	recent.
+#
+# $1 - number of commits to format
+# $2 - destination directory for the patch set.
+# $3 - optional commit to start from (most recent of the set)
+#
+function git_commit2patchset {
+	local patchcount=$1
+	local destdir="$2"
+	local commit="$3"
+
+	git format-patch --no-renames -s -n$patchcount "$commit" -o "$destdir"
+	return 0
+}
+
+# git_commit2patch
+# 	creates one patch from a given commit in a series, using the
+# 	number in the series of the commit in the patch as a part of
+# 	its name.
+#
+# $1 - number of the commit in the series
+# $2 - commit hash
+# $3 - destination directory
+#
+function git_commit2patch {
+	local index=$1
+	local commit=$2
+	local destdir=$3
+	local pfx=$(printf "%04d" $index)
+
+	if [ ${#commitnum} -gt 1 ]; then
+		git format-patch -1 -k --no-renames --start-number $index $commit -o $destdir
+
+		# If we could not format the patch, then create an empty
+		# patch with the bad patch number in it.
+		#
+		[ $? -eq 0 ] || echo "invalid commit: $commit" > $destdir/"$pfx-inv.patch"
+	else
+		echo -n "" > $destdir/"$pfx-no.patch"
+	fi
+}
+
+# git_file2patchset
+# 	creates a patchset from a file containing a list of discontiguous
+#	commits.
+#
+# The commits list must be organized so that the most recent commit is the
+# last line in the file and the oldest commit is at the top of the file.
+# git_comments2commitsfile() and git_mailhead2commitsfile() can be used to
+# generate such a file.
+#
+# Generated patches will be suitable for applying with "git am" or for
+# comparing to other patches.
+#
+# $1 - path of file containing the list of commits.
+# $2 - destination directory for the patch set.
+# $3 - optional - will return the number of patches formatted
+#
+function git_file2patchset {
+	local commitsfile="$1"
+	local destdir="$2"
+	local patchcount=$(cat "$commitsfile" | wc -l)
+	local commit=""
+	local commitnum=0
+	local index=1
+	local pfx=""
+
+	if [ $patchcount -eq 0 ]; then
+		echo
+		echo -e "\tSorry, but file "$attr_bold""$commitsfile""$attr_OFF" is empty."
+		echo
+		[ $# -eq 3 ] && eval $3=$patchcount
+		return 1
+	fi
+
+	while read line; do
+		[ "${line:0:1}" == "#" ] && continue
+		commit=$(echo $line | cut -d' ' -f1 | tr -dc "[[:xdigit:]]")
+		commitnum=$(echo $commit | tr -s 0)
+		pfx=$(printf "%04d" $index)
+		if [ ${#commitnum} -gt 1 ]; then
+			git format-patch -1 -k --no-renames --start-number $index $commit -o $destdir
+			#
+			# If we could not format the patch, then create an empty
+			# patch with the bad patch number in it.
+			#
+			[ $? -eq 0 ] || echo "invalid commit: $commit" > $destdir/"$pfx-inv.patch"
+		else
+			echo -n "" > $destdir/"$pfx-no.patch"
+		fi
+		let index++
+	done < $commitsfile
+
+	[ $# -eq 3 ] && eval $3=$patchcount
+	return 0
+}
+
+# git_setsubjectprefix - set the subject prefix in .git/config
+#
+git_setsubjectprefix() {
+	local newpfx="$(git config format.subjectprefix)"
+
+	echo -e \
+"Just press $BLD\0ENTER$OFF to leave the current subject prefix unchanged."
+	getuser "New subject prefix: " newpfx
+	[ "$newpfx" ] || return
+	git config format.subjectprefix "$newpfx"
+}
+
+# git_getsubjectprefix - determine the subject prefix stored in .git/config
+#
+# $1 - query, ask user if he wants to change the prefix
+#
+function git_getsubjectprefix {
+	local newpfx="$(git config format.subjectprefix)"
+	local b_ans=true
+	local b_query=false
+	[ "$1" == "query" ] && b_query=true
+	while true; do
+		echo -e "Current subject prefix: "$attr_bold""$newpfx""$attr_OFF""
+		$b_query && getyn "Change subject prefix?" b_ans
+		if $b_ans; then
+			getuser "New prefix: " newpfx
+			git config format.subjectprefix "$newpfx"
+			$b_query || break
+		else
+			break
+		fi
+	done
+}
+
+# git_repo2commitsfile
+# 	create a file containing a list of commits from consecutive commits
+#	in a git repo.
+#
+# Unless the user supplies an option, only the short form hashes will be
+# written to the file.
+#
+# $1 - path to destination file
+# $2 - Number of commits to format, before and including the most recent.
+# $3 - Most recent commit in the set. Default is top of the tree, if empty.
+# $4 - optional argument - "long" for long hash, short is the default.
+#
+# returns - 128 if $2 is an invalid commit.
+#         -   1 if $3 is an invalid option
+#         -   0 if all is well.
+#
+function git_repo2commitsfile {
+	local file=$1
+	local count=$2
+	local lastcommit=$3
+	local hashfmt_option=$4
+	local hashfmt="short"
+
+	if [ "$hashfmt_option" ]; then
+		[ "$hashfmt_option" == "long" ] && hashfmt="long"
+	fi
+
+	[ "$hashfmt" == "short" ] && git log --reverse -n$2 --oneline $3 > $file
+	[ "$hashfmt" == "long" ] && git log --reverse -n$2 --pretty=oneline $3 > $file
+
+	return $?
+}
+
+# git_excisecommit - excise the commit hash from the line
+#
+# If there appears to be more than one hash on the line, just take the
+# first one.
+#
+# $1 - the line to be grep'd
+# $2 - the size of the hash (40 or 7,40)
+#
+function git_excisecommit {
+	local line="$1"
+	local hashsize="$2"
+
+	echo "$line" | egrep -o "\b[0-9a-f]{"$hashsize"}\b" | head -1
+}
+
+# git_comment2commitsfile
+#	Create a file containing a list of commits from taken from the "commit"
+#	line in each patch in a directory. The patches in the directory are
+#	backported patches with upstream commits identified in the backported
+#	patch commit log.
+#
+# NOTE: The only files that will be parsed are those that have ".patch" at the
+#	end of their names.
+#
+# $1 - directory containing the backported patches
+# $2 - filename, including path, of the commits file.
+# $3 - optional boolean argument, if false, use 7-digit hashes
+#      default is 40-digit hashes.
+#
+function git_comment2commitsfile {
+	local srcdir="$1"
+	local commitsfile="$2"
+	local srcfile=""
+	local line=""
+	local index=1
+	local jdex
+	local filecount=$(ls $srcdir/*.patch | wc -l)
+	local cmtcnt=0
+	local cmtindex=1
+	local linenumber=0
+	local commitparity=0	# 1 if commits are the same
+	local commitarray
+	local scrstr
+	local hashsize="40"
+	local _40digit=true
+
+	local multihashstr=$(
+cat <<EOF
+$BLD
+There is more than one commit mentioned in patch$OFF $index.$BLD
+Please choose one of the following.
+$OFF
+EOF
+)
+	# If we got a third argument, then get it.
+	# If it's true, then the hashsize will be fixed at 40 digits
+	# If it's false, then the hashsize will be variable from 7 to 40
+	# digits.
+	#
+	[ $# -eq 3 ] && _40digit=$3
+	$_40digit || hashsize="7,40"
+
+	echo "commitsfile: $commitsfile"
+	> $commitsfile
+	> $scratchfile
+	# grep "commit " "$srdir"/*.patch | cut -d' ' -f2 > $commitsfile
+
+	for srcfile in $(ls -1 "$srcdir"/*.patch  | sort -V); do
+
+		echo $srcfile
+		linenumber=0
+		commitparity=0
+
+		# The default number of digits for a commit hash is 40.
+		# However, the user can pass "false" in $3 to set the range
+		# of digits from 7 to 40. This often generates noise, by
+		# considering things like stack traces as valid candidates
+		# for commit hashes. That's why the default is 40 digits.
+		#
+		# Capture any the lines that look like they have commits in
+		# them and stow them in a scratch file, which we will
+		# delete later.
+		#
+		egrep -i 'commit|cherry|upstream|pick|kernel' $srcfile \
+			| egrep "\b[0-9a-f]{$hashsize}\b" > $scratchfile
+
+		# If there is more than one line with what appears to be a
+		# commit in it, then ask the user from which line he wants
+		# to extract the commit.
+		#
+		cmtcnt=$(cat $scratchfile | wc -l)
+
+		# If there are exactly two commits, then see if they are
+		# identical. If so, no need to query the user for which
+		# one he wants.
+		#
+		if [ $cmtcnt -eq 2 ]; then
+			cmtindex=0
+			while read line; do
+				commitarray[$cmtindex]=$(git_excisecommit "$line" "$hashsize")
+				let cmtindex++
+			done < $scratchfile
+
+			for ((cmtindex=1; cmtindex < cmtcnt; cmtindex++))
+			do
+				[ "${commitarray[$cmtindex]}" == "${commitarray[0]}" ] \
+				&& commitparity=1 || commitparity=0
+			done
+		fi
+
+		if [ $cmtcnt -gt 1 ] && [ $commitparity -eq 0 ]; then
+
+			echo -e "$multihashstr"
+
+			for ((cmtindex=1; cmtindex <= cmtcnt; cmtindex++))
+			do
+				line=$(ui_readline $cmtindex $scratchfile)
+				printf "%d - $line\n" $cmtindex
+			done
+
+			let cmtindex--
+			loop_range 1 $cmtindex linenumber
+		else
+			linenumber=1
+		fi
+
+		line=$(ui_readline $linenumber $scratchfile)
+		rm -f $scratchfile
+		commit=$(git_excisecommit "$line" "$hashsize")
+
+		if [ "$commit" ]; then
+			echo "$commit $index/$filecount" >> $commitsfile
+		else
+			# If we didn't get a commit in this srcfile, then
+			# indicate that in the commitsfile by printing 40
+			# zeroes where the commit number should be.
+			#
+			printf "%040d $index/$filecount\n" 0 >> $commitsfile
+		fi
+		let index++
+	done
+}
+
+# git_mailhead2commitsfile
+#	Create a file containing a list of commits from taken from the "From"
+#	line in each git-formatted patch in a directory. The patches were
+#	extracted from a mail client, like mutt.
+#
+# NOTE: The only files that will be parsed are those that have ".patch" at the
+#	end of their names.
+#
+# $1 - directory where the git-formatted patches were extracted
+# $2 - filename, including path, of the commits file.
+#
+function git_mailhead2commitsfile {
+	local srcdir="$1"
+	local commitsfile="$2"
+
+	cat /dev/null > $commitsfile
+	grep "From " $srcdir/*.patch | cut -d' ' -f2 >> $commitsfile
+}
+
+function git_invrepomsg {
+	echo -e ""$attr_bold""$PWD""$attr_OFF" is not a valid git repo\n"
+}
+
+# git_checkrepo
+# 	Determines whether the current directory is a valid git repo
+#
+# returns 0 valid repo, else returns 1
+#
+# usage:
+# 	$(git_checkrepo) || echo "$PWD is not a valid git repo" || exit 1
+#
+function git_checkrepo {
+	[ -d .git ] && return 0 || return 1
+}
+
+# git_get_lasttag <tagstr> [path]
+#
+# Obtains the most recent tag in the current branch and stores it in
+# /dev/shm/lasttag, or the optional path submitted in $2 by the caller.
+#
+# Returns the tag in $1.
+#
+# Deletes the previously recorded last tagin /dev/shm/lasttag or the
+# optional path submitted by caller.
+#
+# This operation can take some time, so the git command is spawned
+# and we perform a wait for the tag file to appear.
+#
+# $1 - receives the last tag string
+# $2 - optional path to store lasttag file
+#
+git_get_lasttag() {
+
+	local _ltfile_
+	local _lasttag_
+	local _mypid_
+
+	[ $# -eq 2 ] && _ltfile_="$2" || _ltfile_="/dev/shm/lasttag"
+
+	[ -f "$_ltfile_" ] && rm -f $_ltfile_
+
+	echo -n "Getting most recent git tag.."
+	git describe --tags --abbrev=0 > $_ltfile_ &
+	_mypid_=$!
+	ui_waitonproc $_mypid_ .1
+	_lasttag_=$(cat $_ltfile_)
+	echo
+	eval $1="$_lasttag_"
+}
+
+# git_getcurrentbranch
+#
+# echoes the current branch in the git tree after checking that it's a
+# valid repo
+#
+# usage:
+# 	local current_branch=$(git_getcurrentbranch)
+#
+function git_getcurrentbranch {
+ 	git_checkrepo true
+	[ $? -eq 0 ] || exit 1
+	echo $(git branch | egrep \* | cut -d' ' -f2)
+}
+
+# git_setbranch outdir
+#
+# $1 if it exists sets the outdir. Default is /tmp
+#
+function git_setbranch {
+	local index=1
+	local line
+	local outdir="/tmp"
+
+	[ $# -eq 1 ] && outdir="$1"
+
+	git branch > $outdir/branchlist
+	echo -e "$attr_bold"
+
+	while read line; do
+		printf "%2d  $line\n" $index
+		let index++
+	done < $outdir/branchlist
+
+	echo -e  "$attr_bold"
+	echo -e  "The following commands will be issued before a new branch is checked out."
+	echo -en "$attr_OFF"
+	echo -e  "\tgit am --abort      # Abort any pending git am ops"
+	echo -e  "\tgit checkout"
+	# echo -e  "\tgit clean           # Clean out uncommitted files and directories"
+	echo -e
+	echo -en "$attr_bold"
+	echo -en "Enter the number corresponding to the branch you want: "
+	echo -en "$attr_OFF"
+	read  linenumber
+	[ "$linenumber" == "q" ] && exit 1
+	[ "$linenumber" == "x" ] && ui_sh_spawn
+	gitbranch="$(ui_readline $linenumber $outdir/branchlist | tr -d [\*" "])"
+	echo "git checkout "$gitbranch""
+	git am --abort --quiet
+	# git checkout .
+	# git clean -df
+	git checkout "$gitbranch" 2>&1
+	[ $? -eq 0 ] || exit 1
+	git log --oneline -n1
+}
+

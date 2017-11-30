@@ -1,0 +1,494 @@
+#!/bin/bash
+#
+# patchreview
+#
+# This script assumes that you have already extracted your patches into
+# the directory named as "indir" below. Only files named "*.patch" will
+# be considered.
+#
+# To create a patch set from email ...
+# In mutt, tag the thread you want to extract with esc-t. Untag the
+# prologue, as it's not a patch. Then extract the thread into text
+# files using ;-esc-C (uppercase C). When prompted for the directory,
+# type the name of the mailbox directory or uparrow to the previous
+# save.
+#
+# This script can also be used to compare any two patch sets.
+#
+# Calls on the following external scripts.
+#
+# ./githead
+# ./renpat
+# ./patcmp
+# ./patbatcmp
+# ./patbatcmpmgr
+#
+# Requires to run ...
+#
+# ./lib/*.source
+# ./.data/patchreview.prj
+# ./man/patchreview.man
+
+#######################################
+# Default file locations
+#######################################
+#
+# Whatever directory this script and its companions are located in
+# must be in the executable path.
+#
+# export PATH=$PATH:MYDIR
+#
+# Where MYDIR is the directory in which this script and its companions
+# are located.
+
+declare MYDIR=$(dirname $(which $(basename $0)))
+declare MYLIB=$MYDIR/lib
+declare MYDATA=$MYDIR/.data
+
+#######################################
+# External Source Files
+#######################################
+source $MYLIB/ui.source
+source $MYLIB/project.source
+source $MYLIB/gitutilities.source
+source $MYLIB/patch-common.source
+
+#########################################
+# Functions
+#########################################
+
+function init_booleans {
+	for ((index=boolindex; index <= prj_entries; index++)); do
+		prj_set_item $index true
+	done
+}
+
+# get_booleans
+#
+# Read the values of the program flow control booleans from the
+# project file.
+#
+# removed in v3.0
+#	b_restore_githead
+#	b_clean_indir
+#	b_clean_outdir
+#
+# added in v 4.0
+#	b_patbatcmp
+#
+# removed in v4.4
+# 	b_patcmp
+# 	b_patbatcmp
+#
+# added in v4.4
+# 	b_40digit
+#
+function get_booleans {
+	index=$boolindex
+	for bool in \
+	b_rename_infiles \
+	b_save_githead \
+	b_fmt_upstream \
+	b_gitam_err_abort \
+	b_40digit
+	do
+		eval $bool=$(prj_get_item $index)
+		ui_digit2bool $bool
+		let index++
+	done
+}
+
+# set_booleans
+#
+# Write the current values of the program flow booleans into the
+# project file.
+#
+# removed in v3.0
+#	b_restore_githead \
+#	b_clean_indir \
+#	b_clean_outdir \
+#
+# added in v 4.0
+#	b_patbatcmp
+#
+# removed in v4.4
+# 	b_patcmp
+# 	b_patbatcmp
+#
+# added in v4.4
+# 	b_40digit
+#
+# removed in v5.0
+#	b_apply_patches
+#
+function set_booleans {
+	index=$boolindex
+	for bool in \
+	b_rename_infiles \
+	b_save_githead \
+	b_fmt_upstream \
+	b_gitam_err_abort \
+	b_40digit
+	do
+		prj_set_item $index ${!bool}
+		let index++
+	done
+	return 0
+}
+
+function clean_dir {
+	local delquery="Are you sure you want to delete the contents of:"
+	local response=false
+
+	getyn "$delquery\n\t$1\n" response
+	$response && find "$1" -mindepth 1 -exec rm -rvf '{}' \;
+}
+
+function clean_directories {
+	local delquery="Are you sure you want to delete the contents of:"
+	local response=false
+
+	getyn "$delquery\n\t$indir\n\t$outdir\n" response
+	if $response; then
+		# remove the sub-directories in the outdir first
+		find "$outdir" -mindepth 1 -depth -type d -exec rm -rf '{}' \;
+		# remove all but the log files in the outdir
+		rm -vf "$outdir"/!(*.log)
+		# remove everything in the indir
+		rm -vf "$indir"/*
+	fi
+}
+
+clean_sessions() {
+	local session_query=\
+"\nClearing the sessions file.\n\
+After choosing the head you want from the sessions file, it will be initialized
+with your selection as the first entry.\n
+Do you want to proceed?"
+	local response=false
+
+	getyn "$session_query" response
+	$response && {
+		git_restore_head
+		init_session_file
+	}
+}
+
+reset_to_lasttag() {
+	echo -e "$BLD\0Resetting git head to$OFF $lasttag."
+	git reset --hard $lasttag
+}
+
+nuke() {
+	# remove the sub-directories in the outdir first
+	find "$outdir" -mindepth 1 -depth -type d -exec rm -rf '{}' \;
+
+	# remove all but the log files in the outdir
+	rm -vf "$outdir"/!(*.log)
+
+	# remove everything in the indir
+	rm -vf "$indir"/*
+
+	# Reset the git head to the last tag
+	reset_to_lasttag
+
+	# Init the session file with the current branch/head
+	init_session_file
+
+	# Init the booleans to their defaults
+	init_booleans
+	get_booleans
+
+	# Set the apply mode to its default value
+	applymode=$applymode_norm
+	prj_set_item $prj_applymode $applymode
+}
+
+function show_settings {
+	local current_head=$(git log --oneline -n1)
+	local current_head_trunc=${current_head:0:50}
+	local settingstr=$(
+cat <<EOF
+$BLD
+    $UND\0Environment       $OFF$BLD
+    Most recent tag         :$OFF $lasttag$BLD
+    Current Head            :$OFF $current_head_trunc$BLD
+ b  Current git branch      :$OFF $gitbranch$BLD
+ d  $indirstr directory         :$OFF $indir$BLD has$OFF $infilecount$BLD files
+ w  $outdirstr directory          :$OFF $outdir$BLD
+ e  Diff Editor             :$OFF $editor$BLD
+
+    $UND\0Run Parameters    $OFF$BLD
+ 1  Rename input files      :$OFF $b_rename_infiles$BLD
+ 2  Save git head           :$OFF $b_save_githead$BLD
+ 3  Format upstream patches :$OFF $b_fmt_upstream$BLD
+ 4  Size of commit hash     :$OFF $(show_hash_size)$BLD digits
+ 5  Compare mode            :$OFF $(show_cmpmode)$BLD
+ 6  Patch apply mode        :$OFF $(show_applymode)$BLD
+
+    $UND\0Control           $OFF$BLD
+ r  Run patch review
+ i  Init to defaults
+ G  Git reset to most recent tag of current branch
+ H  Choose a session git head
+ C  Clean $indirstr and $outdirstr Directories
+ S  Clean Session File
+ N  Nuke directories & session, reset head to most recent tag
+ h  help text
+ x  Exit to a shell
+ q  Quit this script
+$OFF
+EOF
+)
+	echo -e "$settingstr"
+}
+
+function menu_parser {
+
+	infilecount=$(ls "$indir" | wc -l)
+	show_settings
+	promptgetchar ""$BLD"Enter one of the above: "$OFF"" setting
+
+	case $setting in
+
+		b )	git_setbranch
+			git_get_lasttag lasttag $last_tag_file
+			;;
+		d )	prj_set_directory "$indirstr" $prj_indir indir quiet
+			;;
+		w )	prj_set_directory "$outdirstr" $prj_outdir outdir quiet
+			;;
+		e )	set_editor
+			;;
+		1 )	ui_toggle b_rename_infiles
+			;;
+		2 )	ui_toggle b_save_githead
+			;;
+		3 )	ui_toggle b_fmt_upstream
+			;;
+		4 )	ui_toggle b_40digit
+			;;
+		5 )	ui_cycle_state cmpmode 4
+			prj_set_item $prj_cmpmode $cmpmode
+			;;
+		6 )	ui_cycle_state applymode 4
+			prj_set_item $prj_applymode $applymode
+			;;
+		C )	clean_directories
+			;;
+		N )	nuke
+			;;
+		G )	reset_to_lasttag
+			;;
+		H )	git_restore_head
+			gitbranch=$(git_getcurrentbranch)
+			;;
+		S )	clean_sessions
+			gitbranch=$(git_getcurrentbranch)
+			;;
+		i )	init_booleans
+			get_booleans
+			applymode=$applymode_norm
+			prj_set_item $prj_applymode $applymode
+			;;
+		q )	exit_me 0
+			;;
+		x )	set_booleans
+			ui_sh_spawn
+			;;
+		r )	set_booleans
+			return $rc_run
+			;;
+		h )	less $manual
+			;;
+	esac
+	return $rc_continue
+}
+
+function menu_loop {
+	get_booleans
+
+	# get the patch and work directories.
+	#
+	check_dir $prj_indir "$indirstr" indir
+	check_dir $prj_outdir "$outdirstr" outdir
+	bp_commits="$indir/$bp_commits_name"
+	us_commits="$outdir/$us_commits_name"
+
+	# get the editor
+	#
+	editor=$(prj_get_item $prj_editor)
+
+	# get the apply and comparison modes
+	#
+	cmpmode=$(prj_get_item $prj_cmpmode)
+	applymode=$(prj_get_item $prj_applymode)
+
+	# delete any "scratch" file from the indir
+	#
+	rm -f "$indir"/scratch
+
+	local stat=0
+
+	while true; do
+		menu_parser
+		stat=$?
+		# echo "menu_parser_stat: $stat"
+		[ $stat -eq $rc_run ] && break
+	done
+	return $stat
+}
+
+#############################
+# Start of Script Execution
+#############################
+
+# Trap for control-c
+#
+trap control_c SIGINT
+
+# Save our current shell level.
+#
+myshlvl=$SHLVL
+
+# Print the Herald
+#
+echo -e ""$BLD""$UND""
+echo "Patch Review $version  Review patches and compare to upstream"
+echo -e "$OFF"
+
+! $(git_checkrepo) && git_invrepomsg && exit 1
+
+###########################################
+# Parameter Initialization
+###########################################
+
+git_get_lasttag lasttag $last_tag_file
+
+# This loop enumerates and counts the items in the project file.
+# Add new booleans to the end of the list.
+# Add new non-boolean parameters to the top of the list.
+#
+for offset in \
+prj_applymode \
+prj_cmpmode \
+prj_editor \
+prj_indir \
+prj_outdir \
+prj_b_rename_infiles \
+prj_b_save_githead \
+prj_b_fmt_upstream \
+prj_b_gitam_err_abort \
+prj_b_40digit
+do
+	let index++
+	let $offset=$index
+	if [ "${offset:3:3}" == "_b_" ]; then
+		let boolcount++
+		if ! $b_found_first_bool; then
+			boolindex=$index
+			b_found_first_bool=true
+		fi
+	fi
+done
+
+prj_entries=$index
+[ -d "$MYDATA" ] || mkdir $MYDATA
+[ -e "$MYDATA/patchreview.prj" ] || touch $MYDATA/patchreview.prj
+prj_init_prjfile $MYDATA/patchreview.prj $prj_entries
+
+# If the above call to prj_init_prjfile returns nonzero, it means that a
+# new project file has been created and its values must be initialized.
+#
+if [ $? -ne 0 ]; then
+	echo
+	echo "A new project file has been created, or the existing one"
+	echo "must be recreated."
+	echo "We will need to know where your patches will be, where you"
+	echo "want us to put the output of this script, and your choice"
+	echo "of editor."
+	echo
+	prj_set_directory "$indirstr" $prj_indir indir quiet
+	prj_set_directory "$outdirstr" $prj_outdir outdir quiet
+	set_editor
+	init_booleans
+	cmpmode=$cmpmode_batch
+	applymode=$applymode_norm
+	prj_set_item $prj_cmpmode $cmpmode
+	prj_set_item $prj_applymode $applymode
+fi
+
+# Create the sessions directory and sessions file to log session
+# information
+#
+[ -d "$sesdir" ] || mkdir -p "$sesdir"
+[ -e "$sesfile" ] || touch $sesdir/$sesfile
+
+##############################################
+# Main Program Loop
+##############################################
+
+while true; do
+	menu_loop
+	menu_stat=$?
+	# echo "menu_loop_stat: $menu_stat"
+
+	if $b_rename_infiles; then
+		exec_boolean b_rename_infiles false "renpat $indir"
+		[ $? -ne 0 ] && continue
+	fi
+
+	if $b_save_githead; then
+		exec_boolean b_save_githead false "git_log_head"
+	fi
+
+	if [ $applymode -ne $applymode_off ]; then
+		git am --abort 2>&1>/dev/null
+		patchcount=0
+		check_patchvbranch
+		apply_patches
+		git_log_head
+		applymode=$applymode_off
+		prj_set_item $prj_applymode $applymode
+	fi
+
+	# Generate a patch set from the original upstream patches.
+	#
+	if $b_fmt_upstream; then
+		rm -vf "$outdir"/*.patch
+		echo "" > "$outdir/$us_commits"
+		echo
+		git_comment2commitsfile $indir "$outdir/$us_commits" $b_40digit
+		echo
+		cat "$outdir/$us_commits"
+		echo
+		exec_boolean b_fmt_upstream false \
+			"git_file2patchset ${outdir}/"$us_commits" ${outdir}"
+	fi
+
+	if [ $cmpmode -ne $cmpmode_off ]; then
+
+		mmfile="$outdir/$mismatch_file"
+
+		# Mismatch file might be stale, so delete it first,
+		# if it exists. Better to create a new one.
+		#
+		[ -f $mmfile ] && rm -f $mmfile
+
+		case $cmpmode in
+			$cmpmode_batch ) exec_patcmp "-X" ;;
+			$cmpmode_setup ) exec_patcmp ;;
+			$cmpmode_inter ) patcmp $indir $outdir $editor ;;
+			             * ) cmpmode=$cmpmode_off
+		esac
+	fi
+
+	if [ $menu_stat -eq $rc_run ]; then
+
+		# Backout of any residual child shells.
+		#
+		ui_sh_backout $myshlvl
+	fi
+done
+
+exit_me 0

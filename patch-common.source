@@ -1,0 +1,555 @@
+#!/bin/bash
+#
+# lib/patch.source
+#
+# The following source files must be included before this one.
+#
+# source $MYLIB/ui.source
+# source $MYLIB/project.source
+# source $MYLIB/gitutilities.source
+#
+# MYLIB must be defined in the file that includes this one.
+
+version="6.9-2"
+
+b_ui_int_first_getyn=false	# For lib/ui.source
+
+# Enable extglob for more specific directory actions
+#
+shopt -s extglob
+
+manual="$MYDIR/man/$(basename $0).txt"
+
+#######################################
+# External Scripts
+#######################################
+alias githead='$MYDIR/githead'
+alias renpat='$MYDIR/renpat'
+alias patcmp='$MYDIR/patcmp'
+alias patbatcmp='$MYDIR/patbatcmp'
+alias patbatcmpmgr='$MYDIR/patbatcmpmgr'
+
+# Declare the global variables
+#
+declare indir
+declare outdir
+declare indirstr="Patch"
+declare outdirstr="Work"
+
+declare editor
+declare cmpmode
+declare applymode
+declare prj_entries=0
+declare index=0
+declare boolcount=0
+declare boolindex=0
+declare b_found_first_bool=false
+declare infilecount=0
+declare gitbranch=$(git_getcurrentbranch)
+
+declare us_commits_name="us-commits.log"	# upstream commits log filename
+declare bp_commits_name="bp-commits.log"	# backport commits log filename
+declare us_commits				# must be initialized in menu
+declare bp_commits				# : loop
+
+declare patchcount=0
+declare sesdir="../.session"
+declare sesfile="sessions.log"
+declare commit_msg_file="commit-msg.txt"
+declare last_tag_file="/dev/shm/lasttag"
+declare mismatch_file="mm.log"
+
+declare prj_indir
+declare prj_outdir
+declare prj_editor
+declare prj_cmpmode
+declare prj_applymode
+declare prj_b_rename_infiles
+declare prj_b_save_githead
+declare prj_b_fmt_upstream
+declare prj_b_gitam_err_abort
+declare prj_b_40digit
+
+declare lasttag=""
+
+declare -i cmpmode_off=0
+declare -i cmpmode_batch=1
+declare -i cmpmode_inter=2
+declare -i cmpmode_setup=3
+
+declare -i applymode_off=0
+declare -i applymode_norm=1
+declare -i applymode_3way=2
+declare -i applymode_patch=3
+
+declare rhel6kernstr="kernel-2.6.32"
+declare rhel7kernstr="kernel-3.10.0"
+declare pegaskernstr="kernel-alt-"
+
+########################################
+# Function Return Codes
+########################################
+declare rc_continue=0	# Continue for another pass
+declare rc_run=1	# Run
+
+function exit_me {
+	set_booleans
+	prj_set_item $prj_applymode $applymode
+	prj_set_item $prj_cmpmode $cmpmode
+	[ -e "$last_tag_file" ] && rm -f $last_tag_file
+	exit $1
+}
+
+# run if user hits control-c
+#
+control_c()
+{
+	echo -en "\nCtrl-c detected\nCleaning up and exiting.\n"
+	exit_me $CTLC_EXIT
+}
+
+# test_editor() - tests for the existence of the chosen editor
+#
+# If the editor was not installed, the user is given a choice to exit now
+# to install it or to select another editor. The function returns a 1 in
+# this case to signal the caller that the editor is not installed and the
+# user wants to see the choices available again.
+#
+# If the editor was installed, then it is set in the project file and the
+# caller is signaled with a return of zero that the editor has been
+# successfully chosen.
+#
+# $1 - the string name of the editor
+#
+# returns 0 if editor was found
+# returns 1 if editor was not found
+#
+test_editor() {
+	local _editor_="$1"
+	local _ans_
+	local _noed_=\
+"$BLD$_editor_$OFF is not installed. Do you want to exit and install it now?$OFF"
+	local _pstr_=\
+"$OFF\0Press '$BLD\0y$OFF' to exit now or '$BLD\0n$OFF' to select another editor: "
+
+	which "$_editor_" > /dev/null 2>&1
+
+	if [ $? -ne 0 ]; then
+		echo -e "$_noed_"
+		getyn "$_pstr_" _ans_
+		$_ans_ && exit_me 0
+		return 1
+	fi
+
+	prj_set_item $prj_editor "$_editor_"
+	return 0
+}
+
+
+function set_editor {
+	local choice
+	echo -e "$attr_bold"
+	echo -e "Select one of these currently supported diff editors.\n"
+	echo -e " 1 -$OFF vimdiff$BLD"
+	echo -e " 2 -$OFF emacs$BLD"
+	echo -e " 3 -$OFF tkdiff$BLD"
+
+	while true; do
+		loop_range 1 3 choice
+		case $choice in
+			1 )	editor="vimdiff";;
+			2 )	editor="emacs"	;;
+			3 )	editor="tkdiff"
+		esac
+		test_editor "$editor"
+		[ $? -eq 0 ] && break
+	done
+}
+
+# check_dir
+# 	Checks whether the directory coming from the project file is valid.
+# 	If not, calls prj_set_directory to get the new directory name.
+# 	The prj_set_directory routine calls ui_getnewdir, which will ask
+# 	if the user wants to create the directory if it does not already
+# 	exist.
+#
+# $1 - index into the project file where the directory name string goes
+# $2 - string representing the directory type, e.g. "Patch" or "Work"
+# $3 - returns the name of the directory
+#
+function check_dir {
+	local index=$1
+	local dirtype="$2"
+	local dirname=$(prj_get_item $index)
+
+	if ! [ -d "$dirname" ]; then
+		echo -e "\n"$attr_bold""$dirname""$attr_OFF" does not exist.\n";
+		prj_set_directory "$dirtype" $index dirname quiet
+		dirname=$(prj_get_item $index)
+	fi
+
+	eval $3=$dirname
+}
+
+# exec_boolean
+#
+# Execute a command string and pass the boolean that was
+# used to determine whether the command should be executed.
+# The boolean will be given the value passed by the caller.
+#
+# $1 - The boolean
+# $2 - The boolean's new value
+# $3 - The command line as a strng.
+#
+# Returns the status of the executed command string.
+#
+function exec_boolean {
+	argc=$#
+	argv="$@"
+	local stat
+	local boolean=$1
+	local b_newval=$2
+	local cmdstr="$(echo "$@" | cut -d' ' -f$argc-)"
+	local offset=prj_${boolean}
+	# echo ${!offset}
+	$cmdstr
+	stat=$?
+	# echo "$cmdstr status: $stat"
+	if [ $stat -eq 0 ]; then
+		if [ $argc -eq 3 ]; then
+			$b_newval && boolean=true || boolean=false
+		fi
+		[ $argc -ge 2 ] && prj_set_item ${!offset} $boolean
+	else
+		echo "$cmdstr"
+		echo -e "\tDid not execute successfully"
+		echo
+	fi
+	return $stat
+}
+
+function git_log_head {
+	local commit="$(git log --oneline -n1 | cut -d' ' -f1)"
+	local line=""
+	local line_hash=""
+
+	while read line; do
+		line_hash="$(echo $line | cut -d' ' -f2)"
+		if [ "$line_hash" == "$commit" ]; then
+			return 0
+		fi
+	done < $sesdir/$sesfile
+
+	line="$(git_getcurrentbranch)"" ""$(git log --oneline -n1 $commit)"
+	echo $line >> $sesdir/$sesfile
+	return 0
+}
+
+function git_restore_head {
+	local line=""
+	local index=1
+	local commit
+	local currenthead
+	local choice=0
+	local leadstr
+
+	[[ -s "$sesdir/$sesfile" ]] || {
+		echo -en "$attr_bold"
+		echo -e  "Session file \"$sesdir/$sesfile\" has no entries yet.\n"
+		promptgetchar "Press any key to continue. "
+		echo -en "$attr_OFF"
+		return 0
+	}
+
+	currenthead="$(git log --oneline -n1 | cut -d' ' -f1)"
+
+	while read line; do
+		commit="$(echo $line | cut -d' ' -f2)"
+
+		if [[ "$commit" == "$currenthead" ]]; then
+			echo -en "$attr_bold"
+			leadstr=" * "
+		else
+			leadstr="   "
+		fi
+
+		printf "%s%2d - %s\n" "$leadstr" $index "$line"
+		echo -en "$attr_OFF"
+		let index++
+	done < $sesdir/$sesfile
+
+	leadstr="   "
+	printf "%s%2d - Leave git head where it is.\n" "$leadstr" $index
+	let index++
+	printf "%s%2d - Leave git head where it is and clear session file\n" "$leadstr" $index
+
+	while true; do
+		getuser "Enter your choice from above list: " choice
+		[[ $choice =~ ^-?[0-9]+$ ]] || continue
+		(( ($choice >= 1) && ($choice <= $index) )) && break
+	done
+
+	(( $choice == ($index - 1) )) && return 0
+	(( $choice == $index )) && { > $sesdir/$sesfile; return 0; }
+
+	line=$(ui_readline $choice $sesdir/$sesfile)
+	commit=$(echo $line | cut -d' ' -f2)
+	git checkout -f $(echo $line | cut -d' ' -f1)
+	git reset --hard $commit
+	git_get_lasttag lasttag
+	return 0
+}
+
+# replace_patch
+#
+# GLOBALS
+#	outdir
+#	us_commits
+#
+function replace_patch {
+	local patnum
+	local commit
+	local patcnt=$(cat "$us_commits" | wc -l)
+
+	getuser "Patch Number to replace: " patnum
+	getuser "Correct commit ID: " commit
+	ui_replaceline $patnum "$commit $patnum/$patcnt" "$us_commits"
+	rm -f "$outdir"/*.patch
+	# git_file2patchset "$us_commits" "$outdir"
+	git_commit2patch $patnum $commit $outdir
+}
+
+# create_commit_msg
+#
+# $1 - pathname of patch
+# $2 - outdir
+#
+# GLOBALS
+#	commit_msg_file
+#
+function create_commit_msg {
+	local diffstr="diff "
+	local subjstr="Subject: "
+	local found_subj=false
+	local commit_msg_path=""$outdir"/"$commit_msg_file""
+
+	echo "" > "$commit_msg_path"
+
+	while read line; do
+		[ "${line:0:5}" == "$diffstr" ] && break
+
+		if [ "${line:0:9}" == "$subjstr" ]; then
+			local sumstrpos=$(($(ui_strindex "$line" "]") + 1))
+			local sumstr=$(echo -e ${line:$sumstrpos})
+			echo "$sumstr" >> "$commit_msg_path"
+			echo "" >> "$commit_msg_path"
+			found_subj=true
+		fi
+		$found_subj && echo "$line" >> "$commit_msg_path"
+	done < "$1"
+}
+
+# apply_patches
+#
+# GLOBALS
+#	indir
+#	outdir
+#	patchcount
+#	bp_commits
+#	applymode
+#	b_gitam_err_abort
+#
+function apply_patches {
+	# patchcount is global
+	local stat=0
+
+	[ $applymode -eq $applymode_off ] && return 0
+	echo "" > "$bp_commits"
+
+	for patch in $(ls -1 "$indir"/*.patch | sort -V); do
+		let patchcount++
+		echo "$patch"
+		case $applymode in
+		    $applymode_norm  ) git am $patch; stat=$? ;;
+		    $applymode_3way  ) git am -3 $patch; stat=$? ;;
+		    $applymode_patch ) patch --fuzz=3 -p1 < $patch; stat=$? ;;
+		esac
+
+		if [ $stat -ne 0 ]; then
+			echo -en "$BLD"
+			echo -e "\nPatch: $OFF$patch$BLD"
+			echo -e "Failed to apply.$OFF Exiting script ...\n"
+			exit_me 1
+		fi
+
+
+		[ $applymode -ne $applymode_patch ] && {
+			printf "%3d " $patchcount >> "$bp_commits"
+			git log --oneline -n1 >> "$bp_commits"
+		}
+	done
+
+	[ $stat -eq 0 ] && cat "$bp_commits" || tail -1 "$bp_commits"
+	return $stat
+}
+
+show_hash_size() {
+	$b_40digit && echo "40" || echo "7"
+}
+
+show_cmpmode() {
+
+	case $cmpmode in
+	    $cmpmode_off   )	echo "OFF" ;;
+	    $cmpmode_batch )	echo "Batch" ;;
+	    $cmpmode_inter )	echo "Interactive Only" ;;
+	    $cmpmode_setup )	echo "Batch compare setup" ;;
+		         * )	echo "Not a valid comparison mode" ;;
+	esac
+}
+
+show_applymode() {
+
+	case $applymode in
+	    $applymode_off   )	echo "OFF" ;;
+	    $applymode_norm  )	echo "git am" ;;
+	    $applymode_3way  )	echo "git am 3-way merge" ;;
+	    $applymode_patch )  echo "patch --fuzz=3 -p1 <" ;;
+	                   * )	echo "Not a valid apply mode" ;;
+	esac
+}
+
+# init_session_file()
+#
+# Init the session file with the current branch/head
+#
+init_session_file() {
+	echo "$(git symbolic-ref --short HEAD) $(git log --oneline -n1)" \
+		> $sesdir/$sesfile
+
+}
+
+# show_branch_mismatch - prints discrepency between distro and kernel
+#
+# If user options to switch branches, the global lasttag is refreshed.
+#
+# Globals:
+# 	lasttag
+# 	last_tag_file
+#
+# $1 - current distro
+# $2 - user's y or n response to query to switch branches
+#
+show_branch_mismatch() {
+	local _distro_="$1"
+	local _yn_
+
+	echo -e "$BLD\0Patches are$OFF $_distro_$BLD but kernel is$OFF $lasttag"
+	doyn "Switch branches now?" "git_setbranch" "" _yn_
+	$_yn_ && git_get_lasttag lasttag $last_tag_file
+	eval $2=$_yn_
+}
+
+# check_patchvbranch - see if the patch names match the branch
+#
+# Globals
+# 	rhel*str, pegas*str - strings that represent the correspoinding kernels
+# 	indir - directory containing the RHEL patches
+#	krnstrlen - length of the string that defines which kernel
+# 	lasttag
+#
+check_patchvbranch() {
+	local pat
+	local dist
+	local tag
+	local krn
+	local krnstr=""
+	local yn=false
+	local ary
+	local i
+
+	[ $indir ] || return 1
+
+	# See if there are any .patch files in the $indir
+	#
+	stat $indir/*.patch > /dev/null 2>&1
+	[ $? -eq 0 ] || return 1
+
+	pat=$(ls -1 $indir/*.patch | head -1)
+	pat=$(basename $pat)
+
+	# Remove any brackets, parentheses, and quotes
+	#
+	pat=$(echo "$pat" | sed 's/[][<>(),"]//g')
+	pat=$(echo "$pat" | sed "s/'//g")
+
+	# remove any leading whitespace
+	#
+	pat="$(echo -e "$pat" | sed -e 's/^[[:space:]]*//')"
+
+	# Replace spaces, slashes, colons and semicolons with hyphens
+	#
+	pat=$(echo "$pat" | sed "s\[/:; ]\-\g")
+
+	# Tokenize the patchname using '-' as the token separator
+	#
+	ui_strtok "$pat" "-" ary
+
+	# Ignore case in this block
+	#
+	shopt -s nocasematch
+
+	for ((i = 0; i < ${#ary}; ++i)); do
+
+	    dist="${ary[i]}"
+
+	    # If this is RHEL7-Alt, then it is pegas
+	    #
+	    [[ "${ary[i+1]}" == "alt" ]] && dist="pegas"
+
+	    # It's possible that the distribution string had a hyphen in it, in
+	    # which case the distro major release will be a separate token. If
+	    # so, append the distro major release to the distribution string.
+	    #
+	    [[ "$dist" == "rhel" ]] && dist="$dist""${ary[i+1]}"
+
+	    case "${dist:0:5}" in
+		"rhel6" ) krnstr="$rhel6kernstr"; break;;
+		"rhel7" ) krnstr="$rhel7kernstr"; break;;
+		"pegas" ) krnstr="$pegaskernstr"; break;;
+		      * ) continue
+	    esac
+	done
+
+	# Tokenize the current kernel branch tag and the krnstr
+	#
+	ui_strtok "$lasttag" "-" tag
+	ui_strtok "$krnstr" "-" krn
+
+	# The second token will be the determining factor to see if the tag
+	# matches the kernel.
+	#
+	[ "${tag[1]}" == "${krn[1]}" ] || show_branch_mismatch "$dist" yn
+
+	# Restore case sensitivity
+	#
+	shopt -u nocasematch
+
+	# If user did not opt to switch branches, then user wants to apply
+	# patches to current branch, even though they appear to the script
+	# to be mismatched.
+	# If the user did switch branches, call this routine recursively to
+	# see if s/he chose the correct branch.
+	#
+	$yn && check_patchvbranch
+
+	return 0
+}
+
+exec_patcmp() {
+	local xval="$1"
+	patbatcmpmgr -R $indir -U $outdir -o $mmfile "$xval"
+	patcmp -m $mmfile $indir $outdir $editor "$us_commits"
+	[ -f $mmfile ] && rm -f $mmfile
+}
+

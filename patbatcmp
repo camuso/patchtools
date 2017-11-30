@@ -1,0 +1,365 @@
+#!/bin/bash
+#
+# patbatcmp
+#
+
+usagestr=$(
+cat <<EOF
+
+$(basename $0) Version 1.0
+
+usage: $(basename $0) [option] dirA dirB
+
+Options:
+  -h  - Print this help screen
+
+  -d  - Exclude the diff stat at the top of the patch from comparison
+        Default: false
+
+  -p  - Exclude paths from comparison
+        Default: false
+
+  -s  - Exclude lines whose first character is not + or -
+        Limits comparison to only the actually patched lines.
+        Default: false
+        NOTE: This will also exclude the diff stat, but will not exclude
+        the paths.
+
+  -v  - verbose prints whether the patch files are congruent or different
+
+  -V  - Very verbose also prints the lines compared from each file
+
+  -o <file> - sends the outputs to a file
+
+Compare the .patch files in two directories as pairs, one pair at a time
+in a loop. The directories must have the same number of .patch files
+
+If a mismatch is detected, according to the options, the 1-based number
+of the mismatched pair of patches is printed to /dev/stdout by default,
+or to an optional file.
+
+Commit logs and hunk offset (@@) lines are omitted from the comparison.
+
+Comparison stops at the first mismatched line in the pair.
+\0
+EOF
+)
+
+declare dirA
+declare dirB
+declare savedifs="$IFS"
+declare ofile="/dev/stdout"	# default output file
+
+# control boolean options
+#
+declare strict=false	# exclude lines whose first char is not + or -
+declare nopaths=false	# exclude the paths from comparison
+declare verbose=false	# print whether or not files are congruent
+declare vverbose=false	# print each line compared
+declare verbosity=0	# level of verbose-ness
+declare -i optcnt=0	# count the options
+declare -i lincnt=0	# line counter
+declare b_stdout=true	# indicates output is going to /dev/stdout
+declare eofA=false	# found the end of file A
+declare eofB=false	# found the end of file B
+declare b_done=false	# loop control
+
+# list of files in each directory
+#
+declare flistA
+declare flistB
+
+# count of the files in each directory
+#
+declare -i fcountA
+declare -i fcountB
+
+# File descriptors
+#
+declare fdA
+declare fdB
+
+# Arrays to for lists of files
+#
+declare -a faryA
+declare -a faryB
+declare -i index	# array index
+
+# line counters
+#
+declare -i lcA
+declare -i lcB
+
+#####################################################################
+#
+# press_any()
+#
+# Press any key to continue
+#
+press_any() {
+	echo -en "\nPress any key to continue ... "
+	read -n1
+}
+
+#####################################################################
+#
+# usage()
+#
+# Print usage string and exit with nonzero status
+#
+usage() {
+	echo -e "$usagestr"
+	exit 1
+}
+
+#####################################################################
+#
+# fcount_err()
+#
+# Notify user that directories do not contain the same number of
+# .patch files
+#
+fcount_err() {
+	echo -en "
+$dirA has $fcountA .patch files.
+$dirB has $fcountB .patch files.
+
+Both directories must have the same number of .patch files.
+"
+	press_any
+	usage
+}
+
+while getopts hdpsvVo: OPTION; do
+    case "$OPTION" in
+
+	h ) usage
+	    ;;
+	d ) nodiffst=true	# exclude the diffstat if true
+	    let optcnt++
+	    ;;
+	p ) nopaths=true	# exclude the paths when true
+	    let optcnt++
+	    ;;
+	s ) strict=true		# only compare lines starting with * or -
+	    let optcnt++
+	    ;;
+	v ) verbose=true	# print whether or not files are congruent
+	    vverbose=false
+	    verbosity=1
+	    let optcnt++
+	    ;;
+	V ) vverbose=true	# verbose, and print lines being compared
+	    verbose=true
+	    verbosity=2
+	    let optcnt++
+	    ;;
+	o ) ofile="$OPTARG"	# get the output file
+	    > $ofile		# zero the output file
+	    b_stdout=false	# notify that output is going to text file
+	    let optcnt++
+	    let optcnt++
+	    ;;
+	* ) echo "unrecognized option "
+	    echo -e "$usagestr"
+	    exit 127
+    esac
+done
+
+# The verbose boolean is set for both verbose and vverbose conditions
+# If it is not set, then verbosity must be zero.
+#
+$verbose || verbosity=0
+
+# Shift past the options
+#
+for ((i = 0; i < optcnt; ++i)); do shift; done
+
+# Be sure we have at exactly two parameters at this point
+#
+[ $# -eq 2 ] || usage
+
+dirA="$1"
+dirB="$2"
+
+# get the list of files in each directory
+#
+flistA=$(ls -1 $dirA/*.patch)
+flistB=$(ls -1 $dirB/*.patch)
+
+# get the count of the files in each directory
+#
+fcountA=$(echo "$flistA" | wc -l)
+fcountB=$(echo "$flistB" | wc -l)
+
+# Be sure that both directories have the same number of patch files.
+#
+[ $fcountA -eq $fcountB ] || fcount_err
+
+# Populate the arrays of patch filenames, faryA and faryB
+#
+index=0
+while IFS= read line; do
+	faryA[$index]="$line"
+	let index++
+done <<< "$flistA"
+
+index=0
+while IFS= read line; do
+	faryB[$index]="$line"
+	let index++
+done <<< "$flistB"
+
+fecho() {
+	echo "$1" >> $ofile
+}
+
+fprintf() {
+	format="$1"
+	shift
+	printf "$format" "$@" >> $ofile
+}
+
+
+pr_header() {
+	fecho "================================================================"
+	fprintf "%d A: %s\n" $(($index+1)) "${faryA[$index]}"
+	fprintf "%d B: %s\n" $(($index+1)) "${faryB[$index]}"
+	fecho "----------------------------------------------------------------"
+}
+
+pr_start() {
+	fprintf "%d A: comparing from line: %5d\n" $(($index+1)) $lcA
+	fprintf "%d B: comparing from line: %5d\n" $(($index+1)) $lcB
+	$strict && fecho "Only comparing lines beginning with + or -"
+	fecho
+}
+
+get_firstline() {
+	while read line; do let ++lcA; [ "${line:0:10}" == "diff --git" ] && break; done <&5
+	while read line; do let ++lcB; [ "${line:0:10}" == "diff --git" ] && break; done <&6
+}
+
+# At this point, we know the level of verbosity of the output. We need
+# to notify scripted consumers of the output file what level of verbosity
+# to expect. We'll do this by writing a number into the first line of
+# the output file. If it's stdout, then we'll skip this step.
+#
+$b_stdout || fprintf "verbose level: %d\n" $verbosity
+
+# Loop through the pairs of files and look for differences in each pair.
+# The first file in the pair is the control. When it ends, the comparison
+# ends, and the for loop moves to the next pair of files.
+#
+for ((index = 0; index < $fcountA; ++index)); do
+
+	lcA=0	# Line counter for line from file A
+	lcB=0   # Line counter for line from file B
+
+	$vverbose && pr_header
+
+	# If we're not sending output to sdtout, let the user know we're
+	# still alive.
+	#
+	[ "$ofile" == "/dev/stdout" ] || echo -n "."
+
+	# Open file descriptors based on the filenames in each array
+	#
+	exec 5<"${faryA[$index]}"	# open the files for reading
+	exec 6<"${faryB[$index]}"
+
+	get_firstline
+	$vverbose && pr_start
+
+	# Set loop control variables.
+	#
+	equiv=true	# will be set to false if a mismatch is detected
+	eofA=false	# will be set true if we detect an end of file
+	eofB=false	# :
+	b_done=false	# Will be set true if both eof markers are set
+
+	# Read lines from each patch file in a loop and compare them until
+	# a mismatch is detected or we've reached the end of the first
+	# patch.
+	#
+	# NOTE: bash read strips leading and trailing whitespace unless IFS
+	# is set to NULL. We very much need leading and trailing whitespace
+	# for our line comparisons and to know where a patch ends.
+	#
+	IFS=
+	until $b_done; do
+
+		# Increment the line counters.
+		#
+		$eofA || let ++lcA
+		$eofB || let ++lcB
+
+		# read returns non-zero after reading the last line.
+		# If we find the EOF of either file, we are processing the
+		# last line to be compared.
+		#
+		# NOTE: Must use 'read -r' to prevent backslashes in the
+		# line from being taken as a continuation for the read.
+		# Without the -r switch, read will consider lines ending
+		# with backslashes to be one line with the following line
+		# of text. This will mess up line-by-line comparison for
+		# certain sure.
+		#
+		read -r -u 5 lineA || eofA=true
+		read -r -u 6 lineB || eofB=true
+		($eofA && $eofB) && b_done=true
+
+
+		# Exclude line positions and index marker.  These can be
+		# different and yet the actual patched code is congruent.
+		#
+		# Exclude paths and diff stat if user set the options
+		#
+		[ "${lineA:0:2}" == "@@" ] && continue
+		[ "${lineA:0:6}" == "index " ] && continue
+		$nopaths && [ "${lineA:0:6}" == "--- a/" ] && continue
+		$nopaths && [ "${lineA:0:6}" == "+++ b/" ] && continue
+		$nodiffst && [ "${lineA:0:10}" == "diff --git" ] && continue
+
+		# If strict is true, then user only wants to compare lines
+		# that have "+" or "-" as the first character in the line.
+		#
+		if $strict; then
+			firstchA="${lineA:0:1}"
+			firstchB="${lineB:0:1}"
+			([ "$firstchA" == "+" ] || [ "$firstchA" == "-" ]  ||
+			 [ "$firstchB" == "+" ] || [ "$firstchB" == "-" ]) || continue
+		fi
+
+		if $vverbose; then
+			fprintf "%5d A: %s\n" $lcA "$lineA"
+			fprintf "%5d B: %s\n" $lcB "$lineB"
+			fecho
+		fi
+
+		# Mismatch detection with rules for determining false positive
+		# mismatches.
+		#
+		if [ "$lineA" != "$lineB" ]; then
+
+			([ "${lineA:0:3}" == "-- " ] || [ "${lineB:0:3}" == "-- " ]) \
+				&& continue
+
+			equiv=false
+			! $verbose && fecho "PATCH: $((index+1))"
+			break
+		fi
+	done
+
+	# How to do a if-then-if-then-else-fi-fi on one line ;)
+	#
+	$verbose && { $equiv \
+		&& fprintf "PATCH: %d: == patches are congruent ==\n" $((index+1)) \
+		|| fprintf "PATCH: %d: != patches are different !=\n" $((index+1)); }
+
+	$vverbose && fecho
+
+	# exit
+done
+
+IFS="$savedifs"
