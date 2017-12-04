@@ -281,7 +281,7 @@ loop_range() {
 	local number
 	local cmd
 	local pstr=\
-"$OFF\0Please enter a number between $BLD$min$OFF and $BLD$max$OFF or $qstr: "
+"$OFF\0Please enter a number between $BLD$min$OFF and $BLD$max$OFF: "
 
 	[ $max -lt 10 ] && cmd=promptgetchar || cmd=getuser
 	# echo "cmd: $cmd"
