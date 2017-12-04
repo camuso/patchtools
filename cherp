@@ -173,14 +173,20 @@ EOF
 )
 	$b_cmdline && init_cmdline_call
 
+	echo
+	echo -e "Select the number of the branch you want to use or press $qstr"
+	echo -e "to leave the current selection highlighted below."
+
 	git branch > $workdir/branchlist
 
 	while read line; do
+		[ "${line:0:1}" = "*" ] && echo -ne $BLD
 		printf "%2d  $line\n" $index
+		echo -ne $OFF
 		let index++
 	done < $workdir/branchlist
 
-	echo -e "$brmsg"
+	# echo -e "$brmsg"
 	loop_range_q 1 $((index - 1)) linenumber
 
 	if [ "$linenumber" == "q" ]; then
@@ -676,7 +682,7 @@ cat <<EOF
 $statstr $OFF$prstr$BLD
 EOF
 )
-	echo -e "$show_next_cherrypick_str"
+	[ "$currentuphash" == "" ] || echo -e "$show_next_cherrypick_str"
 	return 0
 }
 
@@ -1308,8 +1314,8 @@ check_prj_file() {
 		#
 		$b_cmdline && return $stat
 
-		echo
-		echo "A new project file has been created."
+		# echo
+		# echo "A new project file has been created."
 	fi
 
 	return $stat
@@ -1326,6 +1332,8 @@ check_prj_file() {
 #===============================================================================
 save_session() {
 	# echo -e "$UND\0save_session$OFF"
+
+	[ -f "$MYPRJ" ] || return
 
 	save_booleans
 	prj_set_item $prj_upcmtstartline $upcmtstartline
@@ -1400,14 +1408,9 @@ init_cmdline_call() {
 
 	# echo -e "$UND\0init_cmdline_call$OFF"
 
-	[ -f $MYPRJ ] || {
-		echo -e "There is no project file.\n$newstr"
-		return 1
-	}
-
 	read_session
 
-	[ $? -eq 0 ] || {
+	[ $? -eq $prj_inconsistent ] || {
 		echo -e "The project file is inconsistant.\n$newstr"
 		return 1
 	}
@@ -1426,7 +1429,7 @@ init_session() {
 
 	# echo -e "$UND\0init_session$OFF"
 	read_session
-	[ $? -eq 0 ] || { init_newsession && return; }
+	# [ $? -eq 0 ] || { init_newsession && return; }
 
 	read_booleans
 	init_common
@@ -1545,7 +1548,7 @@ fi
 declare checked_cmd
 declare infostr="Type \"$(basename $0) -h\" for more info."
 declare invoptstr="\nInvalid option.\n$infostr"
-declare needcmtstr="\nMust supply commit hash with -p | --pick\n$infostr"
+declare needcmtstr="\nMust supply commit hash with -p | pick\n$infostr"
 declare shortopts="sp:h"
 declare longopts="\
 abort,\
