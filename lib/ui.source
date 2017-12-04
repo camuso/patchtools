@@ -544,7 +544,11 @@ check_lineargs() {
 # $1 - line number
 # $2 - file to read
 #
-# Returns 1 if the line number exceeds the number of lines in the file.
+# Returns nonzero on inconsistent input.
+# 	ui_err_invargc
+#	ui_err_notdigit
+#	ui_err_notfile
+#	ui_err_invlinec
 #
 # call: line=$(ui_readline line file)
 #
