@@ -26,6 +26,12 @@ strtok() {
 	IFS="$2" read -r -a $3 <<< "$1"
 }
 
+strindex() {
+	local x="${1%%$2*}"
+	[[ $x = $1 ]] && echo -1 || echo ${#x}
+}
+
+
 function usage {
 	echo
 	echo "renmutpat <directory>"
@@ -159,10 +165,28 @@ for filename in $(ls -1 !(*.patch)); do
 		subject=${subary[@]}
 	fi
 
-	# replace leading bracket with nothing
+	# Remove any version numbers from within the brackets. There is no
+	# standard on where the patch version number appears, so the patch can
+	# be out of order.
 	#
+	# Find the right bracket to isolate the text within the brackets.
+	# If we don't find a right bracket in the subject line, then continue to
+	# the next one.
+	#
+	rb_pos=$(strindex "$subject" "]")
+	[ $rb_pos -lt 0 ] && continue
+
+	# extract the bracketed prefix substring and remove any version numbers
+	#
+	pfx="${subject:0:$rb_pos}"
+	new="$(echo $pfx | sed 's/v\w//i')"
+
+	# Substitute the new prefix for the old in the subject string.
+	#
+	subject="$(echo ${subject/"$pfx"/"$new"})"
+
 	# Replace non-alphanumerics with a hyphen, then delete the leading
-	# hyphen.
+	# hyphen that replaced the left bracket '['
 	#
 	subject=$(echo "$subject" | sed 's/[^[:alnum:]]\+/-/g')
 	subject=$(echo "$subject" | sed 's/-//')
