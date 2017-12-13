@@ -478,18 +478,15 @@ check_patchvbranch() {
 	pat=$(ls -1 $indir/*.patch | head -1)
 	pat=$(basename $pat)
 
-	# Remove any brackets, parentheses, and quotes
+	# Replace non-alphanumerics with a hyphen, then delete the leading
+	# hyphen that replaced the left bracket '['
 	#
-	pat=$(echo "$pat" | sed 's/[][<>(),"]//g')
-	pat=$(echo "$pat" | sed "s/'//g")
+	pat=$(echo "$pat" | sed 's/[^[:alnum:]]\+/-/g')
+	pat=$(echo "$pat" | sed "s/^-//g")
 
-	# remove any leading whitespace
+	# If the last character is a hyphen, remove it.
 	#
-	pat="$(echo -e "$pat" | sed -e 's/^[[:space:]]*//')"
-
-	# Replace spaces, slashes, colons and semicolons with hyphens
-	#
-	pat=$(echo "$pat" | sed "s\[/:; ]\-\g")
+	[ "${subject:(-1)}" = "-" ] && subject=${subject%?}
 
 	# Tokenize the patchname using '-' as the token separator
 	#
@@ -503,7 +500,7 @@ check_patchvbranch() {
 
 	    dist="${ary[i]}"
 
-	    # If this is RHEL7-Alt, then it is pegas
+	    # If this is an Alt kernel, then it is pegas
 	    #
 	    [[ "${ary[i+1]}" == "alt" ]] && dist="pegas"
 
