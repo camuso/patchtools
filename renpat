@@ -189,7 +189,7 @@ for filename in $(ls -1 !(*.patch)); do
 	# hyphen that replaced the left bracket '['
 	#
 	subject=$(echo "$subject" | sed 's/[^[:alnum:]]\+/-/g')
-	subject=$(echo "$subject" | sed 's/-//')
+	subject=$(echo "$subject" | sed 's/^-//')
 
 	# If the last character is a hyphen, remove it.
 	#
