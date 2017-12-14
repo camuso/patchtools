@@ -456,14 +456,14 @@ while true; do
 	#
 	if $b_fmt_upstream; then
 		rm -vf "$outdir"/*.patch
-		echo "" > "$outdir/$us_commits"
+		echo "" > "$us_commits"
 		echo
-		git_comment2commitsfile $indir "$outdir/$us_commits" $b_40digit
+		git_comment2commitsfile $indir "$us_commits" $b_40digit
 		echo
-		cat "$outdir/$us_commits"
+		cat "$us_commits"
 		echo
 		exec_boolean b_fmt_upstream false \
-			"git_file2patchset ${outdir}/"$us_commits" ${outdir}"
+			"git_file2patchset ${us_commits} ${outdir}"
 	fi
 
 	if [ $cmpmode -ne $cmpmode_off ]; then
