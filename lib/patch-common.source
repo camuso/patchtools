@@ -37,8 +37,6 @@ declare indirstr="Patch"
 declare outdirstr="Work"
 
 declare editor
-declare cmpmode
-declare applymode
 declare prj_entries=0
 declare index=0
 declare boolcount=0
@@ -59,6 +57,8 @@ declare commit_msg_file="commit-msg.txt"
 declare last_tag_file="/dev/shm/lasttag"
 declare mismatch_file="mm.log"
 
+declare prj_applyfailmode
+declare prj_lastapplied
 declare prj_indir
 declare prj_outdir
 declare prj_editor
@@ -72,15 +72,23 @@ declare prj_b_40digit
 
 declare lasttag=""
 
+declare -i lastapplied
+
+declare -i cmpmode
 declare -i cmpmode_off=0
 declare -i cmpmode_batch=1
 declare -i cmpmode_inter=2
 declare -i cmpmode_setup=3
 
+declare -i applymode
 declare -i applymode_off=0
 declare -i applymode_norm=1
 declare -i applymode_3way=2
 declare -i applymode_patch=3
+
+declare -i applyfailmode
+declare -i applyfailmode_exit=0
+declare -i applyfailmode_cont=1
 
 declare rhel6kernstr="kernel-2.6.32"
 declare rhel7kernstr="kernel-3.10.0"
@@ -362,6 +370,7 @@ function create_commit_msg {
 function apply_patches {
 	# patchcount is global
 	local stat=0
+	patchlist=$(ls -1 "$indir"/*.patch | sort -V)
 
 	[ $applymode -eq $applymode_off ] && return 0
 	echo "" > "$bp_commits"
@@ -378,10 +387,21 @@ function apply_patches {
 		if [ $stat -ne 0 ]; then
 			echo -en "$BLD"
 			echo -e "\nPatch: $OFF$patch$BLD"
-			echo -e "Failed to apply.$OFF Exiting script ...\n"
+			echo -e "Failed to apply.$OFF"
+			case $applyfailmode in
+			    $applyfailmode_exit )
+				    echo "Exiting script ...\n"
+				    ;;
+			    $applyfailmode_cont )
+				    echo "Continuing without patching...\n"
+				    return $stat
+				    ;;
+			esac
 			exit_me 1
 		fi
 
+		lastapplied=$patchcount
+		prj_set_item $prj_lastapplied $lastapplied
 
 		[ $applymode -ne $applymode_patch ] && {
 			printf "%3d " $patchcount >> "$bp_commits"
@@ -416,6 +436,15 @@ show_applymode() {
 	    $applymode_3way  )	echo "git am 3-way merge" ;;
 	    $applymode_patch )  echo "patch --fuzz=3 -p1 <" ;;
 	                   * )	echo "Not a valid apply mode" ;;
+	esac
+}
+
+show_applyfailmode() {
+
+	case $applyfailmode in
+	    $applyfailmode_exit ) echo "Exit" ;;
+	    $applyfailmode_cont ) echo "Continue without applying" ;;
+	                      * ) echo "Not a valid failover mode" ;;
 	esac
 }
 

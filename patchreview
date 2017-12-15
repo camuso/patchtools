@@ -225,6 +225,7 @@ $BLD
  4  Size of commit hash     :$OFF $(show_hash_size)$BLD digits
  5  Compare mode            :$OFF $(show_cmpmode)$BLD
  6  Patch apply mode        :$OFF $(show_applymode)$BLD
+ 7  Patch apply fail mode   :$OFF $(show_applyfailmode)$BLD
 
     $UND\0Control           $OFF$BLD
  r  Run patch review
@@ -235,7 +236,6 @@ $BLD
  S  Clean Session File
  N  Nuke directories & session, reset head to most recent tag
  h  help text
- x  Exit to a shell
  q  Quit this script
 $OFF
 EOF
@@ -274,6 +274,9 @@ function menu_parser {
 		6 )	ui_cycle_state applymode 4
 			prj_set_item $prj_applymode $applymode
 			;;
+		7 )	ui_cycle_state applyfailmode 2
+			prj_set_item $prj_applyfailmode $applymode
+			;;
 		C )	clean_directories
 			;;
 		N )	nuke
@@ -292,9 +295,6 @@ function menu_parser {
 			prj_set_item $prj_applymode $applymode
 			;;
 		q )	exit_me 0
-			;;
-		x )	set_booleans
-			ui_sh_spawn
 			;;
 		r )	set_booleans
 			return $rc_run
@@ -370,6 +370,8 @@ git_get_lasttag lasttag $last_tag_file
 # Add new non-boolean parameters to the top of the list.
 #
 for offset in \
+prj_applyfailmode \
+prj_lastapplied \
 prj_applymode \
 prj_cmpmode \
 prj_editor \
@@ -414,8 +416,12 @@ if [ $? -ne 0 ]; then
 	init_booleans
 	cmpmode=$cmpmode_batch
 	applymode=$applymode_norm
+	lastapplied=0
+	applyfailmode=$applyfailmode_exit
 	prj_set_item $prj_cmpmode $cmpmode
 	prj_set_item $prj_applymode $applymode
+	prj_set_item $prj_lastapplied $lastapplied
+	prj_set_item $prj_applyfailmode $applyfailmode
 fi
 
 # Create the sessions directory and sessions file to log session
