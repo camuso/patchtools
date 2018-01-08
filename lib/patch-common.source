@@ -79,16 +79,19 @@ declare -i cmpmode_off=0
 declare -i cmpmode_batch=1
 declare -i cmpmode_inter=2
 declare -i cmpmode_setup=3
+declare -i cmpmode_states=4
 
 declare -i applymode
 declare -i applymode_off=0
 declare -i applymode_norm=1
 declare -i applymode_3way=2
 declare -i applymode_patch=3
+declare -i applymode_states=4
 
 declare -i applyfailmode
 declare -i applyfailmode_exit=0
 declare -i applyfailmode_cont=1
+declare -i applyfailmode_states=2
 
 declare rhel6kernstr="kernel-2.6.32"
 declare rhel7kernstr="kernel-3.10.0"
@@ -104,6 +107,7 @@ function exit_me {
 	set_booleans
 	prj_set_item $prj_applymode $applymode
 	prj_set_item $prj_cmpmode $cmpmode
+	prj_set_item $prj_applyfailmode $applyfailmode
 	[ -e "$last_tag_file" ] && rm -f $last_tag_file
 	exit $1
 }

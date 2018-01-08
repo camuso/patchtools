@@ -268,14 +268,14 @@ function menu_parser {
 			;;
 		4 )	ui_toggle b_40digit
 			;;
-		5 )	ui_cycle_state cmpmode 4
+		5 )	ui_cycle_state cmpmode $cmpmode_states
 			prj_set_item $prj_cmpmode $cmpmode
 			;;
-		6 )	ui_cycle_state applymode 4
+		6 )	ui_cycle_state applymode $applymode_states
 			prj_set_item $prj_applymode $applymode
 			;;
-		7 )	ui_cycle_state applyfailmode 2
-			prj_set_item $prj_applyfailmode $applymode
+		7 )	ui_cycle_state applyfailmode $applyfailmode_states
+			prj_set_item $prj_applyfailmode $applyfailmode
 			;;
 		C )	clean_directories
 			;;
@@ -323,6 +323,7 @@ function menu_loop {
 	#
 	cmpmode=$(prj_get_item $prj_cmpmode)
 	applymode=$(prj_get_item $prj_applymode)
+	applyfailmode=$(prj_get_item $prj_applyfailmode)
 
 	# delete any "scratch" file from the indir
 	#
