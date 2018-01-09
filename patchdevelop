@@ -43,7 +43,6 @@
 #
 declare MYDIR=$(dirname $(which $(basename $0)))
 declare MYLIB=$MYDIR/lib
-declare MYDATA=./.data
 
 #######################################
 # External Source Files
@@ -138,12 +137,12 @@ $BLD
  3  Size of commit hash     :$OFF $(show_hash_size $b_40digit)$BLD digits
  4  Compare mode            :$OFF $(show_cmpmode $cmpmode)$BLD
  5  Patch apply mode        :$OFF $(show_applymode)$BLD
+ 6  Patch apply fail mode   :$OFF $(show_applyfailmode)$BLD
 
     $UND\0Control           $OFF$BLD
  r  Run patch review
  i  Init to defaults
  h  help text
- x  Exit to a shell
  q  Quit this script
 $OFF
 EOF
@@ -159,7 +158,7 @@ function menu_parser {
 
 	case $setting in
 
-		b )	git_setbranch
+		b )	git_setbranch $MYDATA
 			git_get_lasttag lasttag $last_tag_file
 			;;
 		m )	set_mailclient
@@ -176,11 +175,14 @@ function menu_parser {
 			;;
 		3 )	ui_toggle b_40digit
 			;;
-		4 )	ui_cycle_state cmpmode 4
+		4 )	ui_cycle_state cmpmode $cmpmode_states
 			prj_set_item $prj_cmpmode $cmpmode
 			;;
-		5 )	ui_cycle_state applymode 4
+		5 )	ui_cycle_state applymode $applymode_states
 			prj_set_item $prj_applymode $applymode
+			;;
+		6 )	ui_cycle_state applyfailmode $applyfailmode_states
+			prj_set_item $prj_applyfailmode $applyfailmode
 			;;
 		i )	init_booleans
 			get_booleans
@@ -188,9 +190,6 @@ function menu_parser {
 			prj_set_item $prj_applymode $applymode
 			;;
 		q )	exit_me 0
-			;;
-		x )	set_booleans
-			ui_sh_spawn
 			;;
 		r )	set_booleans
 			return $rc_run
@@ -219,6 +218,7 @@ function menu_loop {
 	#
 	cmpmode=$(prj_get_item $prj_cmpmode)
 	applymode=$(prj_get_item $prj_applymode)
+	applyfailmode=$(prj_get_item $prj_applyfailmode)
 
 	# delete any "scratch" file from the indir
 	#
@@ -266,6 +266,8 @@ git_get_lasttag lasttag $last_tag_file
 # Add new non-boolean parameters to the top of the list.
 #
 for offset in \
+prj_applyfailmode \
+prj_lastapplied \
 prj_applymode \
 prj_cmpmode \
 prj_editor \
@@ -306,8 +308,12 @@ if [ $? -ne 0 ]; then
 	init_booleans
 	cmpmode=$cmpmode_batch
 	applymode=$applymode_norm
+	lastapplied=0
+	applyfailmode=$applyfailmode_exit
 	prj_set_item $prj_cmpmode $cmpmode
 	prj_set_item $prj_applymode $applymode
+	prj_set_item $prj_lastapplied $lastapplied
+	prj_set_item $prj_applyfailmode $applyfailmode
 fi
 
 ##############################################

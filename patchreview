@@ -43,7 +43,6 @@
 
 declare MYDIR=$(dirname $(which $(basename $0)))
 declare MYLIB=$MYDIR/lib
-declare MYDATA=./.data
 
 #######################################
 # External Source Files
@@ -251,7 +250,7 @@ function menu_parser {
 
 	case $setting in
 
-		b )	git_setbranch
+		b )	git_setbranch $MYDATA
 			git_get_lasttag lasttag $last_tag_file
 			;;
 		d )	prj_set_directory "$indirstr" $prj_indir indir quiet
