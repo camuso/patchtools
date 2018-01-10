@@ -452,7 +452,9 @@ while true; do
 		git am --abort 2>&1>/dev/null
 		patchcount=0
 		check_patchvbranch
-		apply_patches
+		gp_stat=$(apply_patches)
+		[ $gp_stat -ne 0 ] && [ $applyfailmode -eq $applyfailmode_menu ] \
+			&& menu_loop
 		git_log_head
 		applymode=$applymode_off
 		prj_set_item $prj_applymode $applymode

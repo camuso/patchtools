@@ -92,7 +92,10 @@ declare -i applymode_states=4
 declare -i applyfailmode
 declare -i applyfailmode_exit=0
 declare -i applyfailmode_cont=1
-declare -i applyfailmode_states=2
+declare -i applyfailmode_menu=2
+declare -i applyfailmode_states=3
+
+declare -i gp_stat			# general purpose status
 
 declare rhel6kernstr="kernel-2.6.32"
 declare rhel7kernstr="kernel-3.10.0"
@@ -402,6 +405,9 @@ function apply_patches {
 				    echo "Continuing without patching...\n"
 				    return $stat
 				    ;;
+			    $applyfailmode_menu )
+				    echo "Returning to main menu ...\n"
+				    return $stat
 			esac
 			exit_me 1
 		fi
@@ -450,6 +456,7 @@ show_applyfailmode() {
 	case $applyfailmode in
 	    $applyfailmode_exit ) echo "Exit" ;;
 	    $applyfailmode_cont ) echo "Continue without applying" ;;
+	    $applyfailmode_menu ) echo "Return to main menu" ;;
 	                      * ) echo "Not a valid failover mode" ;;
 	esac
 }
