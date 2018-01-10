@@ -403,43 +403,36 @@ function git_getcurrentbranch {
 
 # git_setbranch outdir
 #
-# $1 if it exists sets the outdir. Default is /tmp
+# $1 if it exists sets the outpath. Default is /dev/shm/branchlist
 #
 function git_setbranch {
 	local index=1
 	local line
-	local outdir="/tmp"
+	local status=0
+	local gitbranch
+	local linenumber
+	local outpath="/tmp/branchlist"
 
-	[ $# -eq 1 ] && outdir="$1"
+	[ $# -eq 1 ] && outpath="$1"
 
-	git branch > $outdir/branchlist
+	git branch > $outpath
 	echo -e "$attr_bold"
 
 	while read line; do
 		printf "%2d  $line\n" $index
 		let index++
-	done < $outdir/branchlist
+	done < $outpath
 
-	echo -e  "$attr_bold"
-	echo -e  "The following commands will be issued before a new branch is checked out."
-	echo -en "$attr_OFF"
-	echo -e  "\tgit am --abort      # Abort any pending git am ops"
-	echo -e  "\tgit checkout"
-	# echo -e  "\tgit clean           # Clean out uncommitted files and directories"
-	echo -e
-	echo -en "$attr_bold"
-	echo -en "Enter the number corresponding to the branch you want: "
-	echo -en "$attr_OFF"
-	read  linenumber
-	[ "$linenumber" == "q" ] && exit 1
-	[ "$linenumber" == "x" ] && ui_sh_spawn
-	gitbranch="$(ui_readline $linenumber $outdir/branchlist | tr -d [\*" "])"
+	loop_range_q 1 $((index - 1)) linenumber
+	status=$?
+	[ $status -ne 0 ] && return
+
+	gitbranch="$(ui_readline $linenumber $outpath | tr -d [\*" "])"
 	echo "git checkout "$gitbranch""
-	git am --abort --quiet
-	# git checkout .
-	# git clean -df
-	git checkout "$gitbranch" 2>&1
-	[ $? -eq 0 ] || exit 1
+	git am --abort --quiet 2>&1>/dev/null
+	git checkout "$gitbranch" 2>&1>/dev/null
+	status=$?
 	git log --oneline -n1
+	return $status
 }
 

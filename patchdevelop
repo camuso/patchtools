@@ -158,7 +158,7 @@ function menu_parser {
 
 	case $setting in
 
-		b )	git_setbranch $MYDATA
+		b )	git_setbranch $branchlist
 			git_get_lasttag lasttag $last_tag_file
 			;;
 		m )	set_mailclient

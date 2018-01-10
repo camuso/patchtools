@@ -56,6 +56,7 @@ declare sesdir="../.session"
 declare sesfile="sessions.log"
 declare commit_msg_file="commit-msg.txt"
 declare last_tag_file="$MYDATA/lasttag"
+declare branchlist="$MYDATA/branchlist"
 declare mismatch_file="mm.log"
 
 declare prj_applyfailmode
@@ -113,7 +114,7 @@ function exit_me {
 	prj_set_item $prj_cmpmode $cmpmode
 	prj_set_item $prj_applyfailmode $applyfailmode
 	[ -e "$last_tag_file" ] && rm -f $last_tag_file
-	[ -e "$MYDATA/branchlist" ] && rm -f "$MYDATA/branchlist"
+	[ -e "$branchlist" ] && rm -f "$branchlist"
 	exit $1
 }
 
