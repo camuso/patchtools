@@ -235,152 +235,150 @@ function menu_loop {
 	return $stat
 }
 
-#############################
-# Start of Script Execution
-#############################
-
-# Trap for control-c
-#
-trap control_c SIGINT
-
-# Save our current shell level.
-#
-myshlvl=$SHLVL
-
-# Print the Herald
-#
-echo -e ""$BLD""$UND""
-echo "Patch Develop $version  Check backported patches with upstream"
-echo -e "$OFF"
-
-! $(git_checkrepo) && git_invrepomsg && exit 1
-
 ###########################################
 # Parameter Initialization
 ###########################################
+init_parms() {
+	git_get_lasttag lasttag $last_tag_file
 
-git_get_lasttag lasttag $last_tag_file
-
-# This loop enumerates and counts the items in the project file.
-# Add new booleans to the end of the list.
-# Add new non-boolean parameters to the top of the list.
-#
-for offset in \
-prj_applyfailmode \
-prj_lastapplied \
-prj_applymode \
-prj_cmpmode \
-prj_editor \
-prj_indir \
-prj_outdir \
-prj_b_rename_infiles \
-prj_b_fmt_upstream \
-prj_b_gitam_err_abort \
-prj_b_40digit
-do
-	let index++
-	let $offset=$index
-	if [ "${offset:3:3}" == "_b_" ]; then
-		let boolcount++
-		if ! $b_found_first_bool; then
-			boolindex=$index
-			b_found_first_bool=true
-		fi
-	fi
-done
-
-prj_entries=$index
-[ -d "$MYDATA" ] || mkdir $MYDATA
-[ -e "$MYDATA/patchdevelop.prj" ] || touch $MYDATA/patchdevelop.prj
-prj_init_prjfile $MYDATA/patchdevelop.prj $prj_entries
-
-# If the above call to prj_init_prjfile returns nonzero, it means that a
-# new project file has been created and its values must be initialized.
-#
-if [ $? -ne 0 ]; then
-	echo
-	echo "A new project file has been created."
-	echo "We will need to know where your patches will be and where you"
-	echo "want us to put the output of this script."
-	prj_set_directory "$indirstr" $prj_indir indir quiet
-	prj_set_directory "$outdirstr" $prj_outdir outdir quiet
-	set_editor
-	init_booleans
-	cmpmode=$cmpmode_batch
-	applymode=$applymode_norm
-	lastapplied=0
-	applyfailmode=$applyfailmode_exit
-	prj_set_item $prj_cmpmode $cmpmode
-	prj_set_item $prj_applymode $applymode
-	prj_set_item $prj_lastapplied $lastapplied
-	prj_set_item $prj_applyfailmode $applyfailmode
-fi
-
-##############################################
-# Main Program Loop
-##############################################
-
-while true; do
-	menu_loop
-	menu_stat=$?
-	# echo "menu_loop_stat: $menu_stat"
-
-	if $b_rename_infiles; then
-		exec_boolean b_rename_infiles false "renpat $indir"
-		[ $? -ne 0 ] && continue
-	fi
-
-	if [ $applymode -ne $applymode_off ]; then
-		git am --abort 2>&1>/dev/null
-		patchcount=0
-		check_patchvbranch
-		gp_stat=$(apply_patches)
-		[ $gp_stat -ne 0 ] && [ $applyfailmode -eq $applyfailmode_menu ] \
-			&& menu_loop
-		applymode=$applymode_off
-		prj_set_item $prj_applymode $applymode
- 	fi
-
-	# Generate a patch set from the original upstream patches.
+	# This loop enumerates and counts the items in the project file.
+	# Add new booleans to the end of the list.
+	# Add new non-boolean parameters to the top of the list.
 	#
-	if $b_fmt_upstream; then
-		rm -vf "$outdir"/*.patch
-		echo "" > "$us_commits"
+	for offset in \
+	prj_applyfailmode \
+	prj_lastapplied \
+	prj_applymode \
+	prj_cmpmode \
+	prj_editor \
+	prj_indir \
+	prj_outdir \
+	prj_b_rename_infiles \
+	prj_b_fmt_upstream \
+	prj_b_gitam_err_abort \
+	prj_b_40digit
+	do
+		let index++
+		let $offset=$index
+		if [ "${offset:3:3}" == "_b_" ]; then
+			let boolcount++
+			if ! $b_found_first_bool; then
+				boolindex=$index
+				b_found_first_bool=true
+			fi
+		fi
+	done
+
+	prj_entries=$index
+	[ -d "$MYDATA" ] || mkdir $MYDATA
+	[ -e "$MYDATA/patchdevelop.prj" ] || touch $MYDATA/patchdevelop.prj
+	prj_init_prjfile $MYDATA/patchdevelop.prj $prj_entries
+
+	# If the above call to prj_init_prjfile returns nonzero, it means that a
+	# new project file has been created and its values must be initialized.
+	#
+	if [ $? -ne 0 ]; then
 		echo
-		git_comment2commitsfile $indir "$us_commits" $b_40digit
-		echo
-		cat "$us_commits"
-		echo
-		exec_boolean b_fmt_upstream false \
-			"git_file2patchset "$us_commits" ${outdir}"
+		echo "A new project file has been created."
+		echo "We will need to know where your patches will be and where you"
+		echo "want us to put the output of this script."
+		prj_set_directory "$indirstr" $prj_indir indir quiet
+		prj_set_directory "$outdirstr" $prj_outdir outdir quiet
+		set_editor
+		init_booleans
+		cmpmode=$cmpmode_batch
+		applymode=$applymode_norm
+		lastapplied=0
+		applyfailmode=$applyfailmode_exit
+		prj_set_item $prj_cmpmode $cmpmode
+		prj_set_item $prj_applymode $applymode
+		prj_set_item $prj_lastapplied $lastapplied
+		prj_set_item $prj_applyfailmode $applyfailmode
 	fi
+}
 
-	if [ $cmpmode -ne $cmpmode_off ]; then
+#############################
+# main() entry point
+#############################
+main() {
+	local stat
 
-		mmfile="$outdir/$mismatch_file"
+	# Trap for control-c
+	#
+	trap control_c SIGINT
 
-		# Mismatch file might be stale, so delete it first,
-		# if it exists. Better to create a new one.
+	# Print the Herald
+	#
+	echo -e ""$BLD""$UND""
+	echo "Patch Develop $version  Check backported patches with upstream"
+	echo -e "$OFF"
+
+	! $(git_checkrepo) && git_invrepomsg && exit 1
+
+	init_parms
+
+	##############################################
+	# Main Program Loop
+	##############################################
+
+	while true; do
+		menu_loop
+		menu_stat=$?
+		# echo "menu_loop_stat: $menu_stat"
+
+		if $b_rename_infiles; then
+			exec_boolean b_rename_infiles false "renpat $indir"
+			[ $? -ne 0 ] && continue
+		fi
+
+		if [ $applymode -ne $applymode_off ]; then
+			git am --abort 2>&1>/dev/null
+			patchcount=0
+			check_patchvbranch
+			apply_patches
+			stat=$?
+			[ $stat -ne 0 ] && [ $applyfailmode -eq $applyfailmode_menu ] \
+				&& menu_loop
+			applymode=$applymode_off
+			prj_set_item $prj_applymode $applymode
+		fi
+
+		# Generate a patch set from the original upstream patches.
 		#
-		[ -f $mmfile ] && rm -f $mmfile
+		if $b_fmt_upstream; then
+			rm -vf "$outdir"/*.patch
+			echo "" > "$us_commits"
+			echo
+			git_comment2commitsfile $indir "$us_commits" $b_40digit
+			echo
+			cat "$us_commits"
+			echo
+			exec_boolean b_fmt_upstream false \
+				"git_file2patchset "$us_commits" ${outdir}"
+		fi
 
-		case $cmpmode in
-			$cmpmode_batch ) exec_patcmp "-X" ;;
-			$cmpmode_setup ) exec_patcmp ;;
-			$cmpmode_inter ) patcmp $indir $outdir $editor ;;
-			             * ) cmpmode=$cmpmode_off
-		esac
-	fi
+		if [ $cmpmode -ne $cmpmode_off ]; then
 
-	if [ $menu_stat -eq $rc_run ]; then
+			mmfile="$outdir/$mismatch_file"
 
-		# Backout of any residual child shells.
-		#
-		ui_sh_backout $myshlvl
-	fi
-done
+			# Mismatch file might be stale, so delete it first,
+			# if it exists. Better to create a new one.
+			#
+			[ -f $mmfile ] && rm -f $mmfile
 
-# Done with the patch review
+			case $cmpmode in
+				$cmpmode_batch ) exec_patcmp "-X" ;;
+				$cmpmode_setup ) exec_patcmp ;;
+				$cmpmode_inter ) patcmp $indir $outdir $editor ;;
+					     * ) cmpmode=$cmpmode_off
+			esac
+		fi
+	done
+}
+
+# Call main.
+# Exit when done.
 #
+main
 exit_me 0
 
