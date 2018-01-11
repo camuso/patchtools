@@ -400,14 +400,14 @@ function apply_patches {
 			echo -e "Failed to apply.$OFF"
 			case $applyfailmode in
 			    $applyfailmode_exit )
-				    echo "Exiting script ...\n"
+				    echo -e "Exiting script ...\n"
 				    ;;
 			    $applyfailmode_cont )
-				    echo "Continuing without patching...\n"
+				    echo -e "Continuing without patching...\n"
 				    return $stat
 				    ;;
 			    $applyfailmode_menu )
-				    echo "Returning to main menu ...\n"
+				    echo -e "Returning to main menu ...\n"
 				    return $stat
 			esac
 			exit_me 1
@@ -479,6 +479,7 @@ init_session_file() {
 # Globals:
 # 	lasttag
 # 	last_tag_file
+# 	branchlist
 #
 # $1 - current distro
 # $2 - user's y or n response to query to switch branches
@@ -488,7 +489,7 @@ show_branch_mismatch() {
 	local _yn_
 
 	echo -e "$BLD\0Patches are$OFF $_distro_$BLD but kernel is$OFF $lasttag"
-	doyn "Switch branches now?" "git_setbranch $MYDATA" "" _yn_
+	doyn "Switch branches now?" "git_setbranch $branchlist" "" _yn_
 	$_yn_ && git_get_lasttag lasttag $last_tag_file
 	eval $2=$_yn_
 }

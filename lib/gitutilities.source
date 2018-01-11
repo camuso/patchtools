@@ -411,7 +411,7 @@ function git_setbranch {
 	local status=0
 	local gitbranch
 	local linenumber
-	local outpath="/tmp/branchlist"
+	local outpath="/dev/shm/branchlist"
 
 	[ $# -eq 1 ] && outpath="$1"
 
