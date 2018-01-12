@@ -36,6 +36,7 @@ declare indir
 declare outdir
 declare indirstr="Patch"
 declare outdirstr="Work"
+declare patstr
 
 declare editor
 declare prj_entries=0
@@ -43,6 +44,7 @@ declare index=0
 declare boolcount=0
 declare boolindex=0
 declare b_found_first_bool=false
+declare b_selpat
 declare infilecount=0
 declare gitbranch=$(git_getcurrentbranch)
 
@@ -60,7 +62,6 @@ declare branchlist="$MYDATA/branchlist"
 declare mismatch_file="mm.log"
 
 declare prj_applyfailmode
-declare prj_lastapplied
 declare prj_indir
 declare prj_outdir
 declare prj_editor
@@ -73,8 +74,6 @@ declare prj_b_gitam_err_abort
 declare prj_b_40digit
 
 declare lasttag=""
-
-declare -i lastapplied
 
 declare -i cmpmode
 declare -i cmpmode_off=0
@@ -96,7 +95,7 @@ declare -i applyfailmode_cont=1
 declare -i applyfailmode_menu=2
 declare -i applyfailmode_states=3
 
-declare -i gp_stat			# general purpose status
+declare -i startpat=1
 
 declare rhel6kernstr="kernel-2.6.32"
 declare rhel7kernstr="kernel-3.10.0"
@@ -376,6 +375,7 @@ function create_commit_msg {
 #	bp_commits
 #	applymode
 #	b_gitam_err_abort
+#	patchcount
 #
 function apply_patches {
 	# patchcount is global
@@ -387,7 +387,12 @@ function apply_patches {
 
 	for patch in $(ls -1 "$indir"/*.patch | sort -V); do
 		let patchcount++
+		echo "patchcount: $patchcount"
+		echo "startpat: $startpat"
+		[ $patchcount -ge $startpat ] || continue
+
 		echo "$patch"
+
 		case $applymode in
 		    $applymode_norm  ) git am $patch; stat=$? ;;
 		    $applymode_3way  ) git am -3 $patch; stat=$? ;;
@@ -412,9 +417,6 @@ function apply_patches {
 			esac
 			exit_me 1
 		fi
-
-		lastapplied=$patchcount
-		prj_set_item $prj_lastapplied $lastapplied
 
 		[ $applymode -ne $applymode_patch ] && {
 			printf "%3d " $patchcount >> "$bp_commits"
@@ -460,6 +462,70 @@ show_applyfailmode() {
 	    $applyfailmode_menu ) echo "Return to main menu" ;;
 	                      * ) echo "Not a valid failover mode" ;;
 	esac
+}
+
+# get_filecount() - count the files in the indir
+#
+# This is a bit ugly. If there are .patch files in the indir, then count
+# the number of patch files, else count all the files.
+#
+# Globals:
+# 	infilecount
+# 	patstr      - used by show_settings
+#
+get_filecount() {
+	local fc=$(find $indir -name "*.patch" -print -quit)
+	if [ "$fc" ]; then
+		infilecount=$(ls -1 $indir/*.patch | wc -l)
+		patstr="patch "
+	else
+		infilecount=$(ls -1 $indir | wc -l)
+		patstr=""
+	fi
+}
+
+# show_nextpatch() - determine whether user can select next patch
+#                    and display accordingly
+#
+# Globals:
+# 	infilecount
+# 	patchcount
+# 	b_selpat
+#
+show_nextpatch() {
+local shownext=$(
+cat <<EOF
+
+ 7  Start applying at patch :$OFF $startpat$BLD
+EOF
+)
+	[ $infilecount -eq 0 ] && { b_selpat=false; return; }
+	[ $patchcount -ge $infilecount ] && {
+		echo -e "\n    All patches were successfully applied"
+		b_selpat=false
+		return
+	}
+	b_selpat=true
+	echo -e "$shownext"
+}
+
+# select_patch() - select a patch to start the apply process
+#
+# Globals:
+# 	patstr
+# 	infilecount
+# 	startpat
+#
+select_patch() {
+
+	[ "patstr" ] || {
+		echo "Please run the rename on the files first."
+		return
+	}
+
+	loop_range_q 1 $infilecount startpat
+	[ $? -ne 0 ] && echo "Leaving starting patch at $startpat."
+	return
 }
 
 # init_session_file()

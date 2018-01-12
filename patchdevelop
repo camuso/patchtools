@@ -127,7 +127,7 @@ $BLD
     Most recent tag         :$OFF $lasttag$BLD
     Current head            :$OFF $current_head_trunc$BLD
  b  Current git branch      :$OFF $gitbranch$BLD
- d  $indirstr directory         :$OFF $indir$BLD has$OFF $infilecount$BLD files
+ d  $indirstr directory         :$OFF $indir$BLD has$OFF $infilecount$BLD $patstr\0files
  w  $outdirstr directory          :$OFF $outdir$BLD
  e  Diff Editor             :$OFF $editor$BLD
 
@@ -137,7 +137,8 @@ $BLD
  3  Size of commit hash     :$OFF $(show_hash_size $b_40digit)$BLD digits
  4  Compare mode            :$OFF $(show_cmpmode $cmpmode)$BLD
  5  Patch apply mode        :$OFF $(show_applymode)$BLD
- 6  Patch apply fail mode   :$OFF $(show_applyfailmode)$BLD
+ 6  Patch apply fail mode   :$OFF $(show_applyfailmode)$BLD\
+ $(show_nextpatch)
 
     $UND\0Control           $OFF$BLD
  r  Run patch review
@@ -151,8 +152,7 @@ EOF
 }
 
 function menu_parser {
-
-	infilecount=$(ls "$indir" | wc -l)
+	get_filecount
 	show_settings
 	promptgetchar ""$BLD"Enter one of the above: "$OFF"" setting
 
@@ -185,10 +185,14 @@ function menu_parser {
 		6 )	ui_cycle_state applyfailmode $applyfailmode_states
 			prj_set_item $prj_applyfailmode $applyfailmode
 			;;
+		7 )	$b_selpat && select_patch
+			;;
 		i )	init_booleans
 			get_booleans
 			applymode=$applymode_norm
 			prj_set_item $prj_applymode $applymode
+			patchcount=0
+			startpat=1
 			;;
 		q )	exit_me 0
 			;;
@@ -248,7 +252,6 @@ init_parms() {
 	#
 	for offset in \
 	prj_applyfailmode \
-	prj_lastapplied \
 	prj_applymode \
 	prj_cmpmode \
 	prj_editor \
@@ -289,11 +292,9 @@ init_parms() {
 		init_booleans
 		cmpmode=$cmpmode_batch
 		applymode=$applymode_norm
-		lastapplied=0
 		applyfailmode=$applyfailmode_exit
 		prj_set_item $prj_cmpmode $cmpmode
 		prj_set_item $prj_applymode $applymode
-		prj_set_item $prj_lastapplied $lastapplied
 		prj_set_item $prj_applyfailmode $applyfailmode
 	fi
 }
