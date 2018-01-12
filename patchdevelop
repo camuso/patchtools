@@ -160,6 +160,7 @@ function menu_parser {
 
 		b )	git_setbranch $branchlist
 			git_get_lasttag lasttag $last_tag_file
+			gitbranch=$(git_getcurrentbranch)
 			;;
 		m )	set_mailclient
 			;;

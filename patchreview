@@ -252,6 +252,7 @@ function menu_parser {
 
 		b )	git_setbranch $branchlist
 			git_get_lasttag lasttag $last_tag_file
+			gitbranch=$(git_getcurrentbranch)
 			;;
 		d )	prj_set_directory "$indirstr" $prj_indir indir quiet
 			;;
