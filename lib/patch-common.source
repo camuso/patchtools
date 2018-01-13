@@ -96,6 +96,7 @@ declare -i applyfailmode_menu=2
 declare -i applyfailmode_states=3
 
 declare -i startpat=1
+declare -i menucols=30
 
 declare rhel6kernstr="kernel-2.6.32"
 declare rhel7kernstr="kernel-3.10.0"

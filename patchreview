@@ -143,37 +143,68 @@ function clean_dir {
 	$response && find "$1" -mindepth 1 -exec rm -rvf '{}' \;
 }
 
-function clean_directories {
-	local delquery="Are you sure you want to delete the contents of:"
-	local response=false
-
-	getyn "$delquery\n\t$indir\n\t$outdir\n" response
-	if $response; then
-		# remove the sub-directories in the outdir first
-		find "$outdir" -mindepth 1 -depth -type d -exec rm -rf '{}' \;
-		# remove all but the log files in the outdir
-		rm -vf "$outdir"/!(*.log)
-		# remove everything in the indir
-		rm -vf "$indir"/*
-	fi
+clean_indir() {
+	# remove everything in the indir
+	rm -vf "$indir"/*
 }
 
-clean_sessions() {
-	local session_query=\
-"\nClearing the sessions file.\n\
-After choosing the head you want from the sessions file, it will be initialized
-with your selection as the first entry.\n
-Do you want to proceed?"
-	local response=false
+clean_outdir() {
+	# remove the sub-directories in the outdir first
+	find "$outdir" -mindepth 1 -depth -type d -exec rm -rf '{}' \;
+	# remove all but the log files in the outdir
+	rm -vf "$outdir"/!(*.log)
+}
 
-	getyn "$session_query" response
-	$response && {
-		git_restore_head
-		init_session_file
-	}
+clean_directories() {
+	local answer
+	local cleanstr=$(
+cat <<EOF
+
+    $BLD$UND\0Clean Directory$OFF
+    Select one of$BLD
+
+ 1  Clean $OFF$indir$BLD
+ 2  Clean $OFF$outdir$BLD
+ 3  Clean both
+\0
+EOF
+)
+	echo -e "$cleanstr"
+	loop_range_q 1 3 answer
+	[ $? -ne 0 ] && return
+
+	case $answer in
+		1 ) clean_indir
+		    ;;
+		2 ) clean_outdir
+		    ;;
+		3 ) clean_indir
+		    clean_outdir
+		    ;;
+		* ) echo "Not a valid selection for Clean Directories"
+	esac
 }
 
 reset_to_lasttag() {
+	local newlasttag
+	git_get_lasttag newlasttag
+	local errstr=$(
+cat <<EOF
+
+$UND$BLD\0Warning!$OFF
+It appears the head was moved outside of this script.
+		Current branch: $BLD$(git_getcurrentbranch)$OFF
+Most recent tag of that branch: $BLD$lasttag$OFF
+Most recent tag in this script: $BLD$newlasttag$OFF
+
+Please switch to the correct branch.
+Not resetting the head.
+
+\0
+EOF
+)
+	[ "$newlasttag" =  "$lasttag" ] || { echo -e "$errstr"; return; }
+
 	echo -e "$BLD\0Resetting git head to$OFF $lasttag."
 	git reset --hard $lasttag
 }
@@ -203,9 +234,31 @@ nuke() {
 	prj_set_item $prj_applymode $applymode
 }
 
-function show_settings {
+create_branch() {
+	local bname
+	local cols=$((tcols-23))
 	local current_head=$(git log --oneline -n1)
-	local current_head_trunc=${current_head:0:50}
+	local current_head_trunc=${current_head:0:$cols}
+	local brstr=$(
+cat <<EOF
+
+Create new branch at: $BLD$current_head_trunc$OFF
+Enter $qstr to quit without creating a branch.
+\0
+EOF
+)
+	echo -e "$brstr"
+	getuser "Name of the new branch: " bname
+	[ "$bname" = "q" ] && return
+	git branch $bname
+	echo -e "Created branch $BLD$bname$OFF"
+}
+
+
+show_settings() {
+	local cols=$((tcols - menucols))
+	local current_head=$(git log --oneline -n1)
+	local current_head_trunc=${current_head:0:$cols}
 	local settingstr=$(
 cat <<EOF
 $BLD
@@ -230,10 +283,9 @@ $BLD
  r  Run patch review
  i  Init to defaults
  G  Git reset to most recent tag of current branch
- H  Choose a session git head
- C  Clean $indirstr and $outdirstr Directories
- S  Clean Session File
- N  Nuke directories & session, reset head to most recent tag
+ C  Clean $OFF$indir$BLD and/or $OFF$outdir$BLD
+ N  Nuke directories, reset head to most recent tag of current branch
+ B  Create a new branch at the current head
  h  help text
  q  Quit this script
 $OFF
@@ -242,7 +294,7 @@ EOF
 	echo -e "$settingstr"
 }
 
-function menu_parser {
+menu_parser() {
 	get_filecount
 	show_settings
 	promptgetchar ""$BLD"Enter one of the above: "$OFF"" setting
@@ -282,11 +334,7 @@ function menu_parser {
 			;;
 		G )	reset_to_lasttag
 			;;
-		H )	git_restore_head
-			gitbranch=$(git_getcurrentbranch)
-			;;
-		S )	clean_sessions
-			gitbranch=$(git_getcurrentbranch)
+		B )	create_branch
 			;;
 		i )	init_booleans
 			get_booleans
