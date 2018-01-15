@@ -70,7 +70,6 @@ declare prj_applymode
 declare prj_b_rename_infiles
 declare prj_b_save_githead
 declare prj_b_fmt_upstream
-declare prj_b_gitam_err_abort
 declare prj_b_40digit
 
 declare lasttag=""
@@ -375,7 +374,6 @@ function create_commit_msg {
 #	patchcount
 #	bp_commits
 #	applymode
-#	b_gitam_err_abort
 #	patchcount
 #
 function apply_patches {
@@ -654,6 +652,12 @@ check_patchvbranch() {
 	return 0
 }
 
+# exec_patcmp - execute the comparison of the patches
+#
+#  $1 - "-X" to execute in patbatcmpmgr in batch mode.
+#       If this parameter is not passed, then patbatcmpmgr operates in
+#       setup mode.
+#
 exec_patcmp() {
 	local xval="$1"
 	patbatcmpmgr -R $indir -U $outdir -o $mmfile "$xval"
@@ -661,3 +665,39 @@ exec_patcmp() {
 	[ -f $mmfile ] && rm -f $mmfile
 }
 
+# get_current_head_trunc() - returns the current head truncated
+#
+#  Truncation is the difference between the global tcols, which is the number
+#  of columns of the current terminal declared in ui.source, and the number
+#  passed in $1
+#
+#  $1 - number of columns already used (offset columns to where the current
+#       head will be displayed on the terminal)
+#
+get_current_head_trunc() {
+	local used=$1 local cols=$((tcols-used))
+	local current_head=$(git log --oneline -n1)
+	local current_head_trunc=${current_head:0:$cols}
+	echo $current_head_trunc
+}
+
+# create_branch - creates a branch at the current head
+#
+# Does NOT automatically switch to the new branch. That's the user's call.
+#
+create_branch() {
+	local bname
+	local current_head_trunc=$(get_current_head_trunc 23)
+	local brstr=$(
+cat <<EOF
+
+Create new branch at: $BLD$current_head_trunc$OFF
+Enter $qstr to quit without creating a branch.
+\0
+EOF
+)
+	echo -e "$brstr"
+	getuser "Name of the new branch: " bname
+	[ "$bname" = "q" ] && return
+	git branch $bname
+	echo -e "Created branch $BLD$bname$OFF"

@@ -74,13 +74,18 @@ function init_booleans {
 # added in v4.4
 # 	b_40digit
 #
+# removed in v5.0
+#	b_apply_patches
+#
+# removed in v7.0
+# 	b_save_githead
+# 	b_gitam_err_abort
+#
 function get_booleans {
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
-	b_save_githead \
 	b_fmt_upstream \
-	b_gitam_err_abort \
 	b_40digit
 	do
 		eval $bool=$(prj_get_item $index)
@@ -102,13 +107,18 @@ function get_booleans {
 # added in v4.4
 # 	b_40digit
 #
+# removed in v5.0
+#	b_apply_patches
+#
+# removed in v7.0
+# 	b_save_githead
+# 	b_gitam_err_abort
+#
 function set_booleans {
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
-	b_save_githead \
 	b_fmt_upstream \
-	b_gitam_err_abort \
 	b_40digit
 	do
 		prj_set_item $index ${!bool}
@@ -117,9 +127,21 @@ function set_booleans {
 	return 0
 }
 
-function show_settings {
-	local current_head=$(git log --oneline -n1)
-	local current_head_trunc=${current_head:0:50}
+# show_settings - the main menu display
+#
+# Globals:
+# 	indir
+# 	outdir
+# 	lasttag
+# 	gitbranch
+# 	infilecount
+# 	patstr
+# 	editor
+# 	b_rename_infiles
+# 	b_fmt_upstream
+#
+show_settings() {
+	local current_head_trunc=$(get_current_head_trunc 23)
 	local s	settingstr=$(
 cat <<EOF
 $BLD
@@ -143,6 +165,7 @@ $BLD
     $UND\0Control           $OFF$BLD
  r  Run patch review
  i  Init to defaults
+ B  Create a new branch at the current head
  h  help text
  q  Quit this script
 $OFF
@@ -151,7 +174,7 @@ EOF
 	echo -e "$settingstr"
 }
 
-function menu_parser {
+menu_parser() {
 	get_filecount
 	show_settings
 	promptgetchar ""$BLD"Enter one of the above: "$OFF"" setting
@@ -193,6 +216,8 @@ function menu_parser {
 			prj_set_item $prj_applymode $applymode
 			patchcount=0
 			startpat=1
+			;;
+		B )	create_branch
 			;;
 		q )	exit_me 0
 			;;
@@ -259,7 +284,6 @@ init_parms() {
 	prj_outdir \
 	prj_b_rename_infiles \
 	prj_b_fmt_upstream \
-	prj_b_gitam_err_abort \
 	prj_b_40digit
 	do
 		let index++

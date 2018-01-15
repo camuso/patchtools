@@ -86,9 +86,7 @@ function get_booleans {
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
-	b_save_githead \
 	b_fmt_upstream \
-	b_gitam_err_abort \
 	b_40digit
 	do
 		eval $bool=$(prj_get_item $index)
@@ -120,13 +118,15 @@ function get_booleans {
 # removed in v5.0
 #	b_apply_patches
 #
+# removed in v7.0
+# 	b_save_githead
+# 	b_gitam_err_abort
+#
 function set_booleans {
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
-	b_save_githead \
 	b_fmt_upstream \
-	b_gitam_err_abort \
 	b_40digit
 	do
 		prj_set_item $index ${!bool}
@@ -185,6 +185,15 @@ EOF
 	esac
 }
 
+# reset_to_lasttag - reset the current branch to its most recent tag
+#
+# Also checks that the saved lasttag is the same as the lasttag of the
+# current branch. If they are not, the reset is not executed and the user
+# is warned, because the results would be a merge of two branches.
+#
+# Globals:
+# 	lasttag
+#
 reset_to_lasttag() {
 	local newlasttag
 	git_get_lasttag newlasttag
@@ -209,6 +218,16 @@ EOF
 	git reset --hard $lasttag
 }
 
+# nuke - delete files in indir and outdir, except logs, and reset to lasttag
+#
+#        Also calls the init sequence.
+#
+# Globals:
+# 	indir
+# 	outdir
+# 	prj_applymode
+# 	applymode
+#
 nuke() {
 	# remove the sub-directories in the outdir first
 	find "$outdir" -mindepth 1 -depth -type d -exec rm -rf '{}' \;
@@ -234,31 +253,21 @@ nuke() {
 	prj_set_item $prj_applymode $applymode
 }
 
-create_branch() {
-	local bname
-	local cols=$((tcols-23))
-	local current_head=$(git log --oneline -n1)
-	local current_head_trunc=${current_head:0:$cols}
-	local brstr=$(
-cat <<EOF
-
-Create new branch at: $BLD$current_head_trunc$OFF
-Enter $qstr to quit without creating a branch.
-\0
-EOF
-)
-	echo -e "$brstr"
-	getuser "Name of the new branch: " bname
-	[ "$bname" = "q" ] && return
-	git branch $bname
-	echo -e "Created branch $BLD$bname$OFF"
-}
-
-
+# show_settings - the main menu display
+#
+# Globals:
+# 	indir
+# 	outdir
+# 	lasttag
+# 	gitbranch
+# 	infilecount
+# 	patstr
+# 	editor
+# 	b_rename_infiles
+# 	b_fmt_upstream
+#
 show_settings() {
-	local cols=$((tcols - menucols))
-	local current_head=$(git log --oneline -n1)
-	local current_head_trunc=${current_head:0:$cols}
+	local current_head_trunc=$(get_current_head_trunc $menucols)
 	local settingstr=$(
 cat <<EOF
 $BLD
@@ -407,9 +416,7 @@ init_parms() {
 	prj_indir \
 	prj_outdir \
 	prj_b_rename_infiles \
-	prj_b_save_githead \
 	prj_b_fmt_upstream \
-	prj_b_gitam_err_abort \
 	prj_b_40digit
 	do
 		let index++
