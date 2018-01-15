@@ -416,13 +416,15 @@ function git_setbranch {
 	[ $# -eq 1 ] && outpath="$1"
 
 	git branch > $outpath
-	echo -e "$attr_bold"
+	echo
+	echo -e "$BLD$UND\0Change Current Branch$OFF\n"
 
 	while read line; do
-		printf "%2d  $line\n" $index
+		printf "$BLD%2d$OFF  $line\n" $index
 		let index++
 	done < $outpath
 
+	echo
 	loop_range_q 1 $((index - 1)) linenumber
 	status=$?
 	[ $status -ne 0 ] && return
