@@ -216,6 +216,7 @@ menu_parser() {
 			prj_set_item $prj_applymode $applymode
 			patchcount=0
 			startpat=1
+			b_allapplied=false
 			;;
 		B )	create_branch
 			;;

@@ -44,7 +44,8 @@ declare index=0
 declare boolcount=0
 declare boolindex=0
 declare b_found_first_bool=false
-declare b_selpat
+declare b_selpat=false
+declare b_allapplied=false
 declare infilecount=0
 declare gitbranch=$(git_getcurrentbranch)
 
@@ -386,8 +387,6 @@ function apply_patches {
 
 	for patch in $(ls -1 "$indir"/*.patch | sort -V); do
 		let patchcount++
-		echo "patchcount: $patchcount"
-		echo "startpat: $startpat"
 		[ $patchcount -ge $startpat ] || continue
 
 		echo "$patch"
@@ -399,6 +398,7 @@ function apply_patches {
 		esac
 
 		if [ $stat -ne 0 ]; then
+			b_allapplied=false
 			echo -en "$BLD"
 			echo -e "\nPatch: $OFF$patch$BLD"
 			echo -e "Failed to apply.$OFF"
@@ -423,7 +423,12 @@ function apply_patches {
 		}
 	done
 
-	[ $stat -eq 0 ] && cat "$bp_commits" || tail -1 "$bp_commits"
+	[ $stat -eq 0 ] && {
+		b_allapplied=true
+		cat "$bp_commits"
+	} || {
+		tail -1 "$bp_commits"
+	}
 	return $stat
 }
 
@@ -471,15 +476,18 @@ show_applyfailmode() {
 # Globals:
 # 	infilecount
 # 	patstr      - used by show_settings
+# 	b_selpat
 #
 get_filecount() {
-	local fc=$(find $indir -name "*.patch" -print -quit)
+	local fc=$(find $indir -maxdepth 1 -name "*.patch" -print -quit)
 	if [ "$fc" ]; then
 		infilecount=$(ls -1 $indir/*.patch | wc -l)
+		! $b_allapplied && b_selpat=true || b_selpat=false
 		patstr="patch "
 	else
 		infilecount=$(ls -1 $indir | wc -l)
 		patstr=""
+		b_selpat=false
 	fi
 }
 
@@ -488,8 +496,7 @@ get_filecount() {
 #
 # Globals:
 # 	infilecount
-# 	patchcount
-# 	b_selpat
+# 	b_allapplied
 #
 show_nextpatch() {
 local shownext=$(
@@ -499,13 +506,13 @@ cat <<EOF
 EOF
 )
 	[ $infilecount -eq 0 ] && { b_selpat=false; return; }
-	[ $patchcount -ge $infilecount ] && {
+
+	$b_allapplied && {
 		echo -e "\n    All patches were successfully applied"
-		b_selpat=false
 		return
 	}
-	b_selpat=true
-	echo -e "$shownext"
+
+	[ "$patstr" ] && echo -e "$shownext"
 }
 
 # select_patch() - select a patch to start the apply process
