@@ -79,7 +79,7 @@ remove_spaces
 # these have already been renamed.
 #
 # for filename in $(ls !(*.patch) | sort -t'_' -k2 -h); do
-for filename in $(ls -1 !(*.patch)); do
+for filename in $(find -maxdepth 1 -not -type d -not -name "*.patch"); do
 
 	iszero=false
 	word=""

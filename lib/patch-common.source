@@ -479,13 +479,13 @@ show_applyfailmode() {
 # 	b_selpat
 #
 get_filecount() {
-	local fc=$(find $indir -maxdepth 1 -name "*.patch" -print -quit)
+	local fc=$(find $indir -maxdepth 1 -not -type d -name "*.patch" -print -quit)
 	if [ "$fc" ]; then
-		infilecount=$(ls -1 $indir/*.patch | wc -l)
+		infilecount=$(find $indir -maxdepth 1 -not -type d -name "*.patch" | wc -l)
 		! $b_allapplied && b_selpat=true || b_selpat=false
 		patstr="patch "
 	else
-		infilecount=$(ls -1 $indir | wc -l)
+		infilecount=$(find $indir -maxdepth 1 -not -type d | wc -l)
 		patstr=""
 		b_selpat=false
 	fi
