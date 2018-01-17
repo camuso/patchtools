@@ -233,10 +233,10 @@ nuke() {
 	find "$outdir" -mindepth 1 -depth -type d -exec rm -rf '{}' \;
 
 	# remove all but the log files in the outdir
-	rm -vf "$outdir"/!(*.log)
+	find $outdir -maxdepth 1 -not -type d -not -name "*.log" -exec rm -vf '{}' \;
 
 	# remove everything in the indir
-	rm -vf "$indir"/*
+	find $indir -maxdepth 1 -not -type d -exec rm -vf '{}' \;
 
 	# Reset the git head to the last tag
 	reset_to_lasttag
@@ -501,12 +501,8 @@ main() {
 			[ $? -ne 0 ] && continue
 		fi
 
-		if $b_save_githead; then
-			exec_boolean b_save_githead false "git_log_head"
-		fi
-
 		if [ $applymode -ne $applymode_off ]; then
-			git am --abort 2>&1>/dev/null
+			git am --abort 2>/dev/null
 			patchcount=0
 			check_patchvbranch
 			apply_patches

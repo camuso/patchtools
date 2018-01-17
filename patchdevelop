@@ -359,7 +359,7 @@ main() {
 		fi
 
 		if [ $applymode -ne $applymode_off ]; then
-			git am --abort 2>&1>/dev/null
+			git am --abort 2>/dev/null
 			patchcount=0
 			check_patchvbranch
 			apply_patches
