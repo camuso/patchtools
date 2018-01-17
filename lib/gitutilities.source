@@ -432,7 +432,7 @@ function git_setbranch {
 	gitbranch="$(ui_readline $linenumber $outpath | tr -d [\*" "])"
 	echo "git checkout "$gitbranch""
 	git am --abort 2>/dev/null
-	git checkout "$gitbranch" 2>/dev/null
+	git checkout "$gitbranch" # 2>/dev/null
 	status=$?
 	git log --oneline -n1
 	return $status
