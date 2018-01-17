@@ -144,15 +144,13 @@ function clean_dir {
 }
 
 clean_indir() {
-	# remove everything in the indir
-	rm -vf "$indir"/*
+	# remove everything in the indir, except any subdirs
+	find $indir -maxdepth 1 -not -type d -exec rm -vf '{}' \;
 }
 
 clean_outdir() {
-	# remove the sub-directories in the outdir first
-	find "$outdir" -mindepth 1 -depth -type d -exec rm -rf '{}' \;
-	# remove all but the log files in the outdir
-	rm -vf "$outdir"/!(*.log)
+	# remove all but the log files and subdirs in the outdir
+	find "$outdir" -maxdepth 1 -not -type d -not -name "*.log" -exec rm -vf '{}' \;
 }
 
 clean_directories() {
@@ -229,20 +227,11 @@ EOF
 # 	applymode
 #
 nuke() {
-	# remove the sub-directories in the outdir first
-	find "$outdir" -mindepth 1 -depth -type d -exec rm -rf '{}' \;
-
-	# remove all but the log files in the outdir
-	find $outdir -maxdepth 1 -not -type d -not -name "*.log" -exec rm -vf '{}' \;
-
-	# remove everything in the indir
-	find $indir -maxdepth 1 -not -type d -exec rm -vf '{}' \;
+	clean_indir
+	clean_outdir
 
 	# Reset the git head to the last tag
 	reset_to_lasttag
-
-	# Init the session file with the current branch/head
-	init_session_file
 
 	# Init the booleans to their defaults
 	init_booleans
