@@ -154,17 +154,16 @@ $BLD
  e  Diff Editor             :$OFF $editor$BLD
 
     $UND\0Run Parameters    $OFF$BLD
- 1  Rename input files      :$OFF $b_rename_infiles$BLD
- 2  Format upstream patches :$OFF $b_fmt_upstream$BLD
- 3  Size of commit hash     :$OFF $(show_hash_size $b_40digit)$BLD digits
- 4  Compare mode            :$OFF $(show_cmpmode $cmpmode)$BLD
- 5  Patch apply mode        :$OFF $(show_applymode)$BLD
- 6  Patch apply fail mode   :$OFF $(show_applyfailmode)$BLD\
+ 1  Compare mode            :$OFF $(show_cmpmode $cmpmode)$BLD
+ 2  Patch apply mode        :$OFF $(show_applymode)$BLD
+ 3  Patch apply fail mode   :$OFF $(show_applyfailmode)$BLD\
  $(show_nextpatch)
 
     $UND\0Control           $OFF$BLD
  r  Run patch review
  i  Init to defaults
+ R  Rename files in $OFF$indir$BLD
+ F  Format upstream patches into $OFF$outdir$BLD
  B  Create a new branch at the current head
  h  help text
  q  Quit this script
@@ -193,30 +192,22 @@ menu_parser() {
 			;;
 		e )	set_editor
 			;;
-		1 )	ui_toggle b_rename_infiles
+		R )	renpat $indir
 			;;
-		2 )	ui_toggle b_fmt_upstream
+		F )	format_upstream_patches
 			;;
-		3 )	ui_toggle b_40digit
-			;;
-		4 )	ui_cycle_state cmpmode $cmpmode_states
+		1 )	ui_cycle_state cmpmode $cmpmode_states
 			prj_set_item $prj_cmpmode $cmpmode
 			;;
-		5 )	ui_cycle_state applymode $applymode_states
+		2 )	ui_cycle_state applymode $applymode_states
 			prj_set_item $prj_applymode $applymode
 			;;
-		6 )	ui_cycle_state applyfailmode $applyfailmode_states
+		3 )	ui_cycle_state applyfailmode $applyfailmode_states
 			prj_set_item $prj_applyfailmode $applyfailmode
 			;;
-		7 )	$b_selpat && select_patch
+		4 )	$b_selpat && select_patch
 			;;
-		i )	init_booleans
-			get_booleans
-			applymode=$applymode_norm
-			prj_set_item $prj_applymode $applymode
-			patchcount=0
-			startpat=1
-			b_allapplied=false
+		i )	init_menu
 			;;
 		B )	create_branch
 			;;
@@ -359,47 +350,13 @@ main() {
 		fi
 
 		if [ $applymode -ne $applymode_off ]; then
-			git am --abort 2>/dev/null
-			patchcount=0
-			check_patchvbranch
-			apply_patches
-			stat=$?
-			[ $stat -ne 0 ] && [ $applyfailmode -eq $applyfailmode_menu ] \
-				&& menu_loop
-			applymode=$applymode_off
-			prj_set_item $prj_applymode $applymode
+			exec_apply_patches
+			[ $? -ne 0 ] && continue
 		fi
 
-		# Generate a patch set from the original upstream patches.
-		#
-		if $b_fmt_upstream; then
-			rm -vf "$outdir"/*.patch
-			echo "" > "$us_commits"
-			echo
-			git_comment2commitsfile $indir "$us_commits" $b_40digit
-			echo
-			cat "$us_commits"
-			echo
-			exec_boolean b_fmt_upstream false \
-				"git_file2patchset "$us_commits" ${outdir}"
-		fi
+		$b_fmt_upstream && format_upstream_patches
 
-		if [ $cmpmode -ne $cmpmode_off ]; then
-
-			mmfile="$outdir/$mismatch_file"
-
-			# Mismatch file might be stale, so delete it first,
-			# if it exists. Better to create a new one.
-			#
-			[ -f $mmfile ] && rm -f $mmfile
-
-			case $cmpmode in
-				$cmpmode_batch ) exec_patcmp "-X" ;;
-				$cmpmode_setup ) exec_patcmp ;;
-				$cmpmode_inter ) patcmp $indir $outdir $editor ;;
-					     * ) cmpmode=$cmpmode_off
-			esac
-		fi
+		[ $cmpmode -ne $cmpmode_off ] && compare_patches
 	done
 }
 

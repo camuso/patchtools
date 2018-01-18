@@ -484,10 +484,12 @@ get_filecount() {
 		infilecount=$(find $indir -maxdepth 1 -not -type d -name "*.patch" | wc -l)
 		! $b_allapplied && b_selpat=true || b_selpat=false
 		patstr="patch "
+		b_rename_infiles=false
 	else
 		infilecount=$(find $indir -maxdepth 1 -not -type d | wc -l)
 		patstr=""
 		b_selpat=false
+		b_rename_infiles=true
 	fi
 }
 
@@ -502,7 +504,7 @@ show_nextpatch() {
 local shownext=$(
 cat <<EOF
 
- 7  Start applying at patch :$OFF $startpat$BLD
+ 4  Start applying at patch :$OFF $startpat$BLD
 EOF
 )
 	[ $infilecount -eq 0 ] && { b_selpat=false; return; }
@@ -665,8 +667,16 @@ check_patchvbranch() {
 #       If this parameter is not passed, then patbatcmpmgr operates in
 #       setup mode.
 #
+# Globals:
+# 	indir
+# 	outdir
+# 	us_commits
+# 	editor
+#
 exec_patcmp() {
-	local xval="$1"
+	local mmfile="$1"
+	local xval="$2"
+
 	patbatcmpmgr -R $indir -U $outdir -o $mmfile "$xval"
 	patcmp -m $mmfile $indir $outdir $editor "$us_commits"
 	[ -f $mmfile ] && rm -f $mmfile
@@ -708,4 +718,90 @@ EOF
 	[ "$bname" = "q" ] && return
 	git branch $bname
 	echo -e "Created branch $BLD$bname$OFF"
+}
+
+# format_upstream_patches
+#
+# Create a list of commits and use that to format the patches.
+#
+# Globals:
+# 	indir
+# 	outdir
+# 	us_commits
+# 	b_40digit
+# 	b_fmt_upstream
+#
+format_upstream_patches() {
+	local fc=$(find $outdir -maxdepth 1 -not -type d -name "*.patch" -print -quit)
+
+	[ "$fc" ] && {
+		echo
+		echo "There are aready patch files in $outdir"
+		echo
+		return
+	}
+
+	rm -vf "$outdir"/*.patch
+	> "$us_commits"
+	echo
+	git_comment2commitsfile $indir "$us_commits" $b_40digit
+	echo
+	cat "$us_commits"
+	echo
+	exec_boolean b_fmt_upstream false \
+		"git_file2patchset ${us_commits} ${outdir}"
+}
+
+# exec_apply_patches
+#
+# Do all the front-end housekeeping and apply the patches in the indir.
+#
+# Globals:
+# 	patchcount
+# 	apply_mode
+# 	prj_applymode
+# 	applyfailmode
+# 	applyfailmode_menu
+#
+# returns nonzero if patches fail to apply
+#
+exec_apply_patches(){
+	local stat
+
+	git am --abort 2>/dev/null
+	patchcount=0
+	check_patchvbranch
+	apply_patches
+	stat=$?
+	[ $stat -ne 0 ] && [ $applyfailmode -eq $applyfailmode_menu ] \
+		&& return $stat
+	applymode=$applymode_off
+	prj_set_item $prj_applymode $applymode
+	return 0
+}
+
+# compare_patches - compare the downstream with the upstream
+#
+compare_patches() {
+
+	local mmfile="$outdir/$mismatch_file"
+
+	case $cmpmode in
+		$cmpmode_batch ) exec_patcmp "$mmfile" "-X" ;;
+		$cmpmode_setup ) exec_patcmp "$mmfile" ;;
+		$cmpmode_inter ) patcmp $indir $outdir $editor $us_commits ;;
+			     * ) cmpmode=$cmpmode_off
+	esac
+}
+
+# init_menu - initialize the menu loop with default values
+#
+init_menu() {
+	init_booleans
+	get_booleans
+	applymode=$applymode_norm
+	prj_set_item $prj_applymode $applymode
+	patchcount=0
+	startpat=1
+	b_allapplied=false
 }
