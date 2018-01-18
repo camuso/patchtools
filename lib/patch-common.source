@@ -708,3 +708,4 @@ EOF
 	[ "$bname" = "q" ] && return
 	git branch $bname
 	echo -e "Created branch $BLD$bname$OFF"
+}
