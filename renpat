@@ -48,7 +48,7 @@ cd $1
 echo "Changing directory to "$PWD""
 
 declare -i count=1
-declare -i total=$(ls -1 | wc -l)
+declare -i total=$(find -maxdepth 1 -not -type d | wc -l)
 declare -i windex
 declare -i fldwid=0
 declare -a subary
