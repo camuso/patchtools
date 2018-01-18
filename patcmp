@@ -31,7 +31,8 @@ declare -i maxindex	# highest attainable index (mlcount - 1)
 declare b_runmismatch=false
 declare b_nomismatch=true
 declare mismatch_file
-declare -i first_mismatch
+declare -i first_mismatch=0
+declare -i last_mismatch=0
 declare -i previndex
 declare -i mmindex
 declare -i currentmm
@@ -252,7 +253,8 @@ say_nomismatch() {
 
 # init_mismatch()
 #
-# initializes the following globals
+# Globals:
+# 	mismatch_array
 # 	mismatch_count
 # 	first_mismatch
 # 	last_mismatch
@@ -438,8 +440,8 @@ echo
 # PS4='+(${BASH_SOURCE}:${LINENO}): '
 # set -x
 
-[ -f "$mismatch_file" ] && init_mismatch
-$b_runmismatch || index=0
+[ -f "$mismatch_file" ] && init_mismatch || b_runmismatch=false
+$b_runmismatch && index=$first_mismatch || index=0
 # echo "Starting with patch: $((index + 1))"
 
 # If the lasttag file does not exist, then go create it with a
