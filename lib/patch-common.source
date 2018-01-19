@@ -692,7 +692,8 @@ exec_patcmp() {
 #       head will be displayed on the terminal)
 #
 get_current_head_trunc() {
-	local used=$1 local cols=$((tcols-used))
+	local used=$1
+	local cols=$((tcols-used))
 	local current_head=$(git log --oneline -n1)
 	local current_head_trunc=${current_head:0:$cols}
 	echo $current_head_trunc
