@@ -28,18 +28,40 @@ The script must be run from the top of a git tree. If not, it will exit
 with an error message.
 
 A directory containing the patches being backported or developed must be
-scpecified as well as a directroy for the upstream patches. These directories
-must not be the same.
+scpecified as well as a directory for the upstream patches.
+
+These directories must not be the same.
 
 These directories are identified by the script as follows.
 
 Patch directory: the directory containing the patches being backported or
                  developed.
 
+		 If this directory were populated by a mail client, then
+		 the files must be renamed to be processed. The files
+		 will be renamed according to their subject lines with
+		 non-alpha-numeric characters replaced with hyphens.
+
+		 This will occur automatically upon pressing the 'r'
+		 control option, but only if there are no *.patch files
+		 in the directory.
+
+		 Alternatively, the user can invoke the 'R' control to
+		 separately rename the files without having to run the
+		 whole script.
+
 Work directory: the directory into which the script will put upstream
                 patches that were formatted using the upstream commit
                 hashes in the commit logs of the patches in the Patch
                 directory.
+
+		This will occur automatically upon pressing the 'r'
+		control otion, but only if there are no *.patch files
+		in the directory.
+
+		Alternatively, the user can invoke the 'F control to
+		separately create the upstream patches without having to
+		run the whole script.
 
 The first two items in the "Environment" section reflect the current
 state of the git tree.
@@ -50,9 +72,9 @@ state of the git tree.
 The first time the script is run, the user is queried for the following
 items.
 
-* The RHEL patch directory
+* The Patch directory
 
-* The Upstream patch directory
+* The Work directory
 
 * The user's preferred diff editor.
   vimdiff, emacs, and tkdiff are supported.
@@ -61,33 +83,31 @@ _________________________________________________________________________
 
     Environment
     ------------------
-    Most recent tag         : kernel-3.10.0-658.el7
-    Current Head            : 8761009 powerpc/mm: Add support for runtime config
- b  Current git branch      : rh7.work
- d  Patch directory         : /home/tcamuso/Maildir/work/cur has 7 files
+    Most recent tag         : kernel-alt-4.14.0-26.el7a
+    Current Head            : 060f9ddcd6053 arm64: cputype: Add missing MIDR va
+ b  Current git branch      : pegas
+ d  Patch directory         : /home/tcamuso/Maildir/work/cur has 19 patch files
  w  Work directory          : ../temp
- e  Diff Editor             : tkdiff
+ e  Diff Editor             : vimdiff
 
     Run Parameters
     ------------------
- 1  Rename input files      : true
- 2  Save git head           : true
- 3  Format upstream patches : true
- 4  Size of commit hash     : 40 digits
- 5  Compare mode            : Batch
- 6  Patch apply mode        : git am
+ 1  Compare mode            : Batch
+ 2  Patch apply mode        : git am
+ 3  Patch apply fail mode   : Return to main menu
+ 4  Start applying at patch : 1
 
     Control
     ------------------
  r  Run patch review
  i  Init to defaults
- G  Git reset to most recent tag of current branch
- H  Choose a session git head
- C  Clean Patch and Work Directories
- S  Clean Session File
- N  Nuke directories & session, reset head to most recent tag
+ R  Rename mail files in    : /home/tcamuso/Maildir/work/cur
+ F  Format commits into     : ../temp
+ G  Git reset to            : kernel-alt-4.14.0-26.el7a
+ B  Create a new branch at  : 060f9ddcd6053 arm64: cputype: Add missing MIDR va
+ C  Clean the Patch and/or Work directories
+ N  Nuke the directories and reset head to most recent tag
  h  help text
- x  Exit to a shell
  q  Quit this script
 
 Enter one of the above:
@@ -127,41 +147,7 @@ The "Run Parameters" section controls what happens when the 'r' (Run)
 menu selection is pressed. These options can be cycled through their
 states by pressing the corresponding option number.
 
-1 * When true, the files extracted from the mail client and residing in
-    the "RHEL directory" are renamed using their subject line for the
-    name.
-
-    Resets to false after a run.
-
-2 * If this is true, the current git head is saved and can be restored
-    later using the 'G' control menu option.
-
-    Resets to false after a run.
-
-3 * If true, recreates the upstream patches in the "Upstream" directory
-    set by the "w" menu option or when the script is invoked for the
-    first time.
-
-    Resets to false after a run.
-
-4 * Size of the upstream commit hash, default is 40.
-
-    Pressing this key toggles it to accept hexadecimal numbers ranging
-    in size from 7 to 40 digits.
-
-    If the script encounters more than one string that could be a commit
-    hash, the user is presented with a list of candidate hashes from
-    which to choose.
-
-    These commit hashes are written into a file that is then used to
-    format patches from the list of upstream commit hashes it contains.
-
-    The formatted upstream patches are named with sequence numbers
-    corresponding to the patches in the "Patch directory" followed by the
-    summary line of the patch and are written into the Work directory.
-
-
-5 * The Comparison Mode is selected by a state switch. The user cycles
+1 * The Comparison Mode is selected by a state switch. The user cycles
     through the modes by repeatedly pressing this key.
 
     Batch - (default) This will invoke an automatic batch comparison
@@ -184,7 +170,7 @@ states by pressing the corresponding option number.
     OFF - In the OFF mode, the pairs of patches are not diff'd after any
           preceding operations.
 
-6 * The Patch apply mode is selected by a state switch. The user cycles
+2 * The Patch apply mode is selected by a state switch. The user cycles
     through the modes by repeatedly pressing this key.
 
     git am - (default) Applies the patches in the RHEL directory to the
@@ -196,46 +182,58 @@ states by pressing the corresponding option number.
 
     OFF - does not attempt to apply the RHEL patches.
 
+3 * Patch apply fail mode determines what happens when a patch fails to
+    apply with the chosen Apply Mode. The fail modes are selected by a
+    state switch cycled by pressing this key.
 
-The "Control" section of the Batch Comparison Setup menu executes
-operations as follows.
+    Exit - is the default. When a patch fails to apply, the script
+           will exit.
+
+    Continue without applying - tells the script to continue with the
+           to the downstream/upstream patch comparison without
+	   attempting to apply any more patches.
+
+    Return to main menu - tells the script to return to the top menu
+           when a patch fails to apply.
+
+4   Start from patch <number>
+    This option only appears if there are *.patch files in the Patch
+    directory and they have not been applied yet.
+
+    This non-sticky option is useful if you've encountered a problem
+    with one of the patches in a set and you want to continue applying
+    after you've fixed the problem.
+
+
+The "Control" section of the menu operations as follows.
 
 r - Run the script on the patches according to the parameter settings as
     described above.
 
-i - Initialize the script's Parameters to their default settings.
+i - Initialize the script's parameters to their default settings.
 
-G - Present a list of git heads for the user to choose. These are git
-    heads that were generated by applying patch sets. There is a session
-    file created in the directory above the git tree, with the following
-    path: ../.sessions.session.log
+R - Rename the extracted mail files in the Patch directory according
+    to their subject lines. This will not alter the contents of the
+    Patch directory if there are any *.patch files in it.
 
-    The git head will be restored to the selection made by the user.
+F - Format upstream patches into the Work directory using commit hashes
+    discovered in the commit logs of the *.patch files in the Patch
+    directory. This will not alter the contents of the Work directory
+    if there are any *.patch files in it.
 
-P - Delete the contents of the "Patch directory". The user will be
-    prompted to be sure s/he wants to take this action before it is
-    executed.
+G - git reset head of the current branc to it's most recent tag.
 
-W - Delete the contents of the "Work directory". The user will be
-    prompted to be sure s/he wants to take this action before it is
-    executed.
+B - Create a new branch at the current git head. This can be useful
+    when expecting patches that depend on the currently applied ones.
 
-C - Delete the contents of both the "RHEL directory" and the "Upstream
-    directory". The user will be prompted to be sure s/he wants to take
-    this action before it is executed.
+C - Presents a submenu giving the user the choice to delete either or
+    both the Patch and Work directories. The user can also return from
+    the submenu without choosing any of the options.
 
-S - Clear the sessions log file. This will delete all the heads that
-    were saved by applying patch sets. Not something you want to do
-    frequently but may be useful from time to time.
-
-N - Performs the actions of C and S above without further prompting
-    and restores the git head to the most recent tag of the current
-    branch.
+N - Clears the *.patch files out of the Patch and Wokr directories and
+    resets the branch head to the most recent tag.
 
 h - Display this help text.
-
-x - Exit to a shell. Return to the running script by typing exit or
-    ctrl-d in the new shell.
 
 q - Exit the script and return to bash.
 
@@ -245,11 +243,11 @@ _________________________________________________________________________
 Sub Menus
 ---------
 
-These menus are presented when "r" (run) is pressed and option 5 is not
-in the OFF state.
+These menus are presented when "r" (run) is pressed and compare mode is
+not inn the OFF state.
 
-These menus compare the patches in the RHEL directory with those in
-the Upstream directory.
+These menus compare the patches in the Patch directory with those in
+the Work directory.
 
 The following menu only appears if the Compare Mode in the top menu is
 set to "Batch compare setup".
@@ -280,7 +278,7 @@ set to "Batch compare setup".
      Control
      ----------------------
   r  run the comparison
-  l  if output file is not /dev/stdout, less the output file
+  e  if output file is not /dev/stdout, less the output file
   i  init to defaults
   h  print the help using less command
   x  spawn a shell
@@ -347,18 +345,14 @@ _________________________________________________________________________
       If verbose is false, then Very verbose will automatically be set false.
 
   r - run the comparison
-  l - run less on the output file
+  e - run less on the output file
   i - init the controls and output file to defaults
   h - less this help text
   x - spawn a shell
   q - quit and return to previous execution environment
 
+_________________________________________________________________________
 
-If the Comparison Mode is set to "Batch", the following menu appears upon
-quitting from the Batch Comparison menu.
-
-If the Batch Comparison mode is set to "Interactive Only", then this menu
-will appear after pressing "r" for "run" from the top menu.
 
 Interactively Compare Patch Pairs
 -----------------------------------------------------------------
