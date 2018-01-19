@@ -141,7 +141,7 @@ function set_booleans {
 # 	b_fmt_upstream
 #
 show_settings() {
-	local current_head_trunc=$(get_current_head_trunc 23)
+	local current_head_trunc=$(get_current_head_trunc $menucols)
 	local s	settingstr=$(
 cat <<EOF
 $BLD
@@ -162,9 +162,9 @@ $BLD
     $UND\0Control           $OFF$BLD
  r  Run patch review
  i  Init to defaults
- R  Rename files in $OFF$indir$BLD
- F  Format upstream patches into $OFF$outdir$BLD
- B  Create a new branch at the current head
+ R  Rename mail files in    :$OFF $indir$BLD
+ F  Format commits into     :$OFF $outdir$BLD
+ B  Create a new branch at  :$OFF $current_head_trunc$BLD
  h  help text
  q  Quit this script
 $OFF

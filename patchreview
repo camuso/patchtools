@@ -277,12 +277,12 @@ $BLD
     $UND\0Control           $OFF$BLD
  r  Run patch review
  i  Init to defaults
- R  Rename files in $OFF$indir$BLD
- F  Format upstream patches into $OFF$outdir$BLD
- G  Git reset to most recent tag of current branch
- C  Clean $OFF$indir$BLD and/or $OFF$outdir$BLD
- N  Nuke directories, reset head to most recent tag of current branch
- B  Create a new branch at the current head
+ R  Rename mail files in    :$OFF $indir$BLD
+ F  Format commits into     :$OFF $outdir$BLD
+ G  Git reset to            :$OFF $lasttag$BLD
+ B  Create a new branch at  :$OFF $current_head_trunc$BLD
+ C  Clean the $OFF$indirstr$BLD and/or $OFF$outdirstr$BLD directories
+ N  Nuke the directories and reset head to most recent tag
  h  help text
  q  Quit this script
 $OFF
