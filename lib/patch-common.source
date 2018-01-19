@@ -10,7 +10,7 @@
 #
 # MYLIB must be defined in the file that includes this one.
 
-version="7.0"
+version="7.1"
 
 b_ui_int_first_getyn=false	# For lib/ui.source
 
