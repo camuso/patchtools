@@ -14,7 +14,7 @@ declare prjfile=""
 declare prj_emptyline=""
 declare -i prj_prjfile_size=2	# Number of lines in the file.
 declare -i prj_newcreated=1
-declare -i prj_inconsistent=2
+declare -i prj_inconsistant=2
 
 function prj_get_emptyline {
 	echo "$prj_emptyline"
@@ -76,7 +76,7 @@ function prj_init_prjfile {
 		if [ $sizediff -ne 0 ] || [ $size -eq 0 ]; then
 			cat /dev/null > $prjfile
 			prj_addblanklines $prjfile $prj_prjfile_size
-			return $prj_inconsistent
+			return $prj_inconsistant
 		fi
 	fi
 
