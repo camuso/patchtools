@@ -293,7 +293,8 @@ function read_booleans {
 	local val
 	local emptyline="$(prj_get_emptyline)"
 
-	# echo -e "$UND\0read_booleans$OFF"
+	echo -e "$UND\0read_booleans$OFF"
+	echo "ui_bools: $ui_bools"
 	for bool in $ui_bools; do
 		val=$(prj_get_item $index)
 		eval $bool=$val
@@ -484,7 +485,7 @@ pr_nohash_msg () {
 	local hash="$1"
 	local nohash_msg=$(
 cat <<EOF
-  Can't find $BLD$hash$OFF as a commit or valid line number in $BLD$upcommitsfile$OFF
+  Cannott find $BLD$hash$OFF as a commit or valid line number in $BLD$upcommitsfile$OFF
   Lines having a '$BLD\0#$OFF' as their first character are not listed or considered.
   Try again or type '$BLD\0q$OFF' to return to main menu.
 EOF
@@ -971,7 +972,7 @@ run_continue() {
 	local statstr=$(
 cat <<EOF
 You have made changes that must be committed before using "cherp continue".
-You can use "cherp commit" if you want cherp to make these commits for you."
+You can use "cherp commit" if you want cherp to make these commits for you.
 EOF
 )
 
@@ -1038,6 +1039,7 @@ run_single() {
 #       RETURNS:  non-zero if something went wrong
 #===============================================================================
 cherrypick() {
+	echo -e "$UND\0cherrypick$OFF"
 
 	local uphash=$currentuphash
 	local gitstat
@@ -1066,6 +1068,7 @@ Make sure the hases in $BLD$upcommitsfile$OFF are all valid.
 EOF
 )
 	commit=$(git log --oneline -n1 $uphash)
+	echo "commit: $commit"
 	echo -e "Processing : $BLD${commit:0:$wcols}$OFF"
 	git cherry-pick "$uphash"
 	gitstat=$?
@@ -1221,7 +1224,7 @@ count_prj_items() {
 	local b_found_first_bool=false
 	local index
 
-	# echo -e "$UND\0count_prj_items$OFF"
+	echo -e "$UND\0count_prj_items$OFF"
 
 	# Init ui items
 	# -------------
@@ -1294,7 +1297,7 @@ count_prj_items() {
 check_prj_file() {
 	local stat
 
-	# echo -e "$UND\0check_prj_file$OFF"
+	echo -e "$UND\0check_prj_file$OFF"
 	count_prj_items
 
 	[[ -d "$MYDATA" ]] || mkdir $MYDATA
@@ -1304,6 +1307,7 @@ check_prj_file() {
 	#
 	prj_init_prjfile "$MYPRJ" $prj_entries disable_blank_check
 	stat=$?
+	# echo "stat: $stat"
 
 	# If the above call to prj_init_prjfile returns nonzero, it means that a
 	# new project file has been created and its values must be initialized.
@@ -1359,9 +1363,10 @@ save_session() {
 read_session() {
 	local stat
 
-	# echo -e "$UND\0read_session$OFF"
+	echo -e "$UND\0read_session$OFF"
 	check_prj_file
 	stat=$?
+	echo "check_prj_file stat: $stat"
 	[ $stat -eq 0 ] || return $stat
 
 	read_booleans
@@ -1387,10 +1392,15 @@ read_session() {
 #===============================================================================
 init_common() {
 
+	echo -e "$UND\0init_common$OFF"
 	$b_new && upcmtstartline=1
 
 	currentupcommit=$(ui_readline $upcmtstartline $upcommitsfile)
 	currentuphash=$(echo $currentupcommit | cut -d' ' -f1)
+	echo "upcommitsfile  : $upcommitsfile"
+	echo "upcmtstartline : $upcmtstartline"
+	echo "currentupcommit: $currentupcommit"
+	echo "currentuphash  : $currentuphash"
 
 	b_session_inited=true
 	b_new=false
@@ -1404,13 +1414,16 @@ init_common() {
 #       RETURNS:  none
 #===============================================================================
 init_cmdline_call() {
-	local newstr="Please type $BLD$MYNAME --new$OFF to start.\n"
+	local stat
+	local newstr="Please type $BLD$MYNAME new$OFF to start.\n"
 
-	# echo -e "$UND\0init_cmdline_call$OFF"
+	echo -e "$UND\0init_cmdline_call$OFF"
 
 	read_session
+	stat=$?
+	echo "init_cmdline_call stat: $stat"
 
-	[ $? -eq $prj_inconsistent ] || {
+	[ $? -eq $prj_inconsistant ] && {
 		echo -e "The project file is inconsistant.\n$newstr"
 		return 1
 	}
@@ -1452,7 +1465,7 @@ init_newsession() {
 	set_working_directory
 	set_upcommitsfile
 	set_gitbranch
-	read_booleans
+	read_booleansread_booleans
 
 	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
 	prj_set_item $prj_dnorighead $dnorighead
@@ -1467,13 +1480,13 @@ init_newsession() {
 #       GLOBALS:  upcommitsfile
 #                 $b_cmdline
 #    PARAMETERS:  none
-#       RETURNS:  none
+#       RETURNS:  None
 #===============================================================================
 run_me() {
 	local uphash
 	local stat
 
-	# echo -e "$UND\0run_me$OFF"
+	echo -e "$UND\0run_me$OFF"
 
 	$b_session_inited || { $b_cmdline && init_cmdline_call; }
 
