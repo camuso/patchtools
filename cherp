@@ -132,6 +132,7 @@ function print_herald {
 #       RETURNS:  None
 #===============================================================================
 function exit_cherp {
+	# echo -e "$UND\0exit_cherp $1$OFF"
 	$b_session_inited && save_session
 	exit $1
 }
@@ -269,7 +270,6 @@ function exec_boolean {
 #       RETURNS:  0
 #===============================================================================
 function init_booleans {
-
 	# echo -e "$UND\0init_booleans$OFF"
 
 	b_conflict=false
@@ -289,12 +289,13 @@ function init_booleans {
 #       RETURNS:  0
 #===============================================================================
 function read_booleans {
+	# echo -e "$UND\0read_booleans$OFF"
+
 	local index=$boolindex
 	local val
 	local emptyline="$(prj_get_emptyline)"
 
-	echo -e "$UND\0read_booleans$OFF"
-	echo "ui_bools: $ui_bools"
+	# echo "ui_bools: $ui_bools"
 	for bool in $ui_bools; do
 		val=$(prj_get_item $index)
 		eval $bool=$val
@@ -533,7 +534,7 @@ lookup_hash() {
 #===============================================================================
 set_next_cherrypick() {
 
-	# echo -e "$UND\0set_next_cherrypick$OFF"
+	echo -e "$UND\0set_next_cherrypick$OFF"
 	$b_cmdline && init_cmdline_call
 
 	local counter=0
@@ -625,15 +626,16 @@ getlasttag() {
 #    PARAMETERS:  none
 #       GLOBALS:  upcommitsfile
 #                 upcmtstartline
+#                 currentuphash
 #       OUTPUTS:  echoes the hash of next upstream commit in the commits file
 #       RETURNS:  1 if there are no more cherries to pick, else 0
 #===============================================================================
 get_next_cherrypick() {
+	# echo -e "$UND\0get_next_cherrypick$OFF start line: $upcmtstartline"
+
 	local idx
 	local line
 	local count=$(cat $upcommitsfile | wc -l)
-
-	# echo -e "$UND\0get_next_cherrypick$OFF start line: $upcmtstartline"
 
 	for ((idx=(upcmtstartline + 1); i <= count; ++idx)); do
 		line="$(ui_readline $idx $upcommitsfile)"
@@ -649,8 +651,33 @@ get_next_cherrypick() {
 	upcmtstartline=$idx
 	currentupcommit="$line"
 	currentuphash=$(echo $line | cut -d' ' -f1)
+	prj_set_item $prj_upcmtstartline $upcmtstartline
+
+	# cat .data/cherp.prj
 
 	return 0
+}
+
+#===  FUNCTION  ================================================================
+#          NAME:  get_current_cherrypick
+#   DESCRIPTION:  Gets the current commit in the commits file indicated by the
+#                 current upcmtstartline.
+#
+#                 Because get_next_cherrypick always pre-increments the
+#                 upcmtstartline, this routine will decrement the upcmtstartline
+#                 before calling get_next_cherrypick.
+#
+#    PARAMETERS:  none
+#       GLOBALS:  upcmtstartline
+#       OUTPUTS:  echoes the hash of next upstream commit in the commits file
+#       RETURNS:  status of call to get_next_cherrypick
+#===============================================================================
+get_current_cherrypick() {
+	# echo -e "$UND\0get_current_cherrypick upcmtstartline:$upcmtstartline$OFF"
+
+	let upcmtstartline--
+	get_next_cherrypick
+	return $?
 }
 
 #===  FUNCTION  ================================================================
@@ -674,7 +701,7 @@ EOF
 	$b_cmdline && statstr="    Next commit to cherrypick    :" \
 		   || statstr=" c  Next commit to cherrypick    :"
 
-	ui_readline $((upcmtstartline + 1)) $upcommitsfile >/dev/null 2>&1
+	get_current_cherrypick
 	[ $? -eq 0 ] && prstr="${currentupcommit:0:$cols}" || prstr="$eofstr"
 
 	local show_next_cherrypick_str=$(
@@ -746,14 +773,14 @@ show_history() {
 #       RETURNS:  none
 #===============================================================================
 show_status() {
+	# echo -e "$UND\0show_status$OFF"
+
 	local cols=$((tcols - menupad))
 	local subjectprefix="$(git config format.subjectprefix)"
 	local lasttag
 	local lastbrcmt
 	local orighead
 	local statstr
-
-	# echo -e "$UND\0show_status$OFF"
 
 	init_cmdline_call
 
@@ -793,6 +820,8 @@ EOF
 #       RETURNS:  none
 #===============================================================================
 function show_settings {
+	# echo -e "$UND\0show_settings$OFF"
+
 	local cols=$((tcols - menupad))
 	local subjectprefix="$(git config format.subjectprefix)"
 	local lasttag=$(cat $lasttagfile)
@@ -835,6 +864,8 @@ EOF
 #       	  continue looping.
 #===============================================================================
 function menu_parser {
+	# echo -e "$UND\0menu_parser$OFF"
+
 	local pops
 
 	validate_last_upstream_hash
@@ -927,7 +958,7 @@ edit_commit() {
 #===============================================================================
 abort_cherp() {
 	init_cmdline_call
-	git cherry-pick --abort
+	git cherry-pick --abort 2>/dev/null
 	b_conflict=false
 	exit_cherp $exit_good
 }
@@ -953,10 +984,11 @@ Resetting to: ${orighead:0:cols}
 EOF
 )
 	init_cmdline_call
-	git cherry-pick --abort
+	git cherry-pick --abort 2>/dev/null
 	git reset --hard $dnorighead
 	b_conflict=false
-	upcmtstartline=1
+	upcmtstartline=0
+	get_next_cherrypick
 	exit_cherp $exit_reset
 }
 
@@ -969,6 +1001,8 @@ EOF
 #       RETURNS:  none
 #===============================================================================
 run_continue() {
+	# echo -e "$UND\0run_continue$OFF"
+
 	local statstr=$(
 cat <<EOF
 You have made changes that must be committed before using "cherp continue".
@@ -979,7 +1013,6 @@ EOF
 	local gitstat=$(git status --porcelain)
 	[ "$gitstat" ] && { echo -e "$statstr"; git status; exit $exit_pending; }
 
-	# echo -e "$UND\0run_continue$OFF"
 	init_cmdline_call
 	git cherry-pick --continue
 	b_conflict=false
@@ -997,10 +1030,11 @@ EOF
 #       RETURNS:  none
 #===============================================================================
 run_commit() {
+	# echo -e "$UND\0run_commit$OFF"
+
 	local gitstat=$(git status --porcelain)
 	[ "$gitstat" ] || { git status && exit $exit_nothing; }
 
-	# echo -e "$UND\0run_commit$OFF"
 	init_cmdline_call
 	b_conflict=true
 	b_continue=false
@@ -1039,7 +1073,7 @@ run_single() {
 #       RETURNS:  non-zero if something went wrong
 #===============================================================================
 cherrypick() {
-	echo -e "$UND\0cherrypick$OFF"
+	# echo -e "$UND\0cherrypick$OFF"
 
 	local uphash=$currentuphash
 	local gitstat
@@ -1220,11 +1254,11 @@ EOF
 #       RETURNS:  none
 #===============================================================================
 count_prj_items() {
+	# echo -e "$UND\0count_prj_items$OFF"
+
 	local boolcount=0
 	local b_found_first_bool=false
 	local index
-
-	echo -e "$UND\0count_prj_items$OFF"
 
 	# Init ui items
 	# -------------
@@ -1295,9 +1329,10 @@ count_prj_items() {
 #       RETURNS:  status from call to prj_init_prjfile
 #===============================================================================
 check_prj_file() {
+	# echo -e "$UND\0check_prj_file$OFF"
+
 	local stat
 
-	echo -e "$UND\0check_prj_file$OFF"
 	count_prj_items
 
 	[[ -d "$MYDATA" ]] || mkdir $MYDATA
@@ -1361,14 +1396,14 @@ save_session() {
 #       RETURNS:  stat, the value returned by the call to check_prj_file
 #===============================================================================
 read_session() {
+	# echo -e "$UND\0read_session$OFF"
+
 	local stat
 
-	echo -e "$UND\0read_session$OFF"
 	check_prj_file
 	stat=$?
-	echo "check_prj_file stat: $stat"
+	# echo "check_prj_file stat: $stat"
 	[ $stat -eq 0 ] || return $stat
-
 	read_booleans
 
 	upcmtstartline=$(prj_get_item $prj_upcmtstartline)
@@ -1381,6 +1416,7 @@ read_session() {
 	[ "$dnorighead" ]     || return 1
 	[ "$workdir" ]        || return 1
 	[ "$upcommitsfile" ]  || return 1
+
 	return $stat
 }
 
@@ -1391,16 +1427,10 @@ read_session() {
 #       RETURNS:  none
 #===============================================================================
 init_common() {
+	# echo -e "$UND\0init_common$OFF"
 
-	echo -e "$UND\0init_common$OFF"
-	$b_new && upcmtstartline=1
-
-	currentupcommit=$(ui_readline $upcmtstartline $upcommitsfile)
-	currentuphash=$(echo $currentupcommit | cut -d' ' -f1)
-	echo "upcommitsfile  : $upcommitsfile"
-	echo "upcmtstartline : $upcmtstartline"
-	echo "currentupcommit: $currentupcommit"
-	echo "currentuphash  : $currentuphash"
+	$b_new	&& upcmtstartline=1
+	get_current_cherrypick
 
 	b_session_inited=true
 	b_new=false
@@ -1414,14 +1444,13 @@ init_common() {
 #       RETURNS:  none
 #===============================================================================
 init_cmdline_call() {
+	# echo -e "$UND\0init_cmdline_call$OFF"
+
 	local stat
 	local newstr="Please type $BLD$MYNAME new$OFF to start.\n"
 
-	echo -e "$UND\0init_cmdline_call$OFF"
-
 	read_session
 	stat=$?
-	echo "init_cmdline_call stat: $stat"
 
 	[ $? -eq $prj_inconsistant ] && {
 		echo -e "The project file is inconsistant.\n$newstr"
@@ -1439,8 +1468,8 @@ init_cmdline_call() {
 #       RETURNS:  none
 #===============================================================================
 init_session() {
-
 	# echo -e "$UND\0init_session$OFF"
+
 	read_session
 	# [ $? -eq 0 ] || { init_newsession && return; }
 
@@ -1487,6 +1516,7 @@ run_me() {
 	local stat
 
 	echo -e "$UND\0run_me$OFF"
+	$b_session_inited && echo "session inited" || echo "session NOT inited"
 
 	$b_session_inited || { $b_cmdline && init_cmdline_call; }
 
