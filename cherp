@@ -691,6 +691,8 @@ get_current_cherrypick() {
 show_next_cherrypick() {
 	local linecount
 	local prstr
+	local statstr
+	local leadstr
 	local cols=$((tcols - menupad))
 	local eofstr=$(
 cat <<EOF
@@ -698,8 +700,9 @@ $currentuphash was the last commit in file: $upcommitsfile
 
 EOF
 )
-	$b_cmdline && statstr="    Next commit to cherrypick    :" \
-		   || statstr=" c  Next commit to cherrypick    :"
+	$b_cmdline && leadstr="    " || leadstr=" c  "
+	$b_conflict && statstr="Current conflicted cherrypick:" \
+		    || statstr="Next commit to cherrypick    :"
 
 	get_current_cherrypick
 	[ $? -eq 0 ] && prstr="${currentupcommit:0:$cols}" || prstr="$eofstr"
@@ -707,7 +710,7 @@ EOF
 	local show_next_cherrypick_str=$(
 cat <<EOF
 
-$statstr $OFF$prstr$BLD
+$leadstr$statstr $OFF$prstr$BLD
 EOF
 )
 	[ "$currentuphash" == "" ] || echo -e "$show_next_cherrypick_str"
@@ -799,7 +802,7 @@ cat <<EOF
 $BLD
     File of upstream commits     : $OFF$upcommitsfile$BLD\
 $(show_most_recent_cherrypick)\
-$(show_next_cherrypick getstat)
+$(show_next_cherrypick)
     Current downstream branch    : $OFF$(get_gitbranch)$BLD
     Current downstream head      : $OFF${lastbrcmt:0:cols}$BLD
     Original downstream head     : $OFF${orighead:0:cols}
@@ -1475,7 +1478,7 @@ init_session() {
 
 	read_booleans
 	init_common
-	$b_cmdline && exit_cherp $exit_good
+	# $b_cmdline && exit_cherp $exit_good
 }
 
 #===  FUNCTION  ================================================================
@@ -1494,7 +1497,7 @@ init_newsession() {
 	set_working_directory
 	set_upcommitsfile
 	set_gitbranch
-	read_booleansread_booleans
+	read_booleans
 
 	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
 	prj_set_item $prj_dnorighead $dnorighead
