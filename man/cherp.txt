@@ -21,6 +21,7 @@ setup    - run the cherp menu to setup the runtime environment
 status   - show the cherp session status and git status
 version  - show this version of the cherp script
 
+Invoking cherp with no commands presents the cherp menu.
 
 This script will cherry-pick commits from a git branch into the current
 branch.
@@ -35,32 +36,11 @@ git log <starting-commit> --oneline --no-merges --reverse > filename
 You can edit the resulting file to put a leading # on the upstream
 commits that you want to skip over.
 
-Commit logs are automatically generated, but, if "Automate commits"
-is false, the user is given the opportunity to edit them before moving
-on to the next commit. If "Automate commits" is true, the commit will
-be made without user intervention.
-
-If a conflict or other problem arises when a commit is cherry-picked,
-the user is notified and given the option to exit into a shell to fix
-the problems. If "Automate commits" is true, then the shell will be
-spawned automatically with a message detailing how to return to the
-script or exit to the shell from which the script was launched.
-
-After resolving a conflict and exiting from the subshell, the commit
-log will be automatically generated, but the user will always have
-the opportunity to edit it, even if "Automate commits" is true. This
-allows the user to explain that there was a conflict and how it was
-resolved.
+Commit logs are automatically generated.
 
 The user can type control-c at anytime to exit the script, and a best
 effort will be made to assure the user's tree is left in a coherent
 state.
-
-The user may optionally pickup where s/he left off after exiting the
-script, if the most recent commit saved in the script's project file
-is in the "Source commits file". The script will start processing
-at the commit after the moset recent commit saved in the script's
-project file.
 
 All Environmental variables and options are sticky across invocations
 of this script by use of a project file in which to store their most
@@ -77,93 +57,6 @@ Terminology:
 	git branch after having applied cherry-picked commits from the
 	upstream branch. Backported commits are used to generate the
 	backport patch set.
-
-Environment:
-
-	Most recent tag.
-	Shows the most recent tag in the current branch
-
-	Current head
-	Shows the current head of the current branch as
-	git log --oneline truncated to 40 charachters.
-
-	Last Upstream Commit Picked
-	This is only visible if the following conditions are met.
-
-	* There is a "Source commits file"
-
-	* There was a commit hash saved in the script's project file the
-	  last time it was running.
-
-	* The commit hash that was saved is also in the "Source commits
-	  file.
-
-Settable Environment Variables:
-
-	b  Current git branch
-	   This is the branch to which you want to backport upstream
-	   commits
-
-	p  Current subject prefix
-	   User can set the subject prefix for resulting patch files.
-
-	w  Working directory
-	   This directory will contain the patches that are automatic-
-	   ally created, if that option is set true. This directory
-	   will also contain scratch files for the working script.
-	   Each commit must be on a separate line, one line per
-	   commit, with the earliest commit at the top of the file,
-	   and the most recent at the bottom.
-
-	s  Source commits file
-	   This must be a complete path to the file containing the
-	   upstream commits to be cherry-picked. The file is best
-	   generated with the following git command.
-
-	   git log <starting-commit> --oneline --no-merges --reverse
-
-	   Where starting-commit is actually the commit preceeding
-	   the one you want to start from.
-
-	d  Destination commits file
-	   This is a complete path to a file that will be used to contain
-	   the backported commits in the current branch. If the file does
-	   not exist, it will be created. Commits will be saved in this
-	   file in "git log --oneline" format.
-
-Options:
-
-	The script's Parameters will be toggled "true" or "false"
-	when the corresponding number is pressed. These parameters
-	are stored in a file and are sticky across invokations of the
-	script
-
-	a  Automate commits
-	   The script can automatically generate the commit messages
-	   and commit the backports to the Current Git Branch, or you
-	   can opt to manually commit the backports and create the commit
-	   messages.
-
-	c  Create a patchset
-	   If true, the script will generate a patch set from the backports
-	   when you signal that you are finished cherry-picking.
-
-Control:
-
-	i  Init all options to their default values
-
-	C  Clean the working directory
-
-	q  Quit this script
-
-	x  Exit to a shell.
-
-	h  Display this help text
-
-	>  Continue the cherry-pick/backport from the last upstream commit.
-	   See "Last Upstream Commit Picked" above.
-
-	r  Run the cherry-pick/backport part of the script.
 
 Session Capture:
 
