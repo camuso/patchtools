@@ -3,6 +3,25 @@ cherp
 
 Type 'q' at any time to exit this help.
 
+Command Line
+------------
+abort    - abort the current cherrypick
+branch   - select a different git branch
+continue - continue after resolving conflict and committing change
+commit   - continue, but let script commit changes and create commit log
+help     - display this help
+history  - show commits so far this session
+new      - start a new session
+pick <h> - cherry pick one hash specified by <h>
+pop <n>  - pop <n> commits from the current working git branch
+reset    - hard reset git HEAD to start of session
+run      - run the cherrypick automation
+select   - select the next cherrypick from the presented list
+setup    - run the cherp menu to setup the runtime environment
+status   - show the cherp session status and git status
+version  - show this version of the cherp script
+
+
 This script will cherry-pick commits from a git branch into the current
 branch.
 
@@ -13,8 +32,8 @@ following git command.
 
 git log <starting-commit> --oneline --no-merges --reverse > filename
 
-If this file is present, then commits will be taken from the file,
-rather than one at a time from a prompt.
+You can edit the resulting file to put a leading # on the upstream
+commits that you want to skip over.
 
 Commit logs are automatically generated, but, if "Automate commits"
 is false, the user is given the opportunity to edit them before moving
