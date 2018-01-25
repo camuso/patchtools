@@ -1084,24 +1084,24 @@ cherrypick() {
 	local conflictmsg=$(
 cat <<EOF
 
-$UND\0You have conflicts to fix.$OFF
-You can reenter cherp with the following switches to continue.
+$UND$BLD\0You have conflicts to fix.$OFF
 
-$BLD--commit$OFF   : if you have fixed the conflicts and want the script to stage
-             the commit and create the commit log for you.
+After fixing the conflicts, you can reenter cherp with the following commands.
 
-$BLD--continue$OFF : if you have fixed the conflicts and made the commit externally
-             and wish to continue with the next upstream commit in:
-             $BLD$upcommitsfile$OFF
+$BLD\0cherp commit$OFF   : if you have fixed the conflicts and want the script to stage
+                 the commit and create the commit log for you.
 
+$BLD\0cherp continue$OFF : if you have fixed the conflicts and made the commit externally
+                 and wish to continue with the next cherrypick.
+\0
 EOF
 )
 	local bogusmsg=$(
 cat <<EOF
 
 Upstream commit hash $BLD$uphash$OFF appears to be bogus.
-Make sure the hases in $BLD$upcommitsfile$OFF are all valid.
-
+Make sure the hashes in $BLD$upcommitsfile$OFF are all valid.
+\0
 EOF
 )
 	commit=$(git log --oneline -n1 $uphash)
@@ -1113,13 +1113,13 @@ EOF
 	# If cherry-pick returns with 128, the commit was invalid or
 	# ambiguous.
 	#
-	[ $gitstat -eq 128 ] && exit_cherp $exit_bogus
+	[ $gitstat -eq 128 ] && { echo -e "$bogusmsg"; exit_cherp $exit_bogus; }
 
 	# If cherry-pick returns with nonzero other than 128, then a
 	# conflict is indicated.
 	#
 	[ $gitstat -eq 0 ] || {
-		echo -e "$conflictsmsg"
+		echo -e "$conflictmsg"
 		b_conflict=true
 		$b_single && exit $exit_conflict
 		exit_cherp $exit_conflict
@@ -1515,11 +1515,10 @@ init_newsession() {
 #       RETURNS:  None
 #===============================================================================
 run_me() {
+	# echo -e "$UND\0run_me$OFF"
+
 	local uphash
 	local stat
-
-	echo -e "$UND\0run_me$OFF"
-	$b_session_inited && echo "session inited" || echo "session NOT inited"
 
 	$b_session_inited || { $b_cmdline && init_cmdline_call; }
 
@@ -1672,7 +1671,7 @@ else
 			reset_cherp
 			;;
 		-r | "--run" )
-			run_me true
+			run_me
 			;;
 		"--select" )
 			set_next_cherrypick
