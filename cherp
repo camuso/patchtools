@@ -88,7 +88,7 @@ declare lasttagfile="/dev/shm/gcplasttag"
 
 declare b_new=false		# new session
 declare b_continue=false	# continue session
-declare b_single=false		# only perform single cherrypick, no menu
+declare b_single=false		# only perform single cherrypick
 
 declare gitbranch
 declare ui_bools=""
@@ -701,7 +701,7 @@ $currentuphash was the last commit in file: $upcommitsfile
 EOF
 )
 	$b_cmdline && leadstr="    " || leadstr=" c  "
-	$b_conflict && statstr="Current conflicted cherrypick:" \
+	$b_conflict && statstr="Current conflict cherrypick  :" \
 		    || statstr="Next commit to cherrypick    :"
 
 	get_current_cherrypick
@@ -770,7 +770,8 @@ show_history() {
 #===  FUNCTION  ===============================================================
 #          NAME:  show_status
 #   DESCRIPTION:  show the current status
-#    PARAMETERS:  none
+#    PARAMETERS:  $1 - If this argument is not empty, then forego the
+#                      init_cmdline_call
 #       GLOBALS:  tcols - number of columns in the current terminal
 #                 menupad - number of to the dynamic menu items
 #       RETURNS:  none
@@ -785,7 +786,7 @@ show_status() {
 	local orighead
 	local statstr
 
-	init_cmdline_call
+	[ "$1" ] || init_cmdline_call
 
 	# [ -f lasttagfile ] || git describe --tags --abbrev=0 > $lasttagfile
 	# lasttag=$(cat $lasttagfile)
@@ -1073,6 +1074,7 @@ run_single() {
 #                 currentuphash
 #                 lastuphash
 #                 b_conflict
+#                 b_single
 #       RETURNS:  non-zero if something went wrong
 #===============================================================================
 cherrypick() {
@@ -1093,7 +1095,6 @@ $BLD\0cherp commit$OFF   : if you have fixed the conflicts and want the script t
 
 $BLD\0cherp continue$OFF : if you have fixed the conflicts and made the commit externally
                  and wish to continue with the next cherrypick.
-\0
 EOF
 )
 	local bogusmsg=$(
@@ -1119,9 +1120,10 @@ EOF
 	# conflict is indicated.
 	#
 	[ $gitstat -eq 0 ] || {
-		echo -e "$conflictmsg"
 		b_conflict=true
-		$b_single && exit $exit_conflict
+		$b_single && git status && exit $exit_conflict
+		echo -e "$conflictmsg"
+		show_status internal
 		exit_cherp $exit_conflict
 	}
 
