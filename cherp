@@ -5,7 +5,7 @@
 # Provide some automation for cherrypicking.
 #
 
-VERSION="1.1"
+VERSION="2.0"
 
 #######################################
 # Default file locations
@@ -584,7 +584,7 @@ validate_last_upstream_hash() {
 
 	lasthashvalid=true
 
-	# If we don't have a commits file, we are interactive, so show nothing
+	# If we don't have a commits file, show nothing
 	#
 	[[ -f $upcommitsfile ]] || lasthashvalid=false
 
@@ -632,6 +632,8 @@ getlasttag() {
 #===============================================================================
 get_next_cherrypick() {
 	# echo -e "$UND\0get_next_cherrypick$OFF start line: $upcmtstartline"
+
+	[[ -f $upcommitsfile ]] || return 1
 
 	local idx
 	local line
@@ -785,18 +787,16 @@ show_status() {
 	local lastbrcmt
 	local orighead
 	local statstr
+	local b_internal
 
-	[ "$1" ] || init_cmdline_call
+	[ "$1" ] && b_internal=true || b_internal=false
+
+	$b_internal || init_cmdline_call
 
 	# [ -f lasttagfile ] || git describe --tags --abbrev=0 > $lasttagfile
 	# lasttag=$(cat $lasttagfile)
 	lastbrcmt=$(git log -n1 --oneline)
 	orighead=$(git log --oneline -n1 $dnorighead)
-
-	[ "$upcommitsfile" ] || {
-		echo -e "There is no file of commits to cherrypick.\n$newstr"
-		return 1
-	}
 
 	statstr=$(
 cat <<EOF
@@ -812,7 +812,7 @@ EOF
 )
 	echo -e "$statstr"
 	git status
-	exit 0
+	$b_internal || exit 0
 }
 
 #===  FUNCTION  ===============================================================
@@ -1349,19 +1349,6 @@ check_prj_file() {
 	stat=$?
 	# echo "stat: $stat"
 
-	# If the above call to prj_init_prjfile returns nonzero, it means that a
-	# new project file has been created and its values must be initialized.
-	#
-	if [ $stat -ne 0 ]; then
-
-		# If this is a status call, then return with the status now.
-		#
-		$b_cmdline && return $stat
-
-		# echo
-		# echo "A new project file has been created."
-	fi
-
 	return $stat
 }
 
@@ -1435,7 +1422,7 @@ init_common() {
 	# echo -e "$UND\0init_common$OFF"
 
 	$b_new	&& upcmtstartline=1
-	get_current_cherrypick
+	[ -f "$upcommitsfile" ] && get_current_cherrypick
 
 	b_session_inited=true
 	b_new=false
@@ -1478,7 +1465,6 @@ init_session() {
 	read_session
 	# [ $? -eq 0 ] || { init_newsession && return; }
 
-	read_booleans
 	init_common
 	# $b_cmdline && exit_cherp $exit_good
 }
