@@ -566,6 +566,7 @@ set_next_cherrypick() {
 	loop_range_q 1 $idx selected
 	[ "$selected" = "q" ] || upcmtstartline=${linary[$((selected - 1))]}
 	currentupcommit="$(ui_readline $upcmtstartline $upcommitsfile)"
+	# echo "currentupcommit: $currentupcommit"
 	currentuphash=$(echo $currentupcommit | cut -d' ' -f1)
 	$b_cmdline && exit_cherp $exit_good
 }
@@ -703,7 +704,7 @@ $currentuphash was the last commit in file: $upcommitsfile
 EOF
 )
 	$b_cmdline && leadstr="    " || leadstr=" c  "
-	$b_conflict && statstr="Current conflict cherrypick  :" \
+	$b_conflict && statstr="Current cherrypick conflict  :" \
 		    || statstr="Next commit to cherrypick    :"
 
 	get_current_cherrypick
@@ -1427,7 +1428,6 @@ init_common() {
 	b_session_inited=true
 	b_new=false
 }
-
 
 #===  FUNCTION  ===============================================================
 #          NAME:  init_cmdline_call
