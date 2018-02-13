@@ -74,7 +74,6 @@ declare dnorighead		# original downstream head at new session
 declare lastuphash		# most recently applied upstream commit hash
 declare workdir			# scratch directory for the session
 declare upcommitsfile		# File of upstream commits to cherry-pick
-declare us
 declare b_conflict		# last attempt generated a conflict
 
 #########################################
@@ -172,8 +171,6 @@ $OFF
 \0
 EOF
 )
-	$b_cmdline && init_cmdline_call
-
 	echo
 	echo -e "Select the number of the branch you want to use or press $qstr"
 	echo -e "to leave the current selection highlighted below."
@@ -189,10 +186,7 @@ EOF
 
 	# echo -e "$brmsg"
 	loop_range_q 1 $((index - 1)) linenumber
-
-	if [ "$linenumber" == "q" ]; then
-		$b_cmdline && exit_cherp $exit_nothing || return 1
-	fi
+	[ $? -ne 0 ] && return 0
 
 	gitbranch="$(ui_readline $linenumber $workdir/branchlist | tr -d [\*" "])"
 	echo "git checkout "$gitbranch""
@@ -1480,12 +1474,10 @@ init_newsession() {
 	# echo -e "\n$UND\0init_newsession$OFF"
 
 	read_session
-
 	init_booleans
 	set_working_directory
 	set_upcommitsfile
 	set_gitbranch
-	read_booleans
 
 	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
 	prj_set_item $prj_dnorighead $dnorighead
