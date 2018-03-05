@@ -653,7 +653,7 @@ function ui_digit2bool {
 
 # ui_strindex string-1 string-2
 #
-# Return zero-based index of string-2 in string-1
+# Return zero-based index of the first instance of string-2 in string-1
 # Returns -1 if string-2 is not found in string-1
 #
 function ui_strindex {
