@@ -248,7 +248,6 @@ nuke() {
 # 	indir
 # 	outdir
 # 	lasttag
-# 	gitbranch
 # 	infilecount
 # 	patstr
 # 	editor
@@ -263,7 +262,7 @@ $BLD
     $UND\0Environment       $OFF$BLD
     Most recent tag         :$OFF $lasttag$BLD
     Current Head            :$OFF $current_head_trunc$BLD
- b  Current git branch      :$OFF $gitbranch$BLD
+ b  Current git branch      :$OFF $(git_getcurrentbranch)$BLD
  d  $indirstr directory         :$OFF $indir$BLD has$OFF $infilecount$BLD $patstr\0files
  w  $outdirstr directory          :$OFF $outdir$BLD
  e  Diff Editor             :$OFF $editor$BLD
@@ -300,7 +299,6 @@ menu_parser() {
 
 		b )	git_setbranch $branchlist
 			git_get_lasttag lasttag $last_tag_file
-			gitbranch=$(git_getcurrentbranch)
 			;;
 		d )	prj_set_directory "$indirstr" $prj_indir indir quiet
 			;;
