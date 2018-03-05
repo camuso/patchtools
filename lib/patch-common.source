@@ -10,7 +10,7 @@
 #
 # MYLIB must be defined in the file that includes this one.
 
-version="7.1"
+version="7.2"
 
 b_ui_int_first_getyn=false	# For lib/ui.source
 
@@ -47,7 +47,6 @@ declare b_found_first_bool=false
 declare b_selpat=false
 declare b_allapplied=false
 declare infilecount=0
-declare gitbranch=$(git_getcurrentbranch)
 
 declare us_commits_name="us-commits.log"	# upstream commits log filename
 declare bp_commits_name="bp-commits.log"	# backport commits log filename
@@ -98,9 +97,10 @@ declare -i applyfailmode_states=3
 declare -i startpat=1
 declare -i menucols=30
 
-declare rhel6kernstr="kernel-2.6.32"
-declare rhel7kernstr="kernel-3.10.0"
-declare pegaskernstr="kernel-alt-"
+declare el6="el6"
+declare el7="el7"
+declare el7a="el7a"
+declare el8="el8"
 
 ########################################
 # Function Return Codes
@@ -125,6 +125,8 @@ control_c()
 	echo -en "\nCtrl-c detected\nCleaning up and exiting.\n"
 	exit_me $CTLC_EXIT
 }
+
+function test_sanity { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
 
 # test_editor() - tests for the existence of the chosen editor
 #
@@ -571,7 +573,7 @@ show_branch_mismatch() {
 # check_patchvbranch - see if the patch names match the branch
 #
 # Globals
-# 	rhel*str, pegas*str - strings that represent the correspoinding kernels
+# 	rhel*str, pegas*str - strings that represent the corresponding kernels
 # 	indir - directory containing the RHEL patches
 #	krnstrlen - length of the string that defines which kernel
 # 	lasttag
@@ -579,9 +581,10 @@ show_branch_mismatch() {
 check_patchvbranch() {
 	local pat
 	local dist
+	local distname
 	local tag
 	local krn
-	local krnstr=""
+	local elstr=""
 	local yn=false
 	local ary
 	local i
@@ -591,13 +594,17 @@ check_patchvbranch() {
 	# See if there are any .patch files in the $indir
 	#
 	stat $indir/*.patch > /dev/null 2>&1
-	[ $? -eq 0 ] || return 1
+	[ $? -eq 0 ] || {
+		echo -e "\nNo .patch files in $BLD$indir$OFF"
+		ui_press_any
+		return 1
+	}
 
 	pat=$(ls -1 $indir/*.patch | head -1)
 	pat=$(basename $pat)
 
-	# Replace non-alphanumerics with a hyphen, then delete the leading
-	# hyphen that replaced the left bracket '['
+	# Replace non-alphanumerics with a hyphen, then delete any leading
+	# hyphen.
 	#
 	pat=$(echo "$pat" | sed 's/[^[:alnum:]]\+/-/g')
 	pat=$(echo "$pat" | sed "s/^-//g")
@@ -629,29 +636,30 @@ check_patchvbranch() {
 	    [[ "$dist" == "rhel" ]] && dist="$dist""${ary[i+1]}"
 
 	    case "${dist:0:5}" in
-		"rhel6" ) krnstr="$rhel6kernstr"; break;;
-		"rhel7" ) krnstr="$rhel7kernstr"; break;;
-		"pegas" ) krnstr="$pegaskernstr"; break;;
+		"rhel6" ) elstr="$el6" ; distname="RHEL6"     ; break;;
+		"rhel7" ) elstr="$el7" ; distname="RHEL7"     ; break;;
+		"rhel8" ) elstr="$el8" ; distname="RHEL8"     ; break;;
+		"pegas" ) elstr="$el7a"; distname="RHEL7-ALT" ; break;;
 		      * ) continue
 	    esac
 	done
 
-	# Tokenize the current kernel branch tag and the krnstr
+	# Tokenize the current kernel branch tag.
 	#
-	ui_strtok "$lasttag" "-" tag
-	ui_strtok "$krnstr" "-" krn
+	ui_strtok "$lasttag" ".-" tag
 
-	# The second token will be the determining factor to see if the tag
-	# matches the kernel.
+	# The last token will be the determining factor to see if the tag
+	# matches the distro (el*).
 	#
-	[ "${tag[1]}" == "${krn[1]}" ] || show_branch_mismatch "$dist" yn
+	[ "${tag[((${#tag} - 1))]}" == "$elstr" ] \
+		|| show_branch_mismatch "$distname" yn
 
 	# Restore case sensitivity
 	#
 	shopt -u nocasematch
 
 	# If user did not opt to switch branches, then user wants to apply
-	# patches to current branch, even though they appear to the script
+	# patches to current branch, even when they appear to the script
 	# to be mismatched.
 	# If the user did switch branches, call this routine recursively to
 	# see if s/he chose the correct branch.
@@ -772,6 +780,7 @@ exec_apply_patches(){
 	git am --abort 2>/dev/null
 	patchcount=0
 	check_patchvbranch
+	[ $? -eq 0 ] || return 1
 	apply_patches
 	stat=$?
 	[ $stat -ne 0 ] && [ $applyfailmode -eq $applyfailmode_menu ] \
