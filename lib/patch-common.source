@@ -651,7 +651,7 @@ check_patchvbranch() {
 	# The last token will be the determining factor to see if the tag
 	# matches the distro (el*).
 	#
-	[ "${tag[((${#tag} - 1))]}" == "$elstr" ] \
+	[ "${tag[((${#tag[@]} - 1))]}" == "$elstr" ] \
 		|| show_branch_mismatch "$distname" yn
 
 	# Restore case sensitivity
