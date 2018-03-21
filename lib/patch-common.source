@@ -580,14 +580,17 @@ show_branch_mismatch() {
 #
 check_patchvbranch() {
 	local pat
+	local subject
+	local pfx
 	local dist
 	local distname
 	local tag
-	local krn
 	local elstr=""
 	local yn=false
-	local ary
 	local i
+	local j
+	local b_pegas=false
+
 
 	[ $indir ] || return 1
 
@@ -600,49 +603,59 @@ check_patchvbranch() {
 		return 1
 	}
 
+	# Get the subject line from the first patch and remove "Subject:"
 	pat=$(ls -1 $indir/*.patch | head -1)
-	pat=$(basename $pat)
+	subject=$(grep 'Subject: ' -m1 $pat)
+	subject=${subject//"Subject: "/}
 
-	# Replace non-alphanumerics with a hyphen, then delete any leading
-	# hyphen.
-	#
-	pat=$(echo "$pat" | sed 's/[^[:alnum:]]\+/-/g')
-	pat=$(echo "$pat" | sed "s/^-//g")
+	# Convert to upper case
+	pfx="$(echo "$subject" | tr [a-z] [A-Z])"
 
-	# If the last character is a hyphen, remove it.
-	#
-	[ "${subject:(-1)}" = "-" ] && subject=${subject%?}
+	# The Prefix must begin with a '[RHEL'. If it does not, then advise
+	# the user and offer to run anyway, or return to the main menu.
+	i=$(ui_strindex "$pfx" "[RHEL")
 
-	# Tokenize the patchname using '-' as the token separator
-	#
-	ui_strtok "$pat" "-" ary
+	if [ $i -lt 0 ]; then
+		echo "$subject"
+		echo "...does not appear to be a RHEL patch or series"
+		getyn "Do you wish to continue anyway?" yn
+		$yn || return 1
+	fi
 
-	# Ignore case in this block
-	#
-	shopt -s nocasematch
+	# Now find the end of the RHEL prefix at the right bracket.
+	j=$(ui_strindex "${pfx:$i}" "]")
 
-	for ((i = 0; i < ${#ary}; ++i)); do
+	# Extract the text between the brackets [] to get the series prefix.
+	# Brackets [] must be escaped for sed.
+	# Only the text between the last two brackets will be extracted.
+	# pfx=$(echo "$subject" | sed -nr 's/.*\[(.*)\].*/\1/p')
+	pfx="${pfx:$((i+1)):$((j-1))}"
 
-	    dist="${ary[i]}"
+	# If there is "alt" anywhere in the prefix, then set the
+	# pegas flag.
+	[[ "$pfx" = *"ALT"* ]] && b_pegas=true
 
-	    # If this is an Alt kernel, then it is pegas
-	    #
-	    [[ "${ary[i+1]}" == "alt" ]] && dist="pegas"
+	# If it exists, remove the "ALT" string to get the basic distro.
+	$b_pegas && dist="${pfx//ALT/}" || dist="$pfx"
 
-	    # It's possible that the distribution string had a hyphen in it, in
-	    # which case the distro major release will be a separate token. If
-	    # so, append the distro major release to the distribution string.
-	    #
-	    [[ "$dist" == "rhel" ]] && dist="$dist""${ary[i+1]}"
+	# Now remove any hyphens
+	dist="${dist//-/}"
 
-	    case "${dist:0:5}" in
-		"rhel6" ) elstr="$el6" ; distname="RHEL6"     ; break;;
-		"rhel7" ) elstr="$el7" ; distname="RHEL7"     ; break;;
-		"rhel8" ) elstr="$el8" ; distname="RHEL8"     ; break;;
-		"pegas" ) elstr="$el7a"; distname="RHEL7-ALT" ; break;;
-		      * ) continue
-	    esac
-	done
+	# Find the "rhel" string
+	i=$(ui_strindex "$dist" "RHEL")
+
+	if [ $i -lt 0 ]; then
+		distname="$pfx"
+		elstr=""
+	else
+		case "${dist:$i:5}" in
+			"RHEL6" ) elstr="$el6" ; distname="RHEL6" ;;
+			"RHEL7" ) elstr="$el7" ; distname="RHEL7" ;;
+			"RHEL8" ) elstr="$el8" ; distname="RHEL8" ;;
+		esac
+
+		$b_pegas && distname="${distname}-ALT" && elstr="${elstr}a"
+	fi
 
 	# Tokenize the current kernel branch tag.
 	#
@@ -653,10 +666,6 @@ check_patchvbranch() {
 	#
 	[ "${tag[((${#tag[@]} - 1))]}" == "$elstr" ] \
 		|| show_branch_mismatch "$distname" yn
-
-	# Restore case sensitivity
-	#
-	shopt -u nocasematch
 
 	# If user did not opt to switch branches, then user wants to apply
 	# patches to current branch, even when they appear to the script
