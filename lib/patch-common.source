@@ -99,7 +99,6 @@ declare -i menucols=30
 
 declare el6="el6"
 declare el7="el7"
-declare el7a="el7a"
 declare el8="el8"
 
 ########################################
@@ -589,6 +588,7 @@ check_patchvbranch() {
 	local yn=false
 	local i
 	local j
+	local ary
 	local b_pegas=false
 
 
@@ -611,9 +611,12 @@ check_patchvbranch() {
 	# Convert to upper case
 	pfx="$(echo "$subject" | tr [a-z] [A-Z])"
 
-	# The Prefix must begin with a '[RHEL'. If it does not, then advise
+	# Remove the word PATCH if it's there
+	pfx="${pfx//"PATCH"/}"
+
+	# The Prefix must begin with a 'RHEL'. If it does not, then advise
 	# the user and offer to run anyway, or return to the main menu.
-	i=$(ui_strindex "$pfx" "[RHEL")
+	i=$(ui_strindex "$pfx" "RHEL")
 
 	if [ $i -lt 0 ]; then
 		echo "$subject"
@@ -622,14 +625,15 @@ check_patchvbranch() {
 		$yn || return 1
 	fi
 
+
 	# Now find the end of the RHEL prefix at the right bracket.
-	j=$(ui_strindex "${pfx:$i}" "]")
+	j=$(ui_strindex "$pfx" "]")
 
 	# Extract the text between the brackets [] to get the series prefix.
 	# Brackets [] must be escaped for sed.
 	# Only the text between the last two brackets will be extracted.
 	# pfx=$(echo "$subject" | sed -nr 's/.*\[(.*)\].*/\1/p')
-	pfx="${pfx:$((i+1)):$((j-1))}"
+	pfx="${pfx:$i:$((j-i))}"
 
 	# If there is "alt" anywhere in the prefix, then set the
 	# pegas flag.
@@ -638,20 +642,23 @@ check_patchvbranch() {
 	# If it exists, remove the "ALT" string to get the basic distro.
 	$b_pegas && dist="${pfx//ALT/}" || dist="$pfx"
 
-	# Now remove any hyphens
-	dist="${dist//-/}"
+	# Tokenize the dist so we can extract just the RHEL and its version
+	# numbers.
+	ui_strtok "$dist" "- " ary
 
-	# Find the "rhel" string
-	i=$(ui_strindex "$dist" "RHEL")
+	# The first two tokens in the array should be RHEL and its version.
+	dist=${ary[0]}${ary[1]}
 
+	# If i -lt 0, it means this is not a RHEL patch, distname is "NOT RHEL"
 	if [ $i -lt 0 ]; then
-		distname="$pfx"
+		distname="NOT RHEL"
 		elstr=""
 	else
-		case "${dist:$i:5}" in
-			"RHEL6" ) elstr="$el6" ; distname="RHEL6" ;;
-			"RHEL7" ) elstr="$el7" ; distname="RHEL7" ;;
-			"RHEL8" ) elstr="$el8" ; distname="RHEL8" ;;
+		case "${dist:0:5}" in
+			"RHEL6" ) elstr="$el6" ; distname="$dist" ;;
+			"RHEL7" ) elstr="$el7" ; distname="$dist" ;;
+			"RHEL8" ) elstr="$el8" ; distname="$dist" ;;
+			      * ) elstr=""     ; distname="NOT RHEL" ;;
 		esac
 
 		$b_pegas && distname="${distname}-ALT" && elstr="${elstr}a"
