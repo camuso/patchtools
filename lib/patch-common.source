@@ -618,42 +618,43 @@ check_patchvbranch() {
 	# the user and offer to run anyway, or return to the main menu.
 	i=$(ui_strindex "$pfx" "RHEL")
 
+	# echo "i: $i"
 	if [ $i -lt 0 ]; then
 		echo "$subject"
 		echo "...does not appear to be a RHEL patch or series"
 		getyn "Do you wish to continue anyway?" yn
 		$yn || return 1
-	fi
-
-
-	# Now find the end of the RHEL prefix at the right bracket.
-	j=$(ui_strindex "$pfx" "]")
-
-	# Extract the text between the brackets [] to get the series prefix.
-	# Brackets [] must be escaped for sed.
-	# Only the text between the last two brackets will be extracted.
-	# pfx=$(echo "$subject" | sed -nr 's/.*\[(.*)\].*/\1/p')
-	pfx="${pfx:$i:$((j-i))}"
-
-	# If there is "alt" anywhere in the prefix, then set the
-	# pegas flag.
-	[[ "$pfx" = *"ALT"* ]] && b_pegas=true
-
-	# If it exists, remove the "ALT" string to get the basic distro.
-	$b_pegas && dist="${pfx//ALT/}" || dist="$pfx"
-
-	# Tokenize the dist so we can extract just the RHEL and its version
-	# numbers.
-	ui_strtok "$dist" "- " ary
-
-	# The first two tokens in the array should be RHEL and its version.
-	dist=${ary[0]}${ary[1]}
-
-	# If i -lt 0, it means this is not a RHEL patch, distname is "NOT RHEL"
-	if [ $i -lt 0 ]; then
 		distname="NOT RHEL"
 		elstr=""
 	else
+		# Find the end of the RHEL prefix at the right bracket.
+		j=$(ui_strindex "$pfx" "]")
+
+		# Extract the patch prefix between the brackets.
+		pfx="${pfx:$i:$((j-i))}"
+		# echo "pfx extracted: $pfx"
+
+		# If there is "alt" anywhere in the prefix, then set the
+		# pegas flag.
+		[[ "$pfx" = *"ALT"* ]] && b_pegas=true
+
+		# If it exists, remove the "ALT" string to get the basic distro.
+		$b_pegas && dist="${pfx//ALT/}" || dist="$pfx"
+
+		# Replace hyphens with spaces and remove any extraneous spaces.
+		dist="$(tr -s "-" " " <<< "$dist")"
+
+		# Tokenize the dist so we can extract just the RHEL and its
+		# version numbers.
+		ui_strtok "$dist" " " ary
+		# echo "dist: \"$dist\" ary: ${ary[@]}"
+
+		# If the first token in the array only has 4 chars, then it is
+		# "RHEL" without the version numbers. In this case, the second
+		# token will have the version.
+		[ ${#ary[0]} -eq 4 ] && dist=${ary[0]}${ary[1]} || dist=${ary[0]}
+
+		# echo "dist: $dist"
 		case "${dist:0:5}" in
 			"RHEL6" ) elstr="$el6" ; distname="$dist" ;;
 			"RHEL7" ) elstr="$el7" ; distname="$dist" ;;
