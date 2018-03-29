@@ -582,7 +582,7 @@ check_patchvbranch() {
 	local subject
 	local pfx
 	local dist
-	local distname
+	local distname="NOT RHEL"
 	local tag
 	local elstr=""
 	local yn=false
@@ -618,8 +618,11 @@ check_patchvbranch() {
 	# the user and offer to run anyway, or return to the main menu.
 	i=$(ui_strindex "$pfx" "RHEL")
 
-	# echo "i: $i"
-	if [ $i -lt 0 ]; then
+	# Find the end of the RHEL prefix at the right bracket.
+	j=$(ui_strindex "$pfx" "]")
+
+	# echo "i: $i j: $j"
+	if ( [ $i -lt 0 ] || [ $j -le 0 ] || [ $j -le $i ] ); then
 		echo "$subject"
 		echo "...does not appear to be a RHEL patch or series"
 		getyn "Do you wish to continue anyway?" yn
@@ -627,9 +630,6 @@ check_patchvbranch() {
 		distname="NOT RHEL"
 		elstr=""
 	else
-		# Find the end of the RHEL prefix at the right bracket.
-		j=$(ui_strindex "$pfx" "]")
-
 		# Extract the patch prefix between the brackets.
 		pfx="${pfx:$i:$((j-i))}"
 		# echo "pfx extracted: $pfx"
