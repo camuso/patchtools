@@ -21,9 +21,9 @@ attr_bold="\033[1m"
 attr_under="\033[4m"
 attr_OFF="\033[0m"
 
-BLD="\033[1m"
-UND="\033[4m"
-OFF="\033[0m"
+unset BLD && declare BLD="\033[1m"
+unset UND && declare UND="\033[4m"
+unset OFF && declare OFF="\033[0m"
 
 # Errors
 #
@@ -37,7 +37,7 @@ declare ui_err_nofiles=6
 # Contlol-C exit code
 # see http://www.tldp.org/LDP/abs/html/exitcodes.html
 #
-declare -i CTLC_EXIT=130
+unset CTLC_EXIT &&  declare -i CTLC_EXIT=130
 
 declare -i tlines=$(tput lines)	# number of lines in the terminal
 declare -i tcols=$(tput cols)	# number of columns in the terminal
@@ -106,7 +106,6 @@ function ui_sh_spawn {
 
 function ui_sh_myshlvl {
 	echo "Shell level: $SHLVL"
-
 }
 
 function buhbye() {
