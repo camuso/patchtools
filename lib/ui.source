@@ -23,6 +23,9 @@ attr_OFF="\033[0m"
 
 unset BLD && declare BLD="\033[1m"
 unset UND && declare UND="\033[4m"
+unset RED && declare RED='\e[0;31m'
+unset GRN && declare GRN='\e[0;32m'
+unset YEL && declare YEL='\e[0;33m'
 unset OFF && declare OFF="\033[0m"
 
 # Errors
