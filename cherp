@@ -626,9 +626,15 @@ getlasttag() {
 #       RETURNS:  1 if there are no more cherries to pick, else 0
 #===============================================================================
 get_next_cherrypick() {
-	# echo -e "$UND\0get_next_cherrypick$OFF start line: $upcmtstartline"
+	# local myname="get_next_cherrypick: "
+	# echo -e "\n$UND$myname$OFF start line: $upcmtstartline"
+	local noexiststr="$BLD\0Commits file: $OFF$upcommtsfile$BLD does not exist.$OFF"
+	local nofile="$BLD\0There is no commits file.$OFF"
 
-	[[ -f $upcommitsfile ]] || return 1
+	if ! [[ -f $upcommitsfile ]]; then
+		[ $upcommitsfile ] && echo -e "$noexiststr" || echo -e "$nofile"
+		return 1
+	fi
 
 	local idx
 	local line
@@ -651,7 +657,6 @@ get_next_cherrypick() {
 	prj_set_item $prj_upcmtstartline $upcmtstartline
 
 	# cat .data/cherp.prj
-
 	return 0
 }
 
@@ -670,9 +675,11 @@ get_next_cherrypick() {
 #       RETURNS:  status of call to get_next_cherrypick
 #===============================================================================
 get_current_cherrypick() {
-	# echo -e "$UND\0get_current_cherrypick upcmtstartline:$upcmtstartline$OFF"
+	# local myname="get_current_cherrypick:"
+	# echo -e "$OFF\n$UND$myname upcmtstartline: $upcmtstartline$OFF"
 
 	let upcmtstartline--
+	# echo "$myname startline: $upcmtstartline"
 	get_next_cherrypick
 	return $?
 }
@@ -1482,6 +1489,7 @@ init_newsession() {
 	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
 	prj_set_item $prj_dnorighead $dnorighead
 
+	b_new=true
 	init_common
 	$b_cmdline && exit_cherp $exit_good
 }
