@@ -189,6 +189,8 @@ function git_excisecommit {
 	echo "$line" | egrep -o "\b[0-9a-f]{"$hashsize"}\b" | head -1
 }
 
+
+
 # git_comment2commitsfile
 #	Create a file containing a list of commits from taken from the "commit"
 #	line in each patch in a directory. The patches in the directory are
@@ -220,14 +222,6 @@ function git_comment2commitsfile {
 	local hashsize="40"
 	local _40digit=true
 
-	local multihashstr=$(
-cat <<EOF
-$BLD
-There is more than one commit mentioned in patch$OFF $index.$BLD
-Please choose one of the following.
-$OFF
-EOF
-)
 	# If we got a third argument, then get it.
 	# If it's true, then the hashsize will be fixed at 40 digits
 	# If it's false, then the hashsize will be variable from 7 to 40
@@ -286,7 +280,9 @@ EOF
 
 		if [ $cmtcnt -gt 1 ] && [ $commitparity -eq 0 ]; then
 
-			echo -e "$multihashstr"
+			echo -en "There is more than one commit mentioned in patch"
+			echo -e  "$OFF $index.$BLD"
+			echo -e  "Please choose one of the following."
 
 			for ((cmtindex=1; cmtindex <= cmtcnt; cmtindex++))
 			do
