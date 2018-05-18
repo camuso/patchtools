@@ -45,6 +45,20 @@ Comparison stops at the first mismatched line in the pair.
 EOF
 )
 
+# Test stuff
+#
+# declare tlog="/dev/shm/test.log"
+# declare -i tcnt
+
+# Cursor moving and placement
+#
+declare -i lint			# line total
+declare -i mod			# modulus divisor
+declare -i tcols=$(tput cols)   # number of columns in the terminal
+declare CL1="\e["$tcols"D"	# column 1 of the current line
+declare CCR="\e[K"    		# clear line and carriage return
+declare UP1="\e[1A"		# move cursor up one line
+
 declare dirA
 declare dirB
 declare savedifs="$IFS"
@@ -247,26 +261,34 @@ get_firstline() {
 #
 $b_stdout || fprintf "verbose level: %d\n" $verbosity
 
+# > $tlog
+
 # Loop through the pairs of files and look for differences in each pair.
 # The first file in the pair is the control. When it ends, the comparison
 # ends, and the for loop moves to the next pair of files.
 #
 for ((index = 0; index < $fcountA; ++index)); do
 
+	# echo "${faryA[$index]}" >> $tlog
+
 	lcA=0	# Line counter for line from file A
 	lcB=0   # Line counter for line from file B
 
 	$vverbose && pr_header
 
-	# If we're not sending output to sdtout, let the user know we're
-	# still alive.
+	# Print the name of the patch file being processed.
 	#
-	[ "$ofile" == "/dev/stdout" ] || echo -n "."
+	fname=$(basename ${faryA[$index]})
+	[ ${#fname} -gt $tcols ] && fname=${fname:$tcols}
+	[ "$ofile" == "/dev/stdout" ] || echo "$fname"
 
 	# Open file descriptors based on the filenames in each array
 	#
 	exec 5<"${faryA[$index]}"	# open the files for reading
 	exec 6<"${faryB[$index]}"
+
+	lint=$(cat "${faryA[$index]}" | wc -l)
+	mod=$(( (lint / tcols) + 1 ))
 
 	get_firstline
 	$vverbose && pr_start
@@ -278,6 +300,8 @@ for ((index = 0; index < $fcountA; ++index)); do
 	eofB=false	# :
 	b_done=false	# Will be set true if both eof markers are set
 
+	# tcnt=0
+
 	# Read lines from each patch file in a loop and compare them until
 	# a mismatch is detected or we've reached the end of the first
 	# patch.
@@ -288,6 +312,20 @@ for ((index = 0; index < $fcountA; ++index)); do
 	#
 	IFS=
 	until $b_done; do
+
+
+		# If we're not sending output to sdtout, let the user know we're
+		# still alive by printing a dot to stdout. But never more than
+		# the number of columns in the terminal, so modulate by that
+		# number
+		#
+		if [ "$ofile" != "/dev/stdout" ]; then
+			[ $(( lcA % mod )) -eq 0 ] && {
+				echo -n ".";
+				# echo -n "." >> $tlog
+				# let tcnt++;
+			}
+		fi
 
 		# Increment the line counters.
 		#
@@ -350,6 +388,18 @@ for ((index = 0; index < $fcountA; ++index)); do
 			break
 		fi
 	done
+
+	# echo -e "\nlint: $lint mod: $mod tcnt: $tcnt" >> $tlog
+
+	# Erase the filename and all the dots and put the cursor back in the first
+	# column of the prevous line. Leave them as discrete echos for the sake of
+	# clarity. Likely that the bash interpreter will merge them anyway.
+	#
+	echo -en "$CL1"
+	echo -en "$CCR"
+	echo -en "$UP1"
+	echo -en "$CL1"
+	echo -en "$CCR"
 
 	# How to do a if-then-if-then-else-fi-fi on one line ;)
 	#
