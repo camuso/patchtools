@@ -18,7 +18,6 @@
 # Calls on the following external scripts.
 #
 # ./githead
-# ./renpat
 # ./patcmp
 # ./patbatcmp
 # ./patbatcmpmgr
@@ -306,7 +305,7 @@ menu_parser() {
 			;;
 		e )	set_editor
 			;;
-		R )	renpat $indir
+		R )	renpatfiles
 			;;
 		F )	format_upstream_patches
 			;;
@@ -475,7 +474,7 @@ main() {
 		# echo "menu_loop_stat: $menu_stat"
 
 		if $b_rename_infiles; then
-			exec_boolean b_rename_infiles false "renpat $indir"
+			exec_boolean b_rename_infiles false "renpatfiles"
 			[ $? -ne 0 ] && continue
 		fi
 

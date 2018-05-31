@@ -32,6 +32,7 @@ declare ui_err_notdigit=2
 declare ui_err_invfile=3
 declare ui_err_invdir=4
 declare ui_err_invlinec=5
+declare ui_err_nofiles=6
 
 # Contlol-C exit code
 # see http://www.tldp.org/LDP/abs/html/exitcodes.html
@@ -485,6 +486,22 @@ function ui_getdirspec() {
 		ds="./"
 	fi
 	echo "$ds"
+}
+
+# ui_remove_spaces - remove spaces from filenames in the current directory
+#
+# The intention is that the calling function has already issued cd to the
+# directory in which ui_remove_spaces will execute.
+#
+# No globals, no arguments.
+#
+ui_remove_spaces() {
+    local sp=" "
+    ls | while read -r FILE
+    do
+	[[ $FILE == *$sp* ]] || continue
+	mv -v "$FILE" `echo $FILE | tr ' ' '_' `
+    done
 }
 
 ##########################

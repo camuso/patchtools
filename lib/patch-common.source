@@ -97,6 +97,11 @@ declare -i applyfailmode_states=3
 declare -i startpat=1
 declare -i menucols=30
 
+# Values to be returned by renpat
+#
+declare -i renpatcnt	# the number of patch files counted by renpat
+declare -i rensetcnt	# the number of patch files in the series
+
 declare el6="el6"
 declare el7="el7"
 declare el8="el8"
@@ -831,4 +836,219 @@ init_menu() {
 	patchcount=0
 	startpat=1
 	b_allapplied=false
+}
+
+# check_patch_count
+#
+# Check to see that the number of .patch files matches the denominator of
+# the series.
+#
+# Globals
+# 	rensetcnt
+# 	renpatcnt
+#
+check_patch_count() {
+	local b_cont
+	local miscntmsg=$(
+cat <<EOF
+
+There are $BLD$renpatcnt$OFF patch files, but the series claims
+to have $BLD$rensetcnt$OFF patches.
+EOF
+)
+	( [ $renpatcnt -gt 1 ] && [ $rensetcnt -gt 0 ] ) || return 0
+
+	if [ $renpatcnt -eq $rensetcnt ]; then
+		return 0
+	else
+		echo -e "$miscntmsg"
+		getyn "Do you want to continue anyway? " b_cont
+		$b_cont && return 0 || return 1
+	fi
+}
+
+# renpatfiles - renames the files in a given directory
+#
+# Globals:
+# 	indir     - directory containing the emailed patches
+# 	renpatcnt - the number of patch files counted by the routine
+# 	rensetcnt - the number of patch files purported to be in the set
+# 	            as determined by the denominator of the set, if it
+# 	            exists.
+#
+# Returns ui_err_nofiles or return value of call to check_patch_count
+#
+renpatfiles() {
+
+    declare -i total
+    declare -i windex	# index of word in subj prefix having '/' in it
+    declare -i fldwid=0	# width of the field having total number of patches
+    declare -a pfxary	# tokenized subject line
+    declare -a wary	# word having '/' in it tokenized
+    declare subject
+    declare word
+    declare iszero=false
+    declare patnum
+    declare pfx		# subject prefix, stuff between the [ and ]
+    declare isaset	# true if this is a patch series
+
+    rensetcnt=0		# globally declared in this file
+    renpatcnt=0		# :
+
+    cd $indir
+    echo "Changing directory to "$PWD""
+    total=$(find -maxdepth 1 -not -type d | wc -l)
+    echo "$PWD has $total files."
+
+    if [ $total -eq 0 ]; then
+	echo "No files to rename, returning to main menu."
+	echo
+	return $ui_err_nofiles
+    fi
+
+    # remove spaces from filenames
+    #
+    ui_remove_spaces
+
+    # Don't try to rename files that have ".patch" endings, because
+    # these have already been renamed.
+    #
+    for filename in $(find -maxdepth 1 -not -type d -not -name "*.patch");
+    do
+	iszero=false
+	word=""
+	windex=0
+
+	# Extract the subject line.
+	#
+	subject=$(grep -m1 "Subject: " "$filename")
+
+	# Remove the word "Subject: " from the line
+	#
+	subject=$(echo "$subject" | cut -d' ' -f2-)
+
+	# If the next character is not '[', then it is not a patch.
+	#
+	[ "${subject:0:1}" == "[" ] || continue
+
+	# Remove any version numbers from within the brackets. There is no
+	# standard on where the patch version number appears, so the patch
+	# can be out of order.
+	#
+	# Find the right bracket to isolate the text within the brackets.
+	# If we don't find a right bracket in the subject line, then continue
+	# to the next file.
+	#
+	rb_pos=$(ui_strindex "$subject" "]")
+	[ $rb_pos -lt 0 ] && continue
+
+	# extract the bracketed prefix substring and remove any version numbers
+	#
+	pfx="${subject:1:$rb_pos}"
+	new="$(echo $pfx | sed 's/v\w//i')"
+
+	# Substitute the new prefix for the old in the subject string.
+	#
+	subject="$(echo ${subject/"$pfx"/"$new"})"
+
+	# If there is no / in the subject prefix, then it is not a series.
+	#
+	if [[ $pfx == *"/"* ]]; then
+
+	    # Tokenize the subject prefix.
+	    # Look for the first token with a '/' in it.  If all the
+	    # characters leading up to the '/' are zero, then it is a
+	    # prologue, not a patch.
+	    #
+	    ui_strtok "$pfx" " " pfxary
+	    for ((i = 0; i < ${#pfxary[@]}; i++)); do
+		    word=${pfxary[$i]}
+		    [[ $word == *"/"* ]] && windex=$i && break
+	    done
+
+	    for ((i = 0; i < ${#word}; i++)); do
+		    [[ ${word:$i:1} == "/" ]] && break
+		    [[ ${word:$i:1} != "0" ]] && iszero=false && break
+		    [[ ${word:$i:1} == "0" ]] && iszero=true
+	    done
+
+	    $iszero && continue
+
+	    # Some posters do not provide padding zeroes in their PATCH
+	    # n/m subject lines. This will cause out-of-order
+	    # processing, since 1/n will be immediately followed by
+	    # 10/n, 11/n, etc. Padding the first number with leading
+	    # zeroes will preclude this.
+	    #
+	    # If we found a "/" in the subject string, then windex is
+	    # nonzero.  In that case, we need to determine the correct
+	    # number of padding zeroes required in the first number.
+	    #
+	    if [ $windex -gt 0 ]; then
+
+		# Tokenize the word with the "/" in it. We need to
+		# pad the leading number with zeroes to make it the
+		# same width as the number of patches in the set.
+		# Including the brackets in the delimiter will strip
+		# them from the word.
+		#
+		ui_strtok "$word" "[/]" wary
+
+		# We only need to do this once per patchset
+		#
+		if [ $fldwid -eq 0 ]; then
+
+		    # The total number of patches is in the
+		    # second word of the wary stripped of any
+		    # non-alphanumeric chars.
+		    #
+		    rensetcnt="${wary[1]}" # | sed 's/:[][<>(),"//g')"
+
+		    # Determine the fieldwidth of the total
+		    # number of patches.
+		    #
+		    fldwid=${#rensetcnt}
+		fi
+
+		# Determine the fieldwidth of the patch number and pad it
+		# with leading zeroes if necessary.
+		#
+		patnum="${wary[0]}"
+		for ((j = $fldwid - ${#patnum}; j > 0; --j )); do
+		    wary[0]="0${wary[0]}"
+		done
+
+		# Replace the patch's n/m with the new padded n/m word.
+		# The new word will have a space where there was a '/', but
+		# that will be handled when we strip the non-alphanumeric
+		# characters from the subject string.
+		#
+		pfxary[$windex]="${wary[@]}"
+		subject="${pfxary[@]}""-""${subject:$rb_pos}"
+	    fi
+	fi
+
+	# Replace non-alphanumerics with a hyphen, then delete any leading
+	# hyphen.
+	#
+	subject=$(echo "$subject" | sed 's/[^[:alnum:]]\+/-/g')
+	subject=$(echo "$subject" | sed 's/^-//')
+
+	# If the last character is a hyphen, remove it.
+	#
+	[ "${subject:(-1)}" = "-" ] && subject=${subject%?}
+
+	newname=$(echo "$subject"".patch")
+
+	# See if we already have one of these, if so, skip it.
+	#
+	[ -f "$newname" ] && continue
+
+	echo "mv "$filename" -> "$newname""
+	mv "$filename" "$newname"
+	renpatcnt=$((renpatcnt+1))
+    done
+    cd -
+    check_patch_count
+    return $?
 }
