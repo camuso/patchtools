@@ -632,7 +632,7 @@ get_next_cherrypick() {
 	local nofile="$BLD\0There is no commits file.$OFF"
 
 	if ! [[ -f $upcommitsfile ]]; then
-		[ $upcommitsfile ] && echo -e "$noexiststr" || echo -e "$nofile"
+		#[ $upcommitsfile ] && echo -e "$noexiststr" || echo -e "$nofile"
 		return 1
 	fi
 
@@ -756,6 +756,17 @@ EOF
 	$lasthashvalid && echo -e "$laststr"
 }
 
+show_upsteam_commits_file() {
+	local cmtfilestr=$(
+cat <<EOF
+
+    File of upstream commits     : $OFF$upcommitsfile$BLD
+EOF
+)
+	[ "$upcommitsfile" ] || return
+	[ -f "$upcommitsfile" ] && echo -e "$cmtfilestr"
+}
+
 #===  FUNCTION  ===============================================================
 #          NAME:  show_history
 #   DESCRIPTION:  show history of applied patches in downstream branch
@@ -802,8 +813,8 @@ show_status() {
 
 	statstr=$(
 cat <<EOF
-$BLD
-    File of upstream commits     : $OFF$upcommitsfile$BLD\
+$BLD\
+$(show_upsteam_commits_file)\
 $(show_most_recent_cherrypick)\
 $(show_next_cherrypick)
     Current downstream branch    : $OFF$(get_gitbranch)$BLD
@@ -1044,9 +1055,11 @@ run_commit() {
 	init_cmdline_call
 	b_conflict=true
 	b_continue=false
+	currentuphash=$lastuphash
 	stage_commit
-	get_next_cherrypick
-	run_me
+	exit 0
+	# get_next_cherrypick
+	# run_me
 }
 
 #===  FUNCTION  ================================================================
@@ -1059,8 +1072,14 @@ run_commit() {
 run_single() {
 	local stat
 
-	# echo -e "$UND\0run_single$OFF"
+	echo -e "$UND\0run_single$OFF"
 	b_single=true
+
+	check_prj_file
+	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
+	prj_set_item $prj_dnorighead $dnorighead
+	prj_set_item $prj_lastuphash $currentuphash
+
 	cherrypick
 	stat=$?
 	exit $stat
@@ -1631,7 +1650,6 @@ else
 			;;
 		"--commit" )
 			run_commit
-			shift
 			;;
 		"--continue" )
 			run_continue
