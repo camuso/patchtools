@@ -88,6 +88,7 @@ declare lasttagfile="/dev/shm/gcplasttag"
 declare b_new=false		# new session
 declare b_continue=false	# continue session
 declare b_single=false		# only perform single cherrypick
+declare b_nit=false		# selective cherrypick
 
 declare gitbranch
 declare ui_bools=""
@@ -1129,7 +1130,7 @@ EOF
 	commit=$(git log --oneline -n1 $uphash)
 	echo "commit: $commit"
 	echo -e "Processing : $BLD${commit:0:$wcols}$OFF"
-	git cherry-pick "$uphash"
+	$b_nit && git cherry-pick -n "$uphash" || git cherry-pick "$uphash"
 	gitstat=$?
 
 	# If cherry-pick returns with 128, the commit was invalid or
@@ -1137,16 +1138,22 @@ EOF
 	#
 	[ $gitstat -eq 128 ] && { echo -e "$bogusmsg"; exit_cherp $exit_bogus; }
 
-	# If cherry-pick returns with nonzero other than 128, then a
-	# conflict is indicated.
-	#
-	[ $gitstat -eq 0 ] || {
-		b_conflict=true
-		$b_single && git status && exit $exit_conflict
-		echo -e "$conflictmsg"
-		show_status internal
-		exit_cherp $exit_conflict
-	}
+	if $b_nit && $b_single; then
+		git reset	# unstage changes.
+		git add -p	# select the hunks you want.
+		b_nit=false
+	else
+		# If cherry-pick returns with nonzero other than 128, then a
+		# conflict is indicated.
+		#
+		[ $gitstat -eq 0 ] || {
+			b_conflict=true
+			$b_single && git status && exit $exit_conflict
+			echo -e "$conflictmsg"
+			show_status internal
+			exit_cherp $exit_conflict
+		}
+	fi
 
 	stage_commit
 	lastuphash=$uphash
@@ -1664,6 +1671,9 @@ else
 		"--new" )
 			init_newsession
 			;;
+		"--nit" )
+			b_nit=true
+			;& 		# fall through to pick
 		-p | "--pick" )
 			currentuphash=$2
 			[ "$currentuphash" ] || { echo -e "$needcmtstr"; exit 1; }
