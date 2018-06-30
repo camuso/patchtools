@@ -1090,7 +1090,8 @@ run_commit() {
 	b_continue=false
 	currentuphash=$lastuphash
 	stage_commit
-	exit 0
+
+	exit_cherp $exit_good
 	# get_next_cherrypick
 	# run_me
 }
@@ -1191,7 +1192,7 @@ Make sure the hashes in $BLD$upcommitsfile$OFF are all valid.
 EOF
 )
 	commit=$(git log --oneline -n1 $uphash)
-	echo "commit: $commit"
+	# echo "commit: $commit"
 	echo -e "Processing : $BLD${commit:0:$wcols}$OFF"
 	$b_nit && git cherry-pick -n "$uphash" || git cherry-pick "$uphash"
 	gitstat=$?
@@ -1213,6 +1214,8 @@ EOF
 			b_conflict=true
 			$b_single && git status && exit $exit_conflict
 			echo -e "$conflictmsg"
+			lastuphash=$uphash
+			# echo -e "Saving: $BLD${commit:0:$wcols}$OFF"
 			show_status internal
 			exit_cherp $exit_conflict
 		}
@@ -1242,7 +1245,10 @@ stage_commit() {
 
 	local description
 	local uphash=$currentuphash
+	local commit
 
+	commit=$(git log --oneline -n1 $uphash)
+	# echo -e "Committing: $BLD${commit:0:$wcols}$OFF"
 	git commit -aC "$uphash"
 
 	# Create the new commit message in a file consisting of ..
@@ -1688,7 +1694,6 @@ build,\
 new,\
 pick:,\
 pop:,\
-reset,\
 run,\
 select,\
 setup,\
@@ -1756,9 +1761,9 @@ else
 			pops=$2
 			pop_commits $pops
 			;;
-		"--reset" )
-			reset_cherp
-			;;
+		# "--reset" )
+		#	reset_cherp
+		#	;;
 		-r | "--run" )
 			run_me
 			;;
