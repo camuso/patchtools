@@ -49,6 +49,8 @@ declare -i optcount=0
 declare -i notify_disable_mismatch=1
 declare -i notify_no_change=2
 
+declare b_selected
+
 declare usagestr=$(
 cat <<EOF
 
@@ -527,6 +529,7 @@ while :; do
 			b_backup=true
 			;;
 		n )	get_patch_number
+			b_selected=true
 			;;
 		p )	replace_commit
 			;;
@@ -579,15 +582,22 @@ while :; do
 
 	if $b_runmismatch; then
 
-		# If we find the index of the just-viewed patch in the
-		# mismatch_array and the mmindex is less than the number of
-		# elements in the mismatch_array, increment the mmindex.
+		# If the user selected a specific patch, then find the next
+		# highest patch number in the mismatch_array.
+		# Else if the mmindex is less than the number of elements
+		# in the array, simply increment the mmindex.
+		# Else the mmindex is already at its max value.
 		#
-		ui_inarray $index mismatch_array[@] mmindex
-		stat=$?
+		if $b_selected; then
+			ui_nextinarray $index mismatch_array[@] mmindex
+			b_selected=false
+		else
+			ui_inarray $index mismatch_array[@] mmindex
+			stat=$?
 
-		([ $stat -eq 0 ] && [ $mmindex -lt $((mismatch_count - 1)) ]) &&
-			let mmindex++
+			([ $stat -eq 0 ] && [ $mmindex -lt $((mismatch_count - 1)) ]) &&
+				let mmindex++
+		fi
 
 		# Set the index into the commit log files to the element
 		# indexed by mmindex in the mismatch_array

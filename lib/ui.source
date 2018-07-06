@@ -689,7 +689,7 @@ function ui_strindex {
 #
 # Looks for an integer in an integer array
 # Returns 0 if found, 1  if not.
-# Optionally returns the index of the item in the array or -1 if not found.
+# Optionally returns the index of the item in the array.
 #
 # $1 value
 # $2 array, must be passed by reference, without leading '$'
@@ -729,6 +729,51 @@ ui_inarray() {
 		let j++
 	done
 
+	return 1
+}
+
+# ui_nextinarray()
+#
+# Looks for the next highest integer in an integer array, given an integer.
+# Returns 0 if found, 1  if the input integer is higher than any in the array.
+# Returns the index of the number in the array that is closest in value but
+# higher than the input value.
+#
+# The array must consist of numbers in ascending order.
+#
+# $1 input value
+# $2 array, must be passed by reference, without leading '$'
+# $3 return value will contain the index of the next integer in the array
+#    that has a higher value than the input.
+#    If the input is greater than the largest number in the array, then
+#    the index of the largest number will be returned.
+#
+# Examples:
+#
+#   declare -a array=(2 4 6 8 10)
+#
+#   # The following will return 2 in "next", which is the index
+#   # of the number 6 in the array.
+#   #
+#   ui_nextinarray 5 array[@] next
+#   echo $next
+#   2
+#
+ui_nextinarray() {
+	local i
+	local j=0
+	local ary=(${!2})
+
+	for i in ${ary[@]}; do
+		if [ $i -gt $1 ]; then
+			eval $3=$j
+			return 0
+		fi
+		let j++
+	done
+
+	j=$((${#ary[@]} - 1 ))
+	eval $3=$j
 	return 1
 }
 
