@@ -60,6 +60,7 @@ declare commit_msg_file="commit-msg.txt"
 declare last_tag_file="$MYDATA/lasttag"
 declare branchlist="$MYDATA/branchlist"
 declare mismatch_file="mm.log"
+declare mmfile="$outdir/$mismatch_file" 
 
 declare prj_applyfailmode
 declare prj_indir
@@ -693,7 +694,8 @@ check_patchvbranch() {
 
 # exec_patcmp - execute the comparison of the patches
 #
-#  $1 - "-X" to execute in patbatcmpmgr in batch mode.
+#  $1 - file in which to store the mismatches
+#  $2 - Contains "-X" to execute in patbatcmpmgr in batch mode.
 #       If this parameter is not passed, then patbatcmpmgr operates in
 #       setup mode.
 #
@@ -709,7 +711,6 @@ exec_patcmp() {
 
 	patbatcmpmgr -R $indir -U $outdir -o $mmfile "$xval"
 	patcmp -m $mmfile $indir $outdir $editor "$us_commits"
-	[ -f $mmfile ] && rm -f $mmfile
 }
 
 # get_current_head_trunc() - returns the current head truncated
@@ -812,11 +813,30 @@ exec_apply_patches(){
 	return 0
 }
 
+# compare_patches_raw - perform the comparison with no setup
+#
+# Globals
+# 	mmfile
+# 	indir
+# 	outdir
+# 	editor
+# 	us_commits
+#
+compare_patches_raw() {
+	if [ -f $mmfile ]; then
+		patcmp -m $mmfile $indir $outdir $editor "$us_commits"
+	else
+		patcmp $indir $outdir $editor "$us_commits"
+	fi
+}
+
 # compare_patches - compare the downstream with the upstream
 #
+# Globals
+#	mmfile
+#	cmpmode*
+#
 compare_patches() {
-
-	local mmfile="$outdir/$mismatch_file"
 
 	case $cmpmode in
 		$cmpmode_batch ) exec_patcmp "$mmfile" "-X" ;;

@@ -275,6 +275,7 @@ $BLD
     $UND\0Control           $OFF$BLD
  r  Run patch review
  i  Init to defaults
+ P  Patch Compare Utitlity
  R  Rename mail files in    :$OFF $indir$BLD
  F  Format commits into     :$OFF $outdir$BLD
  G  Git reset to            :$OFF $lasttag$BLD
@@ -327,6 +328,8 @@ menu_parser() {
 		G )	reset_to_lasttag
 			;;
 		B )	create_branch
+			;;
+		P )	compare_patches_raw
 			;;
 		i )	init_menu
 			;;
