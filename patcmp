@@ -282,6 +282,8 @@ init_mismatch() {
 	# from each sequence number to get the index into the mlfiles and
 	# usfiles arrays.
 	#
+	echo -e "${BLD}Patches not matching the upstream commits$OFF"
+	echo          "========================================="
 	while read line; do
 		[ "${line:0:6}" == "PATCH:" ] || continue
 		(($verbosity > 0)) && { [[ "$line" == *"!="* ]] || continue; }
@@ -423,6 +425,8 @@ echo
 echo -e "$BLD\0Patches in$OFF $mldir$BLD will be compared with patches in$OFF $usdir"
 echo -e "$BLD\0Editor of choice is$OFF $editor"
 
+echo -e "\n$BLD\0Building the index of patch files$OFF"
+echo            "================================="
 index=0
 for i in $(ls "$mldir"/*.patch  | sort -V); do
 	mlfiles[index]="$i"
@@ -431,6 +435,8 @@ for i in $(ls "$mldir"/*.patch  | sort -V); do
 done
 echo
 
+echo -e "\n$BLD\0Building the index of upstream commits$OFF"
+echo            "======================================"
 index=0
 for i in $(ls "$usdir"/*.patch  | sort -V); do
 	usfiles[index]="$i"
@@ -521,8 +527,7 @@ while :; do
 	echo
 
 	case $answer in
-		q )	rm -f $mismatch_file
-			break
+		q )	break
 			;;
 		b )	echo
 			backup_wrapper
