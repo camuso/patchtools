@@ -275,7 +275,7 @@ $BLD
     $UND\0Control           $OFF$BLD
  r  Run patch review
  i  Init to defaults
- P  Patch Compare Utitlity
+ P  Compare Patches
  R  Rename mail files in    :$OFF $indir$BLD
  F  Format commits into     :$OFF $outdir$BLD
  G  Git reset to            :$OFF $lasttag$BLD
@@ -329,7 +329,7 @@ menu_parser() {
 			;;
 		B )	create_branch
 			;;
-		P )	compare_patches_raw
+		P )	compare_patches
 			;;
 		i )	init_menu
 			;;
@@ -353,6 +353,7 @@ function menu_loop {
 	check_dir $prj_outdir "$outdirstr" outdir
 	bp_commits="$indir/$bp_commits_name"
 	us_commits="$outdir/$us_commits_name"
+	mmfile="$outdir/$mismatch_file"
 
 	# get the editor
 	#

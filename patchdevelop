@@ -161,6 +161,7 @@ $BLD
     $UND\0Control           $OFF$BLD
  r  Run patch review
  i  Init to defaults
+ P  Compare Patches
  R  Rename mail files in    :$OFF $indir$BLD
  F  Format commits into     :$OFF $outdir$BLD
  B  Create a new branch at  :$OFF $current_head_trunc$BLD
@@ -182,8 +183,6 @@ menu_parser() {
 		b )	git_setbranch $branchlist
 			git_get_lasttag lasttag $last_tag_file
 			gitbranch=$(git_getcurrentbranch)
-			;;
-		m )	set_mailclient
 			;;
 		d )	prj_set_directory "$indirstr" $prj_indir indir quiet
 			;;
@@ -210,6 +209,8 @@ menu_parser() {
 			;;
 		B )	create_branch
 			;;
+		P )	compare_patches
+			;;
 		q )	exit_me 0
 			;;
 		r )	set_booleans
@@ -230,6 +231,7 @@ function menu_loop {
 	check_dir $prj_outdir "$outdirstr" outdir
 	bp_commits="$indir/$bp_commits_name"
 	us_commits="$outdir/$us_commits_name"
+	mmfile="$outdir/$mismatch_file"
 
 	# get the editor
 	#
