@@ -60,7 +60,7 @@ declare commit_msg_file="commit-msg.txt"
 declare last_tag_file="$MYDATA/lasttag"
 declare branchlist="$MYDATA/branchlist"
 declare mismatch_file="mm.log"
-declare mmfile="$outdir/$mismatch_file" 
+declare mmfile
 
 declare prj_applyfailmode
 declare prj_indir
@@ -692,27 +692,6 @@ check_patchvbranch() {
 	return 0
 }
 
-# exec_patcmp - execute the comparison of the patches
-#
-#  $1 - file in which to store the mismatches
-#  $2 - Contains "-X" to execute in patbatcmpmgr in batch mode.
-#       If this parameter is not passed, then patbatcmpmgr operates in
-#       setup mode.
-#
-# Globals:
-# 	indir
-# 	outdir
-# 	us_commits
-# 	editor
-#
-exec_patcmp() {
-	local mmfile="$1"
-	local xval="$2"
-
-	patbatcmpmgr -R $indir -U $outdir -o $mmfile "$xval"
-	patcmp -m $mmfile $indir $outdir $editor "$us_commits"
-}
-
 # get_current_head_trunc() - returns the current head truncated
 #
 #  Truncation is the difference between the global tcols, which is the number
@@ -813,21 +792,60 @@ exec_apply_patches(){
 	return 0
 }
 
-# compare_patches_raw - perform the comparison with no setup
+# check_mismatch_file - see that it has the correct number of patches
 #
 # Globals
-# 	mmfile
+#	mmfile
+#	infilecount
+#
+# Returns
+# 	0 if number of patches in the mismatch file is the same as infilecount
+# 	1 if not
+#
+check_mismatch_file() {
+	declare b_found=false
+	declare -i num=0
+
+	[ -f $mmfile ] || return 1
+
+	num=$(tac $mmfile | while read line; do
+		echo "$line" | grep '^PATCH:' > /dev/null
+		if [ $? -eq 0 ]; then
+			echo "$line" | cut -d':' -f2;
+			break
+		fi
+	done)
+	[ $num -eq $infilecount ] && return 0 || return 1
+}
+
+# exec_patcmp - execute the comparison of the patches
+#
+#  $1 - Contains "-X" to execute in patbatcmpmgr in batch mode.
+#       If this parameter is not passed, then patbatcmpmgr operates in
+#       setup mode.
+#
+# Globals:
 # 	indir
 # 	outdir
-# 	editor
+# 	mmfile
 # 	us_commits
+# 	editor
 #
-compare_patches_raw() {
-	if [ -f $mmfile ]; then
-		patcmp -m $mmfile $indir $outdir $editor "$us_commits"
+exec_patcmp() {
+	local xval="$1"
+
+	# If the mmfile does not contain the same number of patches
+	# as the infilecount, then go make the mmfile.
+	#
+	if [ "$xval" ]; then
+		if ! $(check_mismatch_file); then
+			echo "rebuild mismatch_file: $mmfile"
+			patbatcmpmgr -R $indir -U $outdir -o $mmfile "$xval"
+		fi
 	else
-		patcmp $indir $outdir $editor "$us_commits"
+		patbatcmpmgr -R $indir -U $outdir -o $mmfile
 	fi
+	patcmp -m $mmfile $indir $outdir $editor "$us_commits"
 }
 
 # compare_patches - compare the downstream with the upstream
@@ -839,8 +857,8 @@ compare_patches_raw() {
 compare_patches() {
 
 	case $cmpmode in
-		$cmpmode_batch ) exec_patcmp "$mmfile" "-X" ;;
-		$cmpmode_setup ) exec_patcmp "$mmfile" ;;
+		$cmpmode_batch ) exec_patcmp "-X" ;;
+		$cmpmode_setup ) exec_patcmp ;;
 		$cmpmode_inter ) patcmp $indir $outdir $editor $us_commits ;;
 			     * ) cmpmode=$cmpmode_off
 	esac
