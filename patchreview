@@ -150,6 +150,7 @@ clean_indir() {
 clean_outdir() {
 	# remove all but the log files and subdirs in the outdir
 	find "$outdir" -maxdepth 1 -not -type d -not -name "*.log" -exec rm -vf '{}' \;
+	rm -vf $outdir/$mismatch_file
 }
 
 clean_directories() {
