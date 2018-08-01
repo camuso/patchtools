@@ -2,8 +2,15 @@
 Patchreview v6.0
 ================
 
-This menu-driven script allows the user to compare his set of patches
-with patches from upstream.
+This menu-driven script allows the user to compare a set of patches
+from one branch with those of another branch. The branches can be
+remote or local.
+
+The script was designed to be used for comparing RHEL patches with the
+correspoinding upstream commits from which they were derived or backported.
+The comparison helps identify differences between the two, giving the
+reviewer a clear picture of how close the backported RHEL patches are to
+the upstream commits.  with patches from upstream.
 
 ------------
 Installation
@@ -13,19 +20,41 @@ The patchreview script and its dependencies can be untarred into any
 directory, however that directory must be in your executable path.
 
 For example:
-
 	$ cd $HOME
-	$ mkdir mybin
+	$ rhrepo='git://git.engineering.redhat.com'
+	$ patchtools='users/tcamuso/patchtools/patchtools.git/.git'
+	$ git clone $rhrepo/$patchtools mybin
 	$ export PATH=$PATH:$HOME/mybin
-	$ cd mybin
-	$ tar -xvf patchrevdev.tar
+
+After the above sequence of commands, the user can invoke patchreview
+from the command line.
+
+-----------------------------
+Preparing the Git Environment
+-----------------------------
+
+The script must be run from the top of a linux git tree. If not, it will
+exit with an error message.
+
+The linux git tree should be configured with the linus tree as master
+and with the user's trees as branches of the linus tree.
+
+For example:
+
+# Clone the linus tree.
+git clone git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+
+# Add a rhel kernel tree as a branch, e.g. rhel7
+git remote add rh7 git://git.app.eng.bos.redhat.com/rhel7.git
+git fetch rh7
+git checkout -b rh7 rh7/master
+
+At this point, the git environment is ready to compare rhel7 patches with
+their upstream counterparts.
 
 -----------------
 Runing the script
 -----------------
-
-The script must be run from the top of a git tree. If not, it will exit
-with an error message.
 
 A directory containing the patches being backported or developed must be
 scpecified as well as a directory for the upstream patches.
