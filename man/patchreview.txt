@@ -56,15 +56,20 @@ their upstream counterparts.
 Runing the script
 -----------------
 
-A directory containing the patches being backported or developed must be
-scpecified as well as a directory for the upstream patches.
+Upon invoking the script for the first time, the user is queried for the
+following items.
 
-These directories must not be the same.
+* The Patch directory
 
-These directories are identified by the script as follows.
+* The Work directory
 
-Patch directory: the directory containing the patches being backported or
-                 developed.
+* The user's preferred diff editor.
+  vimdiff, emacs, and tkdiff are supported.
+
+Detailed descriptions of these items follow.
+
+Patch directory: is the directory containing the patches being backported
+                 or developed.
 
 		 If this directory were populated by a mail client, then
 		 the files must be renamed to be processed. The files
@@ -79,7 +84,7 @@ Patch directory: the directory containing the patches being backported or
 		 separately rename the files without having to run the
 		 whole script.
 
-Work directory: the directory into which the script will put upstream
+Work directory: is the directory into which the script will put upstream
                 patches that were formatted using the upstream commit
                 hashes in the commit logs of the patches in the Patch
                 directory.
@@ -97,16 +102,6 @@ state of the git tree.
 
    - most recent tag in the current git branch.
    - current head of the current git branch.
-
-The first time the script is run, the user is queried for the following
-items.
-
-* The Patch directory
-
-* The Work directory
-
-* The user's preferred diff editor.
-  vimdiff, emacs, and tkdiff are supported.
 
 _________________________________________________________________________
 
