@@ -16,7 +16,7 @@ the upstream commits.  with patches from upstream.
 Installation
 ------------
 
-The patchreview script and its dependencies can be untarred into any
+The patchreview script and its dependencies can be git-cloned into any
 directory, however that directory must be in your executable path.
 
 For example:
@@ -56,8 +56,8 @@ their upstream counterparts.
 Runing the script
 -----------------
 
-Upon invoking the script for the first time, the user is queried for the
-following items.
+When invoking the script for the first time, or in a new git tree, the
+script queries the user for the following items.
 
 * The Patch directory
 
@@ -68,8 +68,7 @@ following items.
 
 Detailed descriptions of these items follow.
 
-Patch directory: is the directory containing the patches being backported
-                 or developed.
+Patch directory: is the directory containing the backported patches.
 
 		 If this directory were populated by a mail client, then
 		 the files must be renamed to be processed. The files
@@ -96,6 +95,7 @@ Work directory: is the directory into which the script will put upstream
 		Alternatively, the user can invoke the 'F control to
 		separately create the upstream patches without having to
 		run the whole script.
+
 
 The first two items in the "Environment" section reflect the current
 state of the git tree.

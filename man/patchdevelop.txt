@@ -16,7 +16,7 @@ the upstream commits.  with patches from upstream.
 Installation
 ------------
 
-The patchdevelp script and its dependencies can be untarred into any
+The patchdevelp script and its dependencies can be git-cloned into any
 directory, however that directory must be in your executable path.
 
 For example:
@@ -57,18 +57,10 @@ their upstream counterparts.
 Runing the script
 -----------------
 
-The script must be run from the top of a git tree. If not, it will exit
-with an error message.
+When invoking the script for the first time, or in a new git tree, the
+script queries the user for the following items.
 
-A directory containing the patches being backported or developed must be
-scpecified as well as a directory for the upstream patches.
-
-These directories must not be the same.
-
-These directories are identified by the script as follows.
-
-Patch directory: the directory containing the patches being backported or
-                 developed.
+Patch directory: the directory containing the patches under development.
 
 		 If this directory were populated by a mail client, then
 		 the files must be renamed to be processed. The files
