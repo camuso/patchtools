@@ -155,7 +155,7 @@ while getopts hdpsvVo: OPTION; do
 	p ) nopaths=true	# exclude the paths when true
 	    let optcnt++
 	    ;;
-	s ) strict=true		# only compare lines starting with * or -
+	s ) strict=true		# only compare lines starting with + or -
 	    let optcnt++
 	    ;;
 	v ) verbose=true	# print whether or not files are congruent
@@ -312,7 +312,6 @@ for ((index = 0; index < $fcountA; ++index)); do
 	#
 	IFS=
 	until $b_done; do
-
 
 		# If we're not sending output to sdtout, let the user know we're
 		# still alive by printing a dot to stdout. But never more than
