@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Enable extglob for more specific directory actions
+#
+shopt -s extglob
+
 remove_spaces()
 {
     local sp=" "
@@ -66,10 +70,6 @@ if [ $total -eq 0 ]; then
 	echo
 	exit 1
 fi
-
-# Enable extglob for more specific directory actions
-#
-shopt -s extglob
 
 # remove spaces from filenames
 #
