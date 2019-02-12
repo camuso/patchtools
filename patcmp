@@ -303,6 +303,8 @@ init_mismatch() {
 	mismatch_count=$mmindex
 
 	if [ $mismatch_count -gt 0 ]; then
+		echo -e "Total number of patches not matching upstream: "\
+			"$BLD$mismatch_count$OFF"
 		last_mismatch=${mismatch_array[$((mmindex-1))]}
 		first_mismatch=${mismatch_array[0]}
 		index=$first_mismatch
@@ -500,8 +502,11 @@ while :; do
 	echo -e "\n$BLD\0Interactively Compare Patch Pairs"
 	echo -e "-----------------------------------------------------------------"
 	echo -en "$OFF"
-	echo -e "$BLD\0Compare :$OFF $(basename ${mlfiles[$index]})"
-	echo -e "   $BLD\0With :$OFF $(basename ${usfiles[$index]})"
+	echo -e "$BLD Compare :$OFF $mldir/$(basename ${mlfiles[$index]})"
+	echo -e "$BLD    With :$OFF $usdir/$(basename ${usfiles[$index]})"
+	if ! $b_nomismatch; then
+	echo -e "${BLD}Mismatch :$OFF $((mmindex+1)) ${BLD}of$OFF $mismatch_count"
+	fi
 	echo
 
 	echo -en "$BLD"
