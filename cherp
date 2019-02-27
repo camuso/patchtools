@@ -96,6 +96,10 @@ declare ui_bools=""
 declare currentuphash
 declare currentupcommit
 
+# Lines starting with any of these chars will be ignored.
+# The '#' indicates a comment, and the '+' indicates already committed.
+declare ignore_str="#+"
+
 ########################################
 # Strings
 ########################################
@@ -544,13 +548,14 @@ set_next_cherrypick() {
 	local q="$OFF\0'$BLD\0q$OFF\0'$BLD"
 
 	echo -e "\nContents of upstream commits file: $BLD$upcommitsfile$OFF"
-	echo -e "$BLD\0NOTE:$OFF Not showing lines with a leading '$BLD\0#$OFF'.\n"
+	echo -e "$BLD\0NOTE:$OFF Not showing lines starting with any of these chars:"\
+	        "$BLD$ignore_str$OFF\n"
 
 	# Dump the contents of the upcommitsfile
 	#
 	while read line; do
 		let counter++
-		[ "${line:0:1}" = "#" ] && continue
+		[ $(ui_strindex "$ignore_str" "${line:0:1}") -ge 0 ] && continue
 		line=$(printf "%b %${numwid}d %b%s" $BLD $((idx+1)) $OFF "$line")
 		echo "${line:0:cols}"
 		linary[$idx]=$counter
@@ -641,9 +646,12 @@ get_next_cherrypick() {
 	local line
 	local count=$(cat $upcommitsfile | wc -l)
 
+	# Find the first line that does NOT begin with one of the characters in the
+	# string of characters indicating the line is to be ignored.
+	#
 	for ((idx=(upcmtstartline + 1); i <= count; ++idx)); do
 		line="$(ui_readline $idx $upcommitsfile)"
-		[ "${line:0:1}" = "#" ] || break
+		[ $(ui_strindex "$ignore_str" "${line:0:1}") -ge 0 ] || break
 	done
 
 	if [ $idx -gt $count ]; then
