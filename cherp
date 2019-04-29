@@ -628,6 +628,7 @@ getlasttag() {
 #       GLOBALS:  upcommitsfile
 #                 upcmtstartline
 #                 currentuphash
+#                 ignore_str
 #       OUTPUTS:  echoes the hash of next upstream commit in the commits file
 #       RETURNS:  1 if there are no more cherries to pick, else 0
 #===============================================================================
@@ -649,7 +650,7 @@ get_next_cherrypick() {
 	# Find the first line that does NOT begin with one of the characters in the
 	# string of characters indicating the line is to be ignored.
 	#
-	for ((idx=(upcmtstartline + 1); i <= count; ++idx)); do
+	for ((idx=(upcmtstartline + 1); idx <= count; ++idx)); do
 		line="$(ui_readline $idx $upcommitsfile)"
 		[ $(ui_strindex "$ignore_str" "${line:0:1}") -ge 0 ] || break
 	done
