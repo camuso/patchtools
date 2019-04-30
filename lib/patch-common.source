@@ -374,6 +374,96 @@ function create_commit_msg {
 	done < "$1"
 }
 
+# process_patcherr - decide what to do upon patch apply error
+#
+# Globals
+# 	patchcount
+# 	applyfailmode*
+#
+process_patcherr() {
+	local failedpatch=$1
+	local head=$2
+	local amresolve
+
+	echo -en "$BLD"
+	echo -e "\nPatch: $OFF$failedpatch$BLD"
+	echo -e "Failed to apply.$OFF"
+
+	if (( applymode != applymode_patch )); then
+		echo "Please select one of the following"
+		echo "1 - git am --abort and restore the original branch"
+		echo "2 - git am --quit and keep the current HEAD and index"
+		echo
+		loop_range 1 2 amresolve
+
+		case $amresolve in
+			1 ) git am --abort
+			    patchcount=0
+			    ;;
+			2 ) git am --quit
+			    patchcount=$(git log --oneline $head..HEAD | wc -l)
+			    ;;
+		esac
+	fi
+
+	case $applyfailmode in
+	    $applyfailmode_exit )
+		    echo -e "Exiting script ...\n"
+		    exit_me 1
+		    ;;
+	    $applyfailmode_cont )
+		    echo -e "Continuing without patching...\n"
+		    ;;
+	    $applyfailmode_menu )
+		    echo -e "Returning to main menu ...\n"
+	esac
+}
+
+# use_patch - use the patch app instead of git am
+#
+# Globals:
+#	patchcount
+#	startpat
+#
+use_patch() {
+	local patchlist="$1"
+	local stat=0
+
+	for patch in "$patchlist"; do
+		let patchcount++
+		[ $patchcount -ge $startpat ] || continue
+		echo "$patch"
+		patch --fuzz=3 -p1 < $patch
+		stat=$?
+	done
+
+	return $stat
+}
+
+# get_amfailure - returns the filename of the failed patch
+#
+# Globals
+# 	patchcount
+# 	applymode
+# 	applymode_patch
+#
+get_failedpatch() {
+	local patchlist="$1"
+	local patcharray=($patchlist)
+	local patsub
+	local patfil
+
+	if (( applymode == applymode_patch )); then
+		echo "${patcharray[$patchcount]}"
+	else
+		patsub=$(git am --show-current-patch | grep -m1 'Subject: ')
+		patsub=$(echo "$patsub" | cut -d'[' -f2 | cut -d']' -f1)
+		patfil=$(grep -l "$patsub" $patchlist)
+		echo "$patfil"
+	fi
+}
+
+
 # apply_patches
 #
 # GLOBALS
@@ -381,54 +471,29 @@ function create_commit_msg {
 #	outdir
 #	patchcount
 #	bp_commits
-#	applymode
-#	patchcount
+#	applymode*
+#	applyfailmode
 #
 function apply_patches {
-	# patchcount is global
 	local stat=0
-	patchlist=$(ls -1 "$indir"/*.patch | sort -V)
+	local patchlist=$(ls -1 "$indir"/*.patch | sort -V)
+	local head=$(git log --oneline -n1 | cut -d' ' -f 1)
 
 	[ $applymode -eq $applymode_off ] && return 0
 	echo "" > "$bp_commits"
 
-	for patch in $(ls -1 "$indir"/*.patch | sort -V); do
-		let patchcount++
-		[ $patchcount -ge $startpat ] || continue
+	case $applymode in
+	    $applymode_norm  ) git am $patchlist; stat=$? ;;
+	    $applymode_3way  ) git am -3 $patchlist ; stat=$? ;;
+	    $applymode_patch ) use_patch "$patchlist"; stat=$? ;;
+	esac
 
-		echo "$patch"
+	[ $stat -eq 0 ] || process_patcherr $(get_failedpatch "$patchlist")
 
-		case $applymode in
-		    $applymode_norm  ) git am $patch; stat=$? ;;
-		    $applymode_3way  ) git am -3 $patch; stat=$? ;;
-		    $applymode_patch ) patch --fuzz=3 -p1 < $patch; stat=$? ;;
-		esac
-
-		if [ $stat -ne 0 ]; then
-			b_allapplied=false
-			echo -en "$BLD"
-			echo -e "\nPatch: $OFF$patch$BLD"
-			echo -e "Failed to apply.$OFF"
-			case $applyfailmode in
-			    $applyfailmode_exit )
-				    echo -e "Exiting script ...\n"
-				    ;;
-			    $applyfailmode_cont )
-				    echo -e "Continuing without patching...\n"
-				    return $stat
-				    ;;
-			    $applyfailmode_menu )
-				    echo -e "Returning to main menu ...\n"
-				    return $stat
-			esac
-			exit_me 1
-		fi
-
-		[ $applymode -ne $applymode_patch ] && {
-			printf "%3d " $patchcount >> "$bp_commits"
-			git log --oneline -n1 >> "$bp_commits"
-		}
-	done
+	[ $applymode -ne $applymode_patch ] && {
+		printf "%3d " $patchcount >> "$bp_commits"
+		git log --oneline -n$patchcount >> "$bp_commits"
+	}
 
 	[ $stat -eq 0 ] && {
 		b_allapplied=true
