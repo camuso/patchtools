@@ -216,9 +216,8 @@ function git_comment2commitsfile {
 	local cmtcnt=0
 	local cmtindex=1
 	local linenumber=0
-	local commitparity=0	# 1 if commits are the same
 	local commitarray
-	local scrstr
+	local sorted
 	local hashsize="40"
 	local _40digit=true
 
@@ -239,7 +238,6 @@ function git_comment2commitsfile {
 
 		echo $srcfile
 		linenumber=0
-		commitparity=0
 
 		# The default number of digits for a commit hash is 40.
 		# However, the user can pass "false" in $3 to set the range
@@ -260,25 +258,25 @@ function git_comment2commitsfile {
 		#
 		cmtcnt=$(cat $scratchfile | wc -l)
 
-		# If there are exactly two commits, then see if they are
+		# If there is more than one commit, then see if they are
 		# identical. If so, no need to query the user for which
 		# one he wants.
 		#
-		if [ $cmtcnt -eq 2 ]; then
+		if [ $cmtcnt -gt 1 ]; then
 			cmtindex=0
 			while read line; do
 				commitarray[$cmtindex]=$(git_excisecommit "$line" "$hashsize")
 				let cmtindex++
 			done < $scratchfile
 
-			for ((cmtindex=1; cmtindex < cmtcnt; cmtindex++))
-			do
-				[ "${commitarray[$cmtindex]}" == "${commitarray[0]}" ] \
-				&& commitparity=1 || commitparity=0
-			done
+			# sort the array using the -u unique switch to wring
+			# out duplicates.
+			#
+			IFS=$'\n' sorted=($(sort -u <<< "${commitarray[*]}"))
+			unset IFS
 		fi
 
-		if [ $cmtcnt -gt 1 ] && [ $commitparity -eq 0 ]; then
+		if [ ${#sorted[@]} -gt 1 ]; then
 
 			echo -en "There is more than one commit mentioned in patch"
 			echo -e  "$OFF $index.$BLD"
