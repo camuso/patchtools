@@ -89,6 +89,12 @@ for filename in $(find -maxdepth 1 -not -type d -not -name "*.patch"); do
 	#
 	subject=$(grep -m1 "Subject: " "$filename")
 
+	# Remove any asterisks from the subject line.
+	#
+	subject=$(sed 's /\*//g' <<< "$subject")
+	echo "$subject"
+	read
+
 	# Remove the word "Subject: " from the line
 	#
 	subject=$(echo "$subject" | cut -d' ' -f2-)
