@@ -238,6 +238,9 @@ function git_comment2commitsfile {
 
 		echo $srcfile
 		linenumber=0
+		cmtcnt=0
+		commitarray=()
+		sorted=()
 
 		# The default number of digits for a commit hash is 40.
 		# However, the user can pass "false" in $3 to set the range
