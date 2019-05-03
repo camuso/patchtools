@@ -1026,6 +1026,10 @@ renpatfiles() {
 	#
 	subject=$(grep -m1 "Subject: " "$filename")
 
+	# Remove any asterisks from the subject line.
+	#
+	subject=$(sed 's/\*//g' <<< "$subject")
+
 	# Remove the word "Subject: " from the line
 	#
 	subject=$(echo "$subject" | cut -d' ' -f2-)
