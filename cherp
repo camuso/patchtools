@@ -62,6 +62,7 @@ declare prj_lastuphash		# most recently applied upstream commit
 declare prj_workdir		# scratch directory for the session
 declare prj_upcommits		# file containing list of upstream commits
 declare prj_b_conflict		# last attempt generated a conflict
+declare prj_b_build		# incremental build flag
 
 declare prj_entries=0	# number of entries in the project data file
 declare boolindex=0	# start of boolean data items in project data file
@@ -75,6 +76,7 @@ declare lastuphash		# most recently applied upstream commit hash
 declare workdir			# scratch directory for the session
 declare upcommitsfile		# File of upstream commits to cherry-pick
 declare b_conflict		# last attempt generated a conflict
+declare b_build			# incremental build flag
 
 #########################################
 # Global Variables
@@ -263,8 +265,8 @@ function exec_boolean {
 #          NAME:  init_booleans
 #   DESCRIPTION:  Initialize the booleans for a new session
 #    PARAMETERS:  Global symbols:
-#    			ui_bools
-#    			boolindex
+#    			b_conflict
+#    			b_build
 #    	  CALLS:  prj_set_item
 #       RETURNS:  0
 #===============================================================================
@@ -272,8 +274,9 @@ function init_booleans {
 	# echo -e "$UND\0init_booleans$OFF"
 
 	b_conflict=false
-
+	b_build=false
 	prj_set_item $prj_b_conflict $b_conflict
+	prg_set_item $prj_b_build $b_build
 }
 
 #===  FUNCTION  ================================================================
@@ -283,15 +286,14 @@ function init_booleans {
 #   		  to false.
 #    PARAMETERS:  Global symbols:
 #    			ui_bools
-#    			boolindex
 #    	  CALLS:  prj_get_emptyline
 #       RETURNS:  0
 #===============================================================================
 function read_booleans {
 	# echo -e "$UND\0read_booleans$OFF"
 
-	local index=$boolindex
 	local val
+	local bool
 	local emptyline="$(prj_get_emptyline)"
 
 	# echo "ui_bools: $ui_bools"
@@ -299,7 +301,6 @@ function read_booleans {
 		val=$(prj_get_item $index)
 		eval $bool=$val
 		[ "${!bool}" == "$emptyline" ] && eval $bool=false
-		let index++
 	done
 
 	return 0
@@ -1300,16 +1301,15 @@ count_prj_items() {
 
 	local boolcount=0
 	local b_found_first_bool=false
-	local index
+	local index=0
 
 	# Init ui items
 	# -------------
 	# This loop enumerates and counts the items that will be stored in the
-	# project file. It also declares the boolean names whose values are stored
-	# in the project file and assigns values to them.
+	# project file.
 	#
-	# Add new booleans to the end of the list.
 	# Add new non-boolean parameters to the top of the list.
+	# Add new booleans to the end of the list.
 	#
 	for offset in \
 	prj_upcmtstartline \
@@ -1318,6 +1318,7 @@ count_prj_items() {
 	prj_workdir \
 	prj_upcommits \
 	prj_b_conflict \
+	prj_b_build \
 	; do
 		# The prj_set_item() function uses 1-based line numbers for indexing
 		# into the project file. We inited the index variable to zero, so
@@ -1337,14 +1338,12 @@ count_prj_items() {
 			# file index variable, but with the leading "prj_" removed.
 			#
 			boolname="$(echo ${offset} | cut -d'_' -f2-)"
-			declare $boolname
 
 			# Create a string that contains all the names of the program's
 			# booleans.
 			#
-			ui_bools=""$ui_bools" "$boolname" " # basically a strcat()
+			ui_bools=""$ui_bools" " $boolname" " # basically a strcat()
 
-			[ "${!boolname}" == " " ] && eval $boolname=false
 			let boolcount++
 			if ! $b_found_first_bool; then
 				boolindex=$index
