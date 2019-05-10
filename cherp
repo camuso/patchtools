@@ -48,6 +48,7 @@ declare exit_bogus=4	# Exit because of bogus commit
 declare exit_init=5	# The project has not been initialized
 declare exit_pending=6	# There are changes pending, so action can't complete
 declare exit_nothing=7	# There is nothing to do
+declare exit_bldfail=8	# attempted incremental build failed
 declare exit_bad=10	# Exiting from command line call with bad status
 
 declare b_session_inited=false	# boolean to indicate session is inited
@@ -284,23 +285,25 @@ function init_booleans {
 #   DESCRIPTION:  Read the values of the program flow control booleans from the
 #   		  project file. If the value has not been initialized, then init
 #   		  to false.
-#    PARAMETERS:  Global symbols:
-#    			ui_bools
+#    PARAMETERS:  none
+#       GLOBALS:  ui_bools
+#    		  boolindex
 #    	  CALLS:  prj_get_emptyline
 #       RETURNS:  0
 #===============================================================================
 function read_booleans {
 	# echo -e "$UND\0read_booleans$OFF"
-
+	local index=$boolindex
 	local val
 	local bool
 	local emptyline="$(prj_get_emptyline)"
 
-	# echo "ui_bools: $ui_bools"
 	for bool in $ui_bools; do
 		val=$(prj_get_item $index)
 		eval $bool=$val
+		# echo "bool: $bool: ${!bool}: "
 		[ "${!bool}" == "$emptyline" ] && eval $bool=false
+		let ++index
 	done
 
 	return 0
@@ -316,8 +319,11 @@ function read_booleans {
 #       RETURNS:  0
 #===============================================================================
 function save_booleans {
+	# echo -e "$UND\0save_booleans$OFF"
 	local index=$boolindex
+
 	for bool in $ui_bools; do
+		# echo "bool: $bool: ${!bool}: "
 		prj_set_item $index ${!bool}
 		let index++
 	done
@@ -830,13 +836,26 @@ $(show_most_recent_cherrypick)\
 $(show_next_cherrypick)
     Current downstream branch    : $OFF$(get_gitbranch)$BLD
     Current downstream head      : $OFF${lastbrcmt:0:cols}$BLD
-    Original downstream head     : $OFF${orighead:0:cols}
+    Original downstream head     : $OFF${orighead:0:cols}$BLD
+    Incremental Build            : $OFF$(show_bool $b_build)
 \0
 EOF
 )
 	echo -e "$statstr"
 	git status
 	$b_internal || exit 0
+}
+
+#===  FUNCTION  ===============================================================
+#          NAME:  show_bool
+#   DESCRIPTION:  show the current state of a boolean
+#    PARAMETERS:  $1 - name of boolean to show
+#       GLOBALS:  none
+#       RETURNS:  none
+#===============================================================================
+show_bool() {
+	local bool=$1
+	$bool && echo -n "ON" || echo -n "OFF"
 }
 
 #===  FUNCTION  ===============================================================
@@ -870,6 +889,7 @@ $(show_next_cherrypick)
  b  Current git branch           : $OFF$(get_gitbranch)$BLD
  p  Current subject prefix       : $OFF$subjectprefix$BLD
  w  Working directory            : $OFF$workdir$BLD
+ i  Incremental Build            : $OFF$(show_bool $b_build)
 
     $UND\0Control                  $OFF$BLD
  N  Start a New Session
@@ -909,6 +929,8 @@ function menu_parser {
 		w )	set_working_directory
 			;;
 		u )	set_upcommitsfile
+			;;
+		i )     ui_toggle b_build
 			;;
 		c )	set_next_cherrypick
 			;;
@@ -1096,6 +1118,34 @@ run_single() {
 	exit $stat
 }
 
+#===  FUNCTION  ===============================================================
+#          NAME:  set_buildstate
+#   DESCRIPTION:  build the kernel
+#    PARAMETERS:  $1 - state, true false
+#       GLOBALS:  none
+#       RETURNS:  make exit status
+#===============================================================================
+set_buildstate() {
+	check_prj_file
+	read_booleans
+	b_build=$1
+	save_booleans
+	exit $exit_good
+}
+
+#===  FUNCTION  ===============================================================
+#          NAME:  build
+#   DESCRIPTION:  build the kernel
+#    PARAMETERS:  none
+#       GLOBALS:  none
+#       RETURNS:  make exit status
+#===============================================================================
+build() {
+	local cpus=$(cat /proc/cpuinfo | grep processor | wc -l)
+	make -j$cpus
+	return $?
+}
+
 #===  FUNCTION  ================================================================
 #          NAME:  cherrypick
 #   DESCRIPTION:  Given a commit, try to cherry pick it
@@ -1163,6 +1213,11 @@ EOF
 			show_status internal
 			exit_cherp $exit_conflict
 		}
+	fi
+
+	if $b_build; then
+		build
+		[ $? -eq 2 ] && exit_cherp $exit_bldfail
 	fi
 
 	stage_commit
@@ -1342,7 +1397,7 @@ count_prj_items() {
 			# Create a string that contains all the names of the program's
 			# booleans.
 			#
-			ui_bools=""$ui_bools" " $boolname" " # basically a strcat()
+			ui_bools="$ui_bools $boolname" # basically a strcat()
 
 			let boolcount++
 			if ! $b_found_first_bool; then
@@ -1626,7 +1681,7 @@ directory,\
 hashlist,\
 help,\
 history,\
-ibuild,\
+build,\
 new,\
 pick:,\
 pop:,\
@@ -1651,7 +1706,7 @@ else
 	# [ $# -gt 1 ] && checked_cmd="$checked_cmd ${@:2:$#}"
 
 	opts=$(getopt --options $shortopts --long $longopts --name "$0" -- "$@")
-	eval set -- "$opts"
+	set -- "$opts"
 
 	while :; do
 	    case "$checked_cmd" in
@@ -1672,13 +1727,16 @@ else
 			;;
 		-h | "--help" 	)
 			less $MYHLP
-			exit 0
+			exit_cherp $exit_good
 			;;
 		"--history" )
 			show_history
 			;;
-		"--ibuild" )
-			b_ibuild=true	# set the incremental build flag
+		"--build" )
+			set_buildstate true
+			;;
+		"--build-" )
+			set_buildstate false
 			;;
 		"--new" )
 			init_newsession
@@ -1688,7 +1746,7 @@ else
 			;& 		# fall through to pick
 		-p | "--pick" )
 			currentuphash=$2
-			[ "$currentuphash" ] || { echo -e "$needcmtstr"; exit 1; }
+			[ "$currentuphash" ] || { echo -e "$needcmtstr"; exit $exit_bogus; }
 			run_single
 			;;
 		"--pop" )
@@ -1727,7 +1785,7 @@ else
 fi
 
 ##############################################
-# Main Program
+# Top of Interactive Script
 ##############################################
 
 # Print the herald
