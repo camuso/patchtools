@@ -384,6 +384,30 @@ function ui_chkdir {
 	return 0
 }
 
+# ui_verifydir() - determines whether the name is a valid directory
+#
+# $1 - the name of the directory to verify
+#
+# Returns 0 if the directory is valid, else returns 1
+#
+ui_verifydir() {
+	local dir="$1"
+	local stat
+
+	ui_chkdir "$dir"
+	stat=$?
+
+	case $stat in
+		0 )	echo "\"$dir\" does not exist."
+			return 1
+			;;
+		1 )	echo -e "\"$dir\" already exists as a file."
+			return 1
+			;;
+		2 ) 	return 0
+	esac
+}
+
 # ui_getnewdir prompt name
 #
 # $1 - prompt
