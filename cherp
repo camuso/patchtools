@@ -1099,7 +1099,9 @@ run_commit() {
 #          NAME:  run_single
 #   DESCRIPTION:  Just cherrypick one commit
 #    PARAMETERS:  none
-#       GLOBALS:  none
+#       GLOBALS:  b_single
+#                 dnorighead
+#                 currentuphash
 #       RETURNS:  none
 #===============================================================================
 run_single() {
@@ -1157,6 +1159,7 @@ build() {
 #                 lastuphash
 #                 b_conflict
 #                 b_single
+#                 b_nit
 #       RETURNS:  non-zero if something went wrong
 #===============================================================================
 cherrypick() {
@@ -1706,7 +1709,7 @@ else
 	# [ $# -gt 1 ] && checked_cmd="$checked_cmd ${@:2:$#}"
 
 	opts=$(getopt --options $shortopts --long $longopts --name "$0" -- "$@")
-	set -- "$opts"
+	eval set -- "$opts"
 
 	while :; do
 	    case "$checked_cmd" in
