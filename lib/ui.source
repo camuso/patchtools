@@ -65,12 +65,12 @@ declare msgretry="$msgretry Try again or type $qstr to quit trying: "
 
 # Errors
 #
-declare ui_err_invargc=1
-declare ui_err_notdigit=2
-declare ui_err_invfile=3
-declare ui_err_invdir=4
-declare ui_err_invlinec=5
-declare ui_err_nofiles=6
+declare -i ui_err_invargc=1
+declare -i ui_err_invfile=2
+declare -i ui_err_invdir=3
+declare -i ui_err_invlinec=4
+declare -i ui_err_nofiles=5
+declare -i ui_err_notdigit=6
 
 # Contlol-C exit code
 # see http://www.tldp.org/LDP/abs/html/exitcodes.html
