@@ -429,7 +429,7 @@ use_patch() {
 	local patchlist="$1"
 	local stat=0
 
-	for patch in "$patchlist"; do
+	for patch in $patchlist; do
 		let patchcount++
 		[ $patchcount -ge $startpat ] || continue
 		echo "$patch"
