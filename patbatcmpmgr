@@ -24,7 +24,7 @@ shopt -s extglob
 
 declare MYDIR=$(dirname $(which $(basename $0)))
 declare MYLIB=$MYDIR/lib
-declare MYDATA=$MYDIR/.data
+declare MYDATA=./.data
 LIB="$MYLIB"
 
 #######################################
