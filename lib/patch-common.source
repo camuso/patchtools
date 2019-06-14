@@ -46,7 +46,8 @@ declare boolindex=0
 declare b_found_first_bool=false
 declare b_selpat=false
 declare b_allapplied=false
-declare infilecount=0
+declare infilecount=0			# number of files in the input directory
+declare patchtotal=0			# total patches in the input directory
 
 declare us_commits_name="us-commits.log"	# upstream commits log filename
 declare bp_commits_name="bp-commits.log"	# backport commits log filename
@@ -421,9 +422,12 @@ process_patcherr() {
 
 # use_patch - use the patch app instead of git am
 #
+# Arguments
+#	$1 - the string containing the list of patches
+#
 # Globals:
-#	patchcount
-#	startpat
+#	patchcount - running tally of applied patches
+#	startpat   - patch to start applying from
 #
 use_patch() {
 	local patchlist="$1"
@@ -431,7 +435,7 @@ use_patch() {
 
 	for patch in $patchlist; do
 		let patchcount++
-		[ $patchcount -ge $startpat ] || continue
+		# [ $patchcount -ge $startpat ] || continue
 		echo "$patch"
 		patch --fuzz=3 -p1 < $patch
 		stat=$?
@@ -443,7 +447,7 @@ use_patch() {
 # get_amfailure - returns the filename of the failed patch
 #
 # Globals
-# 	patchcount
+# 	patchcount - running tally of applied patches
 # 	applymode
 # 	applymode_patch
 #
@@ -463,21 +467,45 @@ get_failedpatch() {
 	fi
 }
 
+# create_patchlist() - create the patchlist starting at startpat
+#
+# ARGUMENTS
+#	$1 - list of patches being returned
+#
+# GLOBALS
+# 	indir      - input directory, contains the patches
+# 	outdir     - output directory
+# 	startpat   - patch from which to start applying
+# 	patchcount - running count of applied patches
+# 	patchtotal - total number of patches to apply
+#
+create_patchlist() {
+	local list=($(ls -1 "$indir"/*.patch | sort -V))
+	local snum=$((startpat - 1))
+	local pnum=$((patchtotal - startpat))
+	local retlist="${list[@]:$snum:$pnum}"
+
+	echo "$retlist"
+}
 
 # apply_patches
 #
 # GLOBALS
-#	indir
-#	outdir
-#	patchcount
-#	bp_commits
-#	applymode*
-#	applyfailmode
+#	indir         - input directory, contains the patches
+#	outdir        - output directory
+#	patchcount    - running count of applied patches
+#	patchtotal    - total number of patches to apply INITED HERE
+#	bp_commits    - backport commits
+#	applymode*    - git am, git am -3, or patch --fuzz=3 -p1
+#	applyfailmode - exit, goto main-menu, or continue
 #
 function apply_patches {
 	local stat=0
-	local patchlist=$(ls -1 "$indir"/*.patch | sort -V)
+	local patchlist=
 	local head=$(git log --oneline -n1 | cut -d' ' -f 1)
+
+	patchtotal=$(ls -1 "$indir"/*.patch | wc -l)
+	patchlist=$(create_patchlist)
 
 	[ $applymode -eq $applymode_off ] && return 0
 	echo "" > "$bp_commits"
