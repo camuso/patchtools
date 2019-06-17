@@ -15,14 +15,33 @@
 ##############################
 
 #
-# Text attributes
+# Text Attributes
 #
 unset BLD && declare BLD="\033[1m"
 unset UND && declare UND="\033[4m"
+unset OFF && declare OFF="\033[0m"
+#
+# Text color definitions
+#
+unset BLK && declare BLK='\e[0;30m'
 unset RED && declare RED='\e[0;31m'
 unset GRN && declare GRN='\e[0;32m'
 unset YEL && declare YEL='\e[0;33m'
-unset OFF && declare OFF="\033[0m"
+unset BLU && declare BLU='\e[0;34m'
+unset MGT && declare MGT='\e[0;35m'
+unset CYN && declare CYN='\e[0;36m'
+unset WHT && declare WHT='\e[0;37m'
+#
+# Bright colors
+#
+unset BBLK && declare BBLK='\e[1;90m'
+unset BRED && declare BRED='\e[1;91m'
+unset BGRN && declare BGRN='\e[1;92m'
+unset BYEL && declare BYEL='\e[1;93m'
+unset BBLU && declare BBLU='\e[1;94m'
+unset BMGT && declare BMGT='\e[1;95m'
+unset BCYN && declare BCYN='\e[1;96m'
+unset BWHT && declare BWHT='\e[1;97m'
 
 # Terminal magic
 #
