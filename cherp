@@ -5,7 +5,7 @@
 # Provide some automation for cherrypicking.
 #
 
-VERSION="2.0"
+VERSION="3.0"
 
 #######################################
 # Default file locations
@@ -99,10 +99,6 @@ declare ui_bools=""
 declare currentuphash
 declare currentupcommit
 
-# Lines starting with any of these chars will be ignored.
-# The '#' indicates a comment, and the '+' indicates already committed.
-declare ignore_str="#+"
-
 ########################################
 # Strings
 ########################################
@@ -117,6 +113,10 @@ $OFF\0There is currently a session active.
 	$BLD$MYNAME --continue$OFF to continue the session
 	$BLD$MYNAME --new$OFF to start a new session
 "
+
+# Lines starting with any of these chars will be ignored.
+# The '#' indicates a comment, and the '+' indicates already committed.
+declare ignore_str="#+"
 
 #########################################
 # Functions
@@ -636,6 +636,7 @@ getlasttag() {
 #                 upcmtstartline
 #                 currentuphash
 #                 ignore_str
+#                 b_nit
 #       OUTPUTS:  echoes the hash of next upstream commit in the commits file
 #       RETURNS:  1 if there are no more cherries to pick, else 0
 #===============================================================================
@@ -644,6 +645,7 @@ get_next_cherrypick() {
 	# echo -e "\n$UND$myname$OFF start line: $upcmtstartline"
 	local noexiststr="$BLD\0Commits file: $OFF$upcommtsfile$BLD does not exist.$OFF"
 	local nofile="$BLD\0There is no commits file.$OFF"
+	local hashpos=1
 
 	if ! [[ -f $upcommitsfile ]]; then
 		#[ $upcommitsfile ] && echo -e "$noexiststr" || echo -e "$nofile"
@@ -667,6 +669,12 @@ get_next_cherrypick() {
 		echo -e "was the last upstream commit in file: $upcommitsfile"
 		return 1
 	fi
+
+	# See if this is a partial cherrypick
+	#
+	[ ${line:0:1} == "n" ] && b_nit=true || b_nit=false
+	$b_nit && hashpos=2 || hashpos=1
+	$b_nit && line="${line:2}"
 
 	upcmtstartline=$idx
 	currentupcommit="$line"
@@ -896,6 +904,7 @@ $(show_next_cherrypick)
  P  Pop 'n' commits
  s  Show History
  r  Run cherp
+ R  Reset cherp
  q  Quit this script
  h  Help
 $OFF
@@ -940,6 +949,8 @@ function menu_parser {
 			;;
 		P )     getuser "Pop how many commits: " pops
 			pop_commits $pops
+			;;
+		R )	reset_cherp
 			;;
 		h )	less $MYHLP
 			;;
@@ -1017,7 +1028,7 @@ abort_cherp() {
 #          NAME:  reset_cherp
 #   DESCRIPTION:  Exit the script in an orderly fashion.
 #    PARAMETERS:  $1 - exit code
-#       GLOBALS:  dnorighead
+#       GLOBALS:  b_cmdline
 #                 upcommitsfile
 #                 dnappliedfile
 #                 lastuplog
@@ -1025,21 +1036,28 @@ abort_cherp() {
 #===============================================================================
 reset_cherp() {
 	local cols=$((tcols - 16))
-	local orighead=$(git log --oneline -n1 $dnorighead)
+	local lasttag=$(git describe --tags --abbrev=0)
+	local yn=
+	local branch="$(git branch | grep '\*' | cut -d' ' -f2-)"
 	local headmsg=$(
 cat <<EOF
-The git head is being reset to the original head of the branch when you started
-this session.
-Resetting to: ${orighead:0:cols}
+The git head is being reset to the head of the most recent tag in the branch.
+Current branch: $BLD$branch$OFF
+  Resetting to: $BLD${lasttag:0:cols}$OFF
 EOF
 )
+	echo -e "$headmsg"
+	loop_yn "Do want to reset now y/n : " yn
+	[[ "$yn" =~ ^[nN] ]] && return
+
 	init_cmdline_call
 	git cherry-pick --abort 2>/dev/null
-	git reset --hard $dnorighead
+	git reset --hard $(gitlasttag)
 	b_conflict=false
+	b_nit=false
 	upcmtstartline=0
 	get_next_cherrypick
-	exit_cherp $exit_reset
+	$b_cmdline && exit_cherp $exit_reset
 }
 
 #===  FUNCTION  ================================================================
@@ -1059,7 +1077,6 @@ You have made changes that must be committed before using "cherp continue".
 You can use "cherp commit" if you want cherp to make these commits for you.
 EOF
 )
-
 	local gitstat=$(git status --porcelain)
 	[ "$gitstat" ] && { echo -e "$statstr"; git status; exit $exit_pending; }
 
@@ -1202,7 +1219,7 @@ EOF
 	#
 	[ $gitstat -eq 128 ] && { echo -e "$bogusmsg"; exit_cherp $exit_bogus; }
 
-	if $b_nit && $b_single; then
+	if $b_nit; then
 		git reset	# unstage changes.
 		git add -p	# select the hunks you want.
 		b_nit=false
@@ -1684,16 +1701,17 @@ declare shortopts="sp:h"
 declare longopts="\
 abort,\
 branch,\
+build,\
 continue,\
 commit,\
 directory,\
-hashlist,\
 help,\
 history,\
-build,\
 new,\
+nit:,\
 pick:,\
 pop:,\
+reset,\
 run,\
 select,\
 setup,\
@@ -1749,21 +1767,22 @@ else
 		"--new" )
 			init_newsession
 			;;
-		"--nit" )
+		"--nit" )		# partial cherry-pick -n
 			b_nit=true
 			;& 		# fall through to pick
 		-p | "--pick" )
 			currentuphash=$2
 			[ "$currentuphash" ] || { echo -e "$needcmtstr"; exit $exit_bogus; }
 			run_single
+			b_nit=false
 			;;
 		"--pop" )
 			pops=$2
 			pop_commits $pops
 			;;
-		# "--reset" )
-		#	reset_cherp
-		#	;;
+		"--reset" )
+			reset_cherp
+			;;
 		-r | "--run" )
 			run_me
 			;;
