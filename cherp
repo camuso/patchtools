@@ -5,7 +5,7 @@
 # Provide some automation for cherrypicking.
 #
 
-VERSION="3.0"
+VERSION="2.0"
 
 #######################################
 # Default file locations
@@ -48,7 +48,6 @@ declare exit_bogus=4	# Exit because of bogus commit
 declare exit_init=5	# The project has not been initialized
 declare exit_pending=6	# There are changes pending, so action can't complete
 declare exit_nothing=7	# There is nothing to do
-declare exit_bldfail=8	# attempted incremental build failed
 declare exit_bad=10	# Exiting from command line call with bad status
 
 declare b_session_inited=false	# boolean to indicate session is inited
@@ -63,7 +62,6 @@ declare prj_lastuphash		# most recently applied upstream commit
 declare prj_workdir		# scratch directory for the session
 declare prj_upcommits		# file containing list of upstream commits
 declare prj_b_conflict		# last attempt generated a conflict
-declare prj_b_build		# incremental build flag
 
 declare prj_entries=0	# number of entries in the project data file
 declare boolindex=0	# start of boolean data items in project data file
@@ -77,7 +75,6 @@ declare lastuphash		# most recently applied upstream commit hash
 declare workdir			# scratch directory for the session
 declare upcommitsfile		# File of upstream commits to cherry-pick
 declare b_conflict		# last attempt generated a conflict
-declare b_build			# incremental build flag
 
 #########################################
 # Global Variables
@@ -99,6 +96,10 @@ declare ui_bools=""
 declare currentuphash
 declare currentupcommit
 
+# Lines starting with any of these chars will be ignored.
+# The '#' indicates a comment, and the '+' indicates already committed.
+declare ignore_str="#+"
+
 ########################################
 # Strings
 ########################################
@@ -113,10 +114,6 @@ $OFF\0There is currently a session active.
 	$BLD$MYNAME --continue$OFF to continue the session
 	$BLD$MYNAME --new$OFF to start a new session
 "
-
-# Lines starting with any of these chars will be ignored.
-# The '#' indicates a comment, and the '+' indicates already committed.
-declare ignore_str="#+"
 
 #########################################
 # Functions
@@ -266,8 +263,8 @@ function exec_boolean {
 #          NAME:  init_booleans
 #   DESCRIPTION:  Initialize the booleans for a new session
 #    PARAMETERS:  Global symbols:
-#    			b_conflict
-#    			b_build
+#    			ui_bools
+#    			boolindex
 #    	  CALLS:  prj_set_item
 #       RETURNS:  0
 #===============================================================================
@@ -275,9 +272,8 @@ function init_booleans {
 	# echo -e "$UND\0init_booleans$OFF"
 
 	b_conflict=false
-	b_build=false
+
 	prj_set_item $prj_b_conflict $b_conflict
-	prg_set_item $prj_b_build $b_build
 }
 
 #===  FUNCTION  ================================================================
@@ -285,25 +281,25 @@ function init_booleans {
 #   DESCRIPTION:  Read the values of the program flow control booleans from the
 #   		  project file. If the value has not been initialized, then init
 #   		  to false.
-#    PARAMETERS:  none
-#       GLOBALS:  ui_bools
-#    		  boolindex
+#    PARAMETERS:  Global symbols:
+#    			ui_bools
+#    			boolindex
 #    	  CALLS:  prj_get_emptyline
 #       RETURNS:  0
 #===============================================================================
 function read_booleans {
 	# echo -e "$UND\0read_booleans$OFF"
+
 	local index=$boolindex
 	local val
-	local bool
 	local emptyline="$(prj_get_emptyline)"
 
+	# echo "ui_bools: $ui_bools"
 	for bool in $ui_bools; do
 		val=$(prj_get_item $index)
 		eval $bool=$val
-		# echo "bool: $bool: ${!bool}: "
 		[ "${!bool}" == "$emptyline" ] && eval $bool=false
-		let ++index
+		let index++
 	done
 
 	return 0
@@ -319,11 +315,8 @@ function read_booleans {
 #       RETURNS:  0
 #===============================================================================
 function save_booleans {
-	# echo -e "$UND\0save_booleans$OFF"
 	local index=$boolindex
-
 	for bool in $ui_bools; do
-		# echo "bool: $bool: ${!bool}: "
 		prj_set_item $index ${!bool}
 		let index++
 	done
@@ -636,7 +629,6 @@ getlasttag() {
 #                 upcmtstartline
 #                 currentuphash
 #                 ignore_str
-#                 b_nit
 #       OUTPUTS:  echoes the hash of next upstream commit in the commits file
 #       RETURNS:  1 if there are no more cherries to pick, else 0
 #===============================================================================
@@ -645,7 +637,6 @@ get_next_cherrypick() {
 	# echo -e "\n$UND$myname$OFF start line: $upcmtstartline"
 	local noexiststr="$BLD\0Commits file: $OFF$upcommtsfile$BLD does not exist.$OFF"
 	local nofile="$BLD\0There is no commits file.$OFF"
-	local hashpos=1
 
 	if ! [[ -f $upcommitsfile ]]; then
 		#[ $upcommitsfile ] && echo -e "$noexiststr" || echo -e "$nofile"
@@ -669,12 +660,6 @@ get_next_cherrypick() {
 		echo -e "was the last upstream commit in file: $upcommitsfile"
 		return 1
 	fi
-
-	# See if this is a partial cherrypick
-	#
-	[ ${line:0:1} == "n" ] && b_nit=true || b_nit=false
-	$b_nit && hashpos=2 || hashpos=1
-	$b_nit && line="${line:2}"
 
 	upcmtstartline=$idx
 	currentupcommit="$line"
@@ -844,26 +829,13 @@ $(show_most_recent_cherrypick)\
 $(show_next_cherrypick)
     Current downstream branch    : $OFF$(get_gitbranch)$BLD
     Current downstream head      : $OFF${lastbrcmt:0:cols}$BLD
-    Original downstream head     : $OFF${orighead:0:cols}$BLD
-    Incremental Build            : $OFF$(show_bool $b_build)
+    Original downstream head     : $OFF${orighead:0:cols}
 \0
 EOF
 )
 	echo -e "$statstr"
 	git status
 	$b_internal || exit 0
-}
-
-#===  FUNCTION  ===============================================================
-#          NAME:  show_bool
-#   DESCRIPTION:  show the current state of a boolean
-#    PARAMETERS:  $1 - name of boolean to show
-#       GLOBALS:  none
-#       RETURNS:  none
-#===============================================================================
-show_bool() {
-	local bool=$1
-	$bool && echo -n "ON" || echo -n "OFF"
 }
 
 #===  FUNCTION  ===============================================================
@@ -897,14 +869,12 @@ $(show_next_cherrypick)
  b  Current git branch           : $OFF$(get_gitbranch)$BLD
  p  Current subject prefix       : $OFF$subjectprefix$BLD
  w  Working directory            : $OFF$workdir$BLD
- i  Incremental Build            : $OFF$(show_bool $b_build)
 
     $UND\0Control                  $OFF$BLD
  N  Start a New Session
  P  Pop 'n' commits
  s  Show History
  r  Run cherp
- R  Reset cherp
  q  Quit this script
  h  Help
 $OFF
@@ -939,8 +909,6 @@ function menu_parser {
 			;;
 		u )	set_upcommitsfile
 			;;
-		i )     ui_toggle b_build
-			;;
 		c )	set_next_cherrypick
 			;;
 		N )	init_newsession
@@ -949,8 +917,6 @@ function menu_parser {
 			;;
 		P )     getuser "Pop how many commits: " pops
 			pop_commits $pops
-			;;
-		R )	reset_cherp
 			;;
 		h )	less $MYHLP
 			;;
@@ -1028,7 +994,7 @@ abort_cherp() {
 #          NAME:  reset_cherp
 #   DESCRIPTION:  Exit the script in an orderly fashion.
 #    PARAMETERS:  $1 - exit code
-#       GLOBALS:  b_cmdline
+#       GLOBALS:  dnorighead
 #                 upcommitsfile
 #                 dnappliedfile
 #                 lastuplog
@@ -1036,28 +1002,21 @@ abort_cherp() {
 #===============================================================================
 reset_cherp() {
 	local cols=$((tcols - 16))
-	local lasttag=$(git describe --tags --abbrev=0)
-	local yn=
-	local branch="$(git branch | grep '\*' | cut -d' ' -f2-)"
+	local orighead=$(git log --oneline -n1 $dnorighead)
 	local headmsg=$(
 cat <<EOF
-The git head is being reset to the head of the most recent tag in the branch.
-Current branch: $BLD$branch$OFF
-  Resetting to: $BLD${lasttag:0:cols}$OFF
+The git head is being reset to the original head of the branch when you started
+this session.
+Resetting to: ${orighead:0:cols}
 EOF
 )
-	echo -e "$headmsg"
-	loop_yn "Do want to reset now y/n : " yn
-	[[ "$yn" =~ ^[nN] ]] && return
-
 	init_cmdline_call
 	git cherry-pick --abort 2>/dev/null
-	git reset --hard $(gitlasttag)
+	git reset --hard $dnorighead
 	b_conflict=false
-	b_nit=false
 	upcmtstartline=0
 	get_next_cherrypick
-	$b_cmdline && exit_cherp $exit_reset
+	exit_cherp $exit_reset
 }
 
 #===  FUNCTION  ================================================================
@@ -1077,6 +1036,7 @@ You have made changes that must be committed before using "cherp continue".
 You can use "cherp commit" if you want cherp to make these commits for you.
 EOF
 )
+
 	local gitstat=$(git status --porcelain)
 	[ "$gitstat" ] && { echo -e "$statstr"; git status; exit $exit_pending; }
 
@@ -1107,8 +1067,7 @@ run_commit() {
 	b_continue=false
 	currentuphash=$lastuphash
 	stage_commit
-
-	exit_cherp $exit_good
+	exit 0
 	# get_next_cherrypick
 	# run_me
 }
@@ -1117,9 +1076,7 @@ run_commit() {
 #          NAME:  run_single
 #   DESCRIPTION:  Just cherrypick one commit
 #    PARAMETERS:  none
-#       GLOBALS:  b_single
-#                 dnorighead
-#                 currentuphash
+#       GLOBALS:  none
 #       RETURNS:  none
 #===============================================================================
 run_single() {
@@ -1138,34 +1095,6 @@ run_single() {
 	exit $stat
 }
 
-#===  FUNCTION  ===============================================================
-#          NAME:  set_buildstate
-#   DESCRIPTION:  build the kernel
-#    PARAMETERS:  $1 - state, true false
-#       GLOBALS:  none
-#       RETURNS:  make exit status
-#===============================================================================
-set_buildstate() {
-	check_prj_file
-	read_booleans
-	b_build=$1
-	save_booleans
-	exit $exit_good
-}
-
-#===  FUNCTION  ===============================================================
-#          NAME:  build
-#   DESCRIPTION:  build the kernel
-#    PARAMETERS:  none
-#       GLOBALS:  none
-#       RETURNS:  make exit status
-#===============================================================================
-build() {
-	local cpus=$(cat /proc/cpuinfo | grep processor | wc -l)
-	make -j$cpus
-	return $?
-}
-
 #===  FUNCTION  ================================================================
 #          NAME:  cherrypick
 #   DESCRIPTION:  Given a commit, try to cherry pick it
@@ -1177,7 +1106,6 @@ build() {
 #                 lastuphash
 #                 b_conflict
 #                 b_single
-#                 b_nit
 #       RETURNS:  non-zero if something went wrong
 #===============================================================================
 cherrypick() {
@@ -1209,7 +1137,7 @@ Make sure the hashes in $BLD$upcommitsfile$OFF are all valid.
 EOF
 )
 	commit=$(git log --oneline -n1 $uphash)
-	# echo "commit: $commit"
+	echo "commit: $commit"
 	echo -e "Processing : $BLD${commit:0:$wcols}$OFF"
 	$b_nit && git cherry-pick -n "$uphash" || git cherry-pick "$uphash"
 	gitstat=$?
@@ -1219,7 +1147,7 @@ EOF
 	#
 	[ $gitstat -eq 128 ] && { echo -e "$bogusmsg"; exit_cherp $exit_bogus; }
 
-	if $b_nit; then
+	if $b_nit && $b_single; then
 		git reset	# unstage changes.
 		git add -p	# select the hunks you want.
 		b_nit=false
@@ -1231,16 +1159,9 @@ EOF
 			b_conflict=true
 			$b_single && git status && exit $exit_conflict
 			echo -e "$conflictmsg"
-			lastuphash=$uphash
-			# echo -e "Saving: $BLD${commit:0:$wcols}$OFF"
 			show_status internal
 			exit_cherp $exit_conflict
 		}
-	fi
-
-	if $b_build; then
-		build
-		[ $? -eq 2 ] && exit_cherp $exit_bldfail
 	fi
 
 	stage_commit
@@ -1262,10 +1183,7 @@ stage_commit() {
 
 	local description
 	local uphash=$currentuphash
-	local commit
 
-	commit=$(git log --oneline -n1 $uphash)
-	# echo -e "Committing: $BLD${commit:0:$wcols}$OFF"
 	git commit -aC "$uphash"
 
 	# Create the new commit message in a file consisting of ..
@@ -1382,15 +1300,16 @@ count_prj_items() {
 
 	local boolcount=0
 	local b_found_first_bool=false
-	local index=0
+	local index
 
 	# Init ui items
 	# -------------
 	# This loop enumerates and counts the items that will be stored in the
-	# project file.
+	# project file. It also declares the boolean names whose values are stored
+	# in the project file and assigns values to them.
 	#
-	# Add new non-boolean parameters to the top of the list.
 	# Add new booleans to the end of the list.
+	# Add new non-boolean parameters to the top of the list.
 	#
 	for offset in \
 	prj_upcmtstartline \
@@ -1399,7 +1318,6 @@ count_prj_items() {
 	prj_workdir \
 	prj_upcommits \
 	prj_b_conflict \
-	prj_b_build \
 	; do
 		# The prj_set_item() function uses 1-based line numbers for indexing
 		# into the project file. We inited the index variable to zero, so
@@ -1419,12 +1337,14 @@ count_prj_items() {
 			# file index variable, but with the leading "prj_" removed.
 			#
 			boolname="$(echo ${offset} | cut -d'_' -f2-)"
+			declare $boolname
 
 			# Create a string that contains all the names of the program's
 			# booleans.
 			#
-			ui_bools="$ui_bools $boolname" # basically a strcat()
+			ui_bools=""$ui_bools" "$boolname" " # basically a strcat()
 
+			[ "${!boolname}" == " " ] && eval $boolname=false
 			let boolcount++
 			if ! $b_found_first_bool; then
 				boolindex=$index
@@ -1701,14 +1621,13 @@ declare shortopts="sp:h"
 declare longopts="\
 abort,\
 branch,\
-build,\
 continue,\
 commit,\
 directory,\
+hashlist,\
 help,\
 history,\
 new,\
-nit:,\
 pick:,\
 pop:,\
 reset,\
@@ -1753,28 +1672,21 @@ else
 			;;
 		-h | "--help" 	)
 			less $MYHLP
-			exit_cherp $exit_good
+			exit 0
 			;;
 		"--history" )
 			show_history
 			;;
-		"--build" )
-			set_buildstate true
-			;;
-		"--build-" )
-			set_buildstate false
-			;;
 		"--new" )
 			init_newsession
 			;;
-		"--nit" )		# partial cherry-pick -n
+		"--nit" )
 			b_nit=true
 			;& 		# fall through to pick
 		-p | "--pick" )
 			currentuphash=$2
-			[ "$currentuphash" ] || { echo -e "$needcmtstr"; exit $exit_bogus; }
+			[ "$currentuphash" ] || { echo -e "$needcmtstr"; exit 1; }
 			run_single
-			b_nit=false
 			;;
 		"--pop" )
 			pops=$2
@@ -1812,7 +1724,7 @@ else
 fi
 
 ##############################################
-# Top of Interactive Script
+# Main Program
 ##############################################
 
 # Print the herald
