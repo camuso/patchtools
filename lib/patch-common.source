@@ -482,7 +482,7 @@ get_failedpatch() {
 create_patchlist() {
 	local list=($(ls -1 "$indir"/*.patch | sort -V))
 	local snum=$((startpat - 1))
-	local pnum=$patchtotal
+	local pnum=$((patchtotal-snum))
 	local retlist="(${list[@]:$snum:$pnum})"
 	eval $1=$retlist
 }
