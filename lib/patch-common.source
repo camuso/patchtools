@@ -48,6 +48,8 @@ declare b_selpat=false
 declare b_allapplied=false
 declare infilecount=0			# number of files in the input directory
 declare patchtotal=0			# total patches in the input directory
+declare b_prologue=false
+declare prologue_file=
 
 declare us_commits_name="us-commits.log"	# upstream commits log filename
 declare bp_commits_name="bp-commits.log"	# backport commits log filename
@@ -119,6 +121,8 @@ function exit_me {
 	prj_set_item $prj_applymode $applymode
 	prj_set_item $prj_cmpmode $cmpmode
 	prj_set_item $prj_applyfailmode $applyfailmode
+	b_prologue=false
+	[ -f "$prologue_file".txt ] && 	mv "$prologue_file".txt "$prologue_file"
 	[ -e "$last_tag_file" ] && rm -f $last_tag_file
 	[ -e "$branchlist" ] && rm -f "$branchlist"
 	exit $1
@@ -467,6 +471,38 @@ get_failedpatch() {
 	fi
 }
 
+# check_for_prologue() {
+#
+# ARGUMENTS
+# 	$1 - patch file to check
+#	$2 - contains true if prologue
+#
+check_for_prologue() {
+	local pfile="$1"
+	local subj=$(grep -m1 "Subject: " "$pfile")
+	local subarray
+	local frac
+	local num
+	local numarray
+	local tok
+	local i
+
+	ui_strtok "$subj" " " subarray
+
+	for ((i = 0; i < ${#subarray[@]}; ++i)); do
+		tok="${subarray[i]}"
+		if [ $(ui_strindex "$tok" "/") -gt 0 ]; then
+			ui_strtok "$tok" "/" numarray
+			num=${numarray[0]}
+			[ $num -eq 0 ] && eval $2=true || eval $2=false
+			return
+		fi
+	done
+
+	eval $2=false
+}
+
+
 # create_patchlist() - create the patchlist starting at startpat
 #
 # ARGUMENTS
@@ -483,8 +519,18 @@ create_patchlist() {
 	local list=($(ls -1 "$indir"/*.patch | sort -V))
 	local snum=$((startpat - 1))
 	local pnum=$((patchtotal-snum))
-	local retlist="(${list[@]:$snum:$pnum})"
-	eval $1=$retlist
+	local retlist=("${list[@]:$snum:$pnum}")
+
+	check_for_prologue ${retlist[0]} b_prologue
+
+	$b_prologue && {
+		prologue_file="${retlist[0]}"
+		mv "$prologue_file" "$prologue_file".txt
+		retlist=("${retlist[@]:1}")
+		let --patchtotal
+	}
+
+	eval $1="(${retlist[@]})"
 }
 
 # apply_patches

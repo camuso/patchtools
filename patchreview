@@ -59,6 +59,7 @@ function init_booleans {
 	for ((index=boolindex; index <= prj_entries; index++)); do
 		prj_set_item $index true
 	done
+	b_prologue=false
 }
 
 # get_booleans
@@ -131,6 +132,7 @@ function set_booleans {
 		prj_set_item $index ${!bool}
 		let index++
 	done
+	b_prologue=false
 	return 0
 }
 
