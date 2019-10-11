@@ -530,7 +530,7 @@ create_patchlist() {
 		let --patchtotal
 	}
 
-	eval $1="$retlist"
+	eval $1="(${retlist[@]})"
 }
 
 # apply_patches
@@ -556,9 +556,9 @@ function apply_patches {
 	echo "" > "$bp_commits"
 
 	case $applymode in
-	    $applymode_norm  ) git am $patchlist; stat=$? ;;
-	    $applymode_3way  ) git am -3 $patchlist ; stat=$? ;;
-	    $applymode_patch ) use_patch "$patchlist"; stat=$? ;;
+	    $applymode_norm  ) git am ${patchlist[@]}; stat=$? ;;
+	    $applymode_3way  ) git am -3 ${patchlist[@]} ; stat=$? ;;
+	    $applymode_patch ) use_patch "${patchlist[@]}"; stat=$? ;;
 	esac
 
 	[ $stat -eq 0 ] || process_patcherr $(get_failedpatch "$patchlist")
