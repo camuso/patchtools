@@ -189,8 +189,6 @@ function git_excisecommit {
 	echo "$line" | egrep -o "\b[0-9a-f]{"$hashsize"}\b" | head -1
 }
 
-
-
 # git_comment2commitsfile
 #	Create a file containing a list of commits from taken from the "commit"
 #	line in each patch in a directory. The patches in the directory are
@@ -243,28 +241,32 @@ function git_comment2commitsfile {
 		sorted=()
 
 		# The default number of digits for a commit hash is 40.
-		# However, the user can pass "false" in $3 to set the range
-		# of digits from 7 to 40. This often generates noise, by
-		# considering things like stack traces as valid candidates
-		# for commit hashes. That's why the default is 40 digits.
 		#
-		# Capture any the lines that look like they have commits in
-		# them and stow them in a scratch file, which we will
-		# delete later.
+		# Capture lines that look like they have commits in them
+		# and stow them in a scratch file, which we will delete
+		# later.
 		#
-		egrep -i 'commit|cherry|upstream|pick|kernel' $srcfile \
-			| egrep "\b[0-9a-f]{$hashsize}\b" > $scratchfile
+		# First look for lines beginning with the token '(cherry'.
+		# If we don't find any of those, look for lines beginning
+		# with the token 'commit'.
+		#
+		egrep '^\(cherry' $srcfile | egrep \
+			"\b[0-9a-f]{$hashsize}\b" > $scratchfile
 
-		# If there is more than one line with what appears to be a
-		# commit in it, then ask the user from which line he wants
-		# to extract the commit.
+		[ -s $scratchfile ] || \
+			egrep '^commit' $srcfile | egrep \
+				"\b[0-9a-f]{$hashsize}\b" > $scratchfile
+
+		# Left as a comment for historical reasons.
+		#
+		# egrep '(^commit|^\(cherry)' $srcfile \ | egrep
+		#	"\b[0-9a-f]{$hashsize}\b" > $scratchfile
+
+		# If there is more than one commit, query the user for which
+		# one s/he wants after squeezing out any duplicates.
 		#
 		cmtcnt=$(cat $scratchfile | wc -l)
 
-		# If there is more than one commit, then see if they are
-		# identical. If so, no need to query the user for which
-		# one he wants.
-		#
 		if [ $cmtcnt -gt 1 ]; then
 			cmtindex=0
 			while read line; do
