@@ -456,17 +456,16 @@ use_patch() {
 # 	applymode_patch
 #
 get_failedpatch() {
-	local patchlist="$1"
-	local patcharray=($patchlist)
+	local patchlist=("$@")
 	local patsub
 	local patfil
 
 	if (( applymode == applymode_patch )); then
-		echo "${patcharray[$patchcount]}"
+		echo "${patchlist[$patchcount]}"
 	else
 		patsub=$(git am --show-current-patch | grep -m1 'Subject: ')
 		patsub=$(echo "$patsub" | cut -d'[' -f2 | cut -d']' -f1)
-		patfil=$(grep -l "$patsub" $patchlist)
+		patfil=$(grep -l "$patsub" ${patchlist[@]})
 		echo "$patfil"
 	fi
 }
@@ -561,7 +560,7 @@ function apply_patches {
 	    $applymode_patch ) use_patch "${patchlist[@]}"; stat=$? ;;
 	esac
 
-	[ $stat -eq 0 ] || process_patcherr $(get_failedpatch "$patchlist")
+	[ $stat -eq 0 ] || process_patcherr $(get_failedpatch ${patchlist[@]})
 
 	[ $applymode -ne $applymode_patch ] && {
 		printf "%3d " $patchcount >> "$bp_commits"
