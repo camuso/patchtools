@@ -10,7 +10,7 @@
 #
 # MYLIB must be defined in the file that includes this one.
 
-version="7.3"
+version="8.0"
 
 b_ui_int_first_getyn=false	# For lib/ui.source
 
@@ -448,7 +448,7 @@ use_patch() {
 	return $stat
 }
 
-# get_amfailure - returns the filename of the failed patch
+# get_failedpatch - returns the filename of the failed patch
 #
 # Globals
 # 	patchcount - running tally of applied patches
@@ -456,16 +456,17 @@ use_patch() {
 # 	applymode_patch
 #
 get_failedpatch() {
-	local patchlist=("$@")
+	local patchlist="$1"
+	local patcharray=( $patchlist )
 	local patsub
 	local patfil
 
 	if (( applymode == applymode_patch )); then
-		echo "${patchlist[$patchcount]}"
+		echo "${patcharray[$((patchcount - 1))]}"
 	else
 		patsub=$(git am --show-current-patch | grep -m1 'Subject: ')
 		patsub=$(echo "$patsub" | cut -d'[' -f2 | cut -d']' -f1)
-		patfil=$(grep -l "$patsub" ${patchlist[@]})
+		patfil=$(grep -l "$patsub" $patchlist)
 		echo "$patfil"
 	fi
 }
@@ -504,8 +505,14 @@ check_for_prologue() {
 
 # create_patchlist() - create the patchlist starting at startpat
 #
+# Removes files that are not patches from the list. Patches are
+# identified as files having at least one line containing just
+# exactly these three characters --- with at least one 'diff --git'
+# line thereafter.
+#
 # ARGUMENTS
-#	$1 - list of patches being returned
+#	$1 - string containing list of patches
+#	$2 - return string containing validated patches
 #
 # GLOBALS
 # 	indir      - input directory, contains the patches
@@ -518,18 +525,42 @@ create_patchlist() {
 	local list=($(ls -1 "$indir"/*.patch | sort -V))
 	local snum=$((startpat - 1))
 	local pnum=$((patchtotal-snum))
-	local retlist=("${list[@]:$snum:$pnum}")
+	local list=("${list[@]:$snum:$pnum}")
+	local retlist=
+	local lnum
+	local stat
 
-	check_for_prologue ${retlist[0]} b_prologue
+	# Put only valid patches in the list
+	#
+	for ((i = 0; i < pnum; ++i)); do
+		lnum=$(grep -n -m1 -w '^---$' ${list[$i]})
+		stat=$?
 
-	$b_prologue && {
-		prologue_file="${retlist[0]}"
-		mv "$prologue_file" "$prologue_file".txt
-		retlist=("${retlist[@]:1}")
-		let --patchtotal
-	}
+		if [ $stat -eq 0 ]; then
+			lnum=$(echo $lnum | cut -d':' -f1)
+			tail -n +$lnum ${list[$i]} | grep -q -m1 '^diff --git'
 
-	eval $1="(${retlist[@]})"
+			if [ ${PIPESTATUS[1]} -eq 0 ]; then
+				retlist="$retlist ${list[$i]}"
+			else
+				let --patchtotal
+			fi
+		else
+			let --patchtotal
+		fi
+	done
+
+	# Strip the leading space
+	#
+	retlist="$(echo $retlist)"
+
+	# Return the string. Single quotes are necessary to preserve the
+	# string of strings as a whole, else only the first string in the
+	# string of strings will be eval'ed, and the second string will
+	# be left as a command to be executed, which will fail.:update
+	#
+	#
+	eval "$2='$retlist'"
 }
 
 # apply_patches
@@ -545,22 +576,23 @@ create_patchlist() {
 #
 function apply_patches {
 	local stat=0
-	local patchlist=
+	local patchlist="$(ls -1 "$indir"/*.patch)"
 	local head=$(git log --oneline -n1 | cut -d' ' -f 1)
+	local valpatchlist
 
-	patchtotal=$(ls -1 "$indir"/*.patch | wc -l)
-	create_patchlist patchlist
+	patchtotal=$( wc -w <<< "$patchlist")
+	create_patchlist "$patchlist" valpatchlist
 
 	[ $applymode -eq $applymode_off ] && return 0
 	echo "" > "$bp_commits"
 
 	case $applymode in
-	    $applymode_norm  ) git am ${patchlist[@]}; stat=$? ;;
-	    $applymode_3way  ) git am -3 ${patchlist[@]} ; stat=$? ;;
-	    $applymode_patch ) use_patch "${patchlist[@]}"; stat=$? ;;
+	    $applymode_norm  ) git am $valpatchlist; stat=$? ;;
+	    $applymode_3way  ) git am -3 $valpatchlist ; stat=$? ;;
+	    $applymode_patch ) use_patch "$valpatchlist"; stat=$? ;;
 	esac
 
-	[ $stat -eq 0 ] || process_patcherr $(get_failedpatch ${patchlist[@]})
+	[ $stat -eq 0 ] || process_patcherr $(get_failedpatch "$valpatchlist")
 
 	[ $applymode -ne $applymode_patch ] && {
 		printf "%3d " $patchcount >> "$bp_commits"
