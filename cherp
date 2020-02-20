@@ -942,7 +942,7 @@ function menu_loop {
 
 	local stat=0
 
-	cmtmsgfile=""$workdir"gcpcommitmessage"
+	cmtmsgfile=""$workdir/."gcpgitlog"
 
 	while :; do
 		menu_parser
