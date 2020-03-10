@@ -483,14 +483,12 @@ function ui_getnewdir {
 }
 
 function ui_testdir {
-	local prompt="$1"
-	local tstdir
+	local tstdir="$1"
 	local stat
 	local createstr="Want to create it now?"
-	local shellstr="\nYou can exit to a shell by pressing \"x\" now."
 
 	while true; do
-		getuser "$prompt" tstdir
+
 		ui_chkdir "$tstdir"
 		stat=$?
 
@@ -503,6 +501,7 @@ function ui_testdir {
 
 		if [ $stat -eq 1 ]; then
 			echo "$tstdir exists as a file. Try again."
+			getuser "Gimme a valid directory: " tstdir
 			continue;
 		fi
 
