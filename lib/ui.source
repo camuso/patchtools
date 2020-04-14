@@ -148,19 +148,9 @@ function buhbye() {
 # getyn() $1 [$2]
 #
 # Takes $1 for a prompt string
-# Places true or false command into $2, which is an optional argument.
+# Places true or false into $2, which is an optional argument.
 # User is prompted for (y/n) answer at the end of the prompt string.
 #
-# On the very first call of this function in a script, the user is advised
-# that he may also pres "q" to quit the script immediately, or "x" to exit
-# the script to a child shell.
-#
-# If a child shell is chosen, the global variable ui_shexit is set upon
-# return, and if $2 was passed, it will be set to false.
-#
-# Optionally, $2 can be passed as the default answer. It will be over-
-# written with the boolean answer upon return.
-
 b_ui_int_first_getyn=false
 b_ui_int_firstpass=true
 
