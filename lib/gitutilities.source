@@ -91,7 +91,7 @@ function git_file2patchset {
 		commitnum=$(echo $commit | tr -s 0)
 		pfx=$(printf "%04d" $index)
 		if [ ${#commitnum} -gt 1 ]; then
-			git format-patch -1 -k --no-renames --start-number $index $commit -o $destdir
+			git format-patch -1 -k --start-number $index $commit -o $destdir
 			#
 			# If we could not format the patch, then create an empty
 			# patch with the bad patch number in it.
