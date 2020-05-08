@@ -471,13 +471,13 @@ get_failedpatch() {
 	fi
 }
 
-# check_for_prologue() {
+# is_prologue() {
 #
 # ARGUMENTS
 # 	$1 - patch file to check
-#	$2 - contains true if prologue
+#	returns 0 if prologue, 1 if not
 #
-check_for_prologue() {
+is_prologue() {
 	local pfile="$1"
 	local subj=$(grep -m1 "Subject: " "$pfile")
 	local subarray
@@ -494,12 +494,11 @@ check_for_prologue() {
 		if [ $(ui_strindex "$tok" "/") -gt 0 ]; then
 			ui_strtok "$tok" "/" numarray
 			num=${numarray[0]}
-			[ $num -eq 0 ] && eval $2=true || eval $2=false
-			return
+			[ $num -eq 0 ] && return 0 || return 1
 		fi
 	done
 
-	eval $2=false
+	return 1
 }
 
 
@@ -525,40 +524,21 @@ create_patchlist() {
 	local list=($(ls -1 "$indir"/*.patch | sort -V))
 	local snum=$((startpat - 1))
 	local pnum=$((patchtotal-snum))
-	local list=("${list[@]:$snum:$pnum}")
 	local retlist=
-	local lnum
+	local plg
 	local stat
 
-	# Put only valid patches in the list
-	#
-	for ((i = 0; i < pnum; ++i)); do
-		lnum=$(grep -n -m1 -w '^---$' ${list[$i]})
-		stat=$?
+	list=("${list[@]:$snum:$pnum}")
+	is_prologue "${list[0]}"
+	stat=$?
 
-		if [ $stat -eq 0 ]; then
-			lnum=$(echo $lnum | cut -d':' -f1)
-			tail -n +$lnum ${list[$i]} | grep -q -m1 '^diff --git'
-
-			if [ ${PIPESTATUS[1]} -eq 0 ]; then
-				retlist="$retlist ${list[$i]}"
-			else
-				let --patchtotal
-			fi
-		else
-			let --patchtotal
-		fi
-	done
-
-	# Strip the leading space
-	#
-	retlist="$(echo $retlist)"
+	[ $stat -eq 0 ] && list=("${list[@]:1:$pnum}")
+	retlist="${list[@]}"
 
 	# Return the string. Single quotes are necessary to preserve the
 	# string of strings as a whole, else only the first string in the
 	# string of strings will be eval'ed, and the second string will
-	# be left as a command to be executed, which will fail.:update
-	#
+	# be left as a command to be executed, which will fail.
 	#
 	eval "$2='$retlist'"
 }
@@ -585,6 +565,11 @@ function apply_patches {
 
 	[ $applymode -eq $applymode_off ] && return 0
 	echo "" > "$bp_commits"
+
+        [ "$valpatchlist" ] || {
+		echo -e "$BLD\nIt appears there are no valid patches to apply.\n$OFF"
+		return 1
+	}
 
 	case $applymode in
 	    $applymode_norm  ) git am $valpatchlist; stat=$? ;;
@@ -958,6 +943,7 @@ exec_apply_patches(){
 		&& return $stat
 	applymode=$applymode_off
 	prj_set_item $prj_applymode $applymode
+
 	return 0
 }
 
