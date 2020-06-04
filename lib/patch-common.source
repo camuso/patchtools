@@ -504,11 +504,6 @@ is_prologue() {
 
 # create_patchlist() - create the patchlist starting at startpat
 #
-# Removes files that are not patches from the list. Patches are
-# identified as files having at least one line containing just
-# exactly these three characters --- with at least one 'diff --git'
-# line thereafter.
-#
 # ARGUMENTS
 #	$1 - string containing list of patches
 #	$2 - return string containing validated patches
@@ -521,7 +516,9 @@ is_prologue() {
 # 	patchtotal - total number of patches to apply
 #
 create_patchlist() {
-	local list=($(ls -1 "$indir"/*.patch | sort -V))
+	# local list=($(ls -1 "$indir"/*.patch | sort -V))
+	local list=($1)
+	echo "LIST0: ${list[0]}"
 	local snum=$((startpat - 1))
 	local pnum=$((patchtotal-snum))
 	local retlist=
@@ -560,8 +557,11 @@ function apply_patches {
 	local head=$(git log --oneline -n1 | cut -d' ' -f 1)
 	local valpatchlist
 
-	patchtotal=$( wc -w <<< "$patchlist")
+	patchtotal=$(wc -w <<< "$patchlist")
+	echo "patchtotal $patchtotal"
+	read
 	create_patchlist "$patchlist" valpatchlist
+	patchtotal=$( wc -w <<< "$valpatchlist")
 
 	[ $applymode -eq $applymode_off ] && return 0
 	echo "" > "$bp_commits"

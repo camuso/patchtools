@@ -210,7 +210,7 @@ function git_comment2commitsfile {
 	local line=""
 	local index=1
 	local jdex
-	local filecount=$(ls $srcdir/*.patch | wc -l)
+	local patchlist=$(ls $srcdir/*.patch | sort -V)
 	local cmtcnt=0
 	local cmtindex=1
 	local linenumber=0
@@ -218,6 +218,9 @@ function git_comment2commitsfile {
 	local sorted
 	local hashsize="40"
 	local _40digit=true
+	local valpatchlist
+	local filecount # =$(ls $srcdir/*.patch | wc -l)
+	local cline
 
 	# If we got a third argument, then get it.
 	# If it's true, then the hashsize will be fixed at 40 digits
@@ -232,7 +235,14 @@ function git_comment2commitsfile {
 	> $scratchfile
 	# grep "commit " "$srdir"/*.patch | cut -d' ' -f2 > $commitsfile
 
-	for srcfile in $(ls -1 "$srcdir"/*.patch  | sort -V); do
+	patchtotal=$(wc -w <<< "$patchlist")
+	echo "patchtotal $patchtotal"
+	create_patchlist "$patchlist" valpatchlist
+	filecount=$( wc -w <<< "$valpatchlist")
+	echo "filecount $filecount"
+	read
+
+	for srcfile in $valpatchlist; do
 
 		echo $srcfile
 		linenumber=0
@@ -245,17 +255,27 @@ function git_comment2commitsfile {
 		# Capture lines that look like they have commits in them
 		# and stow them in a scratch file, which we will delete
 		# later.
+
+		# First Look for the one and only line formatted thus.
+		#  '     commit #### hash #### upstream'
 		#
-		# First look for lines beginning with the token '(cherry'.
+		egrep -m1 "commit \b[0-9a-f]{$hashsize}\b upstream" $srcfile \
+			| awk '$1=$1' \
+			> $scratchfile
+
+		# If we didn't get any of those, look for lines beginning
+		# with the token '(cherry'.
+		#
+		[ -s $scratchfile ] || \
+			egrep "^\(cherry \b[0-9a-f]{$hashsize}\b" $srcfile \
+				> $scratchfile
+
 		# If we don't find any of those, look for lines beginning
 		# with the token 'commit'.
 		#
-		egrep '^\(cherry' $srcfile | egrep \
-			"\b[0-9a-f]{$hashsize}\b" > $scratchfile
-
 		[ -s $scratchfile ] || \
-			egrep '^commit' $srcfile | egrep \
-				"\b[0-9a-f]{$hashsize}\b" > $scratchfile
+			egrep "^commit \b[0-9a-f]{$hashsize}\b" $srcfile \
+				> $scratchfile
 
 		# Left as a comment for historical reasons.
 		#
