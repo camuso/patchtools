@@ -63,6 +63,9 @@ declare -i prj_b_nodiffst
 declare -i prj_b_nopaths
 declare -i prj_b_strict
 
+declare valpatchlist
+declare b_valpatchlist
+
 declare prj_dir="$MYDATA"
 declare prj_file="$prj_dir/patbatcmpmgr.prj"
 
@@ -82,7 +85,7 @@ declare usdirstr="Upstream patches"
 declare usagestr=$(
 cat <<EOF
 
-$(basename $0) [-h -R -U -X -o <file>]
+$(basename $0) [-h [-R | -V]  -U -X -o <file>]
 
   Version $version
 
@@ -101,14 +104,17 @@ $(basename $0) [-h -R -U -X -o <file>]
   -h        - Uses the less command to print this help text
   -R rhdir  - optional directory containing the RHEL patches
   -U usdir  - optional directory containing the Upstream patches
+  -P list   - Use a valid patch list instead of the RHEL patchfile directory.
+              This is to circumvent counting/comparing the prologue file.
   -o ofile  - optional output file. Default is /dev/stdout
   -X        - execute saved options and exit without presenting the menu
 
-  The rhdir and usdir must have the same number of patch files.
+  The rhdir (or valid patch list) and usdir must have the same number of
+  patch files.
 
-  Each patchfile in the rhdir is compared with its complement in the
-  usdir. If a mismatched line is found, the sequence number of that
-  patch pair is printed to the ofile, which is /dev/stdout by default.
+  Each patchfile in the rhdir or valid patchlist is compared with its
+  complement in the usdir. If a mismatched line is found, the sequence number
+  of that patch pair is printed to the ofile, which is /dev/stdout by default.
 
   Verbose output options are available
 
@@ -274,7 +280,7 @@ EOF
 menu_parser() {
 	local setting
 
-	rhfcount=$(ls -1 $rhdir/*.patch | wc -l)
+	# rhfcount=$(ls -1 $rhdir/*.patch | wc -l)
 	usfcount=$(ls -1 $usdir/*.patch | wc -l)
 	show_settings
 	promptgetchar ""$BLD"Enter one of the above: "$OFF"" setting
@@ -373,13 +379,18 @@ lasttag=$(cat /dev/shm/lasttag)
 
 # Parse the options, if any
 #
-while getopts hXR:U:o: OPTION; do
+while getopts hXR:U:o:P: OPTION; do
     case "$OPTION" in
 
 	h ) usage | less
 	    ;;
 	R ) rhdir=$OPTARG
 	    b_extern_rhdir=true
+	    b_valpatchlist=false
+	    ;;
+	P ) valpatchlist="$OPTARG"
+	    b_extern_rhdir=false
+	    b_valpatchlist=true
 	    ;;
 	U ) usdir=$OPTARG
 	    b_extern_usdir=true
@@ -462,7 +473,7 @@ while true; do
 
 	get_booleans
 
-	check_dir $prj_rhdir "$rhdirstr" rhdir
+	$b_extern_rhdir && check_dir $prj_rhdir "$rhdirstr" rhdir
 	check_dir $prj_usdir "$usdirstr" usdir
 
 	ofile="$(prj_get_item $prj_ofile)"
@@ -487,8 +498,13 @@ while true; do
 	    $vmode_very ) optstr="$optstr""-V ";;
 	esac
 
-	echo "patbatcmp $optstr -o $ofile $rhdir $usdir"
-	patbatcmp $optstr -o $ofile $rhdir $usdir
+	if $b_valpatchlist; then
+		echo -e "patbatcmp $optstr -o $ofile -P \"$valpatchlist\" $usdir"
+		patbatcmp $optstr -o $ofile -P "$valpatchlist" $rhdir $usdir
+	else
+		echo "patbatcmp $optstr -o $ofile $rhdir $usdir"
+		patbatcmp $optstr -o $ofile $rhdir $usdir
+	fi
 
 	# Only one pass if all we want is to execute and exit.
 	# See -X option.

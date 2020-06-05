@@ -27,6 +27,7 @@ declare -i mlcount	# count of patch files downloaded from mail
 declare -i uscount	# count of patch files in upstream directory
 declare -i index=0	# running 0-based index of the current patch
 declare -i maxindex	# highest attainable index (mlcount - 1)
+declare valpatchlist
 
 declare b_runmismatch=false
 declare b_nomismatch=true
@@ -347,6 +348,68 @@ tkdiff_cmd() {
 	tkdiff "$1" "$2"
 }
 
+# is_prologue() {
+#
+# ARGUMENTS
+# 	$1 - patch file to check
+#	returns 0 if prologue, 1 if not
+#
+is_prologue() {
+	local pfile="$1"
+	local subj=$(grep -m1 "Subject: " "$pfile")
+	local subarray
+	local frac
+	local num
+	local numarray
+	local tok
+	local i
+
+	ui_strtok "$subj" " " subarray
+
+	for ((i = 0; i < ${#subarray[@]}; ++i)); do
+		tok="${subarray[i]}"
+		if [ $(ui_strindex "$tok" "/") -gt 0 ]; then
+			ui_strtok "$tok" "/" numarray
+			num=${numarray[0]}
+			[ $num -eq 0 ] && return 0 || return 1
+		fi
+	done
+
+	return 1
+}
+
+
+# create_patchlist() - create the patchlist starting at startpat
+#
+# ARGUMENTS
+#	$1 - directory containing patches
+#	$2 - return string containing validated patches
+#
+# GLOBALS
+# 	none
+#
+create_patchlist() {
+	local list=($(ls -1 "$1"/*.patch | sort -V))
+	echo "LIST0: ${list[0]}"
+	local pnum=${#list[@]}
+	local retlist
+	local plg
+	local stat
+
+	is_prologue "${list[0]}"
+	stat=$?
+
+	[ $stat -eq 0 ] && list=("${list[@]:1:$pnum}")
+	retlist="${list[@]}"
+
+	# Return the string. Single quotes are necessary to preserve the
+	# string of strings as a whole, else only the first string in the
+	# string of strings will be eval'ed, and the second string will
+	# be left as a command to be executed, which will fail.
+	#
+	eval "$2='$retlist'"
+}
+
 #############################################
 # Initialization
 ############################################
@@ -391,8 +454,11 @@ mldir=$1
 usdir=$2
 editor=$3
 uscommits=$4
+
 uscount=$(ls -1 "$usdir"/*.patch | wc -l)
-mlcount=$(ls -1 "$mldir"/*.patch | wc -l)
+
+create_patchlist $mldir valpatchlist
+mlcount=$( wc -w <<< "$valpatchlist")
 maxindex=$((mlcount - 1))
 
 # It is not really required that the two directories have the same number
@@ -429,11 +495,9 @@ echo -e "$BLD\0Editor of choice is$OFF $editor"
 
 echo -e "\n$BLD\0Building the index of patch files$OFF"
 echo            "================================="
-index=0
-for i in $(ls "$mldir"/*.patch  | sort -V); do
-	mlfiles[index]="$i"
-	echo "${mlfiles[$index]}"
-	let index++
+mlfiles=($valpatchlist)
+for ((i = 0; i < ${#mfiles[@]}; ++i)) ; do
+	echo "${mlfiles[$i]}"
 done
 echo
 

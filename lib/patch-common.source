@@ -510,15 +510,12 @@ is_prologue() {
 #
 # GLOBALS
 # 	indir      - input directory, contains the patches
-# 	outdir     - output directory
 # 	startpat   - patch from which to start applying
-# 	patchcount - running count of applied patches
 # 	patchtotal - total number of patches to apply
 #
 create_patchlist() {
 	# local list=($(ls -1 "$indir"/*.patch | sort -V))
 	local list=($1)
-	echo "LIST0: ${list[0]}"
 	local snum=$((startpat - 1))
 	local pnum=$((patchtotal-snum))
 	local retlist=
@@ -558,10 +555,8 @@ function apply_patches {
 	local valpatchlist
 
 	patchtotal=$(wc -w <<< "$patchlist")
-	echo "patchtotal $patchtotal"
-	read
 	create_patchlist "$patchlist" valpatchlist
-	patchtotal=$( wc -w <<< "$valpatchlist")
+	patchtotal=$(wc -w <<< "$valpatchlist")
 
 	[ $applymode -eq $applymode_off ] && return 0
 	echo "" > "$bp_commits"

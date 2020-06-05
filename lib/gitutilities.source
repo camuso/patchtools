@@ -239,8 +239,6 @@ function git_comment2commitsfile {
 	echo "patchtotal $patchtotal"
 	create_patchlist "$patchlist" valpatchlist
 	filecount=$( wc -w <<< "$valpatchlist")
-	echo "filecount $filecount"
-	read
 
 	for srcfile in $valpatchlist; do
 

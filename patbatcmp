@@ -25,6 +25,8 @@ Options:
         NOTE: This will also exclude the diff stat, but will not exclude
         the paths.
 
+  -P  - Use a valid patch list instead of the rh patchfile directory
+
   -v  - verbose prints whether the patch files are congruent or different
 
   -V  - Very verbose also prints the lines compared from each file
@@ -77,9 +79,11 @@ declare b_stdout=true	# indicates output is going to /dev/stdout
 declare eofA=false	# found the end of file A
 declare eofB=false	# found the end of file B
 declare b_done=false	# loop control
+declare b_valpatchlist=false
 
 # list of files in each directory
 #
+declare valpatchlist
 declare flistA
 declare flistB
 
@@ -144,7 +148,7 @@ Both directories must have the same number of .patch files.
 	usage
 }
 
-while getopts hdpsvVo: OPTION; do
+while getopts hdpsvVo:P: OPTION; do
     case "$OPTION" in
 
 	h ) usage
@@ -154,6 +158,9 @@ while getopts hdpsvVo: OPTION; do
 	    ;;
 	p ) nopaths=true	# exclude the paths when true
 	    let optcnt++
+	    ;;
+	P ) valpatchlist="$OPTARG"
+	    b_valpatchlist=true
 	    ;;
 	s ) strict=true		# only compare lines starting with + or -
 	    let optcnt++
@@ -198,12 +205,13 @@ dirB="$2"
 
 # get the list of files in each directory
 #
-flistA=$(ls -1 $dirA/*.patch)
+$b_valpatchlist && flistA="$valpatchlist" || flistA=$(ls -1 $dirA/*.patch)
 flistB=$(ls -1 $dirB/*.patch)
 
 # get the count of the files in each directory
 #
-fcountA=$(echo "$flistA" | wc -l)
+$b_valpatchlist && fcountA=$(wc -w <<< "$valpatchlist") \
+                || fcountA=$(echo "$flistA" | wc -l)
 fcountB=$(echo "$flistB" | wc -l)
 
 # Be sure that both directories have the same number of patch files.
