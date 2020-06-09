@@ -189,14 +189,24 @@ function git_excisecommit {
 	echo "$line" | egrep -o "\b[0-9a-f]{"$hashsize"}\b" | head -1
 }
 
+# extract_subject - get the subject from the subject line of the patch
+#
+# $1 - file containing the subject line
+#
 extract_subject() {
 	local file="$1"
 	local subject=$(grep -m1 'Subject: ' $file)
 
+	# use awk to strip off leading spaces
 	subject=$(echo "$subject" | cut -d']' -f2 | awk '$1=$1')
 	echo "$subject"
 }
 
+# validate_commit - check the hash for a repo and congruent subject
+#
+# $1 - commit hash from the submitted patch
+# $2 - subject line from the submitted patch
+#
 validate_commit() {
 	local commit="$1"
 	local rhsubj="$2"
@@ -207,7 +217,7 @@ validate_commit() {
 	# send error output to /dev/null
 	ussubj=$(git log --oneline -n1 $commit 2> /dev/null)
 	stat=$?
-	[ $stat -eq 0 ] || return stat
+	[ $stat -eq 0 ] || return $stat
 
 	ussubj=$(echo $ussubj | cut -d' ' -f2-)
 	ussubj=${ussubj:0:strlen}
@@ -245,8 +255,7 @@ function git_comment2commitsfile {
 	local hashsize="40"
 	local _40digit=true
 	local valpatchlist
-	local filecount # =$(ls $srcdir/*.patch | wc -l)
-	local cline
+	local filecount
 	local subject
 	local commit
 	local stat
@@ -290,45 +299,42 @@ function git_comment2commitsfile {
 		#
 		cmtcnt=$(cat $scratchfile | wc -l)
 
-		if [ $cmtcnt -gt 1 ]; then
-			cmtindex=0
-			while read line; do
-				commit=$(git_excisecommit "$line" "$hashsize")
-				validate_commit $commit "$subject"
-				[ $? -eq 0 ] || continue
+		cmtindex=0
+		while read line; do
+			commit=$(git_excisecommit "$line" "$hashsize")
+			validate_commit $commit "$subject"
+			[ $? -eq 0 ] || continue
 
-				commitarray[$cmtindex]=$commit
-				let cmtindex++
-			done < $scratchfile
+			commitarray[$cmtindex]=$commit
+			let cmtindex++
+		done < $scratchfile
 
-			# sort the array using the -u unique switch to wring
-			# out duplicates.
-			#
-			IFS=$'\n' sorted=($(sort -u <<< "${commitarray[*]}"))
-			unset IFS
-		fi
+		# sort the array using the -u unique switch to wring
+		# out duplicates.
+		#
+		IFS=$'\n' sorted=($(sort -u <<< "${commitarray[*]}"))
+		unset IFS
 
 		if [ ${#sorted[@]} -gt 1 ]; then
 
 			echo -en "There is more than one commit mentioned in patch"
-			echo -e  "$OFF $index.$BLD"
+			echo -e  "$BLD $index $OFF"
 			echo -e  "Please choose one of the following."
 
-			for ((cmtindex=1; cmtindex <= cmtcnt; cmtindex++))
+			for ((cmtindex=0; cmtindex < ${#sorted[@]}; cmtindex++))
 			do
-				line=$(ui_readline $cmtindex $scratchfile)
-				printf "%d - $line\n" $cmtindex
+				cmtstr=$(git log --oneline -n1 ${sorted[$cmtindex]})
+				printf "%d - %s\n" $((cmtindex +1)) $cmtstr
 			done
 
-			let cmtindex--
 			loop_range 1 $cmtindex linenumber
 		else
 			linenumber=1
 		fi
 
-		line=$(ui_readline $linenumber $scratchfile)
+		cmtindex=$((linenumber - 1))
+		commit=${sorted[$cmtindex]}
 		rm -f $scratchfile
-		commit=$(git_excisecommit "$line" "$hashsize")
 
 		if [ "$commit" ]; then
 			echo "$commit $index/$filecount" >> $commitsfile
