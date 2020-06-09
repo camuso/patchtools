@@ -189,6 +189,32 @@ function git_excisecommit {
 	echo "$line" | egrep -o "\b[0-9a-f]{"$hashsize"}\b" | head -1
 }
 
+extract_subject() {
+	local file="$1"
+	local subject=$(grep -m1 'Subject: ' $file)
+
+	subject=$(echo "$subject" | cut -d']' -f2 | awk '$1=$1')
+	echo "$subject"
+}
+
+validate_commit() {
+	local commit="$1"
+	local rhsubj="$2"
+	local ussubj=
+	local stat
+	local strlen=${#rhsubj}
+
+	# send error output to /dev/null
+	ussubj=$(git log --oneline -n1 $commit 2> /dev/null)
+	stat=$?
+	[ $stat -eq 0 ] || return stat
+
+	ussubj=$(echo $ussubj | cut -d' ' -f2-)
+	ussubj=${ussubj:0:strlen}
+
+	[[ "$rhsubj" = "$ussubj" ]] && return 0 || return 1
+}
+
 # git_comment2commitsfile
 #	Create a file containing a list of commits from taken from the "commit"
 #	line in each patch in a directory. The patches in the directory are
@@ -221,6 +247,9 @@ function git_comment2commitsfile {
 	local valpatchlist
 	local filecount # =$(ls $srcdir/*.patch | wc -l)
 	local cline
+	local subject
+	local commit
+	local stat
 
 	# If we got a third argument, then get it.
 	# If it's true, then the hashsize will be fixed at 40 digits
@@ -233,7 +262,6 @@ function git_comment2commitsfile {
 	echo "commitsfile: $commitsfile"
 	> $commitsfile
 	> $scratchfile
-	# grep "commit " "$srdir"/*.patch | cut -d' ' -f2 > $commitsfile
 
 	patchtotal=$(wc -w <<< "$patchlist")
 	echo "patchtotal $patchtotal"
@@ -243,6 +271,8 @@ function git_comment2commitsfile {
 	for srcfile in $valpatchlist; do
 
 		echo $srcfile
+		subject=$(extract_subject $srcfile)
+
 		linenumber=0
 		cmtcnt=0
 		commitarray=()
@@ -250,35 +280,10 @@ function git_comment2commitsfile {
 
 		# The default number of digits for a commit hash is 40.
 		#
-		# Capture lines that look like they have commits in them
-		# and stow them in a scratch file, which we will delete
-		# later.
-
-		# First Look for the one and only line formatted thus.
-		#  '     commit #### hash #### upstream'
+		# Gather anything that looks like a commit into the scratchfile
 		#
-		egrep -m1 "commit \b[0-9a-f]{$hashsize}\b upstream" $srcfile \
-			| awk '$1=$1' \
-			> $scratchfile
-
-		# If we didn't get any of those, look for lines beginning
-		# with the token '(cherry'.
-		#
-		[ -s $scratchfile ] || \
-			egrep "^\(cherry \b[0-9a-f]{$hashsize}\b" $srcfile \
-				> $scratchfile
-
-		# If we don't find any of those, look for lines beginning
-		# with the token 'commit'.
-		#
-		[ -s $scratchfile ] || \
-			egrep "^commit \b[0-9a-f]{$hashsize}\b" $srcfile \
-				> $scratchfile
-
-		# Left as a comment for historical reasons.
-		#
-		# egrep '(^commit|^\(cherry)' $srcfile \ | egrep
-		#	"\b[0-9a-f]{$hashsize}\b" > $scratchfile
+		egrep '(commit|cherry)' $srcfile \
+			| egrep "\b[0-9a-f]{$hashsize}\b" > $scratchfile
 
 		# If there is more than one commit, query the user for which
 		# one s/he wants after squeezing out any duplicates.
@@ -288,7 +293,11 @@ function git_comment2commitsfile {
 		if [ $cmtcnt -gt 1 ]; then
 			cmtindex=0
 			while read line; do
-				commitarray[$cmtindex]=$(git_excisecommit "$line" "$hashsize")
+				commit=$(git_excisecommit "$line" "$hashsize")
+				validate_commit $commit "$subject"
+				[ $? -eq 0 ] || continue
+
+				commitarray[$cmtindex]=$commit
 				let cmtindex++
 			done < $scratchfile
 
