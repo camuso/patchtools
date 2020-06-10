@@ -713,6 +713,24 @@ function ui_strindex {
 	[[ $x = $1 ]] && echo -1 || echo ${#x}
 }
 
+# ui_getlastch char string
+#
+# Return zero based index of the last incidence of the given char in
+# the given string.
+#
+# Returns the position of the last $1 in the string, or zero if none
+# is found.
+#
+# $1 - character of which we're looking for the last instance
+# $2 - the string to search for that character
+#
+ui_getlastch() {
+	ch="$1"
+	str="$2"
+
+	echo "$str" | awk -F"$ch" '{print length($0)-length($NF)}'
+}
+
 # ui_inarray()
 #
 # Looks for an integer in an integer array

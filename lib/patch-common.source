@@ -494,6 +494,10 @@ is_prologue() {
 		if [ $(ui_strindex "$tok" "/") -gt 0 ]; then
 			ui_strtok "$tok" "/" numarray
 			num=${numarray[0]}
+
+			# test to see that it's actually a number
+			#
+			[[ "$num" =~ ^[0-9]+$ ]] || return 1
 			[ $num -eq 0 ] && return 0 || return 1
 		fi
 	done
@@ -549,6 +553,7 @@ create_patchlist() {
 #	applyfailmode - exit, goto main-menu, or continue
 #
 function apply_patches {
+	echo "patch-common::apply_patches()"
 	local stat=0
 	local patchlist="$(ls -1 "$indir"/*.patch)"
 	local head=$(git log --oneline -n1 | cut -d' ' -f 1)

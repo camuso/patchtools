@@ -191,14 +191,54 @@ function git_excisecommit {
 
 # extract_subject - get the subject from the subject line of the patch
 #
+# The subject line is expected to have the following format.
+#
+# Subject: [yada-yada] some explicatory text
+#
+# Even without the square brackets in the subject line, this function will
+# return the correct subject string.
+#
 # $1 - file containing the subject line
 #
 extract_subject() {
 	local file="$1"
-	local subject=$(grep -m1 'Subject: ' $file)
+	local subext=
 
-	# use awk to strip off leading spaces
-	subject=$(echo "$subject" | cut -d']' -f2 | awk '$1=$1')
+	# get the subject line
+	local subject=$(grep -n -m1 'Subject: ' $file)
+
+	# find the last right bracket in the subject line
+	local pos=$(ui_getlastch ']' "$subject")
+
+	# get the line number of the subject line
+	local sublin=$(echo "$subject" | cut -d':' -f1)
+
+	# Trim the leading rhel cruft from the subject line and use
+	# awk to trim off any leading spaces.
+	subject=${subject:$((pos+1))} #| awk '$1=$1'
+
+	# ******************************
+	# Let's skip this for now
+	# *****************************
+	#
+	# TODO:
+	#   Need to find a way to get extra lines without getting the
+	#   wrong number of leading spaces, etc.
+	#
+	# Get the line after the subject line, in case it was too long
+	# for the mail client to fit on the same line
+	#
+	# subext=$(ui_readline $((sublin + 1)) $file)
+	# subext=$(echo "$subext" | awk '$1=$1')
+	#
+	# If the next line has a colon in it, it's extremely likely to
+	# be a header string, so zero it.
+	#
+	#[ $(ui_strindex ':' "$subext") -gt 0 ] && subext=
+	#
+	# Paste the subject and the subject extension together
+	# subject="$subject""$subext"
+
 	echo "$subject"
 }
 
@@ -222,7 +262,11 @@ validate_commit() {
 	ussubj=$(echo $ussubj | cut -d' ' -f2-)
 	ussubj=${ussubj:0:strlen}
 
+	# case-insensitive fuzz
+	#
+	shopt -s nocasematch
 	[[ "$rhsubj" = "$ussubj" ]] && return 0 || return 1
+	shopt -s casematch
 }
 
 # git_comment2commitsfile
@@ -303,7 +347,8 @@ function git_comment2commitsfile {
 		while read line; do
 			commit=$(git_excisecommit "$line" "$hashsize")
 			validate_commit $commit "$subject"
-			[ $? -eq 0 ] || continue
+			stat=$?
+			[ $stat -eq 0 ] || continue
 
 			commitarray[$cmtindex]=$commit
 			let cmtindex++
@@ -324,7 +369,7 @@ function git_comment2commitsfile {
 			for ((cmtindex=0; cmtindex < ${#sorted[@]}; cmtindex++))
 			do
 				cmtstr=$(git log --oneline -n1 ${sorted[$cmtindex]})
-				printf "%d - %s\n" $((cmtindex +1)) $cmtstr
+				printf "%d - $cmtstr\n" $((cmtindex +1))
 			done
 
 			loop_range 1 $cmtindex linenumber
