@@ -505,7 +505,6 @@ is_prologue() {
 	return 1
 }
 
-
 # create_patchlist() - create the patchlist starting at startpat
 #
 # ARGUMENTS
@@ -898,15 +897,16 @@ EOF
 #
 format_upstream_patches() {
 	local fc=$(find $outdir -maxdepth 1 -not -type d -name "*.patch" -print -quit)
+	local b_yup
 
 	[ "$fc" ] && {
 		echo
-		echo "There are aready patch files in $outdir"
-		echo
-		return
+		echo -e "There are aready patch files in $BLD$outdir$OFF"
+		getyn "Do you want to replace them?" b_yup
+		$b_yup || return
 	}
 
-	rm -vf "$outdir"/*.patch
+	rm -vf "$outdir"/*
 	> "$us_commits"
 	echo
 	git_comment2commitsfile $indir "$us_commits" $b_40digit
@@ -1028,6 +1028,7 @@ init_menu() {
 	prj_set_item $prj_applymode $applymode
 	patchcount=0
 	startpat=1
+	b_fmt_upstream=true
 	b_allapplied=false
 }
 

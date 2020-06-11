@@ -270,12 +270,10 @@ function promptgetchar {
 #
 loop_yn() {
 	local ans
-	local x
 	while true; do
 		promptgetchar "$1" ans
-		for x in {y,Y,n,N}; do
-			[[ $x == $ans ]] && eval $2=$ans && return
-		done
+		[[ "yY" == *"$ans"* ]] && eval $2=true  && return 0
+		[[ "nN" == *"$ans"* ]] && eval $2=false && return 1
 		echo -e "Please enter 'y' or 'n'."
 	done
 }
