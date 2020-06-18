@@ -552,7 +552,7 @@ create_patchlist() {
 #	applyfailmode - exit, goto main-menu, or continue
 #
 function apply_patches {
-	echo "patch-common::apply_patches()"
+	# echo "patch-common::apply_patches()"
 	local stat=0
 	local patchlist="$(ls -1 "$indir"/*.patch)"
 	local head=$(git log --oneline -n1 | cut -d' ' -f 1)
