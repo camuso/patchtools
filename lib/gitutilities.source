@@ -202,23 +202,28 @@ function git_excisecommit {
 #
 extract_subject() {
 	local file="$1"
+	local subject=$(grep -n -m1 'Subject: ' $file)
+	local subline=$(echo "$subject" | cut -d':' -f1)
+	local subext=
+	local pos
 
-	# get the subject line
-	local subject=$(grep -m1 'Subject: ' $file)
-
-	# Truncate the subject to 80 chars
-	subject=${subject:0:80}
-
-	# find the last right bracket in the subject line
-	local pos=$(ui_getlastch ']' "$subject")
+	# Remove the line number from the grep of the subject
+	subject=$(echo "$subject" | cut -d':' -f2-)
 
 	# Trim the leading rhel cruft from the subject line.
-	subject=${subject:$((pos+1))}
+	#
+	pos=$(ui_getlastch ']' "$subject")
+	subject=${subject:$pos}
 
-	# Trim any leading spaces
-	subject=$(echo $subject | awk '$1=$1')
+	# Get the line after the subject line, in case it was too long
+	# for the mail client to fit on the same line. If the line does
+	# not begin with a white space character, then it is not a part
+	# of the subject line, so zero it.
+	#
+	subext=$(ui_readline $((subline + 1)) $file)
+	[[ "${subext:0:1}" =~ [[:space:]] ]] || subext=
 
-	echo "$subject"
+	echo "$subject""$subext"
 }
 
 # validate_commit - check the hash for a repo and congruent subject
@@ -226,26 +231,45 @@ extract_subject() {
 # $1 - commit hash from the submitted patch
 # $2 - subject line from the submitted patch
 #
+# RETURNS
+# 	0 - if match is determined
+# 	1 - if not sufficiently matched
+#
 validate_commit() {
 	local commit="$1"
 	local rhsubj="$2"
 	local ussubj=
+	local ussubary=()
+	local rhsubary=()
+	local delimiters=" "
 	local stat
-	local strlen=${#rhsubj}
+	local index
 
 	# send error output to /dev/null
 	ussubj=$(git log --oneline -n1 $commit 2> /dev/null)
 	stat=$?
 	[ $stat -eq 0 ] || return $stat
 
+	# strip the leading commit hash off the subject line
 	ussubj=$(echo $ussubj | cut -d' ' -f2-)
-	ussubj=${ussubj:0:strlen}
 
-	# case-insensitive fuzz
-	#
+	# Tokenize the subject strings.
+	ui_strtok "$ussubj" "$delimiters" ussubary
+	ui_strtok "$rhsubj" "$delimiters" rhsubary
+
+	# Case insensitive match, because people are not especially careful
 	shopt -s nocasematch
-	[[ "$rhsubj" = "$ussubj" ]] && return 0 || return 1
-	shopt -s casematch
+
+	# Start with the second token, since the first one is subject to
+	# change by the RHEL submitter.
+	for ((index = 1; index < ${#ussubary[@]}; ++index)); do
+		[[ "${rhsubary[index]}" = "${ussubary[index]}" ]] || break
+	done
+
+	# Restore case sensitivity.
+	shopt -u nocasematch
+
+	[ $index -eq ${#ussubary[@]} ] && return 0 || return 1
 }
 
 # git_comment2commitsfile
