@@ -210,11 +210,6 @@ extract_subject() {
 	# Remove the line number from the grep of the subject
 	subject=$(echo "$subject" | cut -d':' -f2-)
 
-	# Trim the leading rhel cruft from the subject line.
-	#
-	pos=$(ui_getlastch ']' "$subject")
-	subject=${subject:$pos}
-
 	# Get the line after the subject line, in case it was too long
 	# for the mail client to fit on the same line. If the line does
 	# not begin with a white space character, then it is not a part
@@ -244,6 +239,9 @@ validate_commit() {
 	local delimiters=" "
 	local stat
 	local index
+	local ustoks
+	local rhtoks
+	local rhindex
 
 	# send error output to /dev/null
 	ussubj=$(git log --oneline -n1 $commit 2> /dev/null)
@@ -256,14 +254,30 @@ validate_commit() {
 	# Tokenize the subject strings.
 	ui_strtok "$ussubj" "$delimiters" ussubary
 	ui_strtok "$rhsubj" "$delimiters" rhsubary
+	ustoks=${#ussubary[@]}
+	rhtoks=${#rhsubary[@]}
 
 	# Case insensitive match, because people are not especially careful
 	shopt -s nocasematch
 
-	# Start with the second token, since the first one is subject to
-	# change by the RHEL submitter.
-	for ((index = 1; index < ${#ussubary[@]}; ++index)); do
-		[[ "${rhsubary[index]}" = "${ussubary[index]}" ]] || break
+	# Find the first instance in the rhsubary of the first token in the
+	# ussubary. If we can't find any, return 1.
+	# Start with the second token (index = 1), because the first one is
+	# subject to change by the RHEL submitter.
+	#
+	for ((index = 1; index < $rhtoks; ++index)); do
+		[ "${rhsubary[$index]}" == "${ussubary[1]}" ] && break
+	done
+
+	# If we loop through the whole rhsubary without finding a match,
+	# return 1.
+	#
+	[ $index -gt $rhtoks ] && return 1
+	rhindex=$((index - 1))
+
+	# Now see if the arrays are the same from here out.
+	for ((index = 1; index < $ustoks; ++index)); do
+		[[ "${rhsubary[$rhindex + $index]}" == "${ussubary[$index]}" ]] || break
 	done
 
 	# Restore case sensitivity.
