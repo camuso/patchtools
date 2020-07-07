@@ -273,17 +273,18 @@ validate_commit() {
 	# return 1.
 	#
 	[ $index -gt $rhtoks ] && return 1
+	rhtoks=$((rhtoks - index))
 	rhindex=$((index - 1))
 
 	# Now see if the arrays are the same from here out.
-	for ((index = 1; index < $ustoks; ++index)); do
+	for ((index = 1; index < $rhtoks; ++index)); do
 		[[ "${rhsubary[$rhindex + $index]}" == "${ussubary[$index]}" ]] || break
 	done
 
 	# Restore case sensitivity.
 	shopt -u nocasematch
 
-	[ $index -eq ${#ussubary[@]} ] && return 0 || return 1
+	[ $index -eq $rhtoks ] && return 0 || return 1
 }
 
 # git_comment2commitsfile
