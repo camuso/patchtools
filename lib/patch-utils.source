@@ -1,0 +1,87 @@
+#!/bin/bash
+#
+# lib/patch-utils.source
+#
+# This source file provides utility routines for patch management,
+# manipulation, and review scripts.
+
+declare patch_utils_loaded=true
+
+# MYLIB is the directory in which this sourced script finds itself.
+#
+[ "$MYLIB" ] || declare MYLIB=$(cd $(dirname ${BASH_SOURCE[0]}); pwd)
+
+# If $MYLIB/$ui.source is already loaded, then the $ui_source_loaded
+# variable will not be empty.
+#
+[ "$ui_source_loaded" ] || source $MYLIB/ui.source
+
+# is_prologue() {
+#
+# ARGUMENTS
+# 	$1 - patch file to check
+#	returns 0 if prologue, 1 if not
+#
+is_prologue() {
+	local pfile="$1"
+	local subj=$(grep -m1 "Subject: " "$pfile")
+	local subarray
+	local frac
+	local num
+	local numarray
+	local tok
+	local i
+
+	ui_strtok "$subj" " " subarray
+
+	for ((i = 0; i < ${#subarray[@]}; ++i)); do
+		tok="${subarray[i]}"
+		if [ $(ui_strindex "$tok" "/") -gt 0 ]; then
+			ui_strtok "$tok" "/" numarray
+			num=${numarray[0]}
+
+			# test to see that it's actually a number
+			#
+			[[ "$num" =~ ^[0-9]+$ ]] || return 1
+			[ $num -eq 0 ] && return 0 || return 1
+		fi
+	done
+
+	return 1
+}
+
+# create_patchlist() - create the patchlist starting at startpat
+#
+# ARGUMENTS
+#	$1 - string containing list of patches
+#	$2 - return string containing validated patches
+#	$3 - optional starting patch
+#
+# GLOBALS
+# 	startpat   - patch from which to start applying
+#
+create_patchlist() {
+	# local list=($(ls -1 "$indir"/*.patch | sort -V))
+	local list=($1)
+	local startpat=$3
+	local snum=0
+	local retlist=
+	local plg
+	local stat
+
+	[ "$startpat" ] && snum=$((startpat - 1))
+	list=("${list[@]:$snum}")
+	is_prologue "${list[0]}"
+	stat=$?
+
+	[ $stat -eq 0 ] && list=("${list[@]:1}")
+	retlist="${list[@]}"
+
+	# Return the string. Single quotes are necessary to preserve the
+	# string of strings as a whole, else only the first string in the
+	# string of strings will be eval'ed, and the second string will
+	# be left as a command to be executed, which will fail.
+	#
+	eval "$2='$retlist'"
+}
+
