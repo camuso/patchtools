@@ -85,7 +85,7 @@ declare usdirstr="Upstream patches"
 declare usagestr=$(
 cat <<EOF
 
-$(basename $0) [-h [-R | -V]  -U -X -o <file>]
+$(basename $0) [-h [-R | -P]  -U -X -o <file>]
 
   Version $version
 
