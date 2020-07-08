@@ -7,6 +7,11 @@
 # Call prj_init_prjfile, then call prj_set_directory for each project
 # directory.
 
+project_loaded=true
+
+[ "$MYLIB" ] || declare MYLIB=$(cd $(dirname ${BASH_SOURCE[0]}); pwd)
+
+[ "$ui_loaded" ] || source $MYLIB/ui.source
 
 # Project directories and data are stored in prjfile
 #
@@ -168,4 +173,3 @@ function prj_set_directory {
 	eval $3=$dir
 }
 
-project_source_loaded=true

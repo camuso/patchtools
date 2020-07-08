@@ -1,16 +1,23 @@
 #!/bin/bash
 #
-# lib/patch.source
+# lib/patch-common.source
+#
+# This source file provides routines common to both patchreview and
+# patchdevelop scripts.
 #
 # The following source files must be included before this one.
 #
-# source $MYLIB/ui.source
-# source $MYLIB/project.source
-# source $MYLIB/gitutilities.source
-#
-# MYLIB must be defined in the file that includes this one.
 
-version="8.2"
+version="8.3"
+
+# Get the directory defaults if they don't already exist
+#
+[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename $0)))
+[ "$MYLIB" ] || declare MYLIB=$(cd $(dirname ${BASH_SOURCE[0]}); pwd)
+
+[ "$ui_loaded" ]           || source $MYLIB/ui.source
+[ "$project_loaded" ]      || source $MYLIB/project.source
+[ "$gitutilities_loaded" ] || source $MYLIB/gitutilities.source
 
 b_ui_int_first_getyn=false	# For lib/ui.source
 

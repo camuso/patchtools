@@ -14,6 +14,8 @@
 # Global Variables and Consts
 ##############################
 
+declare ui_loaded=true
+
 #
 # Text Attributes
 #
@@ -889,4 +891,3 @@ ui_press_any() {
 	read -n1
 }
 
-ui_source_loaded=true
