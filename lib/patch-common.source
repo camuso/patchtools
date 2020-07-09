@@ -18,6 +18,7 @@ version="8.3"
 [ "$ui_loaded" ]           || source $MYLIB/ui.source
 [ "$project_loaded" ]      || source $MYLIB/project.source
 [ "$gitutilities_loaded" ] || source $MYLIB/gitutilities.source
+[ "$patchutils_loaded" ]   || source $MYLIB/patch-utils.source
 
 b_ui_int_first_getyn=false	# For lib/ui.source
 
@@ -55,9 +56,6 @@ declare b_selpat=false
 declare b_allapplied=false
 declare infilecount=0			# number of files in the input directory
 declare patchtotal=0			# total patches in the input directory
-declare b_prologue=false
-declare prologue_file=
-
 declare us_commits_name="us-commits.log"	# upstream commits log filename
 declare bp_commits_name="bp-commits.log"	# backport commits log filename
 declare us_commits				# must be initialized in menu
@@ -69,8 +67,9 @@ declare sesfile="sessions.log"
 declare commit_msg_file="commit-msg.txt"
 declare last_tag_file="$MYDATA/lasttag"
 declare branchlist="$MYDATA/branchlist"
-declare mismatch_file="mm.log"
-declare mmfile
+declare mismatch_file="mm.log"	# patchreview/develop will complete mmfile name
+declare mmfile			# complete name of mmfile set by patchreview/devlop
+declare valpatchlist=		# inited by call to patch-utils::create_patchlist
 
 declare prj_applyfailmode
 declare prj_indir
@@ -478,75 +477,6 @@ get_failedpatch() {
 	fi
 }
 
-# is_prologue() {
-#
-# ARGUMENTS
-# 	$1 - patch file to check
-#	returns 0 if prologue, 1 if not
-#
-is_prologue() {
-	local pfile="$1"
-	local subj=$(grep -m1 "Subject: " "$pfile")
-	local subarray
-	local frac
-	local num
-	local numarray
-	local tok
-	local i
-
-	ui_strtok "$subj" " " subarray
-
-	for ((i = 0; i < ${#subarray[@]}; ++i)); do
-		tok="${subarray[i]}"
-		if [ $(ui_strindex "$tok" "/") -gt 0 ]; then
-			ui_strtok "$tok" "/" numarray
-			num=${numarray[0]}
-
-			# test to see that it's actually a number
-			#
-			[[ "$num" =~ ^[0-9]+$ ]] || return 1
-			[ $num -eq 0 ] && return 0 || return 1
-		fi
-	done
-
-	return 1
-}
-
-# create_patchlist() - create the patchlist starting at startpat
-#
-# ARGUMENTS
-#	$1 - string containing list of patches
-#	$2 - return string containing validated patches
-#
-# GLOBALS
-# 	indir      - input directory, contains the patches
-# 	startpat   - patch from which to start applying
-# 	patchtotal - total number of patches to apply
-#
-create_patchlist() {
-	# local list=($(ls -1 "$indir"/*.patch | sort -V))
-	local list=($1)
-	local snum=$((startpat - 1))
-	local pnum=$((patchtotal-snum))
-	local retlist=
-	local plg
-	local stat
-
-	list=("${list[@]:$snum:$pnum}")
-	is_prologue "${list[0]}"
-	stat=$?
-
-	[ $stat -eq 0 ] && list=("${list[@]:1:$pnum}")
-	retlist="${list[@]}"
-
-	# Return the string. Single quotes are necessary to preserve the
-	# string of strings as a whole, else only the first string in the
-	# string of strings will be eval'ed, and the second string will
-	# be left as a command to be executed, which will fail.
-	#
-	eval "$2='$retlist'"
-}
-
 # apply_patches
 #
 # GLOBALS
@@ -557,16 +487,17 @@ create_patchlist() {
 #	bp_commits    - backport commits
 #	applymode*    - git am, git am -3, or patch --fuzz=3 -p1
 #	applyfailmode - exit, goto main-menu, or continue
+#	startpat      - patch from which to start the apply
+#	valpatchlist  - from lib/patch-utils.source::create_patchlist
 #
 function apply_patches {
-	# echo "patch-common::apply_patches()"
+	# echo -e "\n$BLD\0patch-common::apply_patches()$OFF"
 	local stat=0
 	local patchlist="$(ls -1 "$indir"/*.patch)"
 	local head=$(git log --oneline -n1 | cut -d' ' -f 1)
-	local valpatchlist
 
 	patchtotal=$(wc -w <<< "$patchlist")
-	create_patchlist "$patchlist" valpatchlist
+	create_patchlist "$patchlist" valpatchlist $startpat
 	patchtotal=$(wc -w <<< "$valpatchlist")
 
 	[ $applymode -eq $applymode_off ] && return 0
@@ -965,8 +896,10 @@ exec_apply_patches(){
 # 	1 if not
 #
 check_mismatch_file() {
+	# echo -e "\n$BLD\0patch-common::check_mismatch_file$OFF"
 	declare b_found=false
 	declare -i num=0
+
 
 	[ -f $mmfile ] || return 1
 
@@ -994,18 +927,28 @@ check_mismatch_file() {
 # 	editor
 #
 exec_patcmp() {
+	# echo -e "\n$BLD\0patch-common::exec_patcmp$OFF"
 	local xval="$1"
+	local patchlist="$(ls -1 "$indir"/*.patch)"
+	local patchtotal=
+
+	# If we don't have a valid patch list, create one now.
+	#
+	[ "$valpatchlist" ] || create_patchlist "$patchlist" valpatchlist
+	patchtotal=$(wc -w <<< "$valpatchlist")
 
 	# If the mmfile does not contain the same number of patches
 	# as the infilecount, then go make the mmfile.
 	#
 	if [ "$xval" ]; then
-		if ! $(check_mismatch_file); then
+		check_mismatch_file
+		if [ $? -ne 0 ]; then
 			echo "rebuild mismatch_file: $mmfile"
-			patbatcmpmgr -R $indir -U $outdir -o $mmfile "$xval"
+			patbatcmpmgr -P "$valpatchlist" -R $indir -U $outdir \
+				     -o $mmfile "$xval"
 		fi
 	else
-		patbatcmpmgr -R $indir -U $outdir -o $mmfile
+		patbatcmpmgr -P $valpatchlist -R $indir -U $outdir -o $mmfile
 	fi
 	patcmp -m $mmfile $indir $outdir $editor "$us_commits"
 }
@@ -1013,7 +956,6 @@ exec_patcmp() {
 # compare_patches - compare the downstream with the upstream
 #
 # Globals
-#	mmfile
 #	cmpmode*
 #
 compare_patches() {

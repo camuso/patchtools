@@ -63,8 +63,8 @@ declare -i prj_b_nodiffst
 declare -i prj_b_nopaths
 declare -i prj_b_strict
 
-declare valpatchlist
-declare b_valpatchlist
+declare valpatchlist=
+declare b_valpatchlist=false
 
 declare prj_dir="$MYDATA"
 declare prj_file="$prj_dir/patbatcmpmgr.prj"
@@ -386,10 +386,8 @@ while getopts hXR:U:o:P: OPTION; do
 	    ;;
 	R ) rhdir=$OPTARG
 	    b_extern_rhdir=true
-	    b_valpatchlist=false
 	    ;;
-	P ) valpatchlist="$OPTARG"
-	    b_extern_rhdir=false
+    	P ) valpatchlist="$OPTARG"
 	    b_valpatchlist=true
 	    ;;
 	U ) usdir=$OPTARG
@@ -499,7 +497,7 @@ while true; do
 	esac
 
 	if $b_valpatchlist; then
-		echo -e "patbatcmp $optstr -o $ofile -P \"$valpatchlist\" $usdir"
+		# echo -e "patbatcmp $optstr -o $ofile -P \"$valpatchlist\" $usdir"
 		patbatcmp $optstr -o $ofile -P "$valpatchlist" $rhdir $usdir
 	else
 		echo "patbatcmp $optstr -o $ofile $rhdir $usdir"

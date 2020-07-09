@@ -159,8 +159,10 @@ while getopts hdpsvVo:P: OPTION; do
 	p ) nopaths=true	# exclude the paths when true
 	    let optcnt++
 	    ;;
-	P ) valpatchlist="$OPTARG"
+    P ) valpatchlist=($OPTARG)
 	    b_valpatchlist=true
+	    let optcnt++
+	    let optcnt++
 	    ;;
 	s ) strict=true		# only compare lines starting with + or -
 	    let optcnt++
@@ -205,32 +207,18 @@ dirB="$2"
 
 # get the list of files in each directory
 #
-$b_valpatchlist && flistA="$valpatchlist" || flistA=$(ls -1 $dirA/*.patch)
-flistB=$(ls -1 $dirB/*.patch)
+$b_valpatchlist && faryA=(${valpatchlist[@]}) || faryA=($(ls -1 $dirA/*.patch))
+faryB=($(ls -1 $dirB/*.patch))
 
 # get the count of the files in each directory
 #
-$b_valpatchlist && fcountA=$(wc -w <<< "$valpatchlist") \
-                || fcountA=$(echo "$flistA" | wc -l)
-fcountB=$(echo "$flistB" | wc -l)
+fcountA=${#faryA[@]}
+fcountB=${#faryB[@]}
 
 # Be sure that both directories have the same number of patch files.
 #
 [ $fcountA -eq $fcountB ] || fcount_err
 
-# Populate the arrays of patch filenames, faryA and faryB
-#
-index=0
-while IFS= read line; do
-	faryA[$index]="$line"
-	let index++
-done <<< "$flistA"
-
-index=0
-while IFS= read line; do
-	faryB[$index]="$line"
-	let index++
-done <<< "$flistB"
 
 fecho() {
 	echo "$1" >> $ofile

@@ -9,7 +9,8 @@ declare gitutilities_loaded=true
 declare scratchdir=/dev/shm
 declare scratchfile=$scratchdir/scratch
 
-[ "$ui_loaded" ] || source $MYLIB/ui.source
+[ "$ui_loaded" ]         || source $MYLIB/ui.source
+[ "$patchutils_loaded" ] || source $MYLIB/patch-utils.source
 
 # git_commit2patchset
 # 	creates a patchset from contiguous commits starting with the most

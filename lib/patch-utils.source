@@ -5,7 +5,10 @@
 # This source file provides utility routines for patch management,
 # manipulation, and review scripts.
 
-declare patch_utils_loaded=true
+declare patchutils_loaded=true
+
+declare b_prologue=false
+declare prologue_file=
 
 # MYLIB is the directory in which this sourced script finds itself.
 #
@@ -23,6 +26,7 @@ declare patch_utils_loaded=true
 #	returns 0 if prologue, 1 if not
 #
 is_prologue() {
+	# echo -e "\n$BLD\0patch-utils::is_prologue$OFF"
 	local pfile="$1"
 	local subj=$(grep -m1 "Subject: " "$pfile")
 	local subarray
@@ -43,7 +47,16 @@ is_prologue() {
 			# test to see that it's actually a number
 			#
 			[[ "$num" =~ ^[0-9]+$ ]] || return 1
-			[ $num -eq 0 ] && return 0 || return 1
+
+			if [ $num -eq 0 ]; then
+				prologue_file="$pfile"
+				b_prologue=true
+				return 0
+			else
+				prologue_file=
+				b_prologue=false
+				return 1
+			fi
 		fi
 	done
 
@@ -58,10 +71,9 @@ is_prologue() {
 #	$3 - optional starting patch
 #
 # GLOBALS
-# 	startpat   - patch from which to start applying
 #
 create_patchlist() {
-	# local list=($(ls -1 "$indir"/*.patch | sort -V))
+	# echo -e "\n$BLD\0patch-utils::create_patchlist$OFF"
 	local list=($1)
 	local startpat=$3
 	local snum=0
@@ -74,7 +86,12 @@ create_patchlist() {
 	is_prologue "${list[0]}"
 	stat=$?
 
+	# If the first patch is a prologue, determined by whether the
+	# subject line is the zeroth patch, then set the prologue flag
+	# true.
+	#
 	[ $stat -eq 0 ] && list=("${list[@]:1}")
+
 	retlist="${list[@]}"
 
 	# Return the string. Single quotes are necessary to preserve the

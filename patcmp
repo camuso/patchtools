@@ -4,7 +4,9 @@
 
 declare MYDIR=$(dirname $(which $(basename $0)))
 declare MYLIB=$MYDIR/lib
-source $MYLIB/ui.source
+[ "$ui_loaded" ]         || source $MYLIB/ui.source
+[ "$patchutils_loaded" ] || source $MYLIB/patch-utils.source
+
 
 declare -i code_ok=0
 declare -i code_special_action=1
@@ -348,68 +350,6 @@ tkdiff_cmd() {
 	tkdiff "$1" "$2"
 }
 
-# is_prologue() {
-#
-# ARGUMENTS
-# 	$1 - patch file to check
-#	returns 0 if prologue, 1 if not
-#
-is_prologue() {
-	local pfile="$1"
-	local subj=$(grep -m1 "Subject: " "$pfile")
-	local subarray
-	local frac
-	local num
-	local numarray
-	local tok
-	local i
-
-	ui_strtok "$subj" " " subarray
-
-	for ((i = 0; i < ${#subarray[@]}; ++i)); do
-		tok="${subarray[i]}"
-		if [ $(ui_strindex "$tok" "/") -gt 0 ]; then
-			ui_strtok "$tok" "/" numarray
-			num=${numarray[0]}
-			[ $num -eq 0 ] && return 0 || return 1
-		fi
-	done
-
-	return 1
-}
-
-
-# create_patchlist() - create the patchlist starting at startpat
-#
-# ARGUMENTS
-#	$1 - directory containing patches
-#	$2 - return string containing validated patches
-#
-# GLOBALS
-# 	none
-#
-create_patchlist() {
-	local list=($(ls -1 "$1"/*.patch | sort -V))
-	echo "LIST0: ${list[0]}"
-	local pnum=${#list[@]}
-	local retlist
-	local plg
-	local stat
-
-	is_prologue "${list[0]}"
-	stat=$?
-
-	[ $stat -eq 0 ] && list=("${list[@]:1:$pnum}")
-	retlist="${list[@]}"
-
-	# Return the string. Single quotes are necessary to preserve the
-	# string of strings as a whole, else only the first string in the
-	# string of strings will be eval'ed, and the second string will
-	# be left as a command to be executed, which will fail.
-	#
-	eval "$2='$retlist'"
-}
-
 #############################################
 # Initialization
 ############################################
@@ -420,8 +360,8 @@ trap control_c SIGINT
 
 # Herald
 #
-echo -e "\n$BLD\0patcmp 3.0 - Interactively compare pairs of patches"
-echo -e "\tType '$OFF\0h$BLD' for help\n"
+echo -e "\n$BLD\0patcmp 3.1 - Interactively compare pairs of patches$OFF"
+# echo -e "\tType '$BLD\0h$OFF' for help\n"
 
 while getopts z:m:h OPTION; do
     case "$OPTION" in
@@ -455,9 +395,10 @@ usdir=$2
 editor=$3
 uscommits=$4
 
+patlist=$(ls -1 "$1"/*.patch | sort -V)
 uscount=$(ls -1 "$usdir"/*.patch | wc -l)
 
-create_patchlist $mldir valpatchlist
+create_patchlist "$patlist" valpatchlist
 mlcount=$( wc -w <<< "$valpatchlist")
 maxindex=$((mlcount - 1))
 
@@ -496,16 +437,15 @@ echo -e "$BLD\0Editor of choice is$OFF $editor"
 echo -e "\n$BLD\0Building the index of patch files$OFF"
 echo            "================================="
 mlfiles=($valpatchlist)
-for ((i = 0; i < ${#mfiles[@]}; ++i)) ; do
+for ((i = 0; i < ${#mlfiles[@]}; ++i)) ; do
 	echo "${mlfiles[$i]}"
 done
-echo
 
 echo -e "\n$BLD\0Building the index of upstream commits$OFF"
 echo            "======================================"
 index=0
-for i in $(ls "$usdir"/*.patch  | sort -V); do
-	usfiles[index]="$i"
+usfiles=($(ls "$usdir"/*.patch  | sort -V))
+for ((i = 0; i < ${#usfiles[@]}; ++i)) ; do
 	echo "${usfiles[$index]}"
 	let index++
 done
