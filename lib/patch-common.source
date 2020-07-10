@@ -496,7 +496,6 @@ function apply_patches {
 	local patchlist="$(ls -1 "$indir"/*.patch)"
 	local head=$(git log --oneline -n1 | cut -d' ' -f 1)
 
-	patchtotal=$(wc -w <<< "$patchlist")
 	create_patchlist "$patchlist" valpatchlist $startpat
 	patchtotal=$(wc -w <<< "$valpatchlist")
 
@@ -861,7 +860,7 @@ format_upstream_patches() {
 #
 # Globals:
 # 	patchcount
-# 	apply_mode
+# 	applymode
 # 	prj_applymode
 # 	applyfailmode
 # 	applyfailmode_menu
@@ -925,12 +924,12 @@ check_mismatch_file() {
 # 	mmfile
 # 	us_commits
 # 	editor
+# 	patchtotal
 #
 exec_patcmp() {
 	# echo -e "\n$BLD\0patch-common::exec_patcmp$OFF"
 	local xval="$1"
 	local patchlist="$(ls -1 "$indir"/*.patch)"
-	local patchtotal=
 
 	# If we don't have a valid patch list, create one now.
 	#
@@ -943,7 +942,7 @@ exec_patcmp() {
 	if [ "$xval" ]; then
 		check_mismatch_file
 		if [ $? -ne 0 ]; then
-			echo "rebuild mismatch_file: $mmfile"
+			echo -e "${BLD}Rebuild the conflicts log:$OFF $mmfile"
 			patbatcmpmgr -P "$valpatchlist" -R $indir -U $outdir \
 				     -o $mmfile "$xval"
 		fi
