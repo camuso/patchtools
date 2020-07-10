@@ -1,12 +1,13 @@
 #!/bin/bash
 #
-# patcmp v1.0	- compare patches
+# compare submitted patches with upstream
+
+declare version="4.0"
 
 declare MYDIR=$(dirname $(which $(basename $0)))
 declare MYLIB=$MYDIR/lib
 [ "$ui_loaded" ]         || source $MYLIB/ui.source
 [ "$patchutils_loaded" ] || source $MYLIB/patch-utils.source
-
 
 declare -i code_ok=0
 declare -i code_special_action=1
@@ -245,16 +246,12 @@ replace_commit() {
 }
 
 say_nomismatch() {
-
-	echo
-	echo -e "********************************************* $BLD"
-	echo -e "      There are no incongruent patches"
-	echo -e "   Only congruent patches can be examined   $OFF"
-	echo -e "*********************************************"
-	echo
-
+	echo -e " *********************************************"
+	echo -e " *                                           * $BLD"
+	echo -e " *     There are no conflicting patches      * $OFF"
+	echo -e " *                                           *"
+	echo -e " *********************************************"
 }
-
 
 # init_mismatch()
 #
@@ -285,8 +282,6 @@ init_mismatch() {
 	# from each sequence number to get the index into the mlfiles and
 	# usfiles arrays.
 	#
-	echo -e "${BLD}Patches not matching the upstream commits$OFF"
-	echo          "========================================="
 	while read line; do
 		[ "${line:0:6}" == "PATCH:" ] || continue
 		(($verbosity > 0)) && { [[ "$line" == *"!="* ]] || continue; }
@@ -298,15 +293,22 @@ init_mismatch() {
 		seqno=$(echo $line | cut -d':' -f2)
 		mismatch_array[$mmindex]=$((seqno - 1))
 
-		echo $seqno
 		mismatch_numbers=$(echo "$mismatch_numbers"; echo $seqno)
 		let mmindex++
 	done < $mismatch_file
 
+	if [ ${#mismatch_array[@]} -gt 0 ]; then
+		echo -e "${BLD}Patches conflicting with upstream commits$OFF"
+		echo          "========================================="
+		for seqno in ${mismatch_array[@]}; do
+			echo $((seqno + 1))
+		done
+	fi
+
 	mismatch_count=$mmindex
 
 	if [ $mismatch_count -gt 0 ]; then
-		echo -e "Total number of patches not matching upstream: "\
+		echo -e "Total number of conflicts with upstream: "\
 			"$BLD$mismatch_count$OFF"
 		last_mismatch=${mismatch_array[$((mmindex-1))]}
 		first_mismatch=${mismatch_array[0]}
@@ -317,7 +319,7 @@ init_mismatch() {
 	else
 		b_nomismatch=true
 		b_runmismatch=false
-		mismatch_numbers=""
+		mismatch_numbers=
 		say_nomismatch
 	fi
 	mmindex=0
@@ -360,7 +362,7 @@ trap control_c SIGINT
 
 # Herald
 #
-echo -e "\n$BLD\0patcmp 3.1 - Interactively compare pairs of patches$OFF"
+echo -e "\n$BLD\0patcmp $version - Interactively compare submitted patches with upstream$OFF"
 # echo -e "\tType '$BLD\0h$OFF' for help\n"
 
 while getopts z:m:h OPTION; do
@@ -484,17 +486,17 @@ while :; do
 	fi
 
 	if [ $index -ge $maxindex ]; then
-		echo -e "     ******"
+		echo -e "\n     ******"
 		printf "Patch$BLD %04d$OFF is the last patch in the set.\n" \
 			$((maxindex + 1))
-		echo -e "     ******\n"
+		echo -e   "     ******"
 	fi
 
 	if $b_runmismatch && [ $index -eq $last_mismatch ]; then
-		echo -e "     ******"
-		printf "Patch$BLD %04d$OFF is the last mismatch in the set.\n" \
+		echo -e "\n     ******"
+		printf "Patch$BLD %04d$OFF is the last conflict in the set.\n" \
 			$((last_mismatch + 1))
-		echo -e "     ******\n"
+		echo -e   "     ******"
 	fi
 
 	if ($b_runmismatch && [ $index -gt 0 ] && [ $index -lt $maxindex ]); then
@@ -503,13 +505,13 @@ while :; do
 			     || index=${mismatch_array[0]}
 	fi
 
-	echo -e "\n$BLD\0Interactively Compare Patch Pairs"
+	echo -e "\n$BLD\0Interactively Compare patches with upstream commits"
 	echo -e "-----------------------------------------------------------------"
 	echo -en "$OFF"
 	echo -e "$BLD Compare :$OFF $mldir/$(basename ${mlfiles[$index]})"
 	echo -e "$BLD    With :$OFF $usdir/$(basename ${usfiles[$index]})"
 	if ! $b_nomismatch; then
-	echo -e "${BLD}Mismatch :$OFF $((mmindex+1)) ${BLD}of$OFF $mismatch_count"
+	echo -e "${BLD}Conflict :$OFF $((mmindex+1)) ${BLD}of$OFF $mismatch_count"
 	fi
 	echo
 
@@ -518,11 +520,11 @@ while :; do
 	echo -e  "\t    RHEL dir :$OFF $mldir$BLD"
 	echo -e  "\tUpstream dir :$OFF $usdir$BLD"
 	echo -e "-----------------------------------------------------------------"
-	echo -e  "\tc - run batch file comparison to find mismatched patch pairs"
+	echo -e  "\tc - run batch file comparison to find conflicts with upstream"
 
 	if ! $b_nomismatch; then
-	echo -e  "\tm - only examine mismatched patch pairs:$OFF $b_runmismatch$BLD"
-	echo -e  "\ts - show contents of mismatch log"
+	echo -e  "\tm - only examine patches conflicting with upstream:$OFF $b_runmismatch$BLD"
+	echo -e  "\ts - show contents of conflicts log"
 	fi
 
 	echo -e  "\tb - back to the previous patch"
