@@ -1,5 +1,5 @@
 =================
-Patchdevelop v6.0
+Patchdevelop v8.3
 =================
 
 This menu-driven script allows the user to compare a set of patches
@@ -126,9 +126,10 @@ _________________________________________________________________________
     ------------------
  r  Run patch review
  i  Init to defaults
- R  Rename mail files in    : /home/tcamuso/Maildir/work/cur
+ P  Compare Patches
+ R  Rename mail files in    : ../backport/83/ipmi/1/patches
  F  Format commits into     : ../temp
- B  Create a new branch at  : 060f9ddcd6053 arm64: cputype: Add missing MIDR va
+ B  Create a new branch at  : 7ca4ad291eb7 [redhat] kernel-4.18.0-224.el8
  h  help text
  q  Quit this script
 
@@ -213,7 +214,7 @@ states by pressing the corresponding option number.
 
     Continue without applying - tells the script to continue with the
            to the downstream/upstream patch comparison without
-	   attempting to apply any more patches.
+           attempting to apply any more patches.
 
     Return to main menu - tells the script to return to the top menu
            when a patch fails to apply.
@@ -233,6 +234,8 @@ r - Run the script on the patches according to the parameter settings as
     described above.
 
 i - Initialize the script's parameters to their default settings.
+
+P - Run the patch comparison without applying the patches.
 
 R - Rename the extracted mail files in the Patch directory according
     to their subject lines. This will not alter the contents of the
