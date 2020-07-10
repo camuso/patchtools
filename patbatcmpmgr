@@ -106,7 +106,7 @@ $(basename $0) [-h [-R | -P]  -U -X -o <file>]
   -U usdir  - optional directory containing the Upstream patches
   -P list   - Use a valid patch list instead of the RHEL patchfile directory.
               This is to circumvent counting/comparing the prologue file.
-  -o ofile  - optional output file. Default is /dev/stdout
+  -o ofile  - optional conflicts file. Default is /dev/stdout
   -X        - execute saved options and exit without presenting the menu
 
   The rhdir (or valid patch list) and usdir must have the same number of
@@ -133,7 +133,7 @@ $(basename $0) [-h [-R | -P]  -U -X -o <file>]
       THEN you will be prompted for the missing directory or directories
       before being presented with the menu.
 
-  o - Change the output file.
+  o - Change the conflicts file.
       Default: /dev/stdout
 
   p - When true, excludes path lines from the comparison
@@ -161,7 +161,7 @@ $(basename $0) [-h [-R | -P]  -U -X -o <file>]
                     the first mismatched line in the files.
 
   r - run the comparison
-  e - less the output file. Only visible if the output is not /dev/stdout
+  e - less the conflicts file. Only visible if the output is not /dev/stdout
   i - init controls and output file to defaults
   h - less this help text
   x - spawn a shell
@@ -240,7 +240,7 @@ show_read_ofile() {
 	read_ofile_str=$(
 cat <<EOF
 
-  e  examine output file (less $OFF"$ofile"$BLD)
+  e  examine conflicts file (less $OFF"$ofile"$BLD)
 EOF
 )
 	[ "$ofile" != "/dev/stdout" ] && echo -e "$read_ofile_str"
