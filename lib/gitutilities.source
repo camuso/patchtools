@@ -313,7 +313,6 @@ function git_comment2commitsfile {
 	local index=1
 	local jdex
 	local patchlist=$(ls $srcdir/*.patch | sort -V)
-	local cmtcnt=0
 	local cmtindex=1
 	local linenumber=0
 	local commitarray
@@ -349,7 +348,6 @@ function git_comment2commitsfile {
 		subject=$(extract_subject $srcfile)
 
 		linenumber=0
-		cmtcnt=0
 		commitarray=()
 		sorted=()
 
@@ -362,7 +360,6 @@ function git_comment2commitsfile {
 
 		# Validate any commits we found
 		#
-		cmtcnt=$(cat $scratchfile | wc -l)
 		cmtindex=0
 		while read line; do
 			commit=$(git_excisecommit "$line" "$hashsize")
@@ -536,5 +533,62 @@ function git_setbranch {
 	status=$?
 	git log --oneline -n1
 	return $status
+}
+
+# find_fixes - grep for all the commits since the one passed as $1
+#
+# $1 - a line expected to contain only a valid commit.
+#
+find_fixes () {
+	local commit_id="$*"
+	local commit_info=
+	local short_hash=
+	local commit_date=
+
+	# get the author date, which is what is displayed in git-log output
+	commit_info=$(git log --pretty="%h|%ad" -1 "$commit_id")
+	short_hash=$(echo "$commit_info" | awk -F "|"  ' { print $1 } ')
+	commit_date=$(echo "$commit_info" | awk -F "|"  ' { print $2 } ')
+
+	# use the date to do a git log --since=$commit_date and grep for Fixes?
+	# then look for short hash
+	git --no-pager log --oneline --pretty='%h ("%s")' --since="$commit_date" --grep="$short_hash"
+	return $?
+}
+
+# check_fixes - look for missed commits
+#
+# Walk through the file of commits looking for any that may have been missed
+#
+# $1 - path to the file containing the commits. The commit is expected to
+#      be the first field in each line of the file.
+#
+check_fixes() {
+	local commitsfile="$1"
+	local line=
+	local fixes=
+	local commitid=
+	local commit_fix=
+	local commit_fix_id=
+	local msg="$BLD$YEL\0WARNING: found missing commit$OFF"
+
+	echo -e "\nLooking for missing commits ..."
+
+	while read line; do
+		commitid=$(echo "$line" | cut -d' ' -f1)
+		(( 16#$commitid )) || continue
+		echo "Checking $commitid ..."
+		fixes=$(find_fixes "$commitid")
+		if [ -n "$fixes" ]; then
+			echo "$fixes" | while read -r commit_fix; do
+				commit_fix_id=$(echo "$commit_fix" | awk ' { print $1 } ')
+				if ! grep "$commit_fix_id" "$commitsfile" >& /dev/null; then
+					# WARN ONLY. There may be a reason a commit is
+					# is skipped.
+					echo -e "$msg $commit_fix"
+				fi
+			done
+		fi
+	done < "$commitsfile"
 }
 

@@ -352,12 +352,12 @@ main() {
 			[ $? -ne 0 ] && continue
 		fi
 
+		$b_fmt_upstream && format_upstream_patches
+
 		if [ $applymode -ne $applymode_off ]; then
 			exec_apply_patches
 			[ $? -ne 0 ] && continue
 		fi
-
-		$b_fmt_upstream && format_upstream_patches
 
 		[ $cmpmode -ne $cmpmode_off ] && compare_patches
 	done
