@@ -195,6 +195,7 @@ menu_parser() {
 		R )	renpatfiles
 			;;
 		F )	format_upstream_patches
+			check_fixes "$us_commits"
 			;;
 		1 )	ui_cycle_state cmpmode $cmpmode_states
 			prj_set_item $prj_cmpmode $cmpmode
@@ -352,7 +353,10 @@ main() {
 			[ $? -ne 0 ] && continue
 		fi
 
-		$b_fmt_upstream && format_upstream_patches
+		if $b_fmt_upstream; then
+			format_upstream_patches
+			check_fixes "$us_commits"
+		fi
 
 		if [ $applymode -ne $applymode_off ]; then
 			exec_apply_patches
