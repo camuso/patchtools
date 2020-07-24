@@ -214,12 +214,10 @@ function doyn {
 
 function getuser {
 	local promptstring="$1"
-	local var
+	local var=
 
 	echo -ne "$BLD$promptstring$OFF"
 	read var
-	# [ "$var" == "q" ] && buhbye "Exiting ..."
-	# [ "$var" == "x" ] && ui_sh_spawn
 	eval $2=$var
 }
 

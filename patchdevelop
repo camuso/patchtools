@@ -157,15 +157,18 @@ $BLD
     $UND\0Run Parameters    $OFF$BLD
  1  Compare mode            :$OFF $(show_cmpmode $cmpmode)$BLD
  2  Patch apply mode        :$OFF $(show_applymode)$BLD
- 3  Patch apply fail mode   :$OFF $(show_applyfailmode)$BLD\
+ 3  Patch apply fail mode   :$OFF $(show_applyfailmode)$BLD
+ 4  Patch seek mode         :$OFF $(show_patchseekmode)$BLD\
  $(show_nextpatch)
 
     $UND\0Control           $OFF$BLD
  r  Run patch review
  i  Init to defaults
- P  Compare Patches
  R  Rename mail files in    :$OFF $indir$BLD
  F  Format commits into     :$OFF $outdir$BLD
+ S  Seek missing commits \
+ $(show_apply_patches)$BLD
+ P  Compare Patches
  B  Create a new branch at  :$OFF $current_head_trunc$BLD
  h  help text
  q  Quit this script
@@ -197,6 +200,12 @@ menu_parser() {
 		F )	format_upstream_patches
 			check_fixes "$us_commits"
 			;;
+		S )	[ -f "$us_commits" ] || format_upstream_patches
+			check_fixes "$us_commits" "$starting_head"
+			;;
+		A )	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
+				&& exec_apply_patches
+			;;
 		1 )	ui_cycle_state cmpmode $cmpmode_states
 			prj_set_item $prj_cmpmode $cmpmode
 			;;
@@ -206,7 +215,10 @@ menu_parser() {
 		3 )	ui_cycle_state applyfailmode $applyfailmode_states
 			prj_set_item $prj_applyfailmode $applyfailmode
 			;;
-		4 )	$b_selpat && select_patch
+		4 )	ui_cycle_state patchseekmode $patchseek_states
+			prj_set_item $prj_patchseekmode $patchseekmode
+			;;
+		5 )	$b_selpat && select_patch
 			;;
 		i )	init_menu
 			;;
@@ -245,6 +257,7 @@ function menu_loop {
 	cmpmode=$(prj_get_item $prj_cmpmode)
 	applymode=$(prj_get_item $prj_applymode)
 	applyfailmode=$(prj_get_item $prj_applyfailmode)
+	patchseekmode=$(prj_get_item $prj_patchseekmode)
 
 	# delete any "scratch" file from the indir
 	#
@@ -272,6 +285,7 @@ init_parms() {
 	# Add new non-boolean parameters to the top of the list.
 	#
 	for offset in \
+	prj_patchseekmode \
 	prj_applyfailmode \
 	prj_applymode \
 	prj_cmpmode \
@@ -313,9 +327,11 @@ init_parms() {
 		cmpmode=$cmpmode_batch
 		applymode=$applymode_norm
 		applyfailmode=$applyfailmode_exit
+		patchseekmode=$patchseek_off
 		prj_set_item $prj_cmpmode $cmpmode
 		prj_set_item $prj_applymode $applymode
 		prj_set_item $prj_applyfailmode $applyfailmode
+		prj_set_item $prj_patchseekmode $patchseekmode
 	fi
 }
 
@@ -353,9 +369,11 @@ main() {
 			[ $? -ne 0 ] && continue
 		fi
 
-		if $b_fmt_upstream; then
-			format_upstream_patches
-			check_fixes "$us_commits"
+		$b_fmt_upstream && format_upstream_patches
+
+		if [ $patchseekmode -eq $patchseek_on ]; then
+			[ -f "$us_commits" ] || format_upstream_patches
+			check_fixes "$us_commits" "$starting_head"
 		fi
 
 		if [ $applymode -ne $applymode_off ]; then

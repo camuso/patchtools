@@ -1,5 +1,5 @@
 =================
-Patchdevelop v8.3
+Patchdevelop v9.0
 =================
 
 This menu-driven script allows the user to compare a set of patches
@@ -120,15 +120,18 @@ _________________________________________________________________________
  1  Compare mode            : Batch
  2  Patch apply mode        : git am
  3  Patch apply fail mode   : Exit
- 4  Start applying at patch : 1
+ 4  Patch seek mode         : OFF
+ 5  Start applying at patch : 1
 
     Control
     ------------------
  r  Run patch review
  i  Init to defaults
+ R  Rename mail files in    : /home/tcamuso/Maildir/work/cur/
+ F  Format commits into     : ../cmp
+ S  Seek missing commits
+ A  Apply patches
  P  Compare Patches
- R  Rename mail files in    : ../backport/83/ipmi/1/patches
- F  Format commits into     : ../temp
  B  Create a new branch at  : 7ca4ad291eb7 [redhat] kernel-4.18.0-224.el8
  h  help text
  q  Quit this script
@@ -219,7 +222,12 @@ states by pressing the corresponding option number.
     Return to main menu - tells the script to return to the top menu
            when a patch fails to apply.
 
-4   Start from patch <number>
+4 * Seek missing commits
+    This option toggles the search for commits that are apparently
+    missing from the current series.
+    Default at initialization is OFF.
+
+5   Start from patch <number>
     This option only appears if there are *.patch files in the Patch
     directory and they have not been applied yet.
 
@@ -235,8 +243,6 @@ r - Run the script on the patches according to the parameter settings as
 
 i - Initialize the script's parameters to their default settings.
 
-P - Run the patch comparison without applying the patches.
-
 R - Rename the extracted mail files in the Patch directory according
     to their subject lines. This will not alter the contents of the
     Patch directory if there are any *.patch files in it.
@@ -245,9 +251,24 @@ F - Format upstream patches into the Work directory using commit hashes
     discovered in the commit logs of the *.patch files in the Patch
     directory. This will not alter the contents of the Work directory
     if there are any *.patch files in it.
+    Files downloaded from email must be renamed with the R control first.
+
+S - Seek commits that may be missing from the serires.
+    Files downloaded from email must be renamed with the R control first.
+
+A - Apply the patch or patch series. This option only appears if there
+    are patches remaining to be applied and the patch apply mode is
+    not OFF.
+
+P - Run the patch comparison to compare the submitted patches in the
+    Patch directory with the formatted upstream patches in the Work
+    directory according to the patch comparison mode.
+    Upstream patches must be derived from the hashes in the patches
+    in the Patch dirictory with F control first.
 
 B - Create a new branch at the current git head. This can be useful
     when expecting patches that depend on the currently applied ones.
+    You will be presented with an option to tag the branch.
 
 h - Display this help file.
 

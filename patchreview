@@ -150,8 +150,7 @@ clean_indir() {
 }
 
 clean_outdir() {
-	# remove all but the log files and subdirs in the outdir
-	find "$outdir" -maxdepth 1 -not -type d -not -name "*.log" -exec rm -vf '{}' \;
+	find "$outdir" -maxdepth 1 -not -type d -exec rm -vf '{}' \;
 	rm -vf $outdir/$mismatch_file
 }
 
@@ -196,6 +195,7 @@ EOF
 #
 reset_to_lasttag() {
 	local newlasttag
+	local head=$(git log --oneline -n1)
 	git_get_lasttag newlasttag
 	local errstr=$(
 cat <<EOF
@@ -216,6 +216,7 @@ EOF
 
 	echo -e "$BLD\0Resetting git head to$OFF $lasttag."
 	git reset --hard $lasttag
+	b_allapplied=false
 }
 
 # nuke - delete files in indir and outdir, except logs, and reset to lasttag
@@ -272,15 +273,18 @@ $BLD
     $UND\0Run Parameters    $OFF$BLD
  1  Compare mode            :$OFF $(show_cmpmode)$BLD
  2  Patch apply mode        :$OFF $(show_applymode)$BLD
- 3  Patch apply fail mode   :$OFF $(show_applyfailmode)$BLD\
+ 3  Patch apply fail mode   :$OFF $(show_applyfailmode)$BLD
+ 4  Patch seek mode         :$OFF $(show_patchseekmode)$BLD\
  $(show_nextpatch)
 
     $UND\0Control           $OFF$BLD
  r  Run patch review
  i  Init to defaults
- P  Compare Patches
  R  Rename mail files in    :$OFF $indir$BLD
  F  Format commits into     :$OFF $outdir$BLD
+ S  Seek missing commits \
+ $(show_apply_patches)$BLD
+ P  Compare Patches
  G  Git reset to            :$OFF $lasttag$BLD
  B  Create a new branch at  :$OFF $current_head_trunc$BLD
  C  Clean the $OFF$indirstr$BLD and/or $OFF$outdirstr$BLD directories
@@ -312,7 +316,12 @@ menu_parser() {
 		R )	renpatfiles
 			;;
 		F )	format_upstream_patches
-			check_fixes "$us_commits"
+			;;
+		S )	[ -f "$us_commits" ] || format_upstream_patches
+			check_fixes "$us_commits" "$starting_head"
+			;;
+		A )	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
+				&& exec_apply_patches
 			;;
 		1 )	ui_cycle_state cmpmode $cmpmode_states
 			prj_set_item $prj_cmpmode $cmpmode
@@ -323,7 +332,10 @@ menu_parser() {
 		3 )	ui_cycle_state applyfailmode $applyfailmode_states
 			prj_set_item $prj_applyfailmode $applyfailmode
 			;;
-		4 )	$b_selpat && select_patch
+		4 )	ui_cycle_state patchseekmode $patchseek_states
+			prj_set_item $prj_patchseekmode $patchseekmode
+			;;
+		5 )	$b_selpat && select_patch
 			;;
 		C )	clean_directories
 			;;
@@ -368,6 +380,7 @@ function menu_loop {
 	cmpmode=$(prj_get_item $prj_cmpmode)
 	applymode=$(prj_get_item $prj_applymode)
 	applyfailmode=$(prj_get_item $prj_applyfailmode)
+	patchseekmode=$(prj_get_item $prj_patchseekmode)
 
 	# delete any "scratch" file from the indir
 	#
@@ -395,6 +408,7 @@ init_parms() {
 	# Add new non-boolean parameters to the top of the list.
 	#
 	for offset in \
+	prj_patchseekmode \
 	prj_applyfailmode \
 	prj_applymode \
 	prj_cmpmode \
@@ -439,9 +453,11 @@ init_parms() {
 		cmpmode=$cmpmode_batch
 		applymode=$applymode_norm
 		applyfailmode=$applyfailmode_exit
+		patchseekmode=$patchseek_off
 		prj_set_item $prj_cmpmode $cmpmode
 		prj_set_item $prj_applymode $applymode
 		prj_set_item $prj_applyfailmode $applyfailmode
+		prj_set_item $prj_patchseekmode $patchseekmode
 	fi
 
 	# Create the sessions directory and sessions file to log session
@@ -486,9 +502,11 @@ main() {
 			[ $? -ne 0 ] && continue
 		fi
 
-		if $b_fmt_upstream; then
-			format_upstream_patches
-			check_fixes "$us_commits"
+		$b_fmt_upstream && format_upstream_patches
+
+		if [ $patchseekmode -eq $patchseek_on ]; then
+			[ -f "$us_commits" ] || format_upstream_patches
+			check_fixes "$us_commits" "$starting_head"
 		fi
 
 		if [ $applymode -ne $applymode_off ]; then

@@ -8,7 +8,7 @@
 # The following source files must be included before this one.
 #
 
-version="8.3"
+version="9.0"
 
 # Get the directory defaults if they don't already exist
 #
@@ -71,6 +71,7 @@ declare mismatch_file="mm.log"	# patchreview/develop will complete mmfile name
 declare mmfile			# complete name of mmfile set by patchreview/devlop
 declare valpatchlist=		# inited by call to patch-utils::create_patchlist
 
+declare prj_patchseekmode
 declare prj_applyfailmode
 declare prj_indir
 declare prj_outdir
@@ -83,6 +84,7 @@ declare prj_b_fmt_upstream
 declare prj_b_40digit
 
 declare lasttag=""
+declare starting_head=
 
 declare -i cmpmode
 declare -i cmpmode_off=0
@@ -103,6 +105,11 @@ declare -i applyfailmode_exit=0
 declare -i applyfailmode_cont=1
 declare -i applyfailmode_menu=2
 declare -i applyfailmode_states=3
+
+declare -i patchseekmode
+declare -i patchseek_off=0
+declare -i patchseek_on=1
+declare -i patchseek_states=2
 
 declare -i startpat=1
 declare -i menucols=30
@@ -127,6 +134,7 @@ function exit_me {
 	prj_set_item $prj_applymode $applymode
 	prj_set_item $prj_cmpmode $cmpmode
 	prj_set_item $prj_applyfailmode $applyfailmode
+	prj_set_item $prj_patchseekmode $patchseekmode
 	b_prologue=false
 	[ -f "$prologue_file".txt ] && 	mv "$prologue_file".txt "$prologue_file"
 	[ -e "$last_tag_file" ] && rm -f $last_tag_file
@@ -488,13 +496,16 @@ get_failedpatch() {
 #	applymode*    - git am, git am -3, or patch --fuzz=3 -p1
 #	applyfailmode - exit, goto main-menu, or continue
 #	startpat      - patch from which to start the apply
-#	valpatchlist  - from lib/patch-utils.source::create_patchlist
+#	valpatchlist  - created by call to lib/patch-utils::create_patchlist
+#	starting_head - the head before the first patch is applied
 #
 function apply_patches {
 	# echo -e "\n$BLD\0patch-common::apply_patches()$OFF"
 	local stat=0
 	local patchlist="$(ls -1 "$indir"/*.patch)"
 	local head=$(git log --oneline -n1 | cut -d' ' -f 1)
+
+	[ $startpat -eq 1 ] && starting_head=$head
 
 	create_patchlist "$patchlist" valpatchlist $startpat
 	patchtotal=$(wc -w <<< "$valpatchlist")
@@ -565,6 +576,13 @@ show_applyfailmode() {
 	esac
 }
 
+show_patchseekmode() {
+	case $patchseekmode in
+		$patchseek_off ) echo "OFF" ;;
+		$patchseek_on  ) echo "ON" ;;
+	esac
+}
+
 # get_filecount() - count the files in the indir
 #
 # This is a bit ugly. If there are .patch files in the indir, then count
@@ -601,7 +619,7 @@ show_nextpatch() {
 local shownext=$(
 cat <<EOF
 
- 4  Start applying at patch :$OFF $startpat$BLD
+ 5  Start applying at patch :$OFF $startpat$BLD
 EOF
 )
 	[ $infilecount -eq 0 ] && { b_selpat=false; return; }
@@ -612,6 +630,18 @@ EOF
 	}
 
 	[ "$patstr" ] && echo -e "$shownext"
+}
+
+# show_apply_patches() - show the option to apply the patches
+#
+# Only appears if there are patches remaining to be applied
+#
+# Globals:
+#	b_allapplied
+#
+show_apply_patches() {
+	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
+		&& echo -e "\n$BLD A  Apply patches$OFF"
 }
 
 # select_patch() - select a patch to start the apply process
@@ -801,24 +831,26 @@ get_current_head_trunc() {
 
 # create_branch - creates a branch at the current head
 #
-# Does NOT automatically switch to the new branch. That's the user's call.
-#
 create_branch() {
-	local bname
+	local bname=
+	local tagname=
 	local current_head_trunc=$(get_current_head_trunc 23)
 	local brstr=$(
 cat <<EOF
 
 Create new branch at: $BLD$current_head_trunc$OFF
-Enter $qstr to quit without creating a branch.
+Press ${BLD}ENTER$OFF or $qstr at the naming prompts to \
+quit without applying the change.
 \0
 EOF
 )
 	echo -e "$brstr"
 	getuser "Name of the new branch: " bname
-	[ "$bname" = "q" ] && return
+	[[ "qQ" == *"$bname"* ]]  && return
 	git branch $bname
 	echo -e "Created branch $BLD$bname$OFF"
+	getuser "New tag name: " tagname
+	[[ "qQ" == *"$tagname"* ]] || git tag "$tagname"
 }
 
 # format_upstream_patches
@@ -974,6 +1006,8 @@ init_menu() {
 	get_booleans
 	applymode=$applymode_norm
 	prj_set_item $prj_applymode $applymode
+	patchseekmode=patchseek_off
+	prj_set_item $prj_patchseekmode $patchseekmode
 	patchcount=0
 	startpat=1
 	b_fmt_upstream=true

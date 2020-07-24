@@ -552,7 +552,11 @@ find_fixes () {
 
 	# use the date to do a git log --since=$commit_date and grep for Fixes?
 	# then look for short hash
-	git --no-pager log --oneline --pretty='%h ("%s")' --since="$commit_date" --grep="$short_hash"
+	git --no-pager log \
+		--oneline \
+		--pretty='%h ("%s")' \
+		--since="$commit_date" \
+		--grep="$short_hash"
 	return $?
 }
 
@@ -565,6 +569,8 @@ find_fixes () {
 #
 check_fixes() {
 	local commitsfile="$1"
+	local starting_head="$2"
+	local head=$(git log --oneline -n1 | cut -d' ' -f 1)
 	local line=
 	local fixes=
 	local commitid=
@@ -573,6 +579,8 @@ check_fixes() {
 	local msg="$BLD$YEL\0WARNING: found missing commit$OFF"
 
 	echo -e "\nLooking for missing commits ..."
+
+	[ -n "$starting_head" ] && git reset -q --hard $starting_head
 
 	while read line; do
 		commitid=$(echo "$line" | cut -d' ' -f1)
@@ -590,5 +598,7 @@ check_fixes() {
 			done
 		fi
 	done < "$commitsfile"
-}
 
+	[ -n "$starting_head" ] && git reset -q --hard $head
+	echo
+}
