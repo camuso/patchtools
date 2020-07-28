@@ -244,8 +244,9 @@ function menu_loop {
 	#
 	check_dir $prj_indir "$indirstr" indir
 	check_dir $prj_outdir "$outdirstr" outdir
-	bp_commits="$indir/$bp_commits_name"
+	bp_commits="$outdir/$bp_commits_name"
 	us_commits="$outdir/$us_commits_name"
+	usvbp_commits="$outdir/$usvbp_commits_name"
 	mmfile="$outdir/$mismatch_file"
 
 	# get the editor

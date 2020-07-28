@@ -74,6 +74,50 @@ unset CTLC_EXIT &&  declare -i CTLC_EXIT=130
 # Shell Routines
 #########################
 
+# ui_get_curpos - get the cursor row and column
+#
+# $1 - receives the zero-based row value
+# $2 - receives the zero-based column value
+#
+ui_get_curpos() {
+	exec < /dev/tty
+	oldstty=$(stty -g)
+	stty raw -echo min 0
+	# on my system, the following line can be replaced by the line below it
+	echo -en "\033[6n" > /dev/tty
+	# tput u7 > /dev/tty    # when TERM=xterm (and relatives)
+	IFS=';' read -r -d R -a pos
+	stty $oldstty
+	# change from one-based to zero based so they work with: tput cup $row $col
+	row=$((${pos[0]:2} - 1))    # strip off the esc-[
+	col=$((${pos[1]} - 1))
+
+	eval $1=$row
+	eval $2=$col
+}
+
+
+# ui_clrline - clear the current line and optionally move cursor up one
+#
+# $1 - if not empty, moves the cursor up one line.
+#
+# GLOBALS
+# 	CL1 - puts cursor at column 1
+# 	CCR - clears the line and issues a carriage return
+# 	UP1 - moves the cursor up one line
+#
+ui_clearline() {
+	# Erase the line and put the cursor back in the first column of the
+	# line. Leave the TTY calls as discrete echos for the sake of
+	# clarity. The bash interpreter will merge them anyway.
+	#
+	echo -en "$CL1"
+	echo -en "$CCR"
+	[ -z "$1" ] || echo -en "$UP1"
+	echo -en "$CL1"
+	echo -en "$CCR"
+}
+
 # ui_waitonproc
 #
 # Prints a dot to the screen every half second until the passed PID
@@ -120,28 +164,14 @@ ui_waitonproc_tty () {
         sleep $tmo;
 	let ++tcnt
 	if [ $tcnt -ge $tcols ]; then
-
-	    # Erase  all the dots and put the cursor back in the first
-	    # column of the line. Leave the TTY calls as discrete echos for
-	    # the sake of clarity. Likely that the bash interpreter will
-	    # merge them anyway.
-	    #
-	    echo -en "$CL1"
-	    echo -en "$CCR"
-	    echo -en "$CL1"
-	    echo -en "$CCR"
-
+            ui_clearline
 	    tcnt=1
 	fi
     done
 
     # Leave the TTY as it was before we were called.
     #
-    echo -en "$CL1"
-    echo -en "$CCR"
-    [ -z "$txt" ] || echo -en "$UP1"
-    echo -en "$CL1"
-    echo -en "$CCR"
+    ui_clearline "$txt"
 }
 
 # ui_sh_backout
@@ -276,7 +306,7 @@ function getuser {
 #
 # Returns character in $1, no echo
 #
-function getchar {
+getch() {
 	local char
 	read -n1 char
 
@@ -290,7 +320,7 @@ function getchar {
 #
 # Returns character in $1 followed by echo
 #
-function getchar {
+getchar() {
 	local char
 	read -n1 char
 	echo

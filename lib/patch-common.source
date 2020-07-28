@@ -58,8 +58,11 @@ declare infilecount=0			# number of files in the input directory
 declare patchtotal=0			# total patches in the input directory
 declare us_commits_name="us-commits.log"	# upstream commits log filename
 declare bp_commits_name="bp-commits.log"	# backport commits log filename
-declare us_commits				# must be initialized in menu
+declare usvbp_commits_name="usvbp_commits.log"	# map of upstream vs backported commits
+
+declare us_commits				# These must be initialized in menu
 declare bp_commits				# : loop
+declare usvbp_commits
 
 declare patchcount=0
 declare sesdir="../.session"
@@ -408,15 +411,18 @@ process_patcherr() {
 	echo -e "\nPatch: $OFF$failedpatch$BLD"
 	echo -e "Failed to apply.$OFF"
 
+	check_already_applied
+
 	if (( applymode != applymode_patch )); then
 		echo "Please select one of the following"
-		echo "1 - git am --abort and restore the original branch"
-		echo "2 - git am --quit and keep the current HEAD and index"
+		echo "1 - git am --abort"
+		echo "2 - git am --quit"
 		echo
 		loop_range 1 2 amresolve
 
 		case $amresolve in
 			1 ) git am --abort
+			    git reset --hard $head
 			    patchcount=0
 			    ;;
 			2 ) git am --quit
@@ -450,6 +456,7 @@ process_patcherr() {
 use_patch() {
 	local patchlist="$1"
 	local stat=0
+	local cmtlog="/dev/shm/cmtlog.txt"
 
 	for patch in $patchlist; do
 		let patchcount++
@@ -457,6 +464,16 @@ use_patch() {
 		echo "$patch"
 		patch --fuzz=3 -p1 < $patch
 		stat=$?
+
+		# If the patch applied cleanly, build a commit log message.
+		#
+		if [ $stat -eq 0 ]; then
+			git log -n1 --pretty=format:"%s" > $cmtlog
+			echo -e "\n" >> $cmtlog
+			git log -n1 --pretty=medium >> $cmtlog
+			git commit . -s -F $cmtlog
+			rm -f $cmtlog > /dev/null 2>&1
+		fi
 	done
 
 	return $stat
@@ -485,6 +502,39 @@ get_failedpatch() {
 	fi
 }
 
+# map_us2bp - map upstream to backported commits
+#
+# GLOBALS
+#	bp_commits    - log of backported commits
+#	us_commits    - log of upstream commits
+#	usvbp_commits - map of upstream to backported commits
+#
+map_us2bp() {
+	local usline=
+	local bpline=
+	local b_done=false
+
+	> $usvbp_commits
+
+	# Create two file descriptors for the upstream and backported logs.
+	exec 5<"$us_commits"
+	exec 6<"$bp_commits"
+
+	until $b_done; do
+		read -u 5 usline || b_done=true
+		read -u 6 bpline || b_done=true
+
+		usline="$(echo "$usline" | cut -d' ' -f1)"
+		echo "usline: $usline  bpline: $bpline"
+
+		$b_done || echo -n "$usline " >> $usvbp_commits
+		$b_done || echo "$bpline" >> $usvbp_commits
+	done
+
+	exec 5<&-
+	exec 6<&-
+}
+
 # apply_patches
 #
 # GLOBALS
@@ -492,7 +542,9 @@ get_failedpatch() {
 #	outdir        - output directory
 #	patchcount    - running count of applied patches
 #	patchtotal    - total number of patches to apply INITED HERE
-#	bp_commits    - backport commits
+#	bp_commits    - log of backported commits
+#	us_commits    - log of upstream commits
+#	usvbp_commits - map of upstream to backported commits
 #	applymode*    - git am, git am -3, or patch --fuzz=3 -p1
 #	applyfailmode - exit, goto main-menu, or continue
 #	startpat      - patch from which to start the apply
@@ -526,10 +578,12 @@ function apply_patches {
 
 	[ $stat -eq 0 ] || process_patcherr $(get_failedpatch "$valpatchlist")
 
-	[ $applymode -ne $applymode_patch ] && {
-		printf "%3d " $patchcount >> "$bp_commits"
-		git log --oneline -n$patchcount >> "$bp_commits"
-	}
+	# Create the log of commits backported.
+	shopt -s extglob
+	patchcount=$(ls -1 $indir/*.patch | wc -l)
+	shopt -u extglob
+	git log --oneline -n$patchcount > "$bp_commits"
+	map_us2bp
 
 	[ $stat -eq 0 ] && {
 		b_allapplied=true
@@ -640,8 +694,18 @@ EOF
 #	b_allapplied
 #
 show_apply_patches() {
-	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
-		&& echo -e "\n$BLD A  Apply patches$OFF"
+	echo -en "\n$BLD A  Apply patches"
+
+	if [ $applymode -eq $applymode_off ] && $b_allapplied; then
+		echo -en "           :$OFF "
+		echo -en "already applied and apply mode ${BLD}OFF${OFF}"
+	elif [ $applymode -eq $applymode_off ] && ! $b_allapplied; then
+		echo -en "           :$OFF "
+		echo -en "apply mode is ${BLD}OFF$OFF"
+	elif [ $applymode -ne $applymode_off ] && $b_allapplied; then
+		echo -en "           :$OFF "
+		echo -en "already applied"
+	fi
 }
 
 # select_patch() - select a patch to start the apply process
@@ -886,6 +950,80 @@ format_upstream_patches() {
 		"git_file2patchset ${us_commits} ${outdir}"
 }
 
+# check_already_applied - see if the commits have already been applied
+#
+# GLOBALS
+# 	us_commits
+# 	usvbp_commits
+#
+check_already_applied() {
+	local usline
+	local usvbpline
+	local uscommit
+	local bpcommit
+	local linecnt=20	# just a guess for now.
+	local promptresp
+	local b_done=false
+	local b_header=true
+	local header=$(
+cat <<EOF
+
+The backported commits log $BLD$bp_commits$OFF is not empty.
+It's possible that some of them have already been applied.
+${BYEL}Press 'i' (init) at the main menu to remove the commits log.$OFF
+
+Upstream       RHEL commit
+------------   ------------
+EOF
+)
+	local moreprompt=\
+"${BYEL}If you've seen enough press$OFF $qstr$BYEL, else any other key to see more: $OFF"
+
+	# if there's nothing in the us v bp commit map, just return
+	#
+	[ -s "$usvbp_commits" ] || return 0
+
+	exec 5<"$us_commits"
+
+	until $b_done; do
+		read -u 5 usline || b_done=true
+		uscommit="$(echo "$usline" | cut -d' ' -f1)"
+		[ $((16#$uscommit)) -eq 0 ] && continue
+		echo -n "$uscommit"
+		usvbpline="$(grep -m1 "$uscommit" "$usvbp_commits")"
+
+		if [ -n "$usvbpline" ]; then
+			ui_clearline
+
+			if [ $linecnt -ge $((tlines - 2)) ]; then
+				linecnt=1
+				promptgetchar "$moreprompt" promptresp
+				if [ "$promptresp" == "q" ]; then
+					b_done=true
+					continue
+				fi
+
+			fi
+
+			bpcommit="$(echo "$usvbpline" | cut -d' ' -f2-)"
+
+			if $b_header; then
+				b_header=false
+				echo -e "$header"
+			fi
+
+			echo "${uscommit:0:12}""   ""$bpcommit"
+			let ++linecnt
+		else
+			ui_clearline
+		fi
+	done
+
+	exec 5<&-
+	echo
+	return 1
+}
+
 # exec_apply_patches
 #
 # Do all the front-end housekeeping and apply the patches in the indir.
@@ -904,12 +1042,15 @@ exec_apply_patches(){
 
 	git am --abort 2>/dev/null
 	patchcount=0
+
 	check_patchvbranch
 	[ $? -eq 0 ] || return 1
+
 	apply_patches
 	stat=$?
 	[ $stat -ne 0 ] && [ $applyfailmode -eq $applyfailmode_menu ] \
 		&& return $stat
+
 	applymode=$applymode_off
 	prj_set_item $prj_applymode $applymode
 
@@ -1012,6 +1153,7 @@ init_menu() {
 	startpat=1
 	b_fmt_upstream=true
 	b_allapplied=false
+	rm -f "$usvbp_commits"
 }
 
 # check_patch_count
