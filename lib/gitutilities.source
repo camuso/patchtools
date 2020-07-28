@@ -540,7 +540,8 @@ function git_setbranch {
 # $1 - a line expected to contain only a valid commit.
 #
 find_fixes () {
-	local commit_id="$*"
+	local commit_id="$1"
+	local tmpfil="$2"
 	local commit_info=
 	local short_hash=
 	local commit_date=
@@ -550,14 +551,16 @@ find_fixes () {
 	short_hash=$(echo "$commit_info" | awk -F "|"  ' { print $1 } ')
 	commit_date=$(echo "$commit_info" | awk -F "|"  ' { print $2 } ')
 
+	> $tmpfil
+
 	# use the date to do a git log --since=$commit_date and grep for Fixes?
 	# then look for short hash
 	git --no-pager log \
 		--oneline \
 		--pretty='%h ("%s")' \
 		--since="$commit_date" \
-		--grep="$short_hash"
-	return $?
+		--grep="$short_hash" > $tmpfil
+
 }
 
 # check_fixes - look for missed commits
@@ -577,6 +580,8 @@ check_fixes() {
 	local commit_fix=
 	local commit_fix_id=
 	local msg="$BLD$YEL\0WARNING: found missing commit$OFF"
+	local mypid
+	local fixfile="/dev/shm/fixfile"
 
 	echo -e "\nLooking for missing commits ..."
 
@@ -585,10 +590,11 @@ check_fixes() {
 	while read line; do
 		commitid=$(echo "$line" | cut -d' ' -f1)
 		(( 16#$commitid )) || continue
-		echo "Checking $commitid ..."
-		fixes=$(find_fixes "$commitid")
-		if [ -n "$fixes" ]; then
-			echo "$fixes" | while read -r commit_fix; do
+		find_fixes "$commitid" $fixfile & mypid=$!
+		ui_waitonproc_tty $mypid .05 "Checking $commitid"
+
+		if [ -s "$fixfile" ]; then
+			cat "$fixfile" | while read -r commit_fix; do
 				commit_fix_id=$(echo "$commit_fix" | awk ' { print $1 } ')
 				if ! grep "$commit_fix_id" "$commitsfile" >& /dev/null; then
 					# WARN ONLY. There may be a reason a commit is
@@ -599,6 +605,7 @@ check_fixes() {
 		fi
 	done < "$commitsfile"
 
+	rm -f $fixfile
 	[ -n "$starting_head" ] && git reset -q --hard $head
 	echo
 }

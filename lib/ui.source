@@ -83,14 +83,65 @@ unset CTLC_EXIT &&  declare -i CTLC_EXIT=130
 # $2 - optional time argument
 #
 ui_waitonproc () {
-    __pid__=$1;
-    __time__=1
+    local __pid__=$1;
+    local __time__=1
 
     [ $# -eq 2 ] && __time__=$2
     while kill -0 $__pid__ > /dev/null 2>&1; do
         echo -n '.';
         sleep $__time__;
     done
+}
+
+# ui_waitonproc_tty
+#
+# Prints a dot to the screen according to the time argument. When the dots
+# reach the rightmost column of the screen, the line is erased and the dots
+# start again from the leftmost column.
+#
+# An optional text message is written first before the dots.
+#
+# GLOBALS
+#   tcols - number of columns in the terminal
+#
+# $1 - PID of process we are waiting for.
+# $2 - time argument
+# $3 - optional text
+#
+ui_waitonproc_tty () {
+    local pid=$1;
+    local tmo="$2"
+    local txt="$3"
+    local tcnt=1
+
+    [ -z "$txt" ] || echo "$txt"
+    while kill -0 $pid > /dev/null 2>&1; do
+        echo -n '.';
+        sleep $tmo;
+	let ++tcnt
+	if [ $tcnt -ge $tcols ]; then
+
+	    # Erase  all the dots and put the cursor back in the first
+	    # column of the line. Leave the TTY calls as discrete echos for
+	    # the sake of clarity. Likely that the bash interpreter will
+	    # merge them anyway.
+	    #
+	    echo -en "$CL1"
+	    echo -en "$CCR"
+	    echo -en "$CL1"
+	    echo -en "$CCR"
+
+	    tcnt=1
+	fi
+    done
+
+    # Leave the TTY as it was before we were called.
+    #
+    echo -en "$CL1"
+    echo -en "$CCR"
+    [ -z "$txt" ] || echo -en "$UP1"
+    echo -en "$CL1"
+    echo -en "$CCR"
 }
 
 # ui_sh_backout
