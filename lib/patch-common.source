@@ -539,12 +539,9 @@ map_us2bp() {
 #
 # GLOBALS
 #	indir         - input directory, contains the patches
-#	outdir        - output directory
 #	patchcount    - running count of applied patches
 #	patchtotal    - total number of patches to apply INITED HERE
 #	bp_commits    - log of backported commits
-#	us_commits    - log of upstream commits
-#	usvbp_commits - map of upstream to backported commits
 #	applymode*    - git am, git am -3, or patch --fuzz=3 -p1
 #	applyfailmode - exit, goto main-menu, or continue
 #	startpat      - patch from which to start the apply
