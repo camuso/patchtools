@@ -74,6 +74,7 @@ declare mismatch_file="mm.log"	# patchreview/develop will complete mmfile name
 declare mmfile			# complete name of mmfile set by patchreview/devlop
 declare valpatchlist=		# inited by call to patch-utils::create_patchlist
 
+declare prj_patchvalfuzz
 declare prj_patchseekmode
 declare prj_applyfailmode
 declare prj_indir
@@ -88,6 +89,12 @@ declare prj_b_40digit
 
 declare lasttag=""
 declare starting_head=
+
+declare -i patchvalfuzz
+declare -i patchvalfuzz_0=0
+declare -i patchvalfuzz_1=1
+declare -i patchvalfuzz_2=2
+declare -i patchvalfuzz_3=3
 
 declare -i cmpmode
 declare -i cmpmode_off=0
@@ -138,6 +145,7 @@ function exit_me {
 	prj_set_item $prj_cmpmode $cmpmode
 	prj_set_item $prj_applyfailmode $applyfailmode
 	prj_set_item $prj_patchseekmode $patchseekmode
+	prj_set_item $prj_patchvalfuzz $patchvalfuzz
 	b_prologue=false
 	[ -f "$prologue_file".txt ] && 	mv "$prologue_file".txt "$prologue_file"
 	[ -e "$last_tag_file" ] && rm -f $last_tag_file
@@ -211,6 +219,73 @@ function set_editor {
 		test_editor "$editor"
 		[ $? -eq 0 ] && break
 	done
+}
+
+# get_currentfuzz - get the current patch validation fuzz level
+#
+# Returns a string with the level number preceded by an asterisk for
+# the current fuzz level, or just a string with the level number if
+# not the current level.
+#
+# GLOBALS
+#     patchvalfuzz - current patch validation fuzz level
+#
+get_currentfuzz() {
+	local fuzz=$1
+	local ast="* $fuzz - "
+	local noa="  $fuzz - "
+
+	[ $fuzz -eq $patchvalfuzz ] && echo "$ast" || echo "$noa"
+}
+
+# set_patchvalfuzz - set the fuzz level for patch validation
+#
+# GLOBALS
+#     patchvalfuzz - current patch validation fuzz level
+#
+set_patchvalfuzz() {
+	local fuzz_msg=$(
+cat <<EOF
+$YEL
+  Patches are validated in two steps.
+  First, upstream commit hashes in the submitted RHEL patch are looked up.
+  Second, the summary line from 'git log --oneline' of the upstream hash is
+  compared with the summary line of the submitted RHEL patch. This is done
+  to avoid confounding the mention of any hash in the git log with the one
+  being backported.
+  Because there can be some minor differences in the way backports copy the
+  upstream summary line, fuzz is sometimes necessary to minimize false
+  positives of invalid commits.
+$OFF
+  Select one of the following fuzz levels. Current level has a leading '*'
+
+  $(get_currentfuzz 0)no fuzz, strictest comparison
+  $(get_currentfuzz 1)case insensitive (DEFAULT)
+  $(get_currentfuzz 2)case insensitive and ignore commas
+  $(get_currentfuzz 3)case insensitive and ignore all punctuation
+
+EOF
+)
+	echo -e "$fuzz_msg"
+	loop_range_q 0 3 patchvalfuzz
+}
+
+# show_patchvalfuzz - show the current patch validation fuzz level
+#
+# GOBALS
+#    patchvalfuzz - current patch validation fuzz level
+#
+show_patchvalfuzz() {
+	case $patchvalfuzz in
+		0 ) echo "0 - no fuzz, strictest comparison"
+		    ;;
+		1 ) echo "1 - case insensitive (DEFAULT)"
+		    ;;
+		2 ) echo "2 - case insensitive and ignore commas"
+		    ;;
+		3 ) echo "3 - case insensitive and ignore all punctuation"
+		    ;;
+	esac
 }
 
 # check_dir
@@ -525,7 +600,6 @@ map_us2bp() {
 		read -u 6 bpline || b_done=true
 
 		usline="$(echo "$usline" | cut -d' ' -f1)"
-		echo "usline: $usline  bpline: $bpline"
 
 		$b_done || echo -n "$usline " >> $usvbp_commits
 		$b_done || echo "$bpline" >> $usvbp_commits
@@ -582,12 +656,7 @@ function apply_patches {
 	git log --oneline -n$patchcount > "$bp_commits"
 	map_us2bp
 
-	[ $stat -eq 0 ] && {
-		b_allapplied=true
-		cat "$bp_commits"
-	} || {
-		tail -1 "$bp_commits"
-	}
+	[ $stat -eq 0 ] && b_allapplied=true || tail -1 "$bp_commits"
 	return $stat
 }
 
@@ -928,6 +997,8 @@ EOF
 format_upstream_patches() {
 	local fc=$(find $outdir -maxdepth 1 -not -type d -name "*.patch" -print -quit)
 	local b_yup
+	local banner=
+	local pad=
 
 	[ "$fc" ] && {
 		echo
@@ -936,11 +1007,15 @@ format_upstream_patches() {
 		$b_yup || return
 	}
 
-	rm -vf "$outdir"/*
+	rm -vf "$outdir"/* > /dev/null 2>&1
 	> "$us_commits"
 	echo
-	git_comment2commitsfile $indir "$us_commits" $b_40digit
+	git_comment2commitsfile $indir "$us_commits" 40 $patchvalfuzz
 	echo
+	banner="Upstream commits extracted from the patches in $us_commits"
+	pad=$(ui_putnchar '=' ${#banner})
+	echo -e "$BLD$banner\n$pad$OFF"
+
 	cat "$us_commits"
 	echo
 	exec_boolean b_fmt_upstream false \
@@ -985,7 +1060,7 @@ EOF
 	until $b_done; do
 		read -u 5 usline || b_done=true
 		uscommit="$(echo "$usline" | cut -d' ' -f1)"
-		[ $((16#$uscommit)) -eq 0 ] && continue
+		(( 16#$uscommit )) || continue
 		echo -n "$uscommit"
 		usvbpline="$(grep -m1 "$uscommit" "$usvbp_commits")"
 
@@ -1112,7 +1187,7 @@ exec_patcmp() {
 	if [ "$xval" ]; then
 		check_mismatch_file
 		if [ $? -ne 0 ]; then
-			echo -e "${BLD}Rebuild the conflicts log:$OFF $mmfile"
+			# echo -e "${BLD}Rebuild the conflicts log:$OFF $mmfile"
 			patbatcmpmgr -P "$valpatchlist" -R $indir -U $outdir \
 				     -o $mmfile "$xval"
 		fi

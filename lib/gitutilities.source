@@ -80,6 +80,8 @@ function git_file2patchset {
 	local commitnum=0
 	local index=1
 	local pfx=""
+	local banner=
+	local pad=
 
 	if [ $patchcount -eq 0 ]; then
 		echo
@@ -88,6 +90,10 @@ function git_file2patchset {
 		[ $# -eq 3 ] && eval $3=$patchcount
 		return 1
 	fi
+
+	banner="Formatting $patchcount patches from upstream into $outdir"
+	pad=$(ui_putnchar '=' ${#banner})
+	echo -e "$BLD$banner\n$pad$OFF"
 
 	while read line; do
 		[ "${line:0:1}" == "#" ] && continue
@@ -227,8 +233,12 @@ extract_subject() {
 
 # validate_commit - check the hash for a repo and congruent subject
 #
+# GLOBALS
+# 	valfuzz - commit validation fuzz level
+#
 # $1 - commit hash from the submitted patch
 # $2 - subject line from the submitted patch
+# $3 - optional commit validation fuzz level
 #
 # RETURNS
 # 	0 - if match is determined
@@ -237,6 +247,7 @@ extract_subject() {
 validate_commit() {
 	local commit="$1"
 	local rhsubj="$2"
+	local valfuzz=1   # default fuzz level is case-insensitive
 	local ussubj=
 	local ussubary=()
 	local rhsubary=()
@@ -246,13 +257,35 @@ validate_commit() {
 	local ustoks
 	local rhtoks
 	local rhindex
+	local b_nocase=false
 
-	# send error output to /dev/null
+	# If the caller passes a fuzz level, use that.
+	(( $3 )) && valfuzz=$3
+
+	# check the fuzz level
+	# 0 - upstream and RHEL git log summaries must be identical
+	# 1 - case insensitive
+	# 2 - ignore commas
+	# 3 - ignore all punctuation chars
+	#
+	case $valfuzz in
+		0 ) delimiters=" "
+		    ;;
+		1 ) b_nocase=true
+		    ;;
+		2 ) delimiters=" ,"
+		    ;;
+		3 ) delimiters=" ""$punctset"
+		    ;;
+	esac
+
+	# Get the upstream commit subj line or return the error.
+	# Send error output to /dev/null
 	ussubj=$(git log --oneline -n1 $commit 2> /dev/null)
 	stat=$?
 	[ $stat -eq 0 ] || return $stat
 
-	# strip the leading commit hash off the subject line
+	# strip the leading commit hash off the 'git log --oneline'
 	ussubj=$(echo $ussubj | cut -d' ' -f2-)
 
 	# Tokenize the subject strings.
@@ -262,7 +295,7 @@ validate_commit() {
 	rhtoks=${#rhsubary[@]}
 
 	# Case insensitive match, because people are not especially careful
-	shopt -s nocasematch
+	$b_nocase && shopt -s nocasematch
 
 	# Find the first instance in the rhsubary of the first token in the
 	# ussubary. If we can't find any, return 1.
@@ -286,7 +319,7 @@ validate_commit() {
 	done
 
 	# Restore case sensitivity.
-	shopt -u nocasematch
+	$b_nocase && shopt -u nocasematch
 
 	[ $index -eq $rhtoks ] && return 0 || return 1
 }
@@ -302,12 +335,14 @@ validate_commit() {
 #
 # $1 - directory containing the backported patches
 # $2 - filename, including path, of the commits file.
-# $3 - optional boolean argument, if false, use 7-digit hashes
-#      default is 40-digit hashes.
+# $3 - number of chararcters in the hashes
+# $4 - patch validation fuzz level (optional)
 #
 function git_comment2commitsfile {
 	local srcdir="$1"
 	local commitsfile="$2"
+	local hashsize=$3
+	local valfuzz=$4
 	local srcfile=""
 	local line=""
 	local index=1
@@ -317,30 +352,24 @@ function git_comment2commitsfile {
 	local linenumber=0
 	local commitarray
 	local sorted
-	local hashsize="40"
 	local _40digit=true
 	local valpatchlist
 	local filecount
 	local subject
 	local commit
 	local stat
+	local banner=
 
-	# If we got a third argument, then get it.
-	# If it's true, then the hashsize will be fixed at 40 digits
-	# If it's false, then the hashsize will be variable from 7 to 40
-	# digits.
-	#
-	[ $# -eq 3 ] && _40digit=$3
-	$_40digit || hashsize="7,40"
-
-	echo "commitsfile: $commitsfile"
 	> $commitsfile
 	> $scratchfile
 
 	patchtotal=$(wc -w <<< "$patchlist")
-	echo "patchtotal $patchtotal"
 	create_patchlist "$patchlist" valpatchlist
 	filecount=$( wc -w <<< "$valpatchlist")
+
+	banner="$patchtotal Patches in $indir"
+	pad=$(ui_putnchar '=' ${#banner})
+	echo -e "$BLD$banner\n$pad$OFF"
 
 	for srcfile in $valpatchlist; do
 
@@ -363,7 +392,7 @@ function git_comment2commitsfile {
 		cmtindex=0
 		while read line; do
 			commit=$(git_excisecommit "$line" "$hashsize")
-			validate_commit $commit "$subject"
+			validate_commit $commit "$subject" $valfuzz
 			stat=$?
 			[ $stat -eq 0 ] || continue
 
@@ -582,7 +611,15 @@ check_fixes() {
 	local msg="$BLD$YEL\0WARNING: found missing commit$OFF"
 	local mypid
 	local fixfile="/dev/shm/fixfile"
-
+	local fixhelp=$(
+cat <<EOF
+  $YEL
+  If the git log summaries of the "missing commits" look familiar, it's
+  probably because they have already been applied, and you are getting
+  false positive "missing commits".
+  $OFF
+EOF
+)
 	echo -e "\nLooking for missing commits ..."
 
 	[ -n "$starting_head" ] && git reset -q --hard $starting_head
@@ -594,6 +631,7 @@ check_fixes() {
 		ui_waitonproc_tty $mypid .05 "Checking $commitid"
 
 		if [ -s "$fixfile" ]; then
+
 			cat "$fixfile" | while read -r commit_fix; do
 				commit_fix_id=$(echo "$commit_fix" | awk ' { print $1 } ')
 				if ! grep "$commit_fix_id" "$commitsfile" >& /dev/null; then
@@ -605,7 +643,7 @@ check_fixes() {
 		fi
 	done < "$commitsfile"
 
+	echo -e "$fixhelp"
 	rm -f $fixfile
 	[ -n "$starting_head" ] && git reset -q --hard $head
-	echo
 }

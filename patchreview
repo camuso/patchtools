@@ -269,6 +269,7 @@ $BLD
  d  $indirstr directory         :$OFF $indir$BLD has$OFF $infilecount$BLD $patstr\0files
  w  $outdirstr directory          :$OFF $outdir$BLD
  e  Diff Editor             :$OFF $editor$BLD
+ f  Patch Validation fuzz   :$OFF $(show_patchvalfuzz)$BLD
 
     $UND\0Run Parameters    $OFF$BLD
  1  Compare mode            :$OFF $(show_cmpmode)$BLD
@@ -312,6 +313,8 @@ menu_parser() {
 		w )	prj_set_directory "$outdirstr" $prj_outdir outdir quiet
 			;;
 		e )	set_editor
+			;;
+		f )	set_patchvalfuzz
 			;;
 		R )	renpatfiles
 			;;
@@ -383,6 +386,7 @@ function menu_loop {
 	applymode=$(prj_get_item $prj_applymode)
 	applyfailmode=$(prj_get_item $prj_applyfailmode)
 	patchseekmode=$(prj_get_item $prj_patchseekmode)
+	patchvalfuzz=$(prj_get_item $prj_patchvalfuzz)
 
 	# delete any "scratch" file from the indir
 	#
@@ -410,6 +414,7 @@ init_parms() {
 	# Add new non-boolean parameters to the top of the list.
 	#
 	for offset in \
+	prj_patchvalfuzz \
 	prj_patchseekmode \
 	prj_applyfailmode \
 	prj_applymode \
@@ -448,7 +453,7 @@ init_parms() {
 		echo "want us to put the output of this script, and your choice"
 		echo "of editor."
 		echo
-		prj_set_directory "$indirstr" $prj_indir indir quiet
+		prj_set_directory "$indirstr" $prj_indir indir quiet**
 		prj_set_directory "$outdirstr" $prj_outdir outdir quiet
 		set_editor
 		init_booleans
@@ -456,10 +461,12 @@ init_parms() {
 		applymode=$applymode_norm
 		applyfailmode=$applyfailmode_exit
 		patchseekmode=$patchseek_off
+		patchfuzzval=1
 		prj_set_item $prj_cmpmode $cmpmode
 		prj_set_item $prj_applymode $applymode
 		prj_set_item $prj_applyfailmode $applyfailmode
 		prj_set_item $prj_patchseekmode $patchseekmode
+		prj_set_item $prj_patchvalfuzz $patchvalfuzz
 	fi
 
 	# Create the sessions directory and sessions file to log session

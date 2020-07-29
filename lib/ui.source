@@ -53,6 +53,8 @@ declare CL1="\e["$tcols"D"	# column 1 of the current line
 declare CCR="\e[K"    		# clear line and carriage return
 declare UP1="\e[1A"		# move cursor up one line
 
+declare punctset="\"#$%&'()*+,-./:;<=>?@[\\]^_\`{|}~!"
+
 declare qstr="'$BLD\0q$OFF\0'"
 declare msgretry="$msgretry Try again or type $qstr to quit trying: "
 
@@ -96,6 +98,24 @@ ui_get_curpos() {
 	eval $2=$col
 }
 
+# ui_putnchar - repeat print a char "n" times as directed
+#
+# $1 - the character to repeat print
+# $2 - the number of times to repeat it.
+#
+# Example:
+#
+#    24_A=($ui_putnchar "A" 24  # creates a string with 24 "A" chars in it.
+#
+ui_putnchar() {
+	local ch="$1"
+	local num=$2
+	local i
+
+	for ((i = 0; i < $num; ++i)); do
+		echo -n "$ch"
+	done
+}
 
 # ui_clrline - clear the current line and optionally move cursor up one
 #
