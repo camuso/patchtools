@@ -732,7 +732,7 @@ view_logs() {
 
 	loop_range_q 1 $((index - 1)) choice
 
-	[ "$choice" == "q" ] && return
+	[ $? -ne 0 ] && return
 
 	less ${logs[$((choice - 1))]}
 }
