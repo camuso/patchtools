@@ -59,7 +59,7 @@ declare infilecount=0			# number of files in the input directory
 declare patchtotal=0			# total patches in the input directory
 declare us_commits_name="us-commits.log"	# upstream commits log filename
 declare bp_commits_name="bp-commits.log"	# backport commits log filename
-declare usvbp_commits_name="usvbp_commits.log"	# map of upstream vs backported commits
+declare usvbp_commits_name="usvbp-commits.log"	# map of upstream vs backported commits
 
 declare us_commits				# These must be initialized in menu
 declare bp_commits				# : loop
@@ -84,8 +84,12 @@ declare prj_editor
 declare prj_cmpmode
 declare prj_applymode
 declare prj_b_rename_infiles
-declare prj_b_save_githead
 declare prj_b_fmt_upstream
+declare prj_b_extmenu
+
+declare b_rename_infiles
+declare b_fmt_upstream
+declare b_extmenu
 
 declare lasttag=""
 declare starting_head=
@@ -247,13 +251,16 @@ set_patchvalfuzz() {
 	local fuzz_msg=$(
 cat <<EOF
 $YEL
+
   Patches are validated in two steps.
+
   First, upstream commit hashes in the submitted RHEL patch are looked up.
-  Second, the summary line from 'git log --oneline' of the upstream hash is
+  Then, the summary line from 'git log --oneline' of the upstream hash is
   compared with the summary line of the submitted RHEL patch. This is done
-  to avoid confounding the mention of any hash in the git log with the one
-  being backported.
-  Because there can be some minor differences in the way backports copy the
+  to avoid confounding the mention of any other hash in the git log with
+  the one being backported.
+
+  Because there can be some differences in the way developers copy the
   upstream summary line, fuzz is sometimes necessary to minimize false
   positives of invalid commits.
 $OFF
@@ -266,7 +273,7 @@ $OFF
 
 EOF
 )
-	echo -e "$fuzz_msg"
+	echo -e "$fuzz_msg\n"
 	loop_range_q 0 3 patchvalfuzz
 }
 
@@ -700,7 +707,7 @@ show_patchseekmode() {
 }
 
 show_view_logs() {
-	local logs=$(ls -1 $outdir/*.log) >& /dev/null
+	local logs=$(ls -1 $outdir/*.log 2> /dev/null)
 
 	[  "$logs" ] && echo -e "\n V  View the log files"
 }

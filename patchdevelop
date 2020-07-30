@@ -81,14 +81,18 @@ function init_booleans {
 # 	b_save_githead
 # 	b_gitam_err_abort
 #
-# removed in 9.0
+# removed in v9.0
 #	b_40digit
+#
+# added in v9.0
+#	b_extmenu
 #
 function get_booleans {
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
-	b_fmt_upstream
+	b_fmt_upstream \
+	b_extmenu
 	do
 		eval $bool=$(prj_get_item $index)
 		ui_digit2bool $bool
@@ -116,11 +120,18 @@ function get_booleans {
 # 	b_save_githead
 # 	b_gitam_err_abort
 #
+# removed in v9.0
+#	b_40digit
+#
+# added in v9.0
+#	b_extmenu
+#
 function set_booleans {
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
-	b_fmt_upstream
+	b_fmt_upstream \
+	b_extmenu
 	do
 		prj_set_item $index ${!bool}
 		let index++
@@ -167,7 +178,13 @@ $BLD
  i  Init to defaults
  h  help text
  q  Quit this script
-
+ x  Toggle Extended Menu
+$OFF
+EOF
+)
+	local extmenu=$(
+cat <<EOF
+$BLD\
     $UND\0Discrete Operations$OFF$BLD
  R  Rename mail files in    :$OFF $indir$BLD
  F  Format commits into     :$OFF $outdir$BLD
@@ -180,6 +197,7 @@ $OFF
 EOF
 )
 	echo -e "$settingstr"
+	$b_extmenu && echo -e "$extmenu"
 }
 
 menu_parser() {
@@ -199,13 +217,14 @@ menu_parser() {
 			;;
 		e )	set_editor
 			;;
+		x )	ui_toggle b_extmenu
+			;;
 		R )	renpatfiles
 			;;
 		F )	format_upstream_patches
-			check_fixes "$us_commits"
 			;;
 		S )	[ -f "$us_commits" ] || format_upstream_patches
-			check_fixes "$us_commits" "$starting_head"
+			check_fixes "$us_commits"
 			;;
 		A )	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
 				&& exec_apply_patches
@@ -302,7 +321,8 @@ init_parms() {
 	prj_indir \
 	prj_outdir \
 	prj_b_rename_infiles \
-	prj_b_fmt_upstream
+	prj_b_fmt_upstream \
+	prj_b_extmenu
 	do
 		let index++
 		let $offset=$index
@@ -315,7 +335,6 @@ init_parms() {
 		fi
 	done
 
-	echo "prj_entries: $prj_entries"
 	prj_entries=$index
 	[ -d "$MYDATA" ] || mkdir $MYDATA
 	[ -e "$MYDATA/patchdevelop.prj" ] || touch $MYDATA/patchdevelop.prj

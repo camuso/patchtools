@@ -604,7 +604,6 @@ find_fixes () {
 #
 check_fixes() {
 	local commitsfile="$1"
-	local head=$(git log --oneline -n1 | cut -d' ' -f 1)
 	local line=
 	local fixes=
 	local commitid=

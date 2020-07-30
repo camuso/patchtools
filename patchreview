@@ -82,11 +82,26 @@ function init_booleans {
 # added in v4.4
 # 	b_40digit
 #
+# removed in v5.0
+#	b_apply_patches
+#
+# removed in v7.0
+# 	b_save_githead
+# 	b_gitam_err_abort
+#
+# removed in v9.0
+#	b_40digit
+#
+# added in v9.0
+#	b_extmenu
+#
 function get_booleans {
+	local bool
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
-	b_fmt_upstream
+	b_fmt_upstream \
+	b_extmenu
 	do
 		eval $bool=$(prj_get_item $index)
 		ui_digit2bool $bool
@@ -121,14 +136,19 @@ function get_booleans {
 # 	b_save_githead
 # 	b_gitam_err_abort
 #
-# removed in 9.0
+# removed in v9.0
 #	b_40digit
 #
+# added in v9.0
+#	b_extmenu
+#
 function set_booleans {
+	local bool
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
-	b_fmt_upstream
+	b_fmt_upstream \
+	b_extmenu
 	do
 		prj_set_item $index ${!bool}
 		let index++
@@ -257,6 +277,7 @@ nuke() {
 # 	editor
 # 	b_rename_infiles
 # 	b_fmt_upstream
+#	b_extmenu
 #
 show_settings() {
 	local current_head_trunc=$(get_current_head_trunc $menucols)
@@ -284,7 +305,13 @@ $BLD
  i  Init to defaults
  h  help text
  q  Quit this script
-
+ x  Toggle Extended Menu
+$OFF
+EOF
+)
+	local extmenu=$(
+cat <<EOF
+$BLD\
     $UND\0Discrete Operations$OFF$BLD
  R  Rename mail files in    :$OFF $indir$BLD
  F  Format commits into     :$OFF $outdir$BLD
@@ -300,6 +327,7 @@ $OFF
 EOF
 )
 	echo -e "$settingstr"
+	$b_extmenu && echo -e "$extmenu"
 }
 
 menu_parser() {
@@ -320,12 +348,14 @@ menu_parser() {
 			;;
 		f )	set_patchvalfuzz
 			;;
+		x )	ui_toggle b_extmenu
+			;;
 		R )	renpatfiles
 			;;
 		F )	format_upstream_patches
 			;;
 		S )	[ -f "$us_commits" ] || format_upstream_patches
-			check_fixes "$us_commits" "$starting_head"
+			check_fixes "$us_commits"
 			;;
 		A )	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
 				&& exec_apply_patches
@@ -429,7 +459,8 @@ init_parms() {
 	prj_indir \
 	prj_outdir \
 	prj_b_rename_infiles \
-	prj_b_fmt_upstream
+	prj_b_fmt_upstream \
+	prj_b_extmenu
 	do
 		let index++
 		let $offset=$index
@@ -466,7 +497,7 @@ init_parms() {
 		applymode=$applymode_norm
 		applyfailmode=$applyfailmode_exit
 		patchseekmode=$patchseek_off
-		patchfuzzval=1
+		patchvalfuzz=1
 		prj_set_item $prj_cmpmode $cmpmode
 		prj_set_item $prj_applymode $applymode
 		prj_set_item $prj_applyfailmode $applyfailmode
