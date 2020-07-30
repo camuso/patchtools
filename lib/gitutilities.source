@@ -594,14 +594,16 @@ find_fixes () {
 
 # check_fixes - look for missed commits
 #
-# Walk through the file of commits looking for any that may have been missed
+# Walk through the file of upstream commits looking for any that may have
+# been missed. If the upstream commits have already been applied, then the
+# backported commits will be reported as false positives, so precaution is
+# taken to see if the "missing" commits are in the current branch.
 #
 # $1 - path to the file containing the commits. The commit is expected to
 #      be the first field in each line of the file.
 #
 check_fixes() {
 	local commitsfile="$1"
-	local starting_head="$2"
 	local head=$(git log --oneline -n1 | cut -d' ' -f 1)
 	local line=
 	local fixes=
@@ -611,22 +613,15 @@ check_fixes() {
 	local msg="$BLD$YEL\0WARNING: found missing commit$OFF"
 	local mypid
 	local fixfile="/dev/shm/fixfile"
-	local fixhelp=$(
-cat <<EOF
-  $YEL
-  If the git log summaries of the "missing commits" look familiar, it's
-  probably because they have already been applied, and you are getting
-  false positive "missing commits".
-  $OFF
-EOF
-)
-	echo -e "\nLooking for missing commits ..."
 
-	[ -n "$starting_head" ] && git reset -q --hard $starting_head
+	echo -e "\nLooking for missing commits ..."
 
 	while read line; do
 		commitid=$(echo "$line" | cut -d' ' -f1)
+
+		# If the commitid is empty, get the next line in commitsfile.
 		(( 16#$commitid )) || continue
+
 		find_fixes "$commitid" $fixfile & mypid=$!
 		ui_waitonproc_tty $mypid .05 "Checking $commitid"
 
@@ -634,6 +629,15 @@ EOF
 
 			cat "$fixfile" | while read -r commit_fix; do
 				commit_fix_id=$(echo "$commit_fix" | awk ' { print $1 } ')
+
+				# If the "missing" commit is in the current branch,
+				# then the upstream commitid has already been applied.
+				# In that case, get the next upstream commitid.
+				git log --oneline -n1 $commit_fix_id > /dev/null 2>&1 \
+					&& continue
+
+				# If the missing commit is not in the list of upstream
+				# commits, then it truly is missing from the patch set.
 				if ! grep "$commit_fix_id" "$commitsfile" >& /dev/null; then
 					# WARN ONLY. There may be a reason a commit is
 					# is skipped.
@@ -643,7 +647,5 @@ EOF
 		fi
 	done < "$commitsfile"
 
-	echo -e "$fixhelp"
-	rm -f $fixfile
-	[ -n "$starting_head" ] && git reset -q --hard $head
+	[ -f $fixfile ] && rm -f $fixfile
 }

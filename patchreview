@@ -86,8 +86,7 @@ function get_booleans {
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
-	b_fmt_upstream \
-	b_40digit
+	b_fmt_upstream
 	do
 		eval $bool=$(prj_get_item $index)
 		ui_digit2bool $bool
@@ -122,12 +121,14 @@ function get_booleans {
 # 	b_save_githead
 # 	b_gitam_err_abort
 #
+# removed in 9.0
+#	b_40digit
+#
 function set_booleans {
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
-	b_fmt_upstream \
-	b_40digit
+	b_fmt_upstream
 	do
 		prj_set_item $index ${!bool}
 		let index++
@@ -271,16 +272,20 @@ $BLD
  e  Diff Editor             :$OFF $editor$BLD
  f  Patch Validation fuzz   :$OFF $(show_patchvalfuzz)$BLD
 
-    $UND\0Run Parameters    $OFF$BLD
+    $UND\0Batch Run Parameters$OFF$BLD
  1  Compare mode            :$OFF $(show_cmpmode)$BLD
  2  Patch apply mode        :$OFF $(show_applymode)$BLD
- 3  Patch apply fail mode   :$OFF $(show_applyfailmode)$BLD
+ 3  Seek missing commits    :$OFF $(show_applyfailmode)$BLD
  4  Patch seek mode         :$OFF $(show_patchseekmode)$BLD\
  $(show_nextpatch)
 
-    $UND\0Control           $OFF$BLD
- r  Run patch review
+    $UND\0Main Controls     $OFF$BLD
+ r  Run in batch mode
  i  Init to defaults
+ h  help text
+ q  Quit this script
+
+    $UND\0Discrete Operations$OFF$BLD
  R  Rename mail files in    :$OFF $indir$BLD
  F  Format commits into     :$OFF $outdir$BLD
  S  Seek missing commits \
@@ -289,9 +294,8 @@ $BLD
  G  Git reset to            :$OFF $lasttag$BLD
  B  Create a new branch at  :$OFF $current_head_trunc$BLD
  C  Clean the $OFF$indirstr$BLD and/or $OFF$outdirstr$BLD directories
- N  Nuke the directories and reset head to most recent tag
- h  help text
- q  Quit this script
+ N  Nuke the directories and reset head to most recent tag \
+ $(show_view_logs)$BLD
 $OFF
 EOF
 )
@@ -325,6 +329,8 @@ menu_parser() {
 			;;
 		A )	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
 				&& exec_apply_patches
+			;;
+		V )	view_logs
 			;;
 		1 )	ui_cycle_state cmpmode $cmpmode_states
 			prj_set_item $prj_cmpmode $cmpmode
@@ -423,8 +429,7 @@ init_parms() {
 	prj_indir \
 	prj_outdir \
 	prj_b_rename_infiles \
-	prj_b_fmt_upstream \
-	prj_b_40digit
+	prj_b_fmt_upstream
 	do
 		let index++
 		let $offset=$index
@@ -515,7 +520,7 @@ main() {
 
 		if [ $patchseekmode -eq $patchseek_on ]; then
 			[ -f "$us_commits" ] || format_upstream_patches
-			check_fixes "$us_commits" "$starting_head"
+			check_fixes "$us_commits"
 		fi
 
 		if [ $applymode -ne $applymode_off ]; then

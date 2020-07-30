@@ -44,7 +44,8 @@ declare indir
 declare outdir
 declare indirstr="Patch"
 declare outdirstr="Work"
-declare patstr
+declare patstr		# string used by show_settings,
+			# : empty if there are no patch files
 
 declare editor
 declare prj_entries=0
@@ -85,7 +86,6 @@ declare prj_applymode
 declare prj_b_rename_infiles
 declare prj_b_save_githead
 declare prj_b_fmt_upstream
-declare prj_b_40digit
 
 declare lasttag=""
 declare starting_head=
@@ -660,10 +660,6 @@ function apply_patches {
 	return $stat
 }
 
-show_hash_size() {
-	$b_40digit && echo "40" || echo "7"
-}
-
 show_cmpmode() {
 
 	case $cmpmode in
@@ -703,6 +699,38 @@ show_patchseekmode() {
 	esac
 }
 
+show_view_logs() {
+	local logs=$(ls -1 $outdir/*.log) >& /dev/null
+
+	[  "$logs" ] && echo -e "\n V  View the log files"
+}
+
+view_logs() {
+	local logs=($(ls  $outdir/*.log  2>/dev/null))
+	local logfile
+	local index=1
+	local choice
+
+	[  "${#logs[@]}" -ne 0 ] || {
+		echo -e "\n${YEL}There are currently no log files.$OFF"
+		return
+	}
+
+	echo -e "\n${BLD}Select the log file you wish to view.$OFF\n"
+	for logfile in ${logs[@]}; do
+		echo "$index - $logfile"
+		let ++index
+	done
+	echo
+
+	loop_range_q 1 $((index - 1)) choice
+
+	[ "$choice" == "q" ] && return
+
+	less ${logs[$((choice - 1))]}
+}
+
+
 # get_filecount() - count the files in the indir
 #
 # This is a bit ugly. If there are .patch files in the indir, then count
@@ -736,7 +764,7 @@ get_filecount() {
 # 	b_allapplied
 #
 show_nextpatch() {
-local shownext=$(
+	local shownext=$(
 cat <<EOF
 
  5  Start applying at patch :$OFF $startpat$BLD
@@ -991,7 +1019,6 @@ EOF
 # 	indir
 # 	outdir
 # 	us_commits
-# 	b_40digit
 # 	b_fmt_upstream
 #
 format_upstream_patches() {
@@ -1219,8 +1246,6 @@ init_menu() {
 	get_booleans
 	applymode=$applymode_norm
 	prj_set_item $prj_applymode $applymode
-	patchseekmode=patchseek_off
-	prj_set_item $prj_patchseekmode $patchseekmode
 	patchcount=0
 	startpat=1
 	b_fmt_upstream=true

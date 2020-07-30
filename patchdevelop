@@ -81,12 +81,14 @@ function init_booleans {
 # 	b_save_githead
 # 	b_gitam_err_abort
 #
+# removed in 9.0
+#	b_40digit
+#
 function get_booleans {
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
-	b_fmt_upstream \
-	b_40digit
+	b_fmt_upstream
 	do
 		eval $bool=$(prj_get_item $index)
 		ui_digit2bool $bool
@@ -118,8 +120,7 @@ function set_booleans {
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
-	b_fmt_upstream \
-	b_40digit
+	b_fmt_upstream
 	do
 		prj_set_item $index ${!bool}
 		let index++
@@ -162,16 +163,19 @@ $BLD
  $(show_nextpatch)
 
     $UND\0Control           $OFF$BLD
- r  Run patch review
+ r  Run in batch mode
  i  Init to defaults
+ h  help text
+ q  Quit this script
+
+    $UND\0Discrete Operations$OFF$BLD
  R  Rename mail files in    :$OFF $indir$BLD
  F  Format commits into     :$OFF $outdir$BLD
  S  Seek missing commits \
  $(show_apply_patches)$BLD
  P  Compare Patches
- B  Create a new branch at  :$OFF $current_head_trunc$BLD
- h  help text
- q  Quit this script
+ B  Create a new branch at  :$OFF $current_head_trunc$BLD\
+ $(show_view_logs)$BLD
 $OFF
 EOF
 )
@@ -205,6 +209,8 @@ menu_parser() {
 			;;
 		A )	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
 				&& exec_apply_patches
+			;;
+		V )	view_logs
 			;;
 		1 )	ui_cycle_state cmpmode $cmpmode_states
 			prj_set_item $prj_cmpmode $cmpmode
@@ -259,6 +265,7 @@ function menu_loop {
 	applymode=$(prj_get_item $prj_applymode)
 	applyfailmode=$(prj_get_item $prj_applyfailmode)
 	patchseekmode=$(prj_get_item $prj_patchseekmode)
+	patchvalfuzz=$(prj_get_item $prj_patchvalfuzz)
 
 	# delete any "scratch" file from the indir
 	#
@@ -286,6 +293,7 @@ init_parms() {
 	# Add new non-boolean parameters to the top of the list.
 	#
 	for offset in \
+	prj_patchvalfuzz \
 	prj_patchseekmode \
 	prj_applyfailmode \
 	prj_applymode \
@@ -294,8 +302,7 @@ init_parms() {
 	prj_indir \
 	prj_outdir \
 	prj_b_rename_infiles \
-	prj_b_fmt_upstream \
-	prj_b_40digit
+	prj_b_fmt_upstream
 	do
 		let index++
 		let $offset=$index
@@ -308,6 +315,7 @@ init_parms() {
 		fi
 	done
 
+	echo "prj_entries: $prj_entries"
 	prj_entries=$index
 	[ -d "$MYDATA" ] || mkdir $MYDATA
 	[ -e "$MYDATA/patchdevelop.prj" ] || touch $MYDATA/patchdevelop.prj
@@ -329,10 +337,12 @@ init_parms() {
 		applymode=$applymode_norm
 		applyfailmode=$applyfailmode_exit
 		patchseekmode=$patchseek_off
+		patchvalfuzz=0	# no tolerance for deviance!
 		prj_set_item $prj_cmpmode $cmpmode
 		prj_set_item $prj_applymode $applymode
 		prj_set_item $prj_applyfailmode $applyfailmode
 		prj_set_item $prj_patchseekmode $patchseekmode
+		prj_set_item $prj_patchvalfuzz $patchvalfuzz
 	fi
 }
 
@@ -374,7 +384,7 @@ main() {
 
 		if [ $patchseekmode -eq $patchseek_on ]; then
 			[ -f "$us_commits" ] || format_upstream_patches
-			check_fixes "$us_commits" "$starting_head"
+			check_fixes "$us_commits"
 		fi
 
 		if [ $applymode -ne $applymode_off ]; then
