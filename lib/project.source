@@ -17,7 +17,7 @@ project_loaded=true
 #
 declare prjfile=""
 declare prj_emptyline=""
-declare -i prj_prjfile_size=2	# Number of lines in the file.
+declare -i prj_prjfile_size=	# Number of lines in the file.
 declare -i prj_newcreated=1
 declare -i prj_inconsistant=2
 
@@ -40,6 +40,93 @@ function prj_addblanklines {
 	for ((i = 0; i < $2; i++)); do
 		echo $prj_emptyline >> $1
 	done
+}
+
+# prj_init_prjfile_bools - uses bool offset to determine consistency
+#
+# This routine requires the file to be structured as follows.
+#
+# variable_1
+# variable_2
+#   :
+# variable_n
+# boolean_1
+# boolean_2
+#   :
+# boolean_n
+#
+# $1 - path and name of prjfile
+# $2 - number of lines (size of) prjfile
+# $3 - index to first boolean in the file
+# $4 - optional switch to disable blank line checking
+#
+# If the prjfile file does not exist, then create it and initialize it by
+# pumping as many empty lines in it as there will be entries in the
+# finished file.
+#
+# If the file exists, and the index to the first boolean has changed,
+# then void the file and fill it with empty lines.
+#
+function prj_init_prjfile_bools {
+	prjfile=$1	# this one's global
+	local prjfile_size=$2
+	local prj_boolindex=$3
+	local disable_blank_check=false
+	local prjstr_prjfile_created=$(
+cat <<EOF
+	Project file $BLD$prjfile$OFF is being created.
+	with $BLD$prj_prjfile_size$OFF entries.
+	The last entry is for use by the project data automaton.
+EOF
+)
+	# Set the global prj_prjfile_size to one greater than the size
+	# passed by the caller.
+	# The last line contains the offset to the first boolean as part of
+	# a consistency check.
+	# The extra line is owned and maintained by the project.source file
+	# and the user should not touch it.
+	#
+	prj_prjfile_size=$((prjfile_size + 1))
+
+	# If the user passed in a fourth argument, whatever it is, disable
+	# the blank checking part of the consistency check.
+	#
+	[ $# -eq 4 ] && disable_blank_check=true
+
+	# If the prjfile does not exist, then create it and initialize
+	# the contents.
+	# Else, check to see if it has the same number of lines as the
+	# caller passed. If not, initialize the contents.
+	#
+	if [ ! -f "$prjfile" ]; then
+		echo -e "$prjstr_prjfile_created"
+		prj_addblanklines $prjfile $prj_prjfile_size
+		prj_set_item $prj_prjfile_size $prj_boolindex
+		return $prj_newcreated
+	else
+		local sizediff
+		local size=$(cat $prjfile | wc -l)
+		local boolindex=
+		sizediff=$(( size - prj_prjfile_size ))
+
+		if [ $sizediff -ne 0 ] || [ $size -eq 0 ]; then
+			> $prjfile
+			prj_addblanklines $prjfile $prj_prjfile_size
+			prj_set_item $prj_prjfile_size $prj_boolindex
+			return $prj_inconsistant
+		fi
+
+		boolindex=$(ui_readline $size $prjfile)
+
+		if [ $? -ne 0 ] || [ "$boolindex" != "$prj_boolindex" ]; then
+			> $prjfile
+			prj_addblanklines $prjfile $prj_prjfile_size
+			prj_set_item $prj_prjfile_size $prj_boolindex
+			return $prj_inconsistant
+		fi
+	fi
+
+	$disable_blank_check && return 0 || return $(prj_check_for_blanks $prjfile)
 }
 
 # prj_init_prjfile
@@ -142,8 +229,7 @@ function prj_set_directory {
 	[ "$quietstr" == "quiet" ] && b_quiet=true
 
 	dir=$(ui_readline $offset $prjfile)
-
-	b_newdir=true
+	( [ $? -ne 0 ] || [ -z "$dir" ] ) && b_newdir=true
 
 	if ! $b_quiet ; then
 		if [ -d "$dir" ]; then

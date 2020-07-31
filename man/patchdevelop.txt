@@ -1,5 +1,5 @@
 =================
-Patchdevelop v9.0
+Patchdevelop v9.1
 =================
 
 This menu-driven script allows the user to compare a set of patches
@@ -73,9 +73,6 @@ their upstream counterparts.
 When invoking the script for the first time, or in a new git tree, the
 script queries the user for the following items.
 
-The first time the script is run, the user is queried for the following
-items.
-
 * The Patch directory
 
 * The Work directory
@@ -83,6 +80,7 @@ items.
 * The user's preferred diff editor.
   vimdiff, emacs, and tkdiff are supported.
 
+Detailed descriptions of these items follow.
 
 Patch directory: the directory containing the patches under development.
 

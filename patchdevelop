@@ -87,12 +87,14 @@ function init_booleans {
 # added in v9.0
 #	b_extmenu
 #
+# removed in v9.1
+# 	b_extmenu
+#
 function get_booleans {
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
-	b_fmt_upstream \
-	b_extmenu
+	b_fmt_upstream
 	do
 		eval $bool=$(prj_get_item $index)
 		ui_digit2bool $bool
@@ -126,12 +128,14 @@ function get_booleans {
 # added in v9.0
 #	b_extmenu
 #
+# removed in v9.1
+# 	b_extmenu
+#
 function set_booleans {
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
-	b_fmt_upstream \
-	b_extmenu
+	b_fmt_upstream
 	do
 		prj_set_item $index ${!bool}
 		let index++
@@ -197,7 +201,7 @@ $OFF
 EOF
 )
 	echo -e "$settingstr"
-	$b_extmenu && echo -e "$extmenu"
+	[ $menumode -eq $menumode_ext ]  && echo -e "$extmenu"
 }
 
 menu_parser() {
@@ -216,7 +220,8 @@ menu_parser() {
 			;;
 		e )	set_editor
 			;;
-		x )	ui_toggle b_extmenu
+		x )	ui_cycle_state menumode $menumode_states
+			prj_set_item $prj_menumode $menumode
 			;;
 		R )	renpatfiles
 			;;
@@ -284,6 +289,7 @@ function menu_loop {
 	applyfailmode=$(prj_get_item $prj_applyfailmode)
 	patchseekmode=$(prj_get_item $prj_patchseekmode)
 	patchvalfuzz=$(prj_get_item $prj_patchvalfuzz)
+	menumode=$(prj_get_item $prj_menumode)
 
 	# delete any "scratch" file from the indir
 	#
@@ -308,9 +314,11 @@ init_parms() {
 
 	# This loop enumerates and counts the items in the project file.
 	# Add new booleans to the end of the list.
-	# Add new non-boolean parameters to the top of the list.
+	# Add new non-boolean parameters before the first boolean, but
+	# after all the non-booleans.
 	#
 	for offset in \
+	prj_menumode \
 	prj_patchvalfuzz \
 	prj_patchseekmode \
 	prj_applyfailmode \
@@ -320,8 +328,7 @@ init_parms() {
 	prj_indir \
 	prj_outdir \
 	prj_b_rename_infiles \
-	prj_b_fmt_upstream \
-	prj_b_extmenu
+	prj_b_fmt_upstream
 	do
 		let index++
 		let $offset=$index
@@ -337,7 +344,8 @@ init_parms() {
 	prj_entries=$index
 	[ -d "$MYDATA" ] || mkdir $MYDATA
 	[ -e "$MYDATA/patchdevelop.prj" ] || touch $MYDATA/patchdevelop.prj
-	prj_init_prjfile $MYDATA/patchdevelop.prj $prj_entries
+
+	prj_init_prjfile_bools $MYDATA/patchdevelop.prj $prj_entries $boolindex
 
 	# If the above call to prj_init_prjfile returns nonzero, it means that a
 	# new project file has been created and its values must be initialized.
@@ -356,11 +364,13 @@ init_parms() {
 		applyfailmode=$applyfailmode_exit
 		patchseekmode=$patchseek_off
 		patchvalfuzz=0	# no tolerance for deviance!
+		menumode=$menumode_ext
 		prj_set_item $prj_cmpmode $cmpmode
 		prj_set_item $prj_applymode $applymode
 		prj_set_item $prj_applyfailmode $applyfailmode
 		prj_set_item $prj_patchseekmode $patchseekmode
 		prj_set_item $prj_patchvalfuzz $patchvalfuzz
+		prj_set_item $prj_menumode $menumode
 	fi
 }
 

@@ -8,7 +8,7 @@
 # The following source files must be included before this one.
 #
 
-version="9.0"
+version="9.1"
 
 # Get the directory defaults if they don't already exist
 #
@@ -66,8 +66,6 @@ declare bp_commits				# : loop
 declare usvbp_commits
 
 declare patchcount=0
-declare sesdir="../.session"
-declare sesfile="sessions.log"
 declare commit_msg_file="commit-msg.txt"
 declare last_tag_file="$MYDATA/lasttag"
 declare branchlist="$MYDATA/branchlist"
@@ -75,6 +73,7 @@ declare mismatch_file="mm.log"	# patchreview/develop will complete mmfile name
 declare mmfile			# complete name of mmfile set by patchreview/devlop
 declare valpatchlist=		# inited by call to patch-utils::create_patchlist
 
+declare prj_menumode
 declare prj_patchvalfuzz
 declare prj_patchseekmode
 declare prj_applyfailmode
@@ -85,20 +84,19 @@ declare prj_cmpmode
 declare prj_applymode
 declare prj_b_rename_infiles
 declare prj_b_fmt_upstream
-declare prj_b_extmenu
 
+# These booleans are always set true when the script is inited.
 declare b_rename_infiles
 declare b_fmt_upstream
-declare b_extmenu
 
-declare lasttag=""
-declare starting_head=
-
+declare lasttag=
 declare -i patchvalfuzz
-declare -i patchvalfuzz_0=0
-declare -i patchvalfuzz_1=1
-declare -i patchvalfuzz_2=2
-declare -i patchvalfuzz_3=3
+
+# menu display control
+declare -i menumode
+declare -i menumode_ext=0
+declare -i menumode_min=1
+declare -i menumode_states=2
 
 declare -i cmpmode
 declare -i cmpmode_off=0
@@ -357,78 +355,6 @@ function exec_boolean {
 	return $stat
 }
 
-function git_log_head {
-	local commit="$(git log --oneline -n1 | cut -d' ' -f1)"
-	local line=""
-	local line_hash=""
-
-	while read line; do
-		line_hash="$(echo $line | cut -d' ' -f2)"
-		if [ "$line_hash" == "$commit" ]; then
-			return 0
-		fi
-	done < $sesdir/$sesfile
-
-	line="$(git_getcurrentbranch)"" ""$(git log --oneline -n1 $commit)"
-	echo $line >> $sesdir/$sesfile
-	return 0
-}
-
-function git_restore_head {
-	local line=""
-	local index=1
-	local commit
-	local currenthead
-	local choice=0
-	local leadstr
-
-	[[ -s "$sesdir/$sesfile" ]] || {
-		echo -en "$attr_bold"
-		echo -e  "Session file \"$sesdir/$sesfile\" has no entries yet.\n"
-		promptgetchar "Press any key to continue. "
-		echo -en "$attr_OFF"
-		return 0
-	}
-
-	currenthead="$(git log --oneline -n1 | cut -d' ' -f1)"
-
-	while read line; do
-		commit="$(echo $line | cut -d' ' -f2)"
-
-		if [[ "$commit" == "$currenthead" ]]; then
-			echo -en "$attr_bold"
-			leadstr=" * "
-		else
-			leadstr="   "
-		fi
-
-		printf "%s%2d - %s\n" "$leadstr" $index "$line"
-		echo -en "$attr_OFF"
-		let index++
-	done < $sesdir/$sesfile
-
-	leadstr="   "
-	printf "%s%2d - Leave git head where it is.\n" "$leadstr" $index
-	let index++
-	printf "%s%2d - Leave git head where it is and clear session file\n" "$leadstr" $index
-
-	while true; do
-		getuser "Enter your choice from above list: " choice
-		[[ $choice =~ ^-?[0-9]+$ ]] || continue
-		(( ($choice >= 1) && ($choice <= $index) )) && break
-	done
-
-	(( $choice == ($index - 1) )) && return 0
-	(( $choice == $index )) && { > $sesdir/$sesfile; return 0; }
-
-	line=$(ui_readline $choice $sesdir/$sesfile)
-	commit=$(echo $line | cut -d' ' -f2)
-	git checkout -f $(echo $line | cut -d' ' -f1)
-	git reset --hard $commit
-	git_get_lasttag lasttag
-	return 0
-}
-
 # replace_patch
 #
 # GLOBALS
@@ -627,15 +553,12 @@ map_us2bp() {
 #	applyfailmode - exit, goto main-menu, or continue
 #	startpat      - patch from which to start the apply
 #	valpatchlist  - created by call to lib/patch-utils::create_patchlist
-#	starting_head - the head before the first patch is applied
 #
 function apply_patches {
 	# echo -e "\n$BLD\0patch-common::apply_patches()$OFF"
 	local stat=0
 	local patchlist="$(ls -1 "$indir"/*.patch)"
 	local head=$(git log --oneline -n1 | cut -d' ' -f 1)
-
-	[ $startpat -eq 1 ] && starting_head=$head
 
 	create_patchlist "$patchlist" valpatchlist $startpat
 	patchtotal=$(wc -w <<< "$valpatchlist")
@@ -826,16 +749,6 @@ select_patch() {
 	loop_range_q 1 $infilecount startpat
 	[ $? -ne 0 ] && echo "Leaving starting patch at $startpat."
 	return
-}
-
-# init_session_file()
-#
-# Init the session file with the current branch/head
-#
-init_session_file() {
-	echo "$(git symbolic-ref --short HEAD) $(git log --oneline -n1)" \
-		> $sesdir/$sesfile
-
 }
 
 # show_branch_mismatch - prints discrepency between distro and kernel

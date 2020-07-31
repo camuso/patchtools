@@ -1,5 +1,5 @@
 ================
-Patchreview v9.0
+Patchreview v9.1
 ================
 
 This menu-driven script allows the user to compare a set of patches
@@ -33,6 +33,7 @@ The patchreview script and its dependencies can be git-cloned into any
 directory, however that directory must be in your executable path.
 
 For example:
+
 	$ cd $HOME
 	$ rhrepo='git://git.engineering.redhat.com'
 	$ patchtools='users/tcamuso/patchtools/patchtools.git/.git'
