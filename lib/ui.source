@@ -191,7 +191,7 @@ ui_waitonproc_tty () {
 
     # Leave the TTY as it was before we were called.
     #
-    ui_clearline "$txt"
+    ui_clearline
 }
 
 # ui_sh_backout
@@ -996,3 +996,8 @@ ui_press_any() {
 	read -n1
 }
 
+ui_press_any_ctlc() {
+	echo -n "Press any key to continue or Ctl-C to exit ..."
+	read -n1
+	echo
+}
