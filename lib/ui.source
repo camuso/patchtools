@@ -692,6 +692,7 @@ check_lineargs() {
 
 	lines=$(cat "$file" | wc -l)
 	((number > lines)) && return $ui_err_invlinec
+	((number == 0)) && return $ui_err_invlinec
 	return 0
 }
 
@@ -717,6 +718,29 @@ function ui_readline {
 	check_lineargs $1 $2
 	stat=$?
 	[ $stat -eq 0 ] || return $stat
+
+	awk -v __line__="$1" '{
+		if (NR == __line__) {
+			print $0;
+		}
+	}' $2
+	return 0
+}
+
+# ui_readline_raw
+# Reads one line in a file given the line number.
+# $1 - line number
+# $2 - file to read
+#
+# Always returns 0, so you'd better know what you're doing
+# when you use this. There are no input consistency checks.
+#
+# call: line=$(ui_readline line file)
+#
+# The line of text will be echoed to stdout
+#
+function ui_readline_raw {
+	local __line__
 
 	awk -v __line__="$1" '{
 		if (NR == __line__) {
