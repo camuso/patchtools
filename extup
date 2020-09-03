@@ -1,0 +1,164 @@
+#!/bin/bash
+
+#
+# Text Attributes
+#
+declare MYDIR=$(dirname $(which $(basename $0)))
+declare MYLIB=$MYDIR/lib
+
+source $MYLIB/ui.source
+
+declare rev=""
+declare -i optcount=0
+declare -a alist		# alternate (upstream) branch list
+declare -a blist		# current branch list
+declare show_b=true
+declare cmtdat=
+declare notupstream="---------"
+declare  invalidcmt="-badobj--"
+declare cmtline=
+declare scratchfile="/dev/mem/extup.tmp"
+declare usagestr=$(
+cat <<EOF
+
+$(basename $0) [OPTIONS] commit-expr path
+
+Example
+   $(basename $0) c68432e802b11..HEAD drivers/char/ipmi
+
+Description
+
+   Displays the current branch commit followed by the upstream branch
+   commit as well as the upstream commit date (NOT the author date).
+
+   The script assumes that the first commit hash it encounters in the
+   commit log will be the upstream commit.
+
+   If there is no upstream commit found, then a series of dashes is
+   printed to the screen in its place, and the current branch commit
+   date is printed, since there is no upstream commit.
+
+Options
+
+   r - reverse order
+   b - do not show downstream branch commit
+   h - this help text
+\0
+EOF
+)
+
+exitme() {
+	echo -e "$usagestr"
+	exit 0
+}
+
+# loop_range()
+#
+# Loop until user gives a number in the range defined by the args
+#
+# $1 - minimum
+# $2 - maximum
+# $3 - the value to be returned
+#
+loop_range() {
+	local min=$1
+	local max=$2
+	local number
+	local cmd
+	local pstr=\
+"$OFF\0Please enter a number between $BLD$min$OFF and $BLD$max$OFF: "
+
+	[ $max -lt 10 ] && cmd=promptgetchar || cmd=getuser
+	# echo "cmd: $cmd"
+
+	while true; do
+		$cmd "$pstr" number
+
+		if [[ $number =~ ^-?[0-9]+$ ]]  && \
+		   [[ $number -ge $min ]]       && \
+		   [[ $number -le $max ]]; then
+			eval $3=$number
+			echo
+			return 0
+		fi
+	done
+}
+
+choose_commit() {
+	local list="$1"
+	local line=
+	local index=0
+	local ary
+
+	echo "There is more than one commit in the git log"
+	list=$(sort -u <<< "$list")
+
+	while read line; do
+		ary[$index]="$line"
+		let ++index
+		printf "%d: %s\n" $index $line
+	done <<< "$list"
+
+	loop_range 1 $index index
+
+	let --index
+	echo "$ary[$index]"
+}
+
+while getopts :p:rb OPTION; do
+    case "$OPTION" in
+
+	r ) rev="--reverse"
+	    optcount=$((optcount+1))
+	    ;;
+	b ) show_b=false
+	    optcount=$((optcount+1))
+	    ;;
+	h ) exitme
+	    ;;
+    esac
+done
+
+shift $optcount
+commit_expr="$1"
+pathspec="$2"
+
+[ $# -eq 2 ] || exitme
+
+# Create an array of hashes from the current (rhel) branch
+#
+blist=($(git log --oneline $rev --pretty=format:%h $commit_expr $pathspec))
+# echo -e "${blist[@]}"
+
+for ((i=0; i < ${#blist[@]}; ++i)); do
+	log=$(git log -1 ${blist[$i]} | tail -n +2)
+	log="$(echo "$log" | sed -e 's/^ *//g')"	# trim all leading spaces
+	cmtline=$(echo "$log" | egrep '^commit')
+
+	[ $(echo "$cmtline" | wc -l) -gt 1 ] && cmtline=$(choose_commit "$cmtline")
+
+	alist[$i]=$(echo "$cmtline" | egrep -o "\b[0-9a-f]{40}\b")
+
+	if [ $? -eq 0 ]; then
+		astr=$(gitnice -c -1 ${alist[$i]} 2> /dev/null)
+
+		if [ $? -ne 0 ]; then
+			tmp="$(gitnice -c -1 ${blist[$i]} | cut -d' ' -f2-)"
+			echo -e " ##\n ## Commit ${alist[$i]:0:9} identified in"\
+			        "${blist[$i]} cannot be found in any branch."
+			astr="$notupstream $tmp"
+		fi
+	else
+		tmp="$(gitnice -c -1 ${blist[$i]} | cut -d' ' -f2-)"
+		astr="$notupstream $tmp"
+	fi
+
+	if $show_b; then
+		uc=$(echo $astr | cut -d' ' -f1)	# upstream cmt hash
+		as=$(echo $astr | cut -d' ' -f2-)	# upstream cmt date & desc
+		printf " %-9.9s %-9.9s %s\n" "${blist[$i]}" "$uc" "$as"
+	else
+		echo " $astr "
+	fi
+done
+

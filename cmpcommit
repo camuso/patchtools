@@ -1,0 +1,283 @@
+#!/bin/bash
+#
+# commitcmp
+#
+
+declare MYDIR=$(dirname $(which $(basename $0)))
+declare MYLIB=$MYDIR/lib
+
+source $MYLIB/ui.source
+
+# Other exit codes
+declare -i EXIT_OK=0
+declare -i EXIT_INVARG=1
+declare -i EXIT_INVFIL=2
+declare -i EXIT_INVDIR=3
+
+declare -a exitmsgary=(
+""
+"Invalid number of arguments."
+" is an invalid filename."
+" is an invalid directory name."
+)
+
+exitme() {
+	local exitval=$1
+	local strarg=""
+	local exitmsg
+
+	if ([ $exitval -ne $EXIT_OK ] && [ $exitval -ne $CTLC_EXIT ]); then
+		[ $# -eq 2 ] && strarg=$2
+		[ ${#exitmsgary[@]} -gt $exitval ] \
+			&& exitmsg="${exitmsgary[$exitval]}"
+
+		echo -e "$BLD$strarg$exitmsg$OFF"
+
+		[ $exitval -ne 0 ] && echo -e \
+			"Type$BLD commitcmp -h$OFF for help."
+	fi
+
+	exit $exitval
+}
+
+# run if user hits control-c
+#
+control_c()
+{
+	echo -en "
+Ctrl-c detected
+Cleaning up and exiting.
+"
+	exitme $CTLC_EXIT
+}
+
+
+declare -i optcount=0
+declare uplog="upstream.log"
+declare dnlog="downstream.log"
+declare chlog="cherp.log"
+declare outdir=
+declare upcmt=
+declare dncmt=
+declare upbr=
+declare dnbr=
+declare subsys=
+
+declare usagestr=$(
+cat <<EOF
+
+$(basename $0) -uc upcmt -ub upbr -dc dncmt -db dnbr -o dir [sybsys]
+
+Create a cherp input file by doing the following.
+- If it doesn\'t already exist, creates file $uplog with the following
+  command
+  $ gitnice -r -c -d upcmt > outdir/$uplog
+
+- If it doesn\'t already exist, creates file $dnlog with the following
+  command.
+  $ extup -r dncmt > outdir/$dnlog
+
+- Compares the contents of $uplog and $dnlog and creates a cherp file
+  with all the upstream commits, but with the ones already backported
+  marked with a leading hash #.
+  The output file will be called $chlog
+
+NOTE:
+Requires the use of scripts gitnice and extup to create the file
+inputs for this script.
+
+Example:
+  $(basename $0) \\\
+
+        -uc v4.18 -ub linus \\\
+
+        -dc RHEL-8.0.0 -db rh8.3 \\\
+
+        -o ../backport/8.3/ipmi/ \\\
+
+        drivers/char/ipmi/
+
+Options:
+
+  -h        - this help text
+
+  -uc upcmt - Create upstream logfile starting at given upstream commit
+              to current upstream HEAD.
+              output file will be named $uplog
+
+  -dc dncmt - Create downstream logfile starting at given downstream
+              commit to current downstream HEAD.
+              Output file will be named $dnlog
+
+  -ub upbr  - Upstream branch containing the upstream commit.
+
+  -db dnbr  - Downstream branch containing the downstream commit.
+
+  -o dir    - Directory for ouput files.
+
+Arguments:
+
+  subsys - Optional subsystem for which to obtain the commits, e.g.
+           drivers/char/ipmi
+\0
+EOF
+)
+
+usage() {
+	echo -en "$usagestr"
+	exitme 0
+}
+
+# parseops() - parse the input options
+#
+# Needed multicharacter optionis, but didn't want to use longopts.
+#
+# Inputs: $@, the whole command line
+#
+# Globals:
+# 	optcount
+# 	upcmt
+# 	dncmt
+# 	upbr
+# 	dnbr
+# 	usagestr
+#
+parseops() {
+	local arg=
+	local opt=
+
+	for arg in $@; do
+	    if [ ${arg:0:1} == '-' ]; then
+		opt="${arg:1}"
+		case "$opt" in
+		    h  ) usage
+		         let ++optcount
+		         ;;
+		    uc ) shift
+			 upcmt="$1"
+			 shift
+		         optcount=$((optcount + 2))
+		         ;;
+		    ub ) shift
+			 upbr="$1"
+			 shift
+		         optcount=$((optcount + 2))
+		         ;;
+		    dc ) shift
+			 dncmt="$1"
+			 shift
+		         optcount=$((optcount + 2))
+		         ;;
+		    db ) shift
+			 dnbr="$1"
+			 shift
+		         optcount=$((optcount + 2))
+		         ;;
+		    o  ) shift
+			 outdir="$1"
+			 shift
+		         optcount=$((optcount + 2))
+		         ;;
+		    *  ) echo "unrecognized option -$1"
+		         echo -e "$usagestr"
+		         exit 127
+		esac
+	    fi
+	done
+}
+
+# cmpstr() - compare strings
+#    Compare the commits from the upstream and downstream commit logs
+#    to identify those the ones that have already been backported.
+#    Output all commit lines to the cherp.log file, marking the ones
+#    that werre already backported with a leading #
+#
+# GLOBALS
+#	chlog - output commits file
+#	uplog - upstream commits file
+#	dnlog - downstream commits file
+#	outdir - directory for all the commit log files
+#
+cmpstr() {
+	local uppath="$outdir/$uplog"
+	local dnpath="$outdir/$dnlog"
+	local chpath="$outdir/$chlog"
+	local upstr=$(< $uppath)
+	local rhstr=$(< $dnpath)
+	local up	# one line from the upstream log
+	local rh	# one line from the rhel log
+	local tmp
+	local b_match=false
+#set -x
+	> $chpath
+
+	while read up; do
+		upcmt="${up:0:9}"
+		while read rh; do
+			tmp=$(echo "$rh" | cut -d' ' -f2)
+			rhcmt="${tmp:0:9}"
+			[[ $rhcmt == $upcmt ]] && {
+				b_match=true
+				break
+			}
+		done <<< "$rhstr"
+		$b_match && echo "# $up" >> $chpath || echo "$up" >> $chpath
+		$b_match && echo "# $up" || echo "$up"
+		b_match=false
+	done <<< "$upstr"
+#set +x
+}
+
+main() {
+        # Trap for control-c
+        trap control_c SIGINT
+
+	parseops $@
+	[ $optcount -lt 10 ] && exitme $EXIT_INVARG
+
+	shift $optcount
+	subsys="$1"
+
+	ui_testdir "$outdir" outdir
+	echo
+
+	[ -f $outdir/$uplog ] && {
+		echo -e "$BLD$outdir/$uplog$OFF exists."
+		echo "You must delete it if you want to recreate it, or it will be used as is."
+	} || {
+		echo -e "Create upstream commit log  : $BLD$outdir/$uplog$OFF"
+	}
+
+	[ -f $outdir/$dnlog ] && {
+		echo -e "$BLD$outdir/$dnlog$OFF exists."
+		echo "You must delete it if you want to recreate it, or it will be used as is."
+	} || {
+		echo -e "Create downstream commit log: $BLD$outdir/$dnlog$OFF"
+	}
+	echo
+
+	printf "Upstream Branch: $BLD%-12s$OFF Downstream Branch: $BLD%-12s$OFF\n" $upbr $dnbr
+	printf "Upstream Commit: $BLD%-12s$OFF Downstream Commit: $BLD%-12s$OFF\n" $upcmt $dncmt
+
+	echo
+	echo -n "Press any key to proceed or CTRL-C to exit..."
+	read -n1
+
+	[ -f $outdir/$uplog ] || {
+		git checkout $upbr
+		gitnice -r -c -d $upcmt..HEAD $subsys > $outdir/$uplog
+	}
+	[ -f $outdir/$dnlog ] || {
+		git checkout $dnbr
+		extup -r "$dncmt..HEAD" "$subsys" > $outdir/$dnlog
+	}
+
+	cmpstr
+
+	exitme $EXIT_OK
+}
+
+main $@
+
+exitme $EXIT_OK
+
