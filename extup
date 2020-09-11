@@ -96,7 +96,7 @@ choose_commit() {
 	while read line; do
 		ary[$index]="$line"
 		let ++index
-		printf "%d: %s\n" $index $line
+		printf "%d: %s\n" $index "$line"
 	done <<< "$list"
 
 	loop_range 1 $index index
@@ -131,15 +131,30 @@ blist=($(git log --oneline $rev --pretty=format:%h $commit_expr $pathspec))
 # echo -e "${blist[@]}"
 
 for ((i=0; i < ${#blist[@]}; ++i)); do
+
+	# skip over the downstream (RHEL) commit header
 	log=$(git log -1 ${blist[$i]} | tail -n +2)
-	log="$(echo "$log" | sed -e 's/^ *//g')"	# trim all leading spaces
-	cmtline=$(echo "$log" | egrep '^commit')
 
-	[ $(echo "$cmtline" | wc -l) -gt 1 ] && cmtline=$(choose_commit "$cmtline")
+	# trim all the leading spaces
+	log="$(echo "$log" | sed -e 's/^ *//g')"
 
+	# extract the first commit line we encounter
+	cmtline=$(echo "$log" | egrep -m1 '^commit')
+
+	# cmtline="$(echo "$cmtline" | tr -dc '[:alnum:]')"
+	# [ $(echo "$cmtline" | wc -l) -gt 1 ] && cmtline=$(choose_commit "$cmtline")
+
+# TODO: need to get the status from the egrep
+
+	# extract the commit has from the line
 	alist[$i]=$(echo "$cmtline" | egrep -o "\b[0-9a-f]{40}\b")
 
+	echo "upstr commit: $cmtline"
+
 	if [ $? -eq 0 ]; then
+
+		# get the pretty commit line with commit date for the hash
+		# extracted above.
 		astr=$(gitnice -c -1 ${alist[$i]} 2> /dev/null)
 
 		if [ $? -ne 0 ]; then
