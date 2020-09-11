@@ -265,7 +265,7 @@ main() {
 
 	[ -f $outdir/$uplog ] || {
 		git checkout $upbr
-		gitnice -r -c -d $upcmt..HEAD $subsys > $outdir/$uplog
+		gitnice -r -c -d "$upcmt..HEAD" $subsys > $outdir/$uplog
 	}
 	[ -f $outdir/$dnlog ] || {
 		git checkout $dnbr
