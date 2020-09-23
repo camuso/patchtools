@@ -8,6 +8,7 @@ declare MYLIB=$MYDIR/lib
 
 source $MYLIB/ui.source
 
+declare stat
 declare rev=""
 declare -i optcount=0
 declare -a alist		# alternate (upstream) branch list
@@ -144,14 +145,12 @@ for ((i=0; i < ${#blist[@]}; ++i)); do
 	# cmtline="$(echo "$cmtline" | tr -dc '[:alnum:]')"
 	# [ $(echo "$cmtline" | wc -l) -gt 1 ] && cmtline=$(choose_commit "$cmtline")
 
-# TODO: need to get the status from the egrep
-
 	# extract the commit has from the line
 	alist[$i]=$(echo "$cmtline" | egrep -o "\b[0-9a-f]{40}\b")
+	stat=$?
 
-	echo "upstr commit: $cmtline"
-
-	if [ $? -eq 0 ]; then
+	# if the commit has a valid format, then ...
+	if [ $stat -eq 0 ]; then
 
 		# get the pretty commit line with commit date for the hash
 		# extracted above.
