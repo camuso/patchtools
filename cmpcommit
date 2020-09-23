@@ -243,17 +243,15 @@ main() {
 
 	[ -f $outdir/$uplog ] && {
 		echo -e "$BLD$outdir/$uplog$OFF exists."
-		echo "You must delete it if you want to recreate it, or it will be used as is."
-	} || {
-		echo -e "Create upstream commit log  : $BLD$outdir/$uplog$OFF"
+		echo "It will be overwritten if you continue."
 	}
+	echo -e "Create upstream commit log  : $BLD$outdir/$uplog$OFF"
 
 	[ -f $outdir/$dnlog ] && {
 		echo -e "$BLD$outdir/$dnlog$OFF exists."
-		echo "You must delete it if you want to recreate it, or it will be used as is."
-	} || {
-		echo -e "Create downstream commit log: $BLD$outdir/$dnlog$OFF"
+		echo "It will be overwritten if you continue."
 	}
+	echo -e "Create downstream commit log: $BLD$outdir/$dnlog$OFF"
 	echo
 
 	printf "Upstream Branch: $BLD%-12s$OFF Downstream Branch: $BLD%-12s$OFF\n" $upbr $dnbr
@@ -263,14 +261,12 @@ main() {
 	echo -n "Press any key to proceed or CTRL-C to exit..."
 	read -n1
 
-	[ -f $outdir/$uplog ] || {
-		git checkout $upbr
-		gitnice -r -c -d "$upcmt..HEAD" $subsys > $outdir/$uplog
-	}
-	[ -f $outdir/$dnlog ] || {
-		git checkout $dnbr
-		extup -r "$dncmt..HEAD" "$subsys" > $outdir/$dnlog
-	}
+	git checkout $upbr
+	gitnice -r -c -d "$upcmt..HEAD" $subsys 2>&1 | tee $outdir/$uplog
+	echo
+	git checkout $dnbr
+	echo "$dnbr checked out"
+	extup -r "$dncmt..HEAD" "$subsys" 2>&1 | tee $outdir/$dnlog
 
 	cmpstr
 
