@@ -170,7 +170,7 @@ for ((i=0; i < ${#blist[@]}; ++i)); do
 	if $show_b; then
 		uc=$(echo $astr | cut -d' ' -f1)	# upstream cmt hash
 		as=$(echo $astr | cut -d' ' -f2-)	# upstream cmt date & desc
-		printf " %-9.9s %-9.9s %s\n" "${blist[$i]}" "$uc" "$as"
+		printf "%-9.9s %-9.9s %s\n" "${blist[$i]}" "$uc" "$as"
 	else
 		echo " $astr "
 	fi
