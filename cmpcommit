@@ -202,30 +202,47 @@ cmpstr() {
 	local uppath="$outdir/$uplog"
 	local dnpath="$outdir/$dnlog"
 	local chpath="$outdir/$chlog"
-	local upstr=$(< $uppath)
-	local rhstr=$(< $dnpath)
+	local savedifs="$IFS"
+	local upstr=
+	local rhstr=
 	local up	# one line from the upstream log
 	local rh	# one line from the rhel log
 	local tmp
 	local b_match=false
-#set -x
+	local j		# upstr index
+	local k		# rhstr index
+
+	# Instead of reading from the file, which limmits our debug
+	# capabilites, create an array out of the lines in the file.
+	# Set IFS to newline and then restore it after createing the
+	# string arrays.
+	#
+	IFS=$'\n'
+	upstr=($(< $uppath))
+	rhstr=($(< $dnpath))
+	IFS="$savedifs"
+
+	# Zero the cherp log file.
 	> $chpath
 
-	while read up; do
+	for ((j = 0; j < ${#upstr[@]}; ++j)); do
+		up=${upstr[j]}
 		upcmt="${up:0:9}"
-		while read rh; do
-			tmp=$(echo "$rh" | cut -d' ' -f2)
+
+		for ((k = 0; k < ${#rhstr[@]}; ++k)); do
+			tmp=$(echo "${rhstr[k]}" | cut -d' ' -f2)
 			rhcmt="${tmp:0:9}"
-			[[ $rhcmt == $upcmt ]] && {
+
+			[[ "$rhcmt" == "$upcmt" ]] && {
 				b_match=true
 				break
 			}
-		done <<< "$rhstr"
+		done
+
 		$b_match && echo "# $up" >> $chpath || echo "$up" >> $chpath
 		$b_match && echo "# $up" || echo "$up"
 		b_match=false
-	done <<< "$upstr"
-#set +x
+	done
 }
 
 main() {
