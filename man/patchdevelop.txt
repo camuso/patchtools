@@ -1,5 +1,5 @@
 =================
-Patchdevelop v9.1
+Patchdevelop v9.2
 =================
 
 This menu-driven script allows the user to compare a set of patches

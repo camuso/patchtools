@@ -1,5 +1,5 @@
 ================
-Patchreview v9.1
+Patchreview v9.2
 ================
 
 This menu-driven script allows the user to compare a set of patches
