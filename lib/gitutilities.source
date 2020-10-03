@@ -492,15 +492,18 @@ function git_checkrepo {
 # and we perform a wait for the tag file to appear.
 #
 # $1 - receives the last tag string
-# $2 - optional path to store lasttag file
+# $2 - path to store lasttag file
 #
 git_get_lasttag() {
 
-	local _ltfile_
+	local _ltfile_="$2"
 	local _lasttag_
 	local _mypid_
 
-	[ $# -eq 2 ] && _ltfile_="$2" || _ltfile_="/dev/shm/lasttag"
+	[ -z "_ltfile_" ] && {
+		echo "git_get_lasttag: requires path to last tag file as 2nd arg"
+		return 1
+	}
 
 	[ -f "$_ltfile_" ] && rm -f $_ltfile_
 
@@ -508,9 +511,10 @@ git_get_lasttag() {
 	git describe --tags --abbrev=0 > $_ltfile_ &
 	_mypid_=$!
 	ui_waitonproc $_mypid_ .1
-	_lasttag_=$(cat $_ltfile_)
+	_lasttag_=$(< $_ltfile_)
 	echo
 	eval $1="$_lasttag_"
+	return 0
 }
 
 # git_getcurrentbranch
