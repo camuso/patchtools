@@ -69,7 +69,7 @@ declare patchcount=0
 declare commit_msg_file="commit-msg.txt"
 declare last_tag_file="$MYDATA/lasttag"
 declare branchlist="$MYDATA/branchlist"
-declare mismatch_file="mm.log"	# patchreview/develop will complete mmfile name
+declare mismatch_file="mm.log"	# patchreview/develop will complete mmfile path
 declare mmfile			# complete name of mmfile set by patchreview/devlop
 declare valpatchlist=		# inited by call to patch-utils::create_patchlist
 
