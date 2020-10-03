@@ -223,7 +223,7 @@ EOF
 reset_to_lasttag() {
 	local newlasttag
 	local head=$(git log --oneline -n1)
-	git_get_lasttag newlasttag
+	git_get_lasttag newlasttag $last_tag_file
 	local errstr=$(
 cat <<EOF
 
