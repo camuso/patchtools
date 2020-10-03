@@ -203,6 +203,9 @@ function prj_set_item {
 
 # prj_set_directory - sets the directory for project files
 #
+# GLOBALS:
+#  prjfile - file containing sticky project variables
+#
 # $1 - string containing name or prompt for the directory
 # $2 - offset into the prjfile where this directory's path is stored.
 # $3 - returns pathname of directory that contains project files
@@ -221,9 +224,10 @@ function prj_set_directory {
 	local quietstr=""	# No queries, just do it.
 	local b_yes=false
 	local b_chdir=false
-	local b_newdir=false
+	local b_newdir=true
 	local b_quiet=false
 	local dir
+	local currentdir=$(ui_readline $offset "$prjfile")
 
 	[ $# -eq 4 ] && quietstr=$4
 	[ "$quietstr" == "quiet" ] && b_quiet=true
@@ -247,6 +251,12 @@ function prj_set_directory {
 	fi
 
 	if $b_newdir; then
+
+		if [ -n "$currentdir" ]; then
+			echo "Current dir: $currentdir"
+			echo -e "Enter $qstr at the prompt to make no changes."
+		fi
+
 		ui_getnewdir "New $name directory: " dir
 		[ "$dir" ] || return
 
