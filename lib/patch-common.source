@@ -795,7 +795,6 @@ check_patchvbranch() {
 	local ary
 	local b_pegas=false
 
-
 	[ $indir ] || return 1
 
 	# See if there are any .patch files in the $indir
@@ -873,11 +872,21 @@ check_patchvbranch() {
 	#
 	ui_strtok "$lasttag" ".-" tag
 
-	# The last token will be the determining factor to see if the tag
-	# matches the distro (el*).
+	# 2020-10-05
+	# Cycle through the tag array looking for elstr. It is not
+	# necessarily the last token anymore.
 	#
-	[ "${tag[((${#tag[@]} - 1))]}" == "$elstr" ] \
-		|| show_branch_mismatch "$distname" yn
+	for ((i = 0; i < ${#tag[@]}; ++i)); do
+		[ "${tag[i]}" == "$elstr" ] && break
+	done
+
+	# If we went through the loop and didn't find the elstr, then the
+	# script thinks that we do not have a match between the patches and
+	# the current branch. In that case, see whether the user wants to
+	# choose a different branch or apply the patches to the current
+	# branch, regardless.
+	#
+	(( i < ${#tag[@]} )) ||  show_branch_mismatch "$distname" yn
 
 	# If user did not opt to switch branches, then user wants to apply
 	# patches to current branch, even when they appear to the script
