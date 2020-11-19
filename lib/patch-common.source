@@ -1292,7 +1292,7 @@ renpatfiles() {
 
 	# extract the bracketed prefix substring and remove any version numbers
 	#
-	pfx="${subject:1:$rb_pos}"
+	pfx="${subject:1:$((rb_pos-1))}"
 	new="$(echo $pfx | sed 's/v\w//i')"
 
 	# Substitute the new prefix for the old in the subject string.
@@ -1301,19 +1301,21 @@ renpatfiles() {
 
 	# If there is no / in the subject prefix, then it is not a series.
 	#
-	if [[ $pfx == *"/"* ]]; then
+	if [[ $new == *"/"* ]]; then
 
 	    # Tokenize the subject prefix.
 	    # Look for the first token with a '/' in it.  If all the
 	    # characters leading up to the '/' are zero, then it is a
 	    # prologue, not a patch.
 	    #
-	    ui_strtok "$pfx" " " pfxary
+	    ui_strtok "$new" " " pfxary
 	    for ((i = 0; i < ${#pfxary[@]}; i++)); do
 		    word=${pfxary[$i]}
 		    [[ $word == *"/"* ]] && windex=$i && break
 	    done
 
+	    # The zeroth patch is the prologue, so skip it.
+	    #
 	    for ((i = 0; i < ${#word}; i++)); do
 		    [[ ${word:$i:1} == "/" ]] && break
 		    [[ ${word:$i:1} != "0" ]] && iszero=false && break
