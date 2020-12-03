@@ -231,6 +231,29 @@ extract_subject() {
 	echo "$subject""$subext"
 }
 
+# find_next_nonull - finds the next non-null element in the array starting from
+#                    the given index.
+# $1 - starting index
+# $2 - returns index of next non-null from the starting index
+# $3 - the name of the array to be dereferenced
+#
+find_next_nonull() {
+	local start=$1
+	local arrayname=$3[@]
+	local array=("${!arrayname}")
+	local index
+
+echo "array: ${array[@]}"
+
+	for ((index = $start; index < ${#array[@]}; ++index)); do
+		[ "${array[index]}" ] || continue
+		break
+	done
+
+	echo "index: $index"
+	eval $2=$index
+}
+
 # validate_commit - check the hash for a repo and congruent subject
 #
 # GLOBALS
@@ -258,6 +281,8 @@ validate_commit() {
 	local rhtoks
 	local rhindex
 	local b_nocase=false
+	local ustok0		# This will be the second non-null token in the
+	local udex 		# upstream token array.
 
 	# If the caller passes a fuzz level, use that.
 	(( $3 )) && valfuzz=$3
@@ -294,16 +319,30 @@ validate_commit() {
 	ustoks=${#ussubary[@]}
 	rhtoks=${#rhsubary[@]}
 
+#echo -e "delimiters: \"$delimiters\""
+#echo "rhtoks: ${rhsubary[@]}"
+#echo "ustoks: ${ussubary[@]}"
+#echo
 	# Case insensitive match, because people are not especially careful
 	$b_nocase && shopt -s nocasematch
 
-	# Find the first instance in the rhsubary of the first token in the
+	# Find the second non-null token in the ussubary, because the first
+	# token is subject to change by the RHEL submitter.
+	find_next_nonull 0 udex ussubary
+	find_next_nonull $((udex+1)) udex ussubary
+
+	# Find the first instance in the rhsubary of the second token in the
 	# ussubary. If we can't find any, return 1.
 	# Start with the second token (index = 1), because the first one is
 	# subject to change by the RHEL submitter.
 	#
+	#find_next_nonull 0 index rhsubary
+	#find_next_nonull $index
 	for ((index = 1; index < $rhtoks; ++index)); do
-		[ "${rhsubary[$index]}" == "${ussubary[1]}" ] && break
+		# Skip over nulls
+		[ "${rhsubary[$index]}" ] || continue
+#echo "|${rhsubary[$index]}|"
+		[ "${rhsubary[$index]}" == "${ussubary[udex]}" ] && break
 	done
 
 	# If we loop through the whole rhsubary without finding a match,
@@ -314,8 +353,10 @@ validate_commit() {
 	rhindex=$((index - 1))
 
 	# Now see if the arrays are the same from here out.
-	for ((index = 1; index < $rhtoks; ++index)); do
-		[[ "${rhsubary[$rhindex + $index]}" == "${ussubary[$index]}" ]] || break
+	for ((index = 1; index < $rhtoks; ++index,++udex)); do
+#echo "rh tok: ${rhsubary[$rhindex + $index]}"
+#echo "us tok: ${ussubary[$udex]}"
+		[[ "${rhsubary[$rhindex + $index]}" == "${ussubary[$udex]}" ]] || break
 	done
 
 	# Restore case sensitivity.
@@ -391,6 +432,11 @@ function git_comment2commitsfile {
 		#
 		cmtindex=0
 		while read line; do
+
+			# Skip over lines identifying reverted commits
+			# Use double brackets and NO quotes.
+			([[ $line == *revert* ]] || [[ $line == *Revert* ]]) && continue
+
 			commit=$(git_excisecommit "$line" "$hashsize")
 			validate_commit $commit "$subject" $valfuzz
 			stat=$?
