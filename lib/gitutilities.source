@@ -231,29 +231,6 @@ extract_subject() {
 	echo "$subject""$subext"
 }
 
-# find_next_nonull - finds the next non-null element in the array starting from
-#                    the given index.
-# $1 - starting index
-# $2 - returns index of next non-null from the starting index
-# $3 - the name of the array to be dereferenced
-#
-find_next_nonull() {
-	local start=$1
-	local arrayname=$3[@]
-	local array=("${!arrayname}")
-	local index
-
-echo "array: ${array[@]}"
-
-	for ((index = $start; index < ${#array[@]}; ++index)); do
-		[ "${array[index]}" ] || continue
-		break
-	done
-
-	echo "index: $index"
-	eval $2=$index
-}
-
 # validate_commit - check the hash for a repo and congruent subject
 #
 # GLOBALS
@@ -281,8 +258,6 @@ validate_commit() {
 	local rhtoks
 	local rhindex
 	local b_nocase=false
-	local ustok0		# This will be the second non-null token in the
-	local udex 		# upstream token array.
 
 	# If the caller passes a fuzz level, use that.
 	(( $3 )) && valfuzz=$3
@@ -316,33 +291,34 @@ validate_commit() {
 	# Tokenize the subject strings.
 	ui_strtok "$ussubj" "$delimiters" ussubary
 	ui_strtok "$rhsubj" "$delimiters" rhsubary
+
+	# strip out extra space chars and nulls by redeclaring the array
+	# contents without double quotes.
+	ussubary=( ${ussubary[@]} )
+	rhsubary=( ${rhsubary[@]} )
+
+	# Get the number of elements in each array.
 	ustoks=${#ussubary[@]}
 	rhtoks=${#rhsubary[@]}
 
 #echo -e "delimiters: \"$delimiters\""
-#echo "rhtoks: ${rhsubary[@]}"
-#echo "ustoks: ${ussubary[@]}"
+#echo "rhsubary: "${rhsubary[@]}""
+#echo "ussubary: "${ussubary[@]}""
+#echo "rhtoks: ${#rhsubary[@]}"
+#echo "ustoks: ${#ussubary[@]}"
 #echo
 	# Case insensitive match, because people are not especially careful
 	$b_nocase && shopt -s nocasematch
-
-	# Find the second non-null token in the ussubary, because the first
-	# token is subject to change by the RHEL submitter.
-	find_next_nonull 0 udex ussubary
-	find_next_nonull $((udex+1)) udex ussubary
 
 	# Find the first instance in the rhsubary of the second token in the
 	# ussubary. If we can't find any, return 1.
 	# Start with the second token (index = 1), because the first one is
 	# subject to change by the RHEL submitter.
 	#
-	#find_next_nonull 0 index rhsubary
-	#find_next_nonull $index
+#echo "ussubary[1]: |${ussubary[1]}|"
 	for ((index = 1; index < $rhtoks; ++index)); do
-		# Skip over nulls
-		[ "${rhsubary[$index]}" ] || continue
-#echo "|${rhsubary[$index]}|"
-		[ "${rhsubary[$index]}" == "${ussubary[udex]}" ] && break
+#echo "rhsubary[i]: |${rhsubary[$index]}|[$index]"
+		[ "${rhsubary[$index]}" == "${ussubary[1]}" ] && break
 	done
 
 	# If we loop through the whole rhsubary without finding a match,
@@ -353,10 +329,10 @@ validate_commit() {
 	rhindex=$((index - 1))
 
 	# Now see if the arrays are the same from here out.
-	for ((index = 1; index < $rhtoks; ++index,++udex)); do
+	for ((index = 1; index < $rhtoks; ++index)); do
 #echo "rh tok: ${rhsubary[$rhindex + $index]}"
 #echo "us tok: ${ussubary[$udex]}"
-		[[ "${rhsubary[$rhindex + $index]}" == "${ussubary[$udex]}" ]] || break
+		[[ "${rhsubary[$rhindex + $index]}" == "${ussubary[$index]}" ]] || break
 	done
 
 	# Restore case sensitivity.
@@ -400,6 +376,8 @@ function git_comment2commitsfile {
 	local commit
 	local stat
 	local banner=
+	local b_found_vcmt=false	# valid commit flag
+	local savedIFS="$IFS"
 
 	> $commitsfile
 	> $scratchfile
@@ -415,6 +393,7 @@ function git_comment2commitsfile {
 	for srcfile in $valpatchlist; do
 
 		echo $srcfile
+		b_found_vcmt=false
 		subject=$(extract_subject $srcfile)
 
 		linenumber=0
@@ -428,7 +407,13 @@ function git_comment2commitsfile {
 		egrep '(commit|cherry)' $srcfile \
 			| egrep "\b[0-9a-f]{$hashsize}\b" > $scratchfile
 
-		# Validate any commits we found
+		# See if there is a commit we can successfully validate to
+		# minimize user pain.
+		# If none of the commits can be validated, then gather what
+		# there are and present them to the user for selection.
+		# If there are no commits in the patchfile's commit log, then
+		# we won't be able to format an upstream commit corresponding
+		# to this patch.
 		#
 		cmtindex=0
 		while read line; do
@@ -440,43 +425,54 @@ function git_comment2commitsfile {
 			commit=$(git_excisecommit "$line" "$hashsize")
 			validate_commit $commit "$subject" $valfuzz
 			stat=$?
-			[ $stat -eq 0 ] || continue
+			[ $stat -eq 0 ] && b_found_vcmt=true
 
 			commitarray[$cmtindex]=$commit
+
+			# If we found one valid upstream commit, we're done
+			$b_found_vcmt && break
+
 			let cmtindex++
 		done < $scratchfile
 
-		# Sort the commit array using the -u unique switch to wring
-		# out duplicates.
+		# If we didn't find a commit we could validate, then present
+		# whatever commits we did find to the user to select.
 		#
-		IFS=$'\n' sorted=($(sort -u <<< "${commitarray[*]}"))
-		unset IFS
+		$b_found_vcmt || {
 
-		# If we still have more than one valid commit at this point,
-		# present them to the user to determine which to use.
-		#
-		if [ ${#sorted[@]} -gt 1 ]; then
+			# Sort the commit array using the -u unique switch to wring
+			# out duplicates.
+			#
+			IFS=$'\n' sorted=($(sort -u <<< "${commitarray[*]}"))
+			IFS="$savedIFS"	# restore IFS
 
-			echo -en "There is more than one commit mentioned in patch"
-			echo -e  "$BLD $index $OFF"
-			echo -e  "Please choose one of the following."
+			# If we still have more than one valid commit at this point,
+			# present them to the user to determine which to use.
+			#
+			if [ ${#sorted[@]} -gt 1 ]; then
 
-			for ((cmtindex=0; cmtindex < ${#sorted[@]}; cmtindex++))
-			do
-				cmtstr=$(git log --oneline -n1 ${sorted[$cmtindex]})
-				printf "%d - $cmtstr\n" $((cmtindex +1))
-			done
+				echo -en "There is more than one commit mentioned in patch"
+				echo -e  "$BLD $index $OFF"
+				echo -e  "Please choose one of the following."
 
-			loop_range 1 $cmtindex linenumber
-		else
-			linenumber=1
-		fi
+				for ((cmtindex=0; cmtindex < ${#sorted[@]}; cmtindex++))
+				do
+					cmtstr=$(git log --oneline -n1 ${sorted[$cmtindex]})
+					printf "%d - $cmtstr\n" $((cmtindex +1))
+				done
 
-		cmtindex=$((linenumber - 1))
-		commit=${sorted[$cmtindex]}
+				loop_range 1 $cmtindex linenumber
+			else
+				linenumber=1
+			fi
+
+			cmtindex=$((linenumber - 1))
+			commit=${sorted[$cmtindex]}
+		}
+
 		rm -f $scratchfile
 
-		if [ "$commit" ]; then
+		if [ -n "$commit" ]; then
 			echo "$commit $index/$filecount" >> $commitsfile
 		else
 			# If we didn't get a commit in this srcfile, then
