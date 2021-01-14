@@ -634,7 +634,8 @@ find_fixes () {
 		--oneline \
 		--pretty='%h ("%s")' \
 		--since="$commit_date" \
-		--grep="$short_hash" > $tmpfil
+		--grep="$short_hash" \
+		origin/master > $tmpfil
 
 }
 
@@ -658,6 +659,7 @@ check_fixes() {
 	local msg="$BLD$YEL\0WARNING: found missing commit$OFF"
 	local mypid
 	local fixfile="/dev/shm/fixfile"
+	local currentbranch=$(git branch | egrep \* | cut -d' ' -f2)
 
 	echo -e "\nLooking for missing commits ..."
 
@@ -678,8 +680,8 @@ check_fixes() {
 				# If the "missing" commit is in the current branch,
 				# then the upstream commitid has already been applied.
 				# In that case, get the next upstream commitid.
-				git log --oneline -n1 $commit_fix_id > /dev/null 2>&1 \
-					&& continue
+				git log | grep -m1 "commit $commit_fix_id" > /dev/null 2>&1 \
+					$currentbranch && continue
 
 				# If the missing commit is not in the list of upstream
 				# commits, then it truly is missing from the patch set.
