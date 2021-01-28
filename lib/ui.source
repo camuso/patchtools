@@ -45,6 +45,10 @@ unset BMGT && declare BMGT='\e[1;95m'
 unset BCYN && declare BCYN='\e[1;96m'
 unset BWHT && declare BWHT='\e[1;97m'
 
+declare terminal_background=$tb_dark
+declare tb_lite=1
+declare tb_dark=2
+
 # Terminal magic
 #
 declare -i tlines=$(tput lines)	# number of lines in the terminal
@@ -55,7 +59,7 @@ declare UP1="\e[1A"		# move cursor up one line
 
 declare punctset="\"#$%&'()*+,-./:;<=>?@[\\]^_\`{|}~!"
 
-declare qstr="'$BLD\0q$OFF\0'"
+declare qstr="'$BGRN\0q$OFF\0'"
 declare msgretry="$msgretry Try again or type $qstr to quit trying: "
 
 # Errors
@@ -75,6 +79,33 @@ unset CTLC_EXIT &&  declare -i CTLC_EXIT=130
 #########################
 # Shell Routines
 #########################
+
+ui_get_screenbackground() {
+	echo
+	echo "Is your terminal background best described as:"
+	echo
+	echo "1. light"
+	echo "2. dark"
+
+	loop_range 1 2 terminal_background
+}
+
+ui_set_colors() {
+	ui_get_screenbackground
+
+	case $terminal_background in
+		$tb_lite ) INF=$CYN
+			   MNU=$BMGT
+			   STA=$BBLU
+			   WRN=$BRED
+			   ;;
+		$tb_dark ) INF=$YEL
+			   MNU=$BYEL
+			   STA=$BGRN
+			   WRN=$BRED
+			   ;;
+	esac
+}
 
 # ui_get_curpos - get the cursor row and column
 #

@@ -287,47 +287,50 @@ nuke() {
 #
 show_settings() {
 	local current_head_trunc=$(get_current_head_trunc $menucols)
+	local OB="$OFF$BLD"
+	local BY="$MNU"
+	local BG="$STA"
 	local settingstr=$(
 cat <<EOF
-$BLD
-    $UND\0Environment       $OFF$BLD
-    Most recent tag         :$OFF $lasttag$BLD
-    Current Head            :$OFF $current_head_trunc$BLD
- b  Current git branch      :$OFF $(git_getcurrentbranch)$BLD
- d  $indirstr directory         :$OFF $indir$BLD has$OFF $infilecount$BLD $patstr\0files
- w  $outdirstr directory          :$OFF $outdir$BLD
- e  Diff Editor             :$OFF $editor$BLD
- f  Patch Validation fuzz   :$OFF $(show_patchvalfuzz)$BLD
-
-    $UND\0Batch Run Parameters$OFF$BLD
- 1  Compare mode            :$OFF $(show_cmpmode)$BLD
- 2  Patch apply mode        :$OFF $(show_applymode)$BLD
- 3  Patch apply fail mode   :$OFF $(show_applyfailmode)$BLD
- 4  Patch seek mode         :$OFF $(show_patchseekmode)$BLD\
- $(show_nextpatch)
-
-    $UND\0Main Controls     $OFF$BLD
- r  Run in batch mode
- i  Init to defaults
- h  help text
- q  Quit this script
- x  Toggle Extended Menu
+$BLD$INF
+    $UND\0Environment       $OB
+    Most recent tag         :$BG $lasttag$OB
+    Current Head            :$BG $current_head_trunc$OB
+$BY b$OB  Current git branch      :$BG $(git_getcurrentbranch)$OB
+$BY d$OB  $indirstr directory         :$BG $indir$OB has$STA $infilecount$OB $patstr\0files
+$BY w$OB  $outdirstr directory          :$BG $outdir$OB
+$BY e$OB  Diff Editor             :$BG $editor$OB
+$BY f$OB  Patch Validation fuzz   :$BG $(show_patchvalfuzz)$OB
+$INF
+    $UND\0Batch Run Parameters$OB
+$BY 1$OB  Compare mode            :$BG $(show_cmpmode)$OB
+$BY 2$OB  Patch apply mode        :$BG $(show_applymode)$OB
+$BY 3$OB  Patch apply fail mode   :$BG $(show_applyfailmode)$OB
+$BY 4$OB  Seek missing commits    :$BG $(show_patchseekmode)$OFF\
+ $(show_nextpatch)$BLD
+$INF
+    $UND\0Main Controls     $OB
+$BY r$OB  Run in batch mode
+$BY i$OB  Init to defaults
+$BY h$OB  help text
+$BY q$OB  Quit this script
+$BY x$OB  Toggle Extended Menu
 $OFF
 EOF
 )
 	local extmenu=$(
 cat <<EOF
-$BLD\
-    $UND\0Discrete Operations$OFF$BLD
- R  Rename mail files in    :$OFF $indir$BLD
- F  Format commits into     :$OFF $outdir$BLD
- S  Seek missing commits \
+$BLD$INF\
+    $UND\0Discrete Operations$OB
+$BY R$OB  Rename mail files in    :$BG $indir$OB
+$BY F$OB  Format commits into     :$BG $outdir$OB
+$BY S$OB  Seek missing commits \
  $(show_apply_patches)$BLD
- P  Compare Patches
- G  Git reset to            :$OFF $lasttag$BLD
- B  Create a new branch at  :$OFF $current_head_trunc$BLD
- C  Clean the $OFF$indirstr$BLD and/or $OFF$outdirstr$BLD directories
- N  Nuke the directories and reset head to most recent tag \
+$BY P$OB  Compare Patches
+$BY G$OB  Git reset to            :$BG $lasttag$OB
+$BY B$OB  Create a new branch at  :$BG $current_head_trunc$OB
+$BY C$OB  Clean the $BG$indirstr$OB and/or $BG$outdirstr$OB directories
+$BY N$OB  Nuke the directories and reset head to most recent tag \
  $(show_view_logs)$BLD
 $OFF
 EOF
@@ -451,6 +454,19 @@ function menu_loop {
 # Parameter Initialization
 ###########################################
 init_parms() {
+	local stat=0
+	local newprjstr=$(
+cat <<EOF
+$INF
+A new project file has been created, or the existing one must be recreated.
+
+We will need to know:
+1. The $STA$indirstr$INF directory to contain the patches for review
+2. The $STA$outdirstr$INF directory to contain output from this script
+3. Your choice of$STA diff editor
+$OFF
+EOF
+)
 	git_get_lasttag lasttag $last_tag_file
 
 	# This loop enumerates and counts the items in the project file.
@@ -468,6 +484,7 @@ init_parms() {
 	prj_editor \
 	prj_indir \
 	prj_outdir \
+	prj_background \
 	prj_b_rename_infiles \
 	prj_b_fmt_upstream
 	do
@@ -487,21 +504,24 @@ init_parms() {
 	[ -e "$MYDATA/patchreview.prj" ] || touch $MYDATA/patchreview.prj
 
 	prj_init_prjfile_bools $MYDATA/patchreview.prj $prj_entries $boolindex
+	stat=$?
 
 	# If the above call to prj_init_prjfile returns nonzero, it means that a
 	# new project file has been created and its values must be initialized.
 	#
-	if [ $? -ne 0 ]; then
-		echo
-		echo "A new project file has been created, or the existing one"
-		echo "must be recreated."
-		echo "We will need to know where your patches will be, where you"
-		echo "want us to put the output of this script, and your choice"
-		echo "of editor."
-		echo
+	if [ $stat -ne 0 ]; then
+		ui_set_colors
+		echo -e "$newprjstr"
 		prj_set_directory "$indirstr" $prj_indir indir quiet
-		prj_set_directory "$outdirstr" $prj_outdir outdir quiet
+		echo
+
+		echo -e ""$INF"Default $MNU$oudirstr$INF is: $STA$indir/tmp$OFF"
+		if [ -z "$outdir" ]; then
+			prj_set_directory "$outdirstr" $prj_outdir outdir quiet
+			echo
+		fi
 		set_editor
+		echo
 		init_booleans
 		cmpmode=$cmpmode_batch
 		applymode=$applymode_norm
@@ -518,25 +538,14 @@ init_parms() {
 	fi
 }
 
-#############################
-# main() entry point
-#############################
-main() {
+main_loop() {
 	local stat
-
-	# Trap for control-c
-	#
-	trap control_c SIGINT
 
 	# Print the Herald
 	#
 	echo -e ""$BLD""$UND""
 	echo "Patch Review $version  Review patches and compare to upstream"
 	echo -e "$OFF"
-
-	! $(git_checkrepo) && git_invrepomsg && exit 1
-
-	init_parms
 
 	##############################################
 	# Main Program Loop
@@ -568,8 +577,29 @@ main() {
 	done
 }
 
+#############################
+# main() entry point
+#############################
+main() {
+	# Trap for control-c
+	#
+	trap control_c SIGINT
+
+	! $(git_checkrepo) && git_invrepomsg && exit 1
+
+	init_parms
+
+	if [ $# -eq 1 ]; then
+		main_loop
+	else
+		echo "$# args"
+	fi
+
+	exit 0
+}
+
 # Call main.
 # Exit when done.
 #
-main
+main @
 exit_me 0

@@ -74,9 +74,9 @@ function prj_init_prjfile_bools {
 	local disable_blank_check=false
 	local prjstr_prjfile_created=$(
 cat <<EOF
-	Project file $BLD$prjfile$OFF is being created.
-	with $BLD$prj_prjfile_size$OFF entries.
-	The last entry is for use by the project data automaton.
+$YEL	Project file $BGRN$prjfile$YEL is being created.
+	with $BGRN$prj_prjfile_size$OFF$YEL entries.
+	The last entry is for use by the project data automaton.$OFF
 EOF
 )
 	# Set the global prj_prjfile_size to one greater than the size
@@ -148,8 +148,8 @@ function prj_init_prjfile {
 	[ $# -eq 3 ] && disable_blank_check=true
 
 	local prjstr_prjfile_created=\
-"\tProject file "$attr_bold""$prjfile""$attr_OFF" is being created.\n\
-\twith $prj_prjfile_size entries.\n"
+"\t"$YEL"Project file "$BGRN"$prjfile"$YEL" is being created.\n\
+\twith $BGRN$prj_prjfile_size$YEL entries.\n"
 
 	# If the prjfile does not exist, then create it and initialize
 	# the contents.
@@ -188,7 +188,7 @@ function prj_get_prjfile_size {
 # $1 - one-based offset in prjfile to item
 #
 function prj_get_item {
-	[ $# -eq 1 ] || { echo "prj_get_item missing item number"; exit 1; }
+	[ $# -eq 1 ] || { echo -e ""$BRED"prj_get_item missing item number$OFF"; exit 1; }
 	echo $(ui_readline $1 $prjfile)
 }
 
@@ -237,14 +237,14 @@ function prj_set_directory {
 
 	if ! $b_quiet ; then
 		if [ -d "$dir" ]; then
-			echo -e "Current $name directory: $BLD$dir$OFF"
-			getyn "Change this directory?" b_chdir
+			echo -e "$YELCurrent $BGRN$name$YEL directory: $BGRN$dir$OFF"
+			getyn ""$YEL"Change this directory?" b_chdir
 		fi
 
 		if $b_chdir; then
 			b_newdir=true
 		else
-			echo -e "You have chosen to re-use $BLD$dir$OFF"
+			echo -e ""$YEL"You have chosen to re-use $BGRN$dir$OFF"
 			echo "Contents of the directory may be altered."
 			b_newdir=false
 		fi
@@ -253,15 +253,15 @@ function prj_set_directory {
 	if $b_newdir; then
 
 		if [ -n "$currentdir" ]; then
-			echo "Current dir: $currentdir"
-			echo -e "Enter $qstr at the prompt to make no changes."
+			echo -e ""$YEL"Current $BGRN$name$YEL directory: $BGRN$currentdir$OFF"
+			echo -e "Enter $qstr at the prompt to leave it as is."
 		fi
 
-		ui_getnewdir "New $name directory: " dir
+		ui_getnewdir ""$YEL"New $BGRN$name$YEL directory: " dir
 		[ "$dir" ] || return
 
 		# echo -e "New "$prompt" directory is $BLD$dir$OFF"
-		$b_quiet && b_yes=true || getyn "Remember this $name directory?" b_yes
+		$b_quiet && b_yes=true || getyn "$YELRemember this $BGRN$name$YEL directory?" b_yes
 		$b_yes && ui_replaceline $offset "$dir" "$prjfile"
 		[ -d "$dir" ] ||  mkdir -p "$dir"
 	fi

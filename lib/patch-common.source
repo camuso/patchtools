@@ -308,9 +308,18 @@ function check_dir {
 	local index=$1
 	local dirtype="$2"
 	local dirname=$(prj_get_item $index)
+	local b_getdirflag=false
+	echo "index: $1 dirtype: $2"
 
-	if ! [ -d "$dirname" ]; then
-		echo -e "\n"$attr_bold""$dirname""$attr_OFF" does not exist.\n";
+	if [ -z "$dirname" ]; then
+		echo -e ""$YEL"Entry for $BGRN$dirtype$YEL is empty"
+		b_getdirflag=true
+	elif ! [ -d "$dirname" ]; then
+		echo -e "\n"$BGRN"$dirname$YEL does not exist.\n";
+		b_getdirflag=true
+	fi
+
+	if $b_getdirflag; then
 		prj_set_directory "$dirtype" $index dirname quiet
 		dirname=$(prj_get_item $index)
 	fi
@@ -703,7 +712,7 @@ EOF
 	[ $infilecount -eq 0 ] && { b_selpat=false; return; }
 
 	$b_allapplied && {
-		echo -e "\n    All patches were successfully applied"
+		echo -e "\n$YEL    All patches were successfully applied$OFF"
 		return
 	}
 
