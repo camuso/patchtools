@@ -59,7 +59,7 @@ declare UP1="\e[1A"		# move cursor up one line
 
 declare punctset="\"#$%&'()*+,-./:;<=>?@[\\]^_\`{|}~!"
 
-declare qstr="'$BGRN\0q$OFF\0'"
+declare qstr="'$BLD\0q$OFF\0'"
 declare msgretry="$msgretry Try again or type $qstr to quit trying: "
 
 # Errors
@@ -105,6 +105,9 @@ ui_set_colors() {
 			   WRN=$BRED
 			   ;;
 	esac
+
+	qstr="'$STA\0q$OFF\0'"
+
 }
 
 # ui_get_curpos - get the cursor row and column

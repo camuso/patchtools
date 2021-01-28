@@ -455,18 +455,6 @@ function menu_loop {
 ###########################################
 init_parms() {
 	local stat=0
-	local newprjstr=$(
-cat <<EOF
-$INF
-A new project file has been created, or the existing one must be recreated.
-
-We will need to know:
-1. The $STA$indirstr$INF directory to contain the patches for review
-2. The $STA$outdirstr$INF directory to contain output from this script
-3. Your choice of$STA diff editor
-$OFF
-EOF
-)
 	git_get_lasttag lasttag $last_tag_file
 
 	# This loop enumerates and counts the items in the project file.
@@ -511,6 +499,18 @@ EOF
 	#
 	if [ $stat -ne 0 ]; then
 		ui_set_colors
+		local newprjstr=$(
+cat <<EOF
+$INF
+A new project file has been created, or the existing one must be recreated.
+
+We will need to know:
+1. The $STA$indirstr$INF directory to contain the patches for review
+2. The $STA$outdirstr$INF directory to contain output from this script
+3. Your choice of$STA diff editor
+$OFF
+EOF
+)
 		echo -e "$newprjstr"
 		prj_set_directory "$indirstr" $prj_indir indir quiet
 		echo
