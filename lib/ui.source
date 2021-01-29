@@ -21,7 +21,7 @@ declare ui_loaded=true
 #
 unset BLD && declare BLD="\033[1m"
 unset UND && declare UND="\033[4m"
-unset OFF && declare OFF="\033[0m"
+unset OFF && declare OFF="\033[m"
 #
 # Text color definitions
 #
@@ -48,6 +48,7 @@ unset BWHT && declare BWHT='\e[1;97m'
 declare terminal_background=$tb_dark
 declare tb_lite=1
 declare tb_dark=2
+declare b_color=true
 
 # Terminal magic
 #
@@ -76,6 +77,8 @@ declare ui_err_nofiles=6
 #
 unset CTLC_EXIT &&  declare -i CTLC_EXIT=130
 
+declare ui_tempfile="/dev/shm/ui_temp_file"
+
 #########################
 # Shell Routines
 #########################
@@ -83,23 +86,34 @@ unset CTLC_EXIT &&  declare -i CTLC_EXIT=130
 ui_get_screenbackground() {
 	echo
 	echo "Is your terminal background best described as:"
-	echo
 	echo "1. light"
 	echo "2. dark"
 
 	loop_range 1 2 terminal_background
 }
 
-ui_set_colors() {
+ui_query_colors() {
+	loop_yn "Do you want color text? y/n : " b_color
 	ui_get_screenbackground
+}
+
+ui_set_colors() {
+	$b_color || {
+		b_color=false
+		INF=
+		MNU="$BLD"
+		STA="$BLD"
+		WRN="$BLD"
+		return 1
+	}
 
 	case $terminal_background in
-		$tb_lite ) INF=$CYN
-			   MNU=$BMGT
-			   STA=$BBLU
+		$tb_lite ) INF="$OFF""\033[38;5;90m"
+			   MNU="\033[1;38;5;21m"
+			   STA="\033[1;38;5;28m"
 			   WRN=$BRED
 			   ;;
-		$tb_dark ) INF=$YEL
+		$tb_dark ) INF=$OFF$YEL
 			   MNU=$BYEL
 			   STA=$BGRN
 			   WRN=$BRED
@@ -107,7 +121,7 @@ ui_set_colors() {
 	esac
 
 	qstr="'$STA\0q$OFF\0'"
-
+	return 0
 }
 
 # ui_get_curpos - get the cursor row and column
@@ -390,8 +404,7 @@ getchar() {
 # Prints a prompt passed in $1 and returns the char in $2
 #
 function promptgetchar {
-	local prompt=$1
-	echo -ne "$prompt"
+	echo -en "$1"
 	getchar $2
 }
 
@@ -710,8 +723,8 @@ function ui_replaceline {
 		} else {
 			print $0;
 		}
-	}' $3 > __temp__file__
-	mv __temp__file__ "$3"
+	}' "$3" > $ui_tempfile
+	 mv -f $ui_tempfile "$3"
 	return 0
 }
 
@@ -729,8 +742,6 @@ function ui_replaceline {
 # $2 - Text to write over the existing text in the line
 # $3 - File
 #
-# Returns 1 if the line number exceeds the number of lines in the file.
-#
 function ui_replaceline_raw {
 	local line
 
@@ -740,8 +751,8 @@ function ui_replaceline_raw {
 		} else {
 			print $0;
 		}
-	}' $3 > __temp__file__
-	mv __temp__file__ "$3"
+	}' $3 > $ui_tempfile
+	mv -f $ui_tempfile "$3"
 	return 0
 }
 
@@ -845,8 +856,8 @@ function ui_insertline {
 				print new_content;
 			}
 			print $0;
-		}' $3 > __temp__file__
-		mv -f __temp__file__ "$3"
+		}' $3 > $ui_tempfile
+		mv -f $ui_tempfile "$3"
 	fi
 }
 
@@ -867,8 +878,8 @@ function ui_deleteline {
 		if (NR != line) {
 			print $0;
 		}
-	}' $2 > __temp__file__
-	mv -f __temp__file__ $2
+	}' $2 > $ui_tempfile
+	mv -f $ui_tempfile $2
 }
 
 # ui_toggle - toggle a boolean value

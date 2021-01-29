@@ -64,6 +64,10 @@ function init_booleans {
 
 # get_booleans
 #
+# Removed the last two booleans in v10.0
+#	b_rename_infiles
+#	b_fmt_upstream
+#
 # Read the values of the program flow control booleans from the
 # project file.
 #
@@ -264,8 +268,8 @@ nuke() {
 	reset_to_lasttag
 
 	# Init the booleans to their defaults
-	init_booleans
-	get_booleans
+	# init_booleans
+	# get_booleans
 
 	# Set the apply mode to its default value
 	applymode=$applymode_norm
@@ -275,6 +279,7 @@ nuke() {
 # show_settings - the main menu display
 #
 # Globals:
+#	BLD, UND, STA, MNU, INF, OFF - lib/ui.source
 # 	indir
 # 	outdir
 # 	lasttag
@@ -287,65 +292,65 @@ nuke() {
 #
 show_settings() {
 	local current_head_trunc=$(get_current_head_trunc $menucols)
-	local OB="$OFF$BLD"
-	local BY="$MNU"
-	local BG="$STA"
 	local settingstr=$(
 cat <<EOF
-$BLD$INF
-    $UND\0Environment       $OB
-    Most recent tag         :$BG $lasttag$OB
-    Current Head            :$BG $current_head_trunc$OB
-$BY b$OB  Current git branch      :$BG $(git_getcurrentbranch)$OB
-$BY d$OB  $indirstr directory         :$BG $indir$OB has$STA $infilecount$OB $patstr\0files
-$BY w$OB  $outdirstr directory          :$BG $outdir$OB
-$BY e$OB  Diff Editor             :$BG $editor$OB
-$BY f$OB  Patch Validation fuzz   :$BG $(show_patchvalfuzz)$OB
-$INF
-    $UND\0Batch Run Parameters$OB
-$BY 1$OB  Compare mode            :$BG $(show_cmpmode)$OB
-$BY 2$OB  Patch apply mode        :$BG $(show_applymode)$OB
-$BY 3$OB  Patch apply fail mode   :$BG $(show_applyfailmode)$OB
-$BY 4$OB  Seek missing commits    :$BG $(show_patchseekmode)$OFF\
+$MNU
+    $UND\0Environment       $OFF
+    Most recent tag         :$STA $lasttag$OFF
+    Current Head            :$STA $current_head_trunc$OFF
+$MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
+$MNU d$OFF  $indirstr directory         :$STA $indir$OFF has$STA $infilecount$OFF $patstr\0files
+$MNU w$OFF  $outdirstr directory          :$STA $outdir$OFF
+$MNU e$OFF  Diff Editor             :$STA $editor$OFF
+$MNU f$OFF  Patch Validation fuzz   :$STA $(show_patchvalfuzz)$OFF
+$MNU c$OFF  Toggle Colors ON/OFF    :$STA $(show_colors)$OFF
+$MNU
+    $UND\0Batch Run Parameters$OFF
+$MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
+$MNU 2$OFF  Patch apply mode        :$STA $(show_applymode)$OFF
+$MNU 3$OFF  Patch apply fail mode   :$STA $(show_applyfailmode)$OFF
+$MNU 4$OFF  Seek missing commits    :$STA $(show_patchseekmode)$OFF\
  $(show_nextpatch)$BLD
-$INF
-    $UND\0Main Controls     $OB
-$BY r$OB  Run in batch mode
-$BY i$OB  Init to defaults
-$BY h$OB  help text
-$BY q$OB  Quit this script
-$BY x$OB  Toggle Extended Menu
+$MNU
+    $UND\0Main Controls     $OFF
+$MNU r$OFF  Run in batch mode
+$MNU i$OFF  Init to defaults
+$MNU h$OFF  help text
+$MNU q$OFF  Quit this script
+$MNU x$OFF  Toggle Extended Menu
 $OFF
 EOF
 )
 	local extmenu=$(
 cat <<EOF
-$BLD$INF\
-    $UND\0Discrete Operations$OB
-$BY R$OB  Rename mail files in    :$BG $indir$OB
-$BY F$OB  Format commits into     :$BG $outdir$OB
-$BY S$OB  Seek missing commits \
+$MNU\
+    $UND\0Discrete Operations$OFF
+$MNU R$OFF  Rename mail files in    :$STA $indir$OFF
+$MNU F$OFF  Format commits into     :$STA $outdir$OFF
+$MNU S$OFF  Seek missing commits \
  $(show_apply_patches)$BLD
-$BY P$OB  Compare Patches
-$BY G$OB  Git reset to            :$BG $lasttag$OB
-$BY B$OB  Create a new branch at  :$BG $current_head_trunc$OB
-$BY C$OB  Clean the $BG$indirstr$OB and/or $BG$outdirstr$OB directories
-$BY N$OB  Nuke the directories and reset head to most recent tag \
+$MNU P$OFF  Compare Patches
+$MNU G$OFF  Git reset to            :$STA $lasttag$OFF
+$MNU B$OFF  Create a new branch at  :$STA $current_head_trunc$OFF
+$MNU C$OFF  Clean the $STA$indirstr$OFF and/or $STA$outdirstr$OFF directories
+$MNU N$OFF  Nuke the directories and reset head to most recent tag \
  $(show_view_logs)$BLD
 $OFF
 EOF
 )
 	echo -e "$settingstr"
-	[ $menumode -eq $menumode_ext ]  && echo -e "$extmenu"
+	[ $menumode -eq $menumode_ext ]  && echo -e "$extmenu$OFF"
 }
 
 menu_parser() {
 	get_filecount
 	show_settings
+
 	promptgetchar ""$BLD"Enter one of the above: "$OFF"" setting
 
 	case $setting in
-
+		c )	toggle_colors
+			;;
 		b )	git_setbranch $branchlist
 			git_get_lasttag lasttag $last_tag_file
 			;;
@@ -411,7 +416,7 @@ menu_parser() {
 }
 
 function menu_loop {
-	get_booleans
+	# get_booleans
 
 	# get the patch and work directories.
 	#
@@ -454,8 +459,9 @@ function menu_loop {
 # Parameter Initialization
 ###########################################
 init_parms() {
+	local offset=0
+	local index=0
 	local stat=0
-	git_get_lasttag lasttag $last_tag_file
 
 	# This loop enumerates and counts the items in the project file.
 	# Add new booleans to the end of the list.
@@ -463,6 +469,7 @@ init_parms() {
 	# after all the non-booleans.
 	#
 	for offset in \
+	prj_dummy \
 	prj_menumode \
 	prj_patchvalfuzz \
 	prj_patchseekmode \
@@ -472,9 +479,8 @@ init_parms() {
 	prj_editor \
 	prj_indir \
 	prj_outdir \
-	prj_background \
-	prj_b_rename_infiles \
-	prj_b_fmt_upstream
+	prj_colors \
+	prj_background
 	do
 		let index++
 		let $offset=$index
@@ -487,11 +493,9 @@ init_parms() {
 		fi
 	done
 
-	prj_entries=$index
 	[ -d "$MYDATA" ] || mkdir $MYDATA
-	[ -e "$MYDATA/patchreview.prj" ] || touch $MYDATA/patchreview.prj
 
-	prj_init_prjfile_bools $MYDATA/patchreview.prj $prj_entries $boolindex
+	prj_init_prjfile $MYDATA/patchreview.prj $index "noblankcheck"
 	stat=$?
 
 	# If the above call to prj_init_prjfile returns nonzero, it means that a
@@ -502,7 +506,7 @@ init_parms() {
 		local newprjstr=$(
 cat <<EOF
 $INF
-A new project file has been created, or the existing one must be recreated.
+The project file has changed, or a new one has been created.
 
 We will need to know:
 1. The $STA$indirstr$INF directory to contain the patches for review
@@ -522,20 +526,28 @@ EOF
 		fi
 		set_editor
 		echo
-		init_booleans
+		# init_booleans
 		cmpmode=$cmpmode_batch
 		applymode=$applymode_norm
 		applyfailmode=$applyfailmode_exit
 		patchseekmode=$patchseek_off
 		patchvalfuzz=1
 		menumode=$menumode_ext
+		prj_set_item $prj_menumode $menumode
 		prj_set_item $prj_cmpmode $cmpmode
 		prj_set_item $prj_applymode $applymode
 		prj_set_item $prj_applyfailmode $applyfailmode
 		prj_set_item $prj_patchseekmode $patchseekmode
 		prj_set_item $prj_patchvalfuzz $patchvalfuzz
-		prj_set_item $prj_menumode $menumode
+		prj_set_item $prj_colors $b_color		  # lib/ui.source
+		prj_set_item $prj_background $terminal_background # lib/ui.source
 	fi
+
+	b_color=$(prj_get_item $prj_colors)
+	terminal_background=$(prj_get_item $prj_background)
+	(( $terminal_background > 0 && terminal_background < 3 )) || ui_get_screenbackground
+	ui_set_colors
+	git_get_lasttag lasttag $last_tag_file
 }
 
 main_loop() {
@@ -543,9 +555,8 @@ main_loop() {
 
 	# Print the Herald
 	#
-	echo -e ""$BLD""$UND""
-	echo "Patch Review $version  Review patches and compare to upstream"
-	echo -e "$OFF"
+	echo -e "$MNU"
+	echo -e " "$UND"Patch Review $STA$version$MNU Review patches and compare to upstream$OFF"
 
 	##############################################
 	# Main Program Loop

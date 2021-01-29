@@ -74,9 +74,9 @@ function prj_init_prjfile_bools {
 	local disable_blank_check=false
 	local prjstr_prjfile_created=$(
 cat <<EOF
-$YEL	Project file $BGRN$prjfile$YEL is being created.
-	with $BGRN$prj_prjfile_size$OFF$YEL entries.
-	The last entry is for use by the project data automaton.$OFF
+$INF	Project file $STA$prjfile$INF is being created \
+	with $STA$prj_prjfile_size$INF entries.
+	The last entry will record the number of lines.$OFF
 EOF
 )
 	# Set the global prj_prjfile_size to one greater than the size
@@ -143,13 +143,16 @@ function prj_init_prjfile {
 	prjfile=$1
 	prj_prjfile_size=$2
 
+	# Make room for the file size record at the bottom of the file.
+	let ++prj_prjfile_size
+
 	local disable_blank_check=false
 
 	[ $# -eq 3 ] && disable_blank_check=true
 
 	local prjstr_prjfile_created=\
-"\t"$YEL"Project file "$BGRN"$prjfile"$YEL" is being created.\n\
-\twith $BGRN$prj_prjfile_size$YEL entries.\n"
+"\t"$INF"Project file "$STA"$prjfile"$INF" is being created.\n\
+\twith $STA$prj_prjfile_size$INF entries.\n"
 
 	# If the prjfile does not exist, then create it and initialize
 	# the contents.
@@ -158,16 +161,18 @@ function prj_init_prjfile {
 	#
 	if [ ! -f "$prjfile" ]; then
 		# echo -e "$prjstr_prjfile_created"
+		> $prjfile
 		prj_addblanklines $prjfile $prj_prjfile_size
+		prj_set_item $prj_prjfile_size $prj_prjfile_size
 		return $prj_newcreated
 	else
 		local sizediff
 		local size=$(cat $prjfile | wc -l)
 		sizediff=$(( size - prj_prjfile_size ))
-
 		if [ $sizediff -ne 0 ] || [ $size -eq 0 ]; then
 			cat /dev/null > $prjfile
 			prj_addblanklines $prjfile $prj_prjfile_size
+			prj_set_item $prj_prjfile_size $prj_prjfile_size
 			return $prj_inconsistant
 		fi
 	fi
@@ -198,7 +203,7 @@ function prj_get_item {
 # $2 - new value of item
 #
 function prj_set_item {
-	ui_replaceline $1 "$2" $prjfile
+	ui_replaceline_raw $1 "$2" $prjfile
 }
 
 # prj_set_directory - sets the directory for project files
@@ -237,14 +242,14 @@ function prj_set_directory {
 
 	if ! $b_quiet ; then
 		if [ -d "$dir" ]; then
-			echo -e "$YELCurrent $BGRN$name$YEL directory: $BGRN$dir$OFF"
-			getyn ""$YEL"Change this directory?" b_chdir
+			echo -e ""$INF"Current $STA$name$INF directory: $STA$dir$OFF"
+			getyn ""$INF"Change this directory?" b_chdir
 		fi
 
 		if $b_chdir; then
 			b_newdir=true
 		else
-			echo -e ""$YEL"You have chosen to re-use $BGRN$dir$OFF"
+			echo -e ""$INF"You have chosen to re-use $STA$dir$OFF"
 			echo "Contents of the directory may be altered."
 			b_newdir=false
 		fi
@@ -253,11 +258,11 @@ function prj_set_directory {
 	if $b_newdir; then
 
 		if [ -n "$currentdir" ]; then
-			echo -e ""$YEL"Current $BGRN$name$YEL directory: $BGRN$currentdir$OFF"
+			echo -e ""$INF"Current $STA$name$INF directory: $STA$currentdir$OFF"
 			echo -e "Enter $qstr at the prompt to leave it as is."
 		fi
 
-		ui_getnewdir ""$YEL"New $BGRN$name$YEL directory: " dir
+		ui_getnewdir ""$INF"New $STA$name$INF directory: " dir
 		[ "$dir" ] || return
 
 		# echo -e "New "$prompt" directory is $BLD$dir$OFF"
