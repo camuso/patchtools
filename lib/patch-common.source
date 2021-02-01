@@ -146,7 +146,7 @@ declare rc_run=1	# Run
 function exit_me {
 	echo -e "$OFF"
 	set_booleans
-	prj_set_item $prg_menumode $menumode
+	prj_set_item $prj_menumode $menumode
 	prj_set_item $prj_applymode $applymode
 	prj_set_item $prj_cmpmode $cmpmode
 	prj_set_item $prj_applyfailmode $applyfailmode
