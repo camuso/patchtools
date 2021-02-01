@@ -106,6 +106,7 @@ function get_booleans {
 	# echo "patchreview::get_booleans()"
 	local bool
 	index=$boolindex
+	[ $index -eq 0 ] && return
 	for bool in \
 	b_rename_infiles \
 	b_fmt_upstream
@@ -156,6 +157,7 @@ function set_booleans {
 	# echo "patchreview::set_booleans()"
 	local bool
 	index=$boolindex
+	[ $index -eq 0 ] && return 0
 	for bool in \
 	b_rename_infiles \
 	b_fmt_upstream
@@ -469,7 +471,6 @@ init_parms() {
 	# after all the non-booleans.
 	#
 	for offset in \
-	prj_dummy \
 	prj_menumode \
 	prj_patchvalfuzz \
 	prj_patchseekmode \
