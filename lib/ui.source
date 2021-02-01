@@ -45,10 +45,10 @@ unset BMGT && declare BMGT='\e[1;95m'
 unset BCYN && declare BCYN='\e[1;96m'
 unset BWHT && declare BWHT='\e[1;97m'
 
-declare terminal_background=$tb_dark
+declare terminal_background=
 declare tb_lite=1
 declare tb_dark=2
-declare b_color=true
+declare b_color=
 
 # Terminal magic
 #
@@ -92,11 +92,6 @@ ui_get_screenbackground() {
 	loop_range 1 2 terminal_background
 }
 
-ui_query_colors() {
-	loop_yn "Do you want color text? y/n : " b_color
-	ui_get_screenbackground
-}
-
 ui_set_colors() {
 	$b_color || {
 		b_color=false
@@ -122,6 +117,13 @@ ui_set_colors() {
 
 	qstr="'$STA\0q$OFF\0'"
 	return 0
+}
+
+ui_query_colors() {
+	[ -z $b_color ] &&loop_yn "Do you want color text? y/n : " b_color
+	$b_color || return
+	ui_get_screenbackground
+	ui_set_colors
 }
 
 # ui_get_curpos - get the cursor row and column

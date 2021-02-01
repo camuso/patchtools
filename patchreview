@@ -502,7 +502,7 @@ init_parms() {
 	# new project file has been created and its values must be initialized.
 	#
 	if [ $stat -ne 0 ]; then
-		ui_set_colors
+		ui_query_colors
 		local newprjstr=$(
 cat <<EOF
 $INF
@@ -519,7 +519,8 @@ EOF
 		prj_set_directory "$indirstr" $prj_indir indir quiet
 		echo
 
-		echo -e ""$INF"Default $MNU$oudirstr$INF is: $STA$indir/tmp$OFF"
+		echo -e ""$INF"Default$MNU$oudirstr$INF is: $STA$indir/tmp$OFF"
+		prj_set_item $prj_outdir "$indir/tmp"
 		if [ -z "$outdir" ]; then
 			prj_set_directory "$outdirstr" $prj_outdir outdir quiet
 			echo
@@ -544,9 +545,13 @@ EOF
 	fi
 
 	b_color=$(prj_get_item $prj_colors)
-	terminal_background=$(prj_get_item $prj_background)
-	(( $terminal_background > 0 && terminal_background < 3 )) || ui_get_screenbackground
-	ui_set_colors
+
+	if $b_color; then
+		terminal_background=$(prj_get_item $prj_background)
+		(( $terminal_background > 0 && $terminal_background < 3 )) || ui_get_screenbackground
+		ui_set_colors
+	fi
+
 	git_get_lasttag lasttag $last_tag_file
 }
 

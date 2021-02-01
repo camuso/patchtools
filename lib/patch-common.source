@@ -604,7 +604,20 @@ function apply_patches {
 }
 
 toggle_colors() {
-	$b_color && b_color=false || b_color=true
+
+	terminal_background=$(prj_get_item $prj_background)
+
+	# If the terminal_background is NULL, then assume that
+	# the user is asking for color for the first time.
+	if [ -z $terminal_background ]; then
+		b_color=true
+		ui_query_colors
+		prj_set_item $prj_background $terminal_background
+	else
+		$b_color && b_color=false || b_color=true
+	fi
+
+	prj_set_item $prj_colors $b_color
 	ui_set_colors
 }
 
