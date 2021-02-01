@@ -15,6 +15,7 @@
 ##############################
 
 declare ui_loaded=true
+declare ui_debug=false
 
 #
 # Text Attributes
@@ -71,6 +72,7 @@ declare -i ui_err_invdir=3
 declare -i ui_err_invlinec=4
 declare -i ui_err_nofiles=5
 declare -i ui_err_notdigit=6
+
 
 # Contlol-C exit code
 # see http://www.tldp.org/LDP/abs/html/exitcodes.html
@@ -726,7 +728,7 @@ function ui_replaceline {
 			print $0;
 		}
 	}' "$3" > $ui_tempfile
-	 mv -f $ui_tempfile "$3"
+	[ -f "$ui_tempfile" ] && mv -f $ui_tempfile "$3"
 	return 0
 }
 
@@ -745,16 +747,12 @@ function ui_replaceline {
 # $3 - File
 #
 function ui_replaceline_raw {
-	local line
+	local linenum
 
-	awk -v line=$1 -v new_content="$2" '{
-		if (NR == line) {
-			print new_content;
-		} else {
-			print $0;
-		}
-	}' $3 > $ui_tempfile
-	mv -f $ui_tempfile "$3"
+	awk -v linenum=$1 -v newtext="$2" \
+		'NR==linenum {$0=newtext} {print}' \
+		$3 > $ui_tempfile
+	[ -f "$ui_tempfile" ] && mv -f $ui_tempfile "$3"
 	return 0
 }
 
