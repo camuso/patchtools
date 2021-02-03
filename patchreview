@@ -58,15 +58,12 @@ source $MYLIB/patch-common.source
 function init_booleans {
 	for ((index=boolindex; index <= prj_entries; index++)); do
 		prj_set_item $index true
+echo "index: $index"
 	done
 	b_prologue=false
 }
 
 # get_booleans
-#
-# Removed the last two booleans in v10.0
-#	b_rename_infiles
-#	b_fmt_upstream
 #
 # Read the values of the program flow control booleans from the
 # project file.
@@ -270,8 +267,8 @@ nuke() {
 	reset_to_lasttag
 
 	# Init the booleans to their defaults
-	# init_booleans
-	# get_booleans
+	init_booleans
+	get_booleans
 
 	# Set the apply mode to its default value
 	applymode=$applymode_norm
@@ -288,9 +285,7 @@ nuke() {
 # 	infilecount
 # 	patstr
 # 	editor
-# 	b_rename_infiles
-# 	b_fmt_upstream
-#	b_extmenu
+#	b_extmenu        - removed 2020-07-31
 #
 show_settings() {
 	local current_head_trunc=$(get_current_head_trunc $menucols)
@@ -417,8 +412,27 @@ menu_parser() {
 	return $rc_continue
 }
 
-function menu_loop {
-	# get_booleans
+# init_files
+#
+# Initialize the global names of the directories and files to be used
+# throughout the script.
+#
+# Globals:
+# 	prj_indir
+# 	prj_outdir
+# 	indirstr
+# 	outdirstr
+# 	indir
+# 	outdir
+# 	bp_commits_name
+# 	us_commits_name
+# 	bp_commists
+# 	us_commits
+# 	usvbp_commits_name
+# 	usvp_commits
+# 	mismatch_file
+#
+init_files() {
 
 	# get the patch and work directories.
 	#
@@ -428,6 +442,12 @@ function menu_loop {
 	us_commits="$outdir/$us_commits_name"
 	usvbp_commits="$outdir/$usvbp_commits_name"
 	mmfile="$outdir/$mismatch_file"
+}
+
+function menu_loop {
+
+	get_booleans
+	init_files
 
 	# get the editor
 	#
@@ -481,7 +501,9 @@ init_parms() {
 	prj_indir \
 	prj_outdir \
 	prj_colors \
-	prj_background
+	prj_background \
+	prj_b_rename_infiles \
+	prj_b_fmt_upstream
 	do
 		let index++
 		let $offset=$index
@@ -496,7 +518,7 @@ init_parms() {
 
 	[ -d "$MYDATA" ] || mkdir $MYDATA
 
-	prj_init_prjfile $MYDATA/patchreview.prj $index "noblankcheck"
+	prj_init_prjfile $MYDATA/patchreview.prj $index
 	stat=$?
 
 	# If the above call to prj_init_prjfile returns nonzero, it means that a
@@ -528,7 +550,7 @@ EOF
 		fi
 		set_editor
 		echo
-		# init_booleans
+		init_booleans
 		cmpmode=$cmpmode_batch
 		applymode=$applymode_norm
 		applyfailmode=$applyfailmode_exit
@@ -553,10 +575,13 @@ EOF
 		ui_set_colors
 	fi
 
+	init_files
+	get_booleans
 	git_get_lasttag lasttag $last_tag_file
 }
 
 main_loop() {
+
 	local stat
 
 	# Print the Herald
@@ -582,7 +607,7 @@ main_loop() {
 
 		if [ $patchseekmode -eq $patchseek_on ]; then
 			[ -f "$us_commits" ] || format_upstream_patches
-			check_fixes "$us_commits"
+			[ -f "$us_commits" ] &&	check_fixes "$us_commits"
 		fi
 
 		if [ $applymode -ne $applymode_off ]; then
@@ -594,10 +619,47 @@ main_loop() {
 	done
 }
 
+cmd_check_fixes() {
+	local stat=0
+
+	get_filecount
+	$b_rename_infiles exec_boolean b_rename_infiles false "renpatfiles"
+
+	[ -f "$us_commits" ] || format_upstream_patches
+	[ -f "$us_commits" ] &&	check_fixes "$us_commits"
+
+	return 0
+}
+
+# parse_cmdline - command line interface
+#
+parse_cmdline() {
+	local argc=$#
+
+	init_files
+
+	while (( $# > 0 )) ;do
+		key="$1"
+		case $key in
+			"-S" ) 	cmd_check_fixes
+				shift
+				;;
+			"-R" )	renpatfiles
+				shift
+				;;
+			   * ) 	echo "argc=$argc argv: $@"
+				;;
+		esac
+	done
+
+}
+
 #############################
 # main() entry point
 #############################
 main() {
+	local argc=$#
+
 	# Trap for control-c
 	#
 	trap control_c SIGINT
@@ -606,10 +668,10 @@ main() {
 
 	init_parms
 
-	if [ $# -eq 1 ]; then
+	if [ $argc -eq 0 ]; then
 		main_loop
 	else
-		echo "$# args"
+		parse_cmdline $@
 	fi
 
 	exit 0
@@ -618,5 +680,5 @@ main() {
 # Call main.
 # Exit when done.
 #
-main @
+main $@
 exit_me 0
