@@ -230,7 +230,7 @@ ui_waitonproc_tty () {
     local txt="$3"
     local tcnt=1
 
-    [ -z "$txt" ] || echo "$txt"
+    [ -z "$txt" ] || echo -e "$txt"
     while kill -0 $pid > /dev/null 2>&1; do
         echo -n '.';
         sleep $tmo;
@@ -302,7 +302,7 @@ function buhbye() {
 
 # getyn() $1 [$2]
 #
-# Takes $1 for a prompt string
+# Takes $1 for a prompt string and adds color emphasis, if color is enabled.
 # Places true or false into $2, which is an optional argument.
 # User is prompted for (y/n) answer at the end of the prompt string.
 #
@@ -317,7 +317,7 @@ function getyn {
 
 	while true; do
 
-		echo -en "$BLD$promptstring (y/n) : $OFF"
+		echo -en "$INF$promptstring $MNU(y/n) : $OFF"
 		read -n1 __answer__
 		echo
 
@@ -369,7 +369,7 @@ function getuser {
 	local promptstring="$1"
 	local var=
 
-	echo -ne "$BLD$promptstring$OFF"
+	echo -ne "$INF$promptstring$OFF"
 	read var
 	eval $2=$var
 }
@@ -444,7 +444,7 @@ loop_range() {
 	local number
 	local cmd
 	local pstr=\
-"$OFF\0Please enter a number between $BLD$min$OFF and $BLD$max$OFF: "
+""$OFF$INF"Please enter a number between $MNU$min$INF and $MNU$max$OFF: "
 
 	[ $max -lt 10 ] && cmd=promptgetchar || cmd=getuser
 	# echo "cmd: $cmd"
@@ -477,9 +477,9 @@ loop_range_q() {
 	local number
 	local cmd
 	local pstr=\
-"$OFF\0Please enter a number between $BLD$min$OFF and $BLD$max$OFF or $qstr: "
+""$OFF$IINF"Please enter a number between $MNU$min$INF and $MNU$max$OFF or $qstr: "
 
-	echo -e "Press $qstr to return without making a selection."
+	echo -e ""$INF"Press $qstr to return without making a selection.$OFF"
 	[ $max -lt 10 ] && cmd=promptgetchar || cmd=getuser
 	# echo "cmd: $cmd"
 
