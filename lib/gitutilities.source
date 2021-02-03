@@ -549,7 +549,7 @@ git_get_lasttag() {
 
 	[ -f "$_ltfile_" ] && rm -f $_ltfile_
 
-	echo -n "Getting most recent git tag.."
+	echo -en ""$INF"Getting most recent git tag..$OFF"
 	git describe --tags --abbrev=0 > $_ltfile_ &
 	_mypid_=$!
 	ui_waitonproc $_mypid_ .1
@@ -649,6 +649,10 @@ find_fixes () {
 # $1 - path to the file containing the commits. The commit is expected to
 #      be the first field in each line of the file.
 #
+# Returns
+# 	0 - all is well
+# 	1 - something went wrong
+#
 check_fixes() {
 	local commitsfile="$1"
 	local line=
@@ -656,12 +660,19 @@ check_fixes() {
 	local commitid=
 	local commit_fix=
 	local commit_fix_id=
-	local msg="$BLD$YEL\0WARNING: found missing commit$OFF"
+	local msg=""$WRN"WARNING: found missing commit$OFF"
 	local mypid
 	local fixfile="/dev/shm/fixfile"
 	local currentbranch=$(git branch | egrep \* | cut -d' ' -f2)
 
-	echo -e "\nLooking for missing commits ..."
+	[ -f $commitsfile ] || {
+		echo -e ""$INF"Expecting file: $STA$commitsfile$OFF"
+		echo -en ""$INF"to contain the upstream commits to be checked, but"
+		echo -e "$WRN it does not exist$OFF"
+		return 1
+	}
+
+	echo -e "\n"$INF"Looking for missing commits ...$OFF"
 
 	while read line; do
 		commitid=$(echo "$line" | cut -d' ' -f1)
