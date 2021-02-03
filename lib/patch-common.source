@@ -154,6 +154,8 @@ function exit_me {
 	prj_set_item $prj_patchvalfuzz $patchvalfuzz
 	prj_set_item $prj_colors $b_color
 	prj_set_item $prj_background $terminal_background
+	prj_set_item $prj_b_rename_infiles $b_rename_infiles
+	prj_set_item $prj_b_fmt_upstream $b_fmt_upstream
 	b_prologue=false
 	[ -f "$prologue_file".txt ] && 	mv "$prologue_file".txt "$prologue_file"
 	[ -e "$last_tag_file" ] && rm -f $last_tag_file
@@ -695,7 +697,6 @@ view_logs() {
 	less ${logs[$((choice - 1))]}
 }
 
-
 # get_filecount() - count the files in the indir
 #
 # This is a bit ugly. If there are .patch files in the indir, then count
@@ -861,8 +862,8 @@ check_patchvbranch() {
 
 	# echo "i: $i j: $j"
 	if ( [ $i -lt 0 ] || [ $j -le 0 ] || [ $j -le $i ] ); then
-		echo "$subject"
-		echo "...does not appear to be a RHEL patch or series"
+		echo -e "$STA$subject$OFF"
+		echo -e ""$WRN"...does not appear to be a RHEL patch or series$OFF"
 		getyn "Do you wish to continue anyway?" yn
 		$yn || return 1
 		distname="NOT RHEL"
@@ -897,6 +898,7 @@ check_patchvbranch() {
 			"RHEL6" ) elstr="$el6" ; distname="$dist" ;;
 			"RHEL7" ) elstr="$el7" ; distname="$dist" ;;
 			"RHEL8" ) elstr="$el8" ; distname="$dist" ;;
+			"RHEL9" ) elstr="$el9" ; distname="$dist" ;;
 			      * ) elstr=""     ; distname="NOT RHEL" ;;
 		esac
 
@@ -985,6 +987,10 @@ EOF
 # 	us_commits
 # 	b_fmt_upstream
 #
+# Returns
+# 	0 - all good
+# 	1 - no patch files to review
+#
 format_upstream_patches() {
 	local fc=$(find $outdir -maxdepth 1 -not -type d -name "*.patch" -print -quit)
 	local b_yup
@@ -993,9 +999,16 @@ format_upstream_patches() {
 
 	[ "$fc" ] && {
 		echo
-		echo -e "There are aready patch files in $BLD$outdir$OFF"
+		echo -e ""$INF"There are aready upstream patch files in $STA$outdir$OFF"
 		getyn "Do you want to replace them?" b_yup
-		$b_yup || return
+		$b_yup || return 0
+	}
+
+	ls $indir/*.patch > /dev/null 2>&1
+	[ $? -ne 0 ] && {
+		echo
+		echo -e ""$INF"There are no patch files to review in $STA$indir$OFF"
+		return 1
 	}
 
 	rm -vf "$outdir"/* > /dev/null 2>&1
@@ -1003,14 +1016,16 @@ format_upstream_patches() {
 	echo
 	git_comment2commitsfile $indir "$us_commits" 40 $patchvalfuzz
 	echo
-	banner="Upstream commits extracted from the patches in $us_commits"
+	banner=""$INF"Upstream commits extracted from the patches in $STA$us_commits$OFF"
 	pad=$(ui_putnchar '=' ${#banner})
-	echo -e "$BLD$banner\n$pad$OFF"
+	echo -e "$banner\n$pad$OFF"
 
 	cat "$us_commits"
 	echo
+
 	exec_boolean b_fmt_upstream false \
 		"git_file2patchset ${us_commits} ${outdir}"
+	return 0
 }
 
 # check_already_applied - see if the commits have already been applied
@@ -1030,17 +1045,17 @@ check_already_applied() {
 	local b_header=true
 	local header=$(
 cat <<EOF
-
-The backported commits log $BLD$bp_commits$OFF is not empty.
+$INF
+The backported commits log $STA$bp_commits$OFF$INF is not empty.
 It's possible that some of them have already been applied.
-${BYEL}Press 'i' (init) at the main menu to remove the commits log.$OFF
+Press "$MNU"'i' (init)$INF at the main menu to remove the commits log.$OFF
 
 Upstream       RHEL commit
 ------------   ------------
 EOF
 )
 	local moreprompt=\
-"${BYEL}If you've seen enough press$OFF $qstr$BYEL, else any other key to see more: $OFF"
+"${INF}If you've seen enough press$OFF $qstr$INF, else any other key to see more: $OFF"
 
 	# if there's nothing in the us v bp commit map, just return
 	#
@@ -1214,7 +1229,7 @@ init_menu() {
 	startpat=1
 	b_fmt_upstream=true
 	b_allapplied=false
-	rm -f "$usvbp_commits"
+	[ -f "$usvbp_commits" ] && rm -f "$usvbp_commits"
 }
 
 # check_patch_count
@@ -1275,13 +1290,15 @@ renpatfiles() {
     renpatcnt=0		# :
 
     cd $indir
-    echo "Changing directory to "$PWD""
+    echo -e ""$INF"Changing directory to $STA$PWD$OFF"
     total=$(find -maxdepth 1 -not -type d | wc -l)
-    echo "$PWD has $total files."
+    echo -e "$STA$PWD$INF has $STA$total$INF files.$OFF"
 
     if [ $total -eq 0 ]; then
-	echo "No files to rename, returning to main menu."
-	echo
+	echo -e "$STA$indir$INF has no files to rename.$OFF"
+	echo -en ""$INF"Returning to main menu. and repo directory: $STA"
+	cd -
+	echo -en "$OFF"
 	return $ui_err_nofiles
     fi
 
