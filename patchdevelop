@@ -56,10 +56,12 @@ source $MYLIB/patch-common.source
 #########################################
 
 function init_booleans {
+	b_prologue=false
+
+	[ $index -eq 0 ] && return
 	for ((index=boolindex; index <= prj_entries; index++)); do
 		prj_set_item $index true
 	done
-	b_prologue=false
 }
 
 # get_booleans
@@ -91,6 +93,7 @@ function init_booleans {
 # 	b_extmenu
 #
 function get_booleans {
+	[ $boolindex -eq 0 ] && return
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
@@ -132,6 +135,7 @@ function get_booleans {
 # 	b_extmenu
 #
 function set_booleans {
+	[ $boolindex -eq 0 ] && return
 	index=$boolindex
 	for bool in \
 	b_rename_infiles \
@@ -161,41 +165,42 @@ show_settings() {
 	local current_head_trunc=$(get_current_head_trunc $menucols)
 	local s	settingstr=$(
 cat <<EOF
-$BLD
-    $UND\0Environment       $OFF$BLD
-    Most recent tag         :$OFF $lasttag$BLD
-    Current head            :$OFF $current_head_trunc$BLD
- b  Current git branch      :$OFF $(git_getcurrentbranch)$BLD
- d  $indirstr directory         :$OFF $indir$BLD has$OFF $infilecount$BLD $patstr\0files
- w  $outdirstr directory          :$OFF $outdir$BLD
- e  Diff Editor             :$OFF $editor$BLD
-
-    $UND\0Run Parameters    $OFF$BLD
- 1  Compare mode            :$OFF $(show_cmpmode $cmpmode)$BLD
- 2  Patch apply mode        :$OFF $(show_applymode)$BLD
- 3  Patch apply fail mode   :$OFF $(show_applyfailmode)$BLD
- 4  Patch seek mode         :$OFF $(show_patchseekmode)$BLD\
- $(show_nextpatch)
-
-    $UND\0Control           $OFF$BLD
- r  Run in batch mode
- i  Init to defaults
- h  help text
- q  Quit this script
- x  Toggle Extended Menu
+$MNU
+    $UND\0Environment       $OFF
+    Most recent tag         :$STA $lasttag$OFF
+    Current Head            :$STA $current_head_trunc$OFF
+$MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
+$MNU d$OFF  $indirstr directory         :$STA $indir$OFF has$STA $infilecount$OFF $patstr\0files
+$MNU w$OFF  $outdirstr directory          :$STA $outdir$OFF
+$MNU e$OFF  Diff Editor             :$STA $editor$OFF
+$MNU c$OFF  Toggle Colors ON/OFF    :$STA $(show_colors)$OFF
+$MNU
+    $UND\0Batch Run Parameters$OFF
+$MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
+$MNU 2$OFF  Patch apply mode        :$STA $(show_applymode)$OFF
+$MNU 3$OFF  Patch apply fail mode   :$STA $(show_applyfailmode)$OFF
+$MNU 4$OFF  Seek missing commits    :$STA $(show_patchseekmode)$OFF\
+ $(show_nextpatch)$BLD
+$MNU
+    $UND\0Main Controls     $OFF
+$MNU r$OFF  Run in batch mode
+$MNU i$OFF  Init to defaults
+$MNU h$OFF  help text
+$MNU q$OFF  Quit this script
+$MNU x$OFF  Toggle Extended Menu
 $OFF
 EOF
 )
 	local extmenu=$(
 cat <<EOF
 $BLD\
-    $UND\0Discrete Operations$OFF$BLD
- R  Rename mail files in    :$OFF $indir$BLD
- F  Format commits into     :$OFF $outdir$BLD
- S  Seek missing commits \
+    $UND\0Discrete Operations$OFF
+$MNU R$OFF  Rename mail files in    :$STA $indir$OFF
+$MNU F$OFF  Format commits into     :$STA $outdir$OFF
+$MNU S$OFF  Seek missing commits \
  $(show_apply_patches)$BLD
- P  Compare Patches
- B  Create a new branch at  :$OFF $current_head_trunc$BLD\
+$MNU P$OFF  Compare Patches
+$MNU B$OFF  Create a new branch at  :$STA $current_head_trunc$OFF\
  $(show_view_logs)$BLD
 $OFF
 EOF
@@ -207,10 +212,12 @@ EOF
 menu_parser() {
 	get_filecount
 	show_settings
-	promptgetchar ""$BLD"Enter one of the above: "$OFF"" setting
+	promptgetchar ""$MNU"Enter one of the above: "$OFF"" setting
 
 	case $setting in
 
+		c )	toggle_colors
+			;;
 		b )	git_setbranch $branchlist
 			git_get_lasttag lasttag $last_tag_file
 			;;
@@ -266,8 +273,27 @@ menu_parser() {
 	return $rc_continue
 }
 
-function menu_loop {
-	get_booleans
+# init_files
+#
+# Initialize the global names of the directories and files to be used
+# throughout the script.
+#
+# Globals:
+# 	prj_indir
+# 	prj_outdir
+# 	indirstr
+# 	outdirstr
+# 	indir
+# 	outdir
+# 	bp_commits_name
+# 	us_commits_name
+# 	bp_commists
+# 	us_commits
+# 	usvbp_commits_name
+# 	usvp_commits
+# 	mismatch_file
+#
+init_files() {
 
 	# get the patch and work directories.
 	#
@@ -277,6 +303,11 @@ function menu_loop {
 	us_commits="$outdir/$us_commits_name"
 	usvbp_commits="$outdir/$usvbp_commits_name"
 	mmfile="$outdir/$mismatch_file"
+}
+
+function menu_loop {
+	get_booleans
+	init_files
 
 	# get the editor
 	#
@@ -310,7 +341,9 @@ function menu_loop {
 # Parameter Initialization
 ###########################################
 init_parms() {
-	git_get_lasttag lasttag $last_tag_file
+	local offset=0
+	local index=0
+	local stat=0
 
 	# This loop enumerates and counts the items in the project file.
 	# Add new booleans to the end of the list.
@@ -327,6 +360,8 @@ init_parms() {
 	prj_editor \
 	prj_indir \
 	prj_outdir \
+	prj_colors \
+	prj_background \
 	prj_b_rename_infiles \
 	prj_b_fmt_upstream
 	do
@@ -343,18 +378,33 @@ init_parms() {
 
 	prj_entries=$index
 	[ -d "$MYDATA" ] || mkdir $MYDATA
-	[ -e "$MYDATA/patchdevelop.prj" ] || touch $MYDATA/patchdevelop.prj
-
-	prj_init_prjfile_bools $MYDATA/patchdevelop.prj $prj_entries $boolindex
+	prj_init_prjfile $MYDATA/patchdevelop.prj $index
+	stat=$?
 
 	# If the above call to prj_init_prjfile returns nonzero, it means that a
 	# new project file has been created and its values must be initialized.
 	#
 	if [ $? -ne 0 ]; then
+		ui_query_colors
+		local newprjstr=$(
+cat <<EOF
+$INF
+The project file has changed, or a new one has been created.
+
+We will need to know:
+1. The $STA$indirstr$INF directory to contain the patches for review
+2. The $STA$outdirstr$INF directory to contain output from this script
+3. Your choice of$STA diff editor
+$OFF
+EOF
+)
+		echo -e "$newprjstr"
+		prj_set_directory "$indirstr" $prj_indir indir quiet
 		echo
-		echo "A new project file has been created."
-		echo "We will need to know where your patches will be and where you"
-		echo "want us to put the output of this script."
+		prj_set_item $prj_outdir "$indir/tmp"
+		prj_set_directory "$outdirstr" $prj_outdir outdir quiet
+		echo
+		set_editor
 		prj_set_directory "$indirstr" $prj_indir indir quiet
 		prj_set_directory "$outdirstr" $prj_outdir outdir quiet
 		set_editor
@@ -374,10 +424,7 @@ init_parms() {
 	fi
 }
 
-#############################
-# main() entry point
-#############################
-main() {
+main_loop() {
 	local stat
 
 	# Trap for control-c
@@ -412,7 +459,7 @@ main() {
 
 		if [ $patchseekmode -eq $patchseek_on ]; then
 			[ -f "$us_commits" ] || format_upstream_patches
-			check_fixes "$us_commits"
+			[ -f "$us_commits" ] &&	check_fixes "$us_commits"
 		fi
 
 		if [ $applymode -ne $applymode_off ]; then
@@ -422,6 +469,64 @@ main() {
 
 		[ $cmpmode -ne $cmpmode_off ] && compare_patches
 	done
+}
+
+cmd_check_fixes() {
+	local stat=0
+
+	get_filecount
+	$b_rename_infiles exec_boolean b_rename_infiles false "renpatfiles"
+
+	[ -f "$us_commits" ] || format_upstream_patches
+	[ -f "$us_commits" ] &&	check_fixes "$us_commits"
+
+	return 0
+}
+
+# parse_cmdline - command line interface
+#
+parse_cmdline() {
+	local argc=$#
+
+	init_files
+
+	while (( $# > 0 )) ;do
+		key="$1"
+		case $key in
+			"-S" ) 	cmd_check_fixes
+				shift
+				;;
+			"-R" )	renpatfiles
+				shift
+				;;
+			   * ) 	echo "argc=$argc argv: $@"
+				;;
+		esac
+	done
+
+}
+
+#############################
+# main() entry point
+#############################
+main() {
+	local argc=$#
+
+	# Trap for control-c
+	#
+	trap control_c SIGINT
+
+	! $(git_checkrepo) && git_invrepomsg && exit 1
+
+	init_parms
+
+	if [ $argc -eq 0 ]; then
+		main_loop
+	else
+		parse_cmdline $@
+	fi
+
+	exit 0
 }
 
 # Call main.
