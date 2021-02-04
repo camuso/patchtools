@@ -56,11 +56,12 @@ source $MYLIB/patch-common.source
 #########################################
 
 function init_booleans {
+	b_prologue=false
+
+	[ $index -eq 0 ] && return
 	for ((index=boolindex; index <= prj_entries; index++)); do
 		prj_set_item $index true
-echo "index: $index"
 	done
-	b_prologue=false
 }
 
 # get_booleans
@@ -286,6 +287,8 @@ nuke() {
 # 	patstr
 # 	editor
 #	b_extmenu        - removed 2020-07-31
+# 	b_rename_infiles
+# 	b_fmt_upstream
 #
 show_settings() {
 	local current_head_trunc=$(get_current_head_trunc $menucols)
@@ -342,10 +345,10 @@ EOF
 menu_parser() {
 	get_filecount
 	show_settings
-
-	promptgetchar ""$BLD"Enter one of the above: "$OFF"" setting
+	promptgetchar ""$MNU"Enter one of the above: "$OFF"" setting
 
 	case $setting in
+
 		c )	toggle_colors
 			;;
 		b )	git_setbranch $branchlist
@@ -516,8 +519,8 @@ init_parms() {
 		fi
 	done
 
+	prj_entries=$index
 	[ -d "$MYDATA" ] || mkdir $MYDATA
-
 	prj_init_prjfile $MYDATA/patchreview.prj $index
 	stat=$?
 
@@ -541,16 +544,10 @@ EOF
 		echo -e "$newprjstr"
 		prj_set_directory "$indirstr" $prj_indir indir quiet
 		echo
-
-		echo -e ""$INF"Default$MNU$oudirstr$INF is: $STA$indir/tmp$OFF"
 		prj_set_item $prj_outdir "$indir/tmp"
-		if [ -z "$outdir" ]; then
-			prj_set_directory "$outdirstr" $prj_outdir outdir quiet
-			echo
-		fi
-		set_editor
+		prj_set_directory "$outdirstr" $prj_outdir outdir quiet
 		echo
-		init_booleans
+		set_editor
 		cmpmode=$cmpmode_batch
 		applymode=$applymode_norm
 		applyfailmode=$applyfailmode_exit
@@ -575,6 +572,7 @@ EOF
 		ui_set_colors
 	fi
 
+	init_booleans
 	init_files
 	get_booleans
 	git_get_lasttag lasttag $last_tag_file
