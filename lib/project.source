@@ -232,7 +232,7 @@ function prj_set_directory {
 	local b_newdir=true
 	local b_quiet=false
 	local dir
-	local currentdir=$(ui_readline $offset "$prjfile")
+	local currentdir=$(ui_readline_raw $offset "$prjfile")
 
 	[ $# -eq 4 ] && quietstr=$4
 	[ "$quietstr" == "quiet" ] && b_quiet=true
@@ -262,7 +262,7 @@ function prj_set_directory {
 			echo -e "Enter $qstr at the prompt to leave it as is."
 		fi
 
-		ui_getnewdir ""$INF"New $STA$name$INF directory: " dir
+		ui_getnewdir ""$INF"New $STA$name$INF directory: $OFF" dir
 		[ "$dir" ] || return
 
 		# echo -e "New "$prompt" directory is $BLD$dir$OFF"
