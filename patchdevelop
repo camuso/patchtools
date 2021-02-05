@@ -384,7 +384,7 @@ init_parms() {
 	# If the above call to prj_init_prjfile returns nonzero, it means that a
 	# new project file has been created and its values must be initialized.
 	#
-	if [ $? -ne 0 ]; then
+	if [ $stat -ne 0 ]; then
 		ui_query_colors
 		local newprjstr=$(
 cat <<EOF
@@ -405,10 +405,6 @@ EOF
 		prj_set_directory "$outdirstr" $prj_outdir outdir quiet
 		echo
 		set_editor
-		prj_set_directory "$indirstr" $prj_indir indir quiet
-		prj_set_directory "$outdirstr" $prj_outdir outdir quiet
-		set_editor
-		init_booleans
 		cmpmode=$cmpmode_batch
 		applymode=$applymode_norm
 		applyfailmode=$applyfailmode_exit
@@ -421,25 +417,32 @@ EOF
 		prj_set_item $prj_patchseekmode $patchseekmode
 		prj_set_item $prj_patchvalfuzz $patchvalfuzz
 		prj_set_item $prj_menumode $menumode
+		prj_set_item $prj_colors $b_color		  # lib/ui.source
+		prj_set_item $prj_background $terminal_background # lib/ui.source
 	fi
+
+	b_color=$(prj_get_item $prj_colors)
+
+	if $b_color; then
+		terminal_background=$(prj_get_item $prj_background)
+		(( $terminal_background > 0 && $terminal_background < 3 )) || ui_get_screenbackground
+		ui_set_colors
+	fi
+
+	init_booleans
+	init_files
+	get_booleans
+	git_get_lasttag lasttag $last_tag_file
 }
 
 main_loop() {
-	local stat
 
-	# Trap for control-c
-	#
-	trap control_c SIGINT
+	local stat
 
 	# Print the Herald
 	#
-	echo -e ""$BLD""$UND""
-	echo "Patch Develop $version  Check backported patches with upstream"
-	echo -e "$OFF"
-
-	! $(git_checkrepo) && git_invrepomsg && exit 1
-
-	init_parms
+	echo -e "$MNU"
+	echo -e " "$UND"Patch Develop $STA$version$MNU Test patches and compare to upstream$OFF"
 
 	##############################################
 	# Main Program Loop
