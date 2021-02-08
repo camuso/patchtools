@@ -707,3 +707,46 @@ check_fixes() {
 
 	[ -f $fixfile ] && rm -f $fixfile
 }
+
+create_remote_array() {
+	local line
+	local toks=()
+	local remarray=()
+	local gitcfgarray=()
+
+
+	gitcfgarray=$(grep -w '\[remote' .git/config)
+	while read line; do
+		ui_strtok "$line" '" ' toks
+		remote=$(echo ${toks[1]} | sed  's/]//')
+		remarray+=($remote)
+	done <<< "$gitcfgarray"
+
+	eval $1="(${remarray[@]})"
+}
+
+list_remotes() {
+	local remotes=()
+	local num_of_remotes
+	local selection
+
+	create_remote_array remotes
+	num_of_remotes=${#remotes[@]}
+
+	[ $num_of_remotes -gt 0 ] || {
+		echo -e ""$WRN"No remotes could be detected in .git/config.$OFF"
+		return 1
+	}
+
+	echo -e "\n"$MNU"Choose one of the remote repos in the following list.$OFF"
+	for ((i = 0; i < $num_of_remotes; ++i)); do
+		echo -e "$MNU$((i+1)).$OFF ${remotes[i]}"
+	done
+
+	echo
+	loop_range 1 $num_of_remotes selection
+	echo "selected: ${remotes[$((selection-1))]}"
+
+	return 0
+}
+

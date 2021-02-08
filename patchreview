@@ -304,6 +304,7 @@ $MNU w$OFF  $outdirstr directory          :$STA $outdir$OFF
 $MNU e$OFF  Diff Editor             :$STA $editor$OFF
 $MNU f$OFF  Patch Validation fuzz   :$STA $(show_patchvalfuzz)$OFF
 $MNU c$OFF  Toggle Colors ON/OFF    :$STA $(show_colors)$OFF
+$MNU s$OFF  Select Remote Repo      :$STA $remote_repo$OFF
 $MNU
     $UND\0Batch Run Parameters$OFF
 $MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
@@ -349,6 +350,8 @@ menu_parser() {
 
 	case $setting in
 
+		s )	list_remotes
+			;;
 		c )	toggle_colors
 			;;
 		b )	git_setbranch $branchlist

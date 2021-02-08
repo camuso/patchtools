@@ -137,6 +137,8 @@ declare el6="el6"
 declare el7="el7"
 declare el8="el8"
 
+declare remote_repo
+
 ########################################
 # Function Return Codes
 ########################################
@@ -733,7 +735,7 @@ show_nextpatch() {
 	local shownext=$(
 cat <<EOF
 $MNU
- 5$OFF  Start applying at patch :$OFF $startpat$BLD
+ 5$OFF  Start applying at patch :$STA $startpat$OFF
 EOF
 )
 	[ $infilecount -eq 0 ] && { b_selpat=false; return; }
