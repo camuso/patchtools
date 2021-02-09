@@ -498,7 +498,70 @@ loop_range_q() {
 	done
 }
 
-#############################
+select_from_array() {
+	local contents=$1[@]
+	local promptstr="$2"
+	local current="${!3}"
+	# local current=$3
+
+	local array=(${!contents})
+	local asize=asize=${#array[@]}
+	local curnum
+	local i
+	local element
+	local selection
+
+	echo -en "\n"$MNU"Choose one of the $STA$promptstr$OFF"
+	echo -e "$MNU in the following list.$OFF"
+	echo -e ""$INF"Current selection is :$STA $current$OFF"
+
+	for ((i = 0; i < asize; ++i)); do
+		element="${array[i]}"
+		if [ "$element" == "$current" ]; then
+			curnum=$i
+			echo -e "$STA * $((i+1)). $element$OFF"
+		else
+			echo -e "   $MNU$((i+1)).$OFF $element"
+		fi
+	done
+
+	echo
+
+	while true; do
+		loop_range_q 1 $asize selection
+
+		[ $? -eq 0 ] && eval $3=${array[$((selection-1))]}
+		is_array_member array ${!3}
+
+		if [ $? -eq 0 ]; then
+			break
+		else
+			echo -e ""$STA"${!3}$WRN is not a valid selection$OFF"
+			continue
+		fi
+	done
+
+	return 0
+}
+
+is_array_member() {
+	local contents=$1[@]
+	local member="$2"
+
+	local array=(${!contents})
+	local asize=${#array[@]}
+	local i
+	local mem
+
+	for ((i = 0; i < asize; ++i)); do
+		mem=${array[i]}
+		[ "$mem" == "$member" ] && return 0
+	done
+
+	return 1
+}
+
+############################
 # Directory Routines
 #############################
 

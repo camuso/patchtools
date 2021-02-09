@@ -84,6 +84,8 @@ declare prj_cmpmode
 declare prj_applymode
 declare prj_colors
 declare prj_background
+declare prj_remote_repo
+declare prj_remote_branch
 declare prj_b_rename_infiles
 declare prj_b_fmt_upstream
 
@@ -137,7 +139,8 @@ declare el6="el6"
 declare el7="el7"
 declare el8="el8"
 
-declare remote_repo
+declare remote_repo=
+declare remote_branch=
 
 ########################################
 # Function Return Codes
@@ -158,6 +161,8 @@ function exit_me {
 	prj_set_item $prj_background $terminal_background
 	prj_set_item $prj_b_rename_infiles $b_rename_infiles
 	prj_set_item $prj_b_fmt_upstream $b_fmt_upstream
+	prj_set_item $prj_remote_repo $remote_repo
+	prj_set_item $prj_remote_branch $remote_branch
 	b_prologue=false
 	[ -f "$prologue_file".txt ] && 	mv "$prologue_file".txt "$prologue_file"
 	[ -e "$last_tag_file" ] && rm -f $last_tag_file

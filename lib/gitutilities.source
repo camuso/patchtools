@@ -617,6 +617,7 @@ function git_setbranch {
 find_fixes () {
 	local commit_id="$1"
 	local tmpfil="$2"
+	local rembranch="$3"
 	local commit_info=
 	local short_hash=
 	local commit_date=
@@ -635,7 +636,7 @@ find_fixes () {
 		--pretty='%h ("%s")' \
 		--since="$commit_date" \
 		--grep="$short_hash" \
-		origin/master > $tmpfil
+		$rembranch > $tmpfil
 
 }
 
@@ -655,6 +656,7 @@ find_fixes () {
 #
 check_fixes() {
 	local commitsfile="$1"
+	local rembranch="$2"
 	local line=
 	local fixes=
 	local commitid=
@@ -672,7 +674,7 @@ check_fixes() {
 		return 1
 	}
 
-	echo -e "\n"$INF"Looking for missing commits ...$OFF"
+	echo -e "\n"$INF"Looking for missing commits in $STA$rembranch$INF...$OFF"
 
 	while read line; do
 		commitid=$(echo "$line" | cut -d' ' -f1)
@@ -680,7 +682,7 @@ check_fixes() {
 		# If the commitid is empty, get the next line in commitsfile.
 		(( 16#$commitid )) || continue
 
-		find_fixes "$commitid" $fixfile & mypid=$!
+		find_fixes "$commitid" $fixfile "$rembranch" & mypid=$!
 		ui_waitonproc_tty $mypid .05 "Checking $commitid"
 
 		if [ -s "$fixfile" ]; then
@@ -714,7 +716,6 @@ create_remote_array() {
 	local remarray=()
 	local gitcfgarray=()
 
-
 	gitcfgarray=$(grep -w '\[remote' .git/config)
 	while read line; do
 		ui_strtok "$line" '" ' toks
@@ -725,10 +726,15 @@ create_remote_array() {
 	eval $1="(${remarray[@]})"
 }
 
-list_remotes() {
+select_remrepo() {
+	local current="${!1}"
+	local cur="${!1}"
+	local curnum
 	local remotes=()
 	local num_of_remotes
 	local selection
+	local rem
+	local i
 
 	create_remote_array remotes
 	num_of_remotes=${#remotes[@]}
@@ -738,15 +744,25 @@ list_remotes() {
 		return 1
 	}
 
-	echo -e "\n"$MNU"Choose one of the remote repos in the following list.$OFF"
-	for ((i = 0; i < $num_of_remotes; ++i)); do
-		echo -e "$MNU$((i+1)).$OFF ${remotes[i]}"
-	done
-
-	echo
-	loop_range 1 $num_of_remotes selection
-	echo "selected: ${remotes[$((selection-1))]}"
-
+	select_from_array remotes "remote repos" cur
+	eval $1=$cur
 	return 0
 }
 
+show_remote_url() {
+	local reponame="$1"
+	local url
+	url=$(grep -A1 "remote \"$reponame" .git/config | grep url | cut -d'=' -f2)
+	echo "$url"
+}
+
+select_rembranch() {
+	local repo="$1"
+	local cur="${!2}"
+	local brancharray=()
+
+	brancharray=($(git branch -r | grep "$repo" | cut -d'/' -f2))
+	select_from_array brancharray "remote branches" cur
+	eval $2=$cur
+	return 0
+}
