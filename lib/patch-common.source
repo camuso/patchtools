@@ -8,7 +8,7 @@
 # The following source files must be included before this one.
 #
 
-version="9.5"
+version="9.6"
 
 # Get the directory defaults if they don't already exist
 #
