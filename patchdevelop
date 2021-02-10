@@ -170,6 +170,8 @@ $MNU
     Most recent tag         :$STA $lasttag$OFF
     Current Head            :$STA $current_head_trunc$OFF
 $MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
+$MNU s$OFF  Remote Repo/Branch      :$STA $remote_repo/$remote_branch$OFF
+    Remote URL              :$STA$(show_remote_url "$remote_repo")$OFF
 $MNU d$OFF  $indirstr directory         :$STA $indir$OFF has$STA $infilecount$OFF $patstr\0files
 $MNU w$OFF  $outdirstr directory          :$STA $outdir$OFF
 $MNU e$OFF  Diff Editor             :$STA $editor$OFF
@@ -216,6 +218,9 @@ menu_parser() {
 
 	case $setting in
 
+		s )	select_remrepo remote_repo
+			select_rembranch "$remote_repo" remote_branch
+			;;
 		c )	toggle_colors
 			;;
 		b )	git_setbranch $branchlist
@@ -305,22 +310,22 @@ init_files() {
 	mmfile="$outdir/$mismatch_file"
 }
 
-function menu_loop {
-	get_booleans
-	init_files
-
-	# get the editor
-	#
+init_loopvars() {
 	editor=$(prj_get_item $prj_editor)
-
-	# get the comparison mode
-	#
 	cmpmode=$(prj_get_item $prj_cmpmode)
 	applymode=$(prj_get_item $prj_applymode)
 	applyfailmode=$(prj_get_item $prj_applyfailmode)
 	patchseekmode=$(prj_get_item $prj_patchseekmode)
 	patchvalfuzz=$(prj_get_item $prj_patchvalfuzz)
 	menumode=$(prj_get_item $prj_menumode)
+	remote_repo=$(prj_get_item $prj_remote_repo)
+	remote_branch=$(prj_get_item $prj_remote_branch)
+}
+
+function menu_loop {
+	get_booleans
+	init_files
+	init_loopvars
 
 	# delete any "scratch" file from the indir
 	#
@@ -362,6 +367,8 @@ init_parms() {
 	prj_outdir \
 	prj_colors \
 	prj_background \
+	prj_remote_repo \
+	prj_remote_branch \
 	prj_b_rename_infiles \
 	prj_b_fmt_upstream
 	do
@@ -411,6 +418,8 @@ EOF
 		patchseekmode=$patchseek_off
 		patchvalfuzz=0	# no tolerance for deviance!
 		menumode=$menumode_ext
+		remote_repo="origin"
+		remote_branch="master"
 		prj_set_item $prj_cmpmode $cmpmode
 		prj_set_item $prj_applymode $applymode
 		prj_set_item $prj_applyfailmode $applyfailmode
@@ -419,6 +428,8 @@ EOF
 		prj_set_item $prj_menumode $menumode
 		prj_set_item $prj_colors $b_color		  # lib/ui.source
 		prj_set_item $prj_background $terminal_background # lib/ui.source
+		prj_set_item $prj_remote_repo $remote_repo
+		prj_set_item $prj_remote_branch $remote_branch
 	fi
 
 	b_color=$(prj_get_item $prj_colors)
@@ -431,6 +442,7 @@ EOF
 
 	init_booleans
 	init_files
+	init_loopvars
 	get_booleans
 	git_get_lasttag lasttag $last_tag_file
 }
@@ -462,7 +474,8 @@ main_loop() {
 
 		if [ $patchseekmode -eq $patchseek_on ]; then
 			[ -f "$us_commits" ] || format_upstream_patches
-			[ -f "$us_commits" ] &&	check_fixes "$us_commits"
+			[ -f "$us_commits" ] &&	check_fixes "$us_commits" \
+				"$remote_repo/$remote_branch"
 		fi
 
 		if [ $applymode -ne $applymode_off ]; then
@@ -481,7 +494,8 @@ cmd_check_fixes() {
 	$b_rename_infiles exec_boolean b_rename_infiles false "renpatfiles"
 
 	[ -f "$us_commits" ] || format_upstream_patches
-	[ -f "$us_commits" ] &&	check_fixes "$us_commits"
+	[ -f "$us_commits" ] &&	check_fixes "$us_commits" \
+		"$remote_repo/$remote_branch"
 
 	return 0
 }
