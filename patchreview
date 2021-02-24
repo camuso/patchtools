@@ -305,7 +305,6 @@ $MNU d$OFF  $indirstr directory         :$STA $indir$OFF has$STA $infilecount$OF
 $MNU w$OFF  $outdirstr directory          :$STA $outdir$OFF
 $MNU e$OFF  Diff Editor             :$STA $editor$OFF
 $MNU f$OFF  Patch Validation fuzz   :$STA $(show_patchvalfuzz)$OFF
-$MNU c$OFF  Toggle Colors ON/OFF    :$STA $(show_colors)$OFF
 $MNU
     $UND\0Batch Run Parameters$OFF
 $MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
@@ -353,8 +352,6 @@ menu_parser() {
 
 		s )	select_remrepo remote_repo
 			select_rembranch "$remote_repo" remote_branch
-			;;
-		c )	toggle_colors
 			;;
 		b )	git_setbranch $branchlist
 			git_get_lasttag lasttag $last_tag_file
@@ -508,7 +505,6 @@ init_parms() {
 	prj_editor \
 	prj_indir \
 	prj_outdir \
-	prj_colors \
 	prj_background \
 	prj_remote_repo \
 	prj_remote_branch \
@@ -535,7 +531,7 @@ init_parms() {
 	# new project file has been created and its values must be initialized.
 	#
 	if [ $stat -ne 0 ]; then
-		ui_query_colors
+		ui_use_colors
 		local newprjstr=$(
 cat <<EOF
 $INF
@@ -559,7 +555,7 @@ EOF
 		applymode=$applymode_norm
 		applyfailmode=$applyfailmode_exit
 		patchseekmode=$patchseek_off
-		patchvalfuzz=1
+		patchvalfuzz=3
 		menumode=$menumode_ext
 		remote_repo="origin"
 		remote_branch="master"
@@ -569,13 +565,12 @@ EOF
 		prj_set_item $prj_applyfailmode $applyfailmode
 		prj_set_item $prj_patchseekmode $patchseekmode
 		prj_set_item $prj_patchvalfuzz $patchvalfuzz
-		prj_set_item $prj_colors $b_color		  # lib/ui.source
 		prj_set_item $prj_background $terminal_background # lib/ui.source
 		prj_set_item $prj_remote_repo $remote_repo
 		prj_set_item $prj_remote_branch $remote_branch
 	fi
 
-	b_color=$(prj_get_item $prj_colors)
+	b_color=true
 
 	if $b_color; then
 		terminal_background=$(prj_get_item $prj_background)

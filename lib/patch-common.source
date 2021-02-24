@@ -82,7 +82,6 @@ declare prj_outdir
 declare prj_editor
 declare prj_cmpmode
 declare prj_applymode
-declare prj_colors
 declare prj_background
 declare prj_remote_repo
 declare prj_remote_branch
@@ -138,6 +137,7 @@ declare -i rensetcnt	# the number of patch files in the series
 declare el6="el6"
 declare el7="el7"
 declare el8="el8"
+declare el9="el9"
 
 declare remote_repo=
 declare remote_branch=
@@ -157,7 +157,6 @@ function exit_me {
 	prj_set_item $prj_applyfailmode $applyfailmode
 	prj_set_item $prj_patchseekmode $patchseekmode
 	prj_set_item $prj_patchvalfuzz $patchvalfuzz
-	prj_set_item $prj_colors $b_color
 	prj_set_item $prj_background $terminal_background
 	prj_set_item $prj_b_rename_infiles $b_rename_infiles
 	prj_set_item $prj_b_fmt_upstream $b_fmt_upstream

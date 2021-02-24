@@ -128,6 +128,12 @@ ui_query_colors() {
 	ui_set_colors
 }
 
+ui_use_colors() {
+	b_color=true
+	ui_get_screenbackground
+	ui_set_colors
+}
+
 # ui_get_curpos - get the cursor row and column
 #
 # $1 - receives the zero-based row value
