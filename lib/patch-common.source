@@ -179,6 +179,46 @@ control_c()
 
 function test_sanity { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
 
+# get_remote_seek() - get the remote origin and branch to seek
+#
+# Sets up the remote origin/branch global fields to use when seeking
+# missing commits.
+#
+# GLOBALS:
+# 	remote_repo
+# 	remote_branch
+# 	prj_remote_repo
+# 	prj_remote_branch
+#
+get_remote_seek() {
+	select_remrepo remote_repo
+	select_rembranch "$remote_repo" remote_branch
+	prj_set_item $prj_remote_repo $remote_repo
+	prj_set_item $prj_remote_branch $remote_branch
+}
+
+# seek_missing_commits() - search remote/branch for missing commits
+#
+# GLOBALS
+# 	us_commits
+# 	remote_repo
+# 	remote_branch
+#
+seek_missing_commits() {
+	[ -f "$us_commits" ] || format_upstream_patches
+
+	# See if the remote/branch exists. If not, query for them
+	while :; do
+		git branch -r | grep "$remote_repo/$remote_branch" > /dev/null 2>&1
+		[ $? -eq 0 ] && break
+		echo -e ""$WRN"Cannot find $STA$remote_repo/$remote_branch$OFF"
+		get_remote_seek
+	done
+
+	check_fixes "$us_commits" "$remote_repo/$remote_branch"
+
+}
+
 # test_editor() - tests for the existence of the chosen editor
 #
 # If the editor was not installed, the user is given a choice to exit now

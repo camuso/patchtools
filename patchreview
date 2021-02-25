@@ -350,8 +350,7 @@ menu_parser() {
 
 	case $setting in
 
-		s )	select_remrepo remote_repo
-			select_rembranch "$remote_repo" remote_branch
+		s )	get_remote_seek
 			;;
 		b )	git_setbranch $branchlist
 			git_get_lasttag lasttag $last_tag_file
@@ -371,8 +370,7 @@ menu_parser() {
 			;;
 		F )	format_upstream_patches
 			;;
-		S )	[ -f "$us_commits" ] || format_upstream_patches
-			check_fixes "$us_commits" "$remote_repo/$remote_branch"
+		S )	seek_missing_commits
 			;;
 		A )	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
 				&& exec_apply_patches
@@ -557,8 +555,8 @@ EOF
 		patchseekmode=$patchseek_off
 		patchvalfuzz=3
 		menumode=$menumode_ext
-		remote_repo="origin"
-		remote_branch="master"
+		# remote_repo="origin"
+		# remote_branch="master"
 		prj_set_item $prj_menumode $menumode
 		prj_set_item $prj_cmpmode $cmpmode
 		prj_set_item $prj_applymode $applymode
