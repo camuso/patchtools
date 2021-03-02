@@ -141,6 +141,7 @@ declare el9="el9"
 
 declare remote_repo=
 declare remote_branch=
+declare b_mrflag=false
 
 ########################################
 # Function Return Codes
@@ -178,6 +179,49 @@ control_c()
 }
 
 function test_sanity { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
+
+call_lab_mr_list() {
+	local outfile="$1"
+	lab mr list --all > $outfile
+}
+
+choose_merge_request() {
+	local mrlist=/dev/shm/mrlist
+	local mrarray=()
+	local mr=
+	local mrnum=
+	local mrsub=
+	local select=
+	local mypid=
+
+	call_lab_mr_list "$mrlist" & mypid=$!
+	ui_waitonproc_tty $mypid .05 \
+		""$INF"Please wait while we get the list of merge requests.$OFF"
+
+	while read mr; do
+		mr=$(echo ${mr:1})
+		mrnum=$(echo $mr | cut -d' ' -f1)
+		mrsub=$(echo $mr | cut -d' ' -f2-)
+		mrarray+=("$mrnum")
+		echo -e " $MNU$mrnum$OFF $mrsub"
+	done < $mrlist
+
+	while :; do
+		getuser "Enter a merge request number: " select
+		[ "$select" == "q" ] && return
+		echo ${mrarray[@]} | grep $select > /dev/null 2>&1
+		[ $? -eq 0 ] && break
+		echo -e "$STA$select$WRN is NOT a listed merge request."
+		echo -e ""$INF"Enter a different selection or press $qstr$INF to quit.$OFF"
+	done
+
+	eval $1="$select"
+}
+
+get_merge_request() {
+	b_mrflag=true
+
+}
 
 # get_remote_seek() - get the remote origin and branch to seek
 #
