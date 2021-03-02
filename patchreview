@@ -305,6 +305,7 @@ $MNU d$OFF  $indirstr directory         :$STA $indir$OFF has$STA $infilecount$OF
 $MNU w$OFF  $outdirstr directory          :$STA $outdir$OFF
 $MNU e$OFF  Diff Editor             :$STA $editor$OFF
 $MNU f$OFF  Patch Validation fuzz   :$STA $(show_patchvalfuzz)$OFF
+$MNU m$OFF  Choose a Merge Request
 $MNU
     $UND\0Batch Run Parameters$OFF
 $MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
@@ -326,6 +327,7 @@ EOF
 cat <<EOF
 $MNU\
     $UND\0Discrete Operations$OFF
+$MNU M$OFF  Get a Merge Request
 $MNU R$OFF  Rename mail files in    :$STA $indir$OFF
 $MNU F$OFF  Format commits into     :$STA $outdir$OFF
 $MNU S$OFF  Seek missing commits \
@@ -349,7 +351,10 @@ menu_parser() {
 	promptgetchar ""$MNU"Enter one of the above: "$OFF"" setting
 
 	case $setting in
-
+		m )	choose_merge_request mrselect
+			;&
+		M )	get_merge_request
+			;;
 		s )	get_remote_seek
 			;;
 		b )	git_setbranch $branchlist
@@ -366,7 +371,7 @@ menu_parser() {
 		x )	ui_cycle_state menumode $menumode_states
 			prj_set_item $prj_menumode $menumode
 			;;
-		R )	renpatfiles
+		R )	$b_mrflag || renpatfiles
 			;;
 		F )	format_upstream_patches
 			;;
