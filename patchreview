@@ -264,6 +264,12 @@ nuke() {
 	clean_indir
 	clean_outdir
 
+	if $b_mrflag; then
+		git checkout $start_branch
+		git branch -D $work_branch
+		b_mrflag=false
+	fi
+
 	# Reset the git head to the last tag
 	reset_to_lasttag
 
@@ -351,8 +357,8 @@ menu_parser() {
 	promptgetchar ""$MNU"Enter one of the above: "$OFF"" setting
 
 	case $setting in
-		m )	choose_merge_request mrselect
-			;&
+		m )	select_merge_request
+			;;
 		M )	get_merge_request
 			;;
 		s )	get_remote_seek
@@ -676,6 +682,15 @@ main() {
 	trap control_c SIGINT
 
 	! $(git_checkrepo) && git_invrepomsg && exit 1
+
+	# Check for "lab" installation for gitlab support
+	which lab > /dev/null 2>&1
+	if [ $? -ne 0 ]; then
+		echo -e "\n"$WRN"You must install the \"lab\" utility$OFF"
+		echo -e ""$INF"Please see:$OFF"
+		echo -e ""$STA"  https://docs.google.com/document/d/1PLPBqrnV-m4hr8Jos_7dhYGYqtMdiuCZZC72t2ljyEA/edit$OFF\n"
+		exit 1
+	fi
 
 	init_parms
 

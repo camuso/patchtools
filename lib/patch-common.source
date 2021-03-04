@@ -143,6 +143,9 @@ declare remote_repo=
 declare remote_branch=
 declare b_mrflag=false
 
+declare start_branch=
+declare work_branch=
+
 ########################################
 # Function Return Codes
 ########################################
@@ -185,7 +188,7 @@ call_lab_mr_list() {
 	lab mr list --all > $outfile
 }
 
-choose_merge_request() {
+select_merge_request() {
 	local mrlist=/dev/shm/mrlist
 	local mrarray=()
 	local mr=
@@ -193,7 +196,12 @@ choose_merge_request() {
 	local mrsub=
 	local select=
 	local mypid=
+	local selected
 
+	b_mrflag=true
+	applymode=$applymode_off
+	prj_set_item $prj_applymode $applymode
+	start_branch=$(git branch --show-current)
 	call_lab_mr_list "$mrlist" & mypid=$!
 	ui_waitonproc_tty $mypid .05 \
 		""$INF"Please wait while we get the list of merge requests.$OFF"
@@ -206,21 +214,47 @@ choose_merge_request() {
 		echo -e " $MNU$mrnum$OFF $mrsub"
 	done < $mrlist
 
+	getuser "Enter a merge request number: " selected
+
 	while :; do
-		getuser "Enter a merge request number: " select
-		[ "$select" == "q" ] && return
-		echo ${mrarray[@]} | grep $select > /dev/null 2>&1
+		[ "$selected" == "q" ] && return
+		echo ${mrarray[@]} | grep $selected > /dev/null 2>&1
 		[ $? -eq 0 ] && break
-		echo -e "$STA$select$WRN is NOT a listed merge request."
-		echo -e ""$INF"Enter a different selection or press $qstr$INF to quit.$OFF"
+		echo -e "$STA$selected$WRN is not a listed Merge Request."
+		getuser "Enter a different MR or press $qstr$INF to quit: " selected
 	done
 
-	eval $1="$select"
+	branch_merge_request "$selected"
+	work_branch=$(git branch --show-current)
 }
 
 get_merge_request() {
-	b_mrflag=true
+	local selected
 
+	b_mrflag=true
+	applymode=$applymode_off
+	prj_set_item $prj_applymode $applymode
+	start_branch=$(git branch --show-current)
+	getuser "Enter a merge request number: " selected
+
+	while :; do
+		[ "$selected" == "q" ] && return
+		labout=$(lab mr checkout $selected)
+		[ -z "$labout" ] && break
+		echo -e ""$WRN"Merge Request $STA$selected$WRN was not found!"
+		getuser "Enter a different MR or press $qstr$INF to quit: " selected
+	done
+
+	work_branch=$(git branch --show-current)
+}
+
+
+branch_merge_request() {
+	local mr="$1"
+
+	b_mrflag=true
+	lab mr checkout "$mr"
+	git format-patch -o $indir origin/main
 }
 
 # get_remote_seek() - get the remote origin and branch to seek
