@@ -311,7 +311,6 @@ $MNU d$OFF  $indirstr directory         :$STA $indir$OFF has$STA $infilecount$OF
 $MNU w$OFF  $outdirstr directory          :$STA $outdir$OFF
 $MNU e$OFF  Diff Editor             :$STA $editor$OFF
 $MNU f$OFF  Patch Validation fuzz   :$STA $(show_patchvalfuzz)$OFF
-$MNU m$OFF  Choose a Merge Request
 $MNU
     $UND\0Batch Run Parameters$OFF
 $MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
@@ -321,6 +320,8 @@ $MNU 4$OFF  Seek missing commits    :$STA $(show_patchseekmode)$OFF\
  $(show_nextpatch)$BLD
 $MNU
     $UND\0Main Controls     $OFF
+$MNU m$OFF  Get a list of Merge Requests and select one for review
+$MNU M$OFF  Enter a specific Merge Request for review
 $MNU r$OFF  Run in batch mode
 $MNU i$OFF  Init to defaults
 $MNU h$OFF  help text
@@ -333,7 +334,6 @@ EOF
 cat <<EOF
 $MNU\
     $UND\0Discrete Operations$OFF
-$MNU M$OFF  Get a Merge Request
 $MNU R$OFF  Rename mail files in    :$STA $indir$OFF
 $MNU F$OFF  Format commits into     :$STA $outdir$OFF
 $MNU S$OFF  Seek missing commits \
@@ -358,8 +358,10 @@ menu_parser() {
 
 	case $setting in
 		m )	select_merge_request
+			return $rc_run
 			;;
 		M )	get_merge_request
+			return $rc_run
 			;;
 		s )	get_remote_seek
 			;;
@@ -533,7 +535,14 @@ init_parms() {
 
 	prj_entries=$index
 	[ -d "$MYDATA" ] || mkdir $MYDATA
-	prj_init_prjfile $MYDATA/patchreview.prj $index
+
+	# Init the project file and test for blank fields that must not be blank
+	#
+	prj_init_prjfile $MYDATA/patchreview.prj $index \
+		$prj_editor \
+		$prj_indir \
+		$prj_outdir \
+		$prj_background
 	stat=$?
 
 	# If the above call to prj_init_prjfile returns nonzero, it means that a
@@ -541,6 +550,8 @@ init_parms() {
 	#
 	if [ $stat -ne 0 ]; then
 		ui_use_colors
+		prj_set_item $prj_background $terminal_background # lib/ui.source
+
 		local newprjstr=$(
 cat <<EOF
 $INF
@@ -574,7 +585,6 @@ EOF
 		prj_set_item $prj_applyfailmode $applyfailmode
 		prj_set_item $prj_patchseekmode $patchseekmode
 		prj_set_item $prj_patchvalfuzz $patchvalfuzz
-		prj_set_item $prj_background $terminal_background # lib/ui.source
 		prj_set_item $prj_remote_repo $remote_repo
 		prj_set_item $prj_remote_branch $remote_branch
 	fi
