@@ -752,6 +752,7 @@ select_remrepo() {
 show_remote_url() {
 	local reponame="$1"
 	local url
+	[ -z "$reponame" ] && return
 	url=$(grep -A1 "remote \"$reponame" .git/config | grep url | cut -d'=' -f2)
 	echo "$url"
 }
