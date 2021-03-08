@@ -26,7 +26,21 @@ function prj_get_emptyline {
 }
 
 prj_check_for_blanks() {
-	while read line; do [ "$line" ] || return 1; done < $1
+	local file=$1
+	shift
+	local checklist=( $@ )
+	local count=0
+
+	while read line; do
+		let ++count
+		# check only the lines in the checklist
+		grep -qw $count <<< ${checklist[@]} || continue
+
+		# If just one of the lines in the checkist is blank
+		# it's a fail.
+		[ "$line" ] || return 1
+	done < $file
+
 	return 0
 }
 
@@ -42,98 +56,12 @@ function prj_addblanklines {
 	done
 }
 
-# prj_init_prjfile_bools - uses bool offset to determine consistency
-#
-# This routine requires the file to be structured as follows.
-#
-# variable_1
-# variable_2
-#   :
-# variable_n
-# boolean_1
-# boolean_2
-#   :
-# boolean_n
-#
-# $1 - path and name of prjfile
-# $2 - number of lines (size of) prjfile
-# $3 - index to first boolean in the file
-# $4 - optional switch to disable blank line checking
-#
-# If the prjfile file does not exist, then create it and initialize it by
-# pumping as many empty lines in it as there will be entries in the
-# finished file.
-#
-# If the file exists, and the index to the first boolean has changed,
-# then void the file and fill it with empty lines.
-#
-function prj_init_prjfile_bools {
-	prjfile=$1	# this one's global
-	local prjfile_size=$2
-	local prj_boolindex=$3
-	local disable_blank_check=false
-	local prjstr_prjfile_created=$(
-cat <<EOF
-$INF	Project file $STA$prjfile$INF is being created \
-	with $STA$prj_prjfile_size$INF entries.
-	The last entry will record the number of lines.$OFF
-EOF
-)
-	# Set the global prj_prjfile_size to one greater than the size
-	# passed by the caller.
-	# The last line contains the offset to the first boolean as part of
-	# a consistency check.
-	# The extra line is owned and maintained by the project.source file
-	# and the user should not touch it.
-	#
-	prj_prjfile_size=$((prjfile_size + 1))
-
-	# If the user passed in a fourth argument, whatever it is, disable
-	# the blank checking part of the consistency check.
-	#
-	[ $# -eq 4 ] && disable_blank_check=true
-
-	# If the prjfile does not exist, then create it and initialize
-	# the contents.
-	# Else, check to see if it has the same number of lines as the
-	# caller passed. If not, initialize the contents.
-	#
-	if [ ! -f "$prjfile" ]; then
-		echo -e "$prjstr_prjfile_created"
-		prj_addblanklines $prjfile $prj_prjfile_size
-		prj_set_item $prj_prjfile_size $prj_boolindex
-		return $prj_newcreated
-	else
-		local sizediff
-		local size=$(cat $prjfile | wc -l)
-		local boolindex=
-		sizediff=$(( size - prj_prjfile_size ))
-
-		if [ $sizediff -ne 0 ] || [ $size -eq 0 ]; then
-			> $prjfile
-			prj_addblanklines $prjfile $prj_prjfile_size
-			prj_set_item $prj_prjfile_size $prj_boolindex
-			return $prj_inconsistant
-		fi
-
-		boolindex=$(ui_readline $size $prjfile)
-
-		if [ $? -ne 0 ] || [ "$boolindex" != "$prj_boolindex" ]; then
-			> $prjfile
-			prj_addblanklines $prjfile $prj_prjfile_size
-			prj_set_item $prj_prjfile_size $prj_boolindex
-			return $prj_inconsistant
-		fi
-	fi
-
-	$disable_blank_check && return 0 || return $(prj_check_for_blanks $prjfile)
-}
-
 # prj_init_prjfile
 #
 # $1 - path and name of prjfile
 # $2 - number of lines (size of) prjfile
 # $3 - optional switch to disable blank line checking
+# $4 - optional fields that must not be blank
 #
 # If the prjfile file does not exist, then create it and initialize it by
 # pumping as many empty lines in it as there will be entries in the
@@ -142,13 +70,13 @@ EOF
 function prj_init_prjfile {
 	prjfile=$1
 	prj_prjfile_size=$2
+	local disable_blank_check=true
+	local blank_field_args=2	# must-not-be blank fields argv index
 
 	# Make room for the file size record at the bottom of the file.
 	let ++prj_prjfile_size
 
-	local disable_blank_check=false
-
-	[ $# -eq 3 ] && disable_blank_check=true
+	[ $# -ge $blank_field_args ] && disable_blank_check=false
 
 	local prjstr_prjfile_created=\
 "\t"$INF"Project file "$STA"$prjfile"$INF" is being created.\n\
@@ -177,7 +105,11 @@ function prj_init_prjfile {
 		fi
 	fi
 
-	$disable_blank_check && return 0 || return $(prj_check_for_blanks $prjfile)
+	$disable_blank_check && return 0 || {
+		shift $blank_field_args
+		prj_check_for_blanks $prjfile $@
+		return $?
+	}
 }
 
 function prj_get_prjfile {
