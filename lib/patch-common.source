@@ -261,8 +261,11 @@ get_merge_request() {
 # 	$1 - MR ID number
 #
 # Globals:
-# 	b_rename_infiles
+# 	valpatchlist
+#	patchcount
 # 	applymode
+# 	b_rename_infiles
+#	b_fmt_upstream
 #
 get_merge_request_patches() {
 	local mr="$1"
@@ -277,16 +280,17 @@ get_merge_request_patches() {
 			|| return 0
 	fi
 
+	b_fmt_upstream=true
 	b_rename_infiles=false
 	applymode=$applymode_off
-	prj_set_item $prj_applymode $applymode
-	prj_set_item $prj_b_rename_infiles $b_rename_infiles
+	valpatchlist=
 
 	> $bp_commits
 	lab mr show --reverse --patch $mr | grep "^commit " | cut -d' ' -f2 \
 		> $bp_commits & mypid=$!
 	ui_waitonproc_tty $mypid .05 ""$INF"Getting patches from MR $STA$selected$OFF"
 
+	patchcount=$(cat $bp_commits | wc -l)
 	git_file2patchset $bp_commits $indir
 }
 
@@ -1153,6 +1157,7 @@ format_upstream_patches() {
 	local b_yup
 	local banner=
 	local pad=
+	local escnt=
 
 	[ "$fc" ] && {
 		echo
@@ -1174,7 +1179,8 @@ format_upstream_patches() {
 	git_comment2commitsfile $indir "$us_commits" 40 $patchvalfuzz
 	echo
 	banner=""$INF"Upstream commits extracted from the patches in $STA$us_commits$OFF"
-	pad=$(ui_putnchar '=' ${#banner})
+	escnt=$((${#STA} + ${#INF} + ${#OFF}))
+	pad=$(ui_putnchar '=' $(( ${#banner} - $escnt)))
 	echo -e "$banner\n$pad$OFF"
 
 	cat "$us_commits"
@@ -1344,9 +1350,13 @@ exec_patcmp() {
 	[ "$valpatchlist" ] || create_patchlist "$patchlist" valpatchlist
 	patchtotal=$(wc -w <<< "$valpatchlist")
 
+# echo "indir: $indir  outdir: $outdir"
 # echo "patchtotal: $patchtotal"
 # echo "patchlist:"
 # echo "${patchlist[@]}"
+# echo
+# echo "valpatchlist:"
+# echo "${valpatchlist[@]}"
 # ui_press_any
 
 	# If the mmfile does not contain the same number of patches
@@ -1360,7 +1370,7 @@ exec_patcmp() {
 				     -o $mmfile "$xval"
 		fi
 	else
-		patbatcmpmgr -P $valpatchlist -R $indir -U $outdir -o $mmfile
+		patbatcmpmgr -P -x $valpatchlist -R $indir -U $outdir -o $mmfile
 	fi
 	patcmp -m $mmfile $indir $outdir $editor "$us_commits"
 }
