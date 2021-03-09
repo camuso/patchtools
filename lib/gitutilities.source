@@ -80,20 +80,22 @@ function git_file2patchset {
 	local commitnum=0
 	local index=1
 	local pfx=""
-	local banner=
 	local pad=
+	local banner=\
+"$INF\
+Formatting $STA$patchcount$INF patches from $STA$commitsfile$INF into \
+$STA$outdir$OFF"
 
 	if [ $patchcount -eq 0 ]; then
 		echo
-		echo -e "\tSorry, but file "$attr_bold""$commitsfile""$attr_OFF" is empty."
+		echo -e ""$WRN"File "$STA""$commitsfile""$WRN" is empty.$OFF"
 		echo
 		[ $# -eq 3 ] && eval $3=$patchcount
 		return 1
 	fi
 
-	banner="Formatting $patchcount patches from upstream into $outdir"
 	pad=$(ui_putnchar '=' ${#banner})
-	echo -e "$BLD$banner\n$pad$OFF"
+	echo -e "$banner\n$pad$OFF"
 
 	while read line; do
 		[ "${line:0:1}" == "#" ] && continue
