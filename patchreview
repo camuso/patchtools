@@ -178,6 +178,7 @@ function clean_dir {
 clean_indir() {
 	# remove everything in the indir, except any subdirs
 	find $indir -maxdepth 1 -not -type d -exec rm -vf '{}' \;
+	patchcount=0
 }
 
 clean_outdir() {
@@ -231,14 +232,14 @@ reset_to_lasttag() {
 	local errstr=$(
 cat <<EOF
 
-$UND$BLD\0Warning!$OFF
-It appears the head was moved outside of this script.
-		Current branch: $BLD$(git_getcurrentbranch)$OFF
-Most recent tag of that branch: $BLD$lasttag$OFF
-Most recent tag in this script: $BLD$newlasttag$OFF
+$WRN\0Warning
+It appears the head was moved outside of this script.$INF
+		Current branch: $STA$(git_getcurrentbranch)$INF
+Most recent tag of that branch: $STA$lasttag$INF
+Most recent tag in this script: $STA$newlasttag$INF
 
 Please switch to the correct branch.
-Not resetting the head.
+We won't reset the head.$OFF
 
 \0
 EOF
