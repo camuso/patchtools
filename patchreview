@@ -264,12 +264,6 @@ nuke() {
 	clean_indir
 	clean_outdir
 
-	if $b_mrflag; then
-		git checkout $start_branch
-		git branch -D $work_branch
-		b_mrflag=false
-	fi
-
 	# Reset the git head to the last tag
 	reset_to_lasttag
 
