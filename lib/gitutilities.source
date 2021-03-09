@@ -82,9 +82,10 @@ function git_file2patchset {
 	local pfx=""
 	local pad=
 	local banner=\
-"$INF\
+""$INF"\
 Formatting $STA$patchcount$INF patches from $STA$commitsfile$INF into \
-$STA$outdir$OFF"
+$STA$destdir$OFF"
+	local escnt=$(((${#STA} * 3) +(${#INF} * 3) + ${#OFF}))
 
 	if [ $patchcount -eq 0 ]; then
 		echo
@@ -94,7 +95,7 @@ $STA$outdir$OFF"
 		return 1
 	fi
 
-	pad=$(ui_putnchar '=' ${#banner})
+	pad=$(ui_putnchar '=' $(( ${#banner} - $escnt )))
 	echo -e "$banner\n$pad$OFF"
 
 	while read line; do
