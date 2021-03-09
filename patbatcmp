@@ -31,6 +31,8 @@ Options:
 
   -V  - Very verbose also prints the lines compared from each file
 
+  -x  - execute as a subroutine called from another script
+
   -o <file> - sends the outputs to a file
 
 Compare the .patch files in two directories as pairs, one pair at a time
@@ -80,6 +82,7 @@ declare eofA=false	# found the end of file A
 declare eofB=false	# found the end of file B
 declare b_done=false	# loop control
 declare b_valpatchlist=false
+declare b_external=false
 
 # list of files in each directory
 #
@@ -145,7 +148,7 @@ $dirB has $fcountB .patch files.
 Both directories must have the same number of .patch files.
 "
 	press_any
-	usage
+	$b_external || usage
 }
 
 while getopts hdpsvVo:P: OPTION; do
@@ -159,7 +162,7 @@ while getopts hdpsvVo:P: OPTION; do
 	p ) nopaths=true	# exclude the paths when true
 	    let optcnt++
 	    ;;
-    P ) valpatchlist=($OPTARG)
+	P ) valpatchlist=($OPTARG)
 	    b_valpatchlist=true
 	    let optcnt++
 	    let optcnt++
@@ -181,6 +184,9 @@ while getopts hdpsvVo:P: OPTION; do
 	    > $ofile		# zero the output file
 	    b_stdout=false	# notify that output is going to text file
 	    let optcnt++
+	    let optcnt++
+	    ;;
+	x ) b_external=true
 	    let optcnt++
 	    ;;
 	* ) echo "unrecognized option "
