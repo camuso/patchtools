@@ -419,6 +419,9 @@ menu_parser() {
 			;;
 		h )	less $manual
 			;;
+#		T )	# test functions
+			# hidden from main menu
+			# ;;
 	esac
 	return $rc_continue
 }
@@ -635,7 +638,10 @@ main_loop() {
 			[ $? -ne 0 ] && continue
 		fi
 
-		[ $cmpmode -ne $cmpmode_off ] && compare_patches
+		if [ $cmpmode -ne $cmpmode_off ]; then
+			compare_patches
+			$b_mrflag && query_acknack
+		fi
 	done
 }
 

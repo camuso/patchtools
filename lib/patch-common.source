@@ -142,6 +142,9 @@ declare el9="el9"
 declare remote_repo=
 declare remote_branch=
 
+declare current_mr=
+declare b_mrflag=false
+
 ########################################
 # Function Return Codes
 ########################################
@@ -178,6 +181,59 @@ control_c()
 }
 
 function test_sanity { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
+
+# query_acknack - ask the user if they want to respond to the MR
+#
+# Globals
+# 	b_mrflag
+# 	current_mr
+#
+query_acknack() {
+	$b_mrflag || return
+	[ -n "$current_mr" ] || return
+
+	local response
+	local b_yes=false
+	local b_ackflag=false
+	local b_nackflag=false
+	local actstr
+	local acknackmenu=$(
+cat <<EOF
+
+$MNU Do you want to ...
+$MNU a$STA  ACK$OFF Merge Request $STA$current_mr$OFF
+$MNU n$WRN  NACK$OFF Merge Request $STA$current_mr$OFF
+$MNU q$OFF  Skip this step$OFF
+\0
+EOF
+)
+	while :; do
+		echo -e "$acknackmenu"
+		promptgetchar ""$MNU"Enter a, n, or s: $OFF" response
+		[[ qna =~ $response ]] && break
+	done
+
+	case "$response" in
+		q ) return
+		    ;;
+		a ) b_ackflag=true
+		    actstr=""$STA"ACK$OFF"
+		    ;;
+		n ) b_nackflag=true
+		    actstr=""$WRN"NACK$OFF"
+		   ;;
+	esac
+
+	local querystring="\
+"$INF"Are you sure you want to $actstr Merge Request \
+$STA$current_mr$INF (y/n)? $OFF"
+	loop_yn "$querystring" b_yes
+
+	if $b_yes; then
+		$b_ackflag && lab mr comment $current_mr
+		$b_nackflag && lab mr discussion $current_mr
+	fi
+}
 
 # call_lab_mr_list - worker function to create the mr list
 #
@@ -266,6 +322,9 @@ get_merge_request() {
 # 	applymode
 # 	b_rename_infiles
 #	b_fmt_upstream
+#	prj_applymode
+#	prj_b_fmt_upstream
+#	prj_b_rename_infiles
 #
 get_merge_request_patches() {
 	local mr="$1"
@@ -280,10 +339,16 @@ get_merge_request_patches() {
 			|| return 0
 	fi
 
+	b_mrflag=true
 	b_fmt_upstream=true
 	b_rename_infiles=false
 	applymode=$applymode_off
+	prj_set_item $prj_applymode $applymode
+	prj_set_item $prj_b_rename_infiles $b_rename_infiles
+	prj_set_item $prj_b_fmt_upstream $b_fmt_upstream
+
 	valpatchlist=
+	current_mr="$mr"
 
 	> $bp_commits
 	lab mr show --reverse --patch $mr | grep "^commit " | cut -d' ' -f2 \
@@ -1390,7 +1455,7 @@ compare_patches() {
 	esac
 }
 
-# init_menu - initialize the menu loop with default values
+# init_menu - initialize the menu loop with default global values
 #
 init_menu() {
 	init_booleans
@@ -1401,6 +1466,8 @@ init_menu() {
 	startpat=1
 	b_fmt_upstream=true
 	b_allapplied=false
+	b_mrflag=false
+	current_mr=
 	[ -f "$usvbp_commits" ] && rm -f "$usvbp_commits"
 }
 
