@@ -306,6 +306,7 @@ $MNU d$OFF  $indirstr directory         :$STA $indir$OFF has$STA $infilecount$OF
 $MNU w$OFF  $outdirstr directory          :$STA $outdir$OFF
 $MNU e$OFF  Diff Editor             :$STA $editor$OFF
 $MNU f$OFF  Patch Validation fuzz   :$STA $(show_patchvalfuzz)$OFF
+$MNU g$OFF  grep Merge List for     :$STA $mergelist_filter$OFF
 $MNU
     $UND\0Batch Run Parameters$OFF
 $MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
@@ -352,11 +353,12 @@ menu_parser() {
 	promptgetchar ""$MNU"Enter one of the above: "$OFF"" setting
 
 	case $setting in
-		m )	select_merge_request
-			return $rc_run
+		g )	getuser "Text to grep in Merge List: " mergelist_filter
+			prj_set_item $prj_mergelist_filter $mergelist_filter
 			;;
-		M )	get_merge_request
-			return $rc_run
+		m )	select_merge_request &&	return $rc_run
+			;;
+		M )	get_merge_request && return $rc_run
 			;;
 		s )	get_remote_seek
 			;;
@@ -468,6 +470,7 @@ init_loopvars() {
 	menumode=$(prj_get_item $prj_menumode)
 	remote_repo=$(prj_get_item $prj_remote_repo)
 	remote_branch=$(prj_get_item $prj_remote_branch)
+	mergelist_filter=$(prj_get_item $prj_mergelist_filter)
 }
 
 function menu_loop {
@@ -517,6 +520,7 @@ init_parms() {
 	prj_background \
 	prj_remote_repo \
 	prj_remote_branch \
+	prj_mergelist_filter \
 	prj_b_rename_infiles \
 	prj_b_fmt_upstream
 	do

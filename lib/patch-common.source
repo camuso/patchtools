@@ -85,6 +85,7 @@ declare prj_applymode
 declare prj_background
 declare prj_remote_repo
 declare prj_remote_branch
+declare prj_mergelist_filter
 declare prj_b_rename_infiles
 declare prj_b_fmt_upstream
 
@@ -145,6 +146,8 @@ declare remote_branch=
 declare current_mr=
 declare b_mrflag=false
 
+declare mergelist_filter=
+
 ########################################
 # Function Return Codes
 ########################################
@@ -165,6 +168,7 @@ function exit_me {
 	prj_set_item $prj_b_fmt_upstream $b_fmt_upstream
 	prj_set_item $prj_remote_repo $remote_repo
 	prj_set_item $prj_remote_branch $remote_branch
+	prj_set_item $prj_mergelist_filter $mergelist_filter
 	b_prologue=false
 	[ -f "$prologue_file".txt ] && 	mv "$prologue_file".txt "$prologue_file"
 	[ -e "$last_tag_file" ] && rm -f $last_tag_file
@@ -242,7 +246,12 @@ $STA$current_mr$INF (y/n)? $OFF"
 #
 call_lab_mr_list() {
 	local outfile="$1"
-	lab mr list --all > $outfile
+
+	if [ -z "$mergelist_filter" ]; then
+		lab mr list --all > $outfile
+	else
+		lab mr list --all | grep "$mergelist_filter" > $outfile
+	fi
 }
 
 # select_merge_request - select a MR from a list
@@ -278,7 +287,7 @@ select_merge_request() {
 	getuser "Enter a merge request number: " selected
 
 	while :; do
-		[ "$selected" == "q" ] && return
+		[ "$selected" == "q" ] && return 1
 		echo ${mrarray[@]} | grep $selected > /dev/null 2>&1
 		[ $? -eq 0 ] && break
 		echo -e "$STA$selected$WRN is not a listed Merge Request."
@@ -286,6 +295,8 @@ select_merge_request() {
 	done
 
 	get_merge_request_patches "$selected"
+
+	return 0
 }
 
 # get_merge_request - check-out a specific MR
@@ -303,12 +314,14 @@ get_merge_request() {
 	getuser "Enter a merge request number: " selected
 
 	while :; do
-		[ "$selected" == "q" ] && return
+		[ "$selected" == "q" ] && return 1
 		get_merge_request_patches "$selected"
 		[ -s $bp_commits ] && break
 		echo -e ""$WRN"Merge Request $STA$selected$WRN was not found!"
 		getuser "Enter a different MR or press $qstr$INF to quit: " selected
 	done
+
+	return 0
 }
 
 # get_merge_request_patches - checkout a merge request into its own branch
@@ -317,14 +330,15 @@ get_merge_request() {
 # 	$1 - MR ID number
 #
 # Globals:
-# 	valpatchlist
-#	patchcount
-# 	applymode
+#	b_mrflag
 # 	b_rename_infiles
 #	b_fmt_upstream
 #	prj_applymode
 #	prj_b_fmt_upstream
 #	prj_b_rename_infiles
+#
+# 	valpatchlist
+#	patchcount
 #
 get_merge_request_patches() {
 	local mr="$1"
