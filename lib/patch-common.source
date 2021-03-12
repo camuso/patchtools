@@ -234,7 +234,7 @@ $STA$current_mr$INF (y/n)? $OFF"
 	loop_yn "$querystring" b_yes
 
 	if $b_yes; then
-		$b_ackflag && lab mr comment $current_mr
+		$b_ackflag && lab mr approve $current_mr
 		$b_nackflag && lab mr discussion $current_mr
 	fi
 }
