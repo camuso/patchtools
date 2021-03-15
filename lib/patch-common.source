@@ -86,6 +86,7 @@ declare prj_background
 declare prj_remote_repo
 declare prj_remote_branch
 declare prj_mergelist_filter
+declare prj_opmode
 declare prj_b_rename_infiles
 declare prj_b_fmt_upstream
 
@@ -126,6 +127,11 @@ declare -i patchseekmode
 declare -i patchseek_off=0
 declare -i patchseek_on=1
 declare -i patchseek_states=2
+
+declare -i opmode
+declare -i opmode_mr=0
+declare -i opmode_email=1
+declare -i opmode_states=2
 
 declare -i startpat=1
 declare -i menucols=30
@@ -185,6 +191,13 @@ control_c()
 }
 
 function test_sanity { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
+
+show_opmode() {
+	case $opmode in
+		$opmode_mr    ) echo "Merge Request mode" ;;
+		$opmode_email ) echo "email patch mode" ;;
+	esac
+}
 
 # query_acknack - ask the user if they want to respond to the MR
 #
@@ -901,8 +914,8 @@ show_applyfailmode() {
 
 show_patchseekmode() {
 	case $patchseekmode in
-		$patchseek_off ) echo "OFF" ;;
-		$patchseek_on  ) echo "ON" ;;
+		$patchseek_off ) echo -n "OFF" ;;
+		$patchseek_on  ) echo -n "ON" ;;
 	esac
 }
 

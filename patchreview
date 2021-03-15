@@ -277,6 +277,175 @@ nuke() {
 	prj_set_item $prj_applymode $applymode
 }
 
+show_config_menu() {
+	local opt
+	local config_menu=$(
+cat <<EOF
+$MNU
+    $UND\0Environment       $OFF
+$MNU o$OFF  Operating mode          :$STA $(show_opmode)
+$MNU d$OFF  $indirstr directory         :$STA $indir$OFF has$STA $infilecount$OFF $patstr\0files
+$MNU w$OFF  $outdirstr directory          :$STA $outdir
+$MNU e$OFF  Diff Editor             :$STA $editor
+$MNU f$OFF  Patch Validation fuzz   :$STA $(show_patchvalfuzz)
+$MNU
+    $UND\0Batch Run Parameters$OFF
+$MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)
+$MNU 2$OFF  Patch apply mode        :$STA $(show_applymode)
+$MNU 3$OFF  Patch apply fail mode   :$STA $(show_applyfailmode)
+$MNU 4$OFF  Seek missing commits    :$STA $(show_patchseekmode)
+ $(show_nextpatch)
+$MNU q$OFF  Quit and return to prev menu
+EOF
+)
+	while :; do
+		echo -e "$config_menu"
+		promptgetchar ""$MNU"Enter one of the above: "$OFF"" opt
+		case $opt in
+		o )	ui_cycle_state opmode $opmode_states
+			prj_set_item $prj_opmode $opmode
+			;;
+		d )	prj_set_directory "$indirstr" $prj_indir indir quiet
+			;;
+		w )	prj_set_directory "$outdirstr" $prj_outdir outdir quiet
+			;;
+		e )	set_editor
+			;;
+		f )	set_patchvalfuzz
+			;;
+		1 )	ui_cycle_state cmpmode $cmpmode_states
+			prj_set_item $prj_cmpmode $cmpmode
+			;;
+		2 )	ui_cycle_state applymode $applymode_states
+			prj_set_item $prj_applymode $applymode
+			;;
+		3 )	ui_cycle_state applyfailmode $applyfailmode_states
+			prj_set_item $prj_applyfailmode $applyfailmode
+			;;
+		4 )	ui_cycle_state patchseekmode $patchseek_states
+			prj_set_item $prj_patchseekmode $patchseekmode
+			;;
+		5 )	$b_selpat && select_patch
+			;;
+		q ) 	return
+			;;
+		esac
+	done
+
+}
+
+show_mr_extops() {
+	local opt
+	local mr_extops=$(
+cat <<EOF
+$MNU\
+    $UND\0Discrete Operations
+$MNU F$OFF  Format commits into     :$STA $outdir
+$MNU S$OFF  Seek missing commits
+$MNU P$OFF  Compare Patches \
+ $(show_apply_patches)
+$MNU B$OFF  Create a new branch at  :$STA $current_head_trunc
+$MNU C$OFF  Clean the $STA$indirstr$OFF and/or $STA$outdirstr$OFF directories
+$MNU G$OFF  Git reset to            :$STA $lasttag
+$MNU N$OFF  Nuke the directories and reset head to most recent tag \
+ $(show_view_logs)
+$MNU q$OFF  Quit and return to prev menu
+$OFF
+EOF
+)
+	while :; do
+		promptgetchar ""$MNU"Enter one of the above: "$OFF"" opt
+		case $opt in
+		F )	format_upstream_patches
+			;;
+		S )	seek_missing_commits
+			;;
+		P )	compare_patches
+			;;
+		A )	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
+				&& exec_apply_patches
+			;;
+		B )	create_branch
+			;;
+		C )	clean_directories
+			;;
+		G )	reset_to_lasttag
+			rm -f $usvbp_commits
+			;;
+		N )	nuke
+			;;
+		V )	view_logs
+			;;
+		q )	return
+			;;
+		esac
+	done
+}
+
+show_mr_menu() {
+	local opt
+	local mr_menu=$(
+cat <<EOF
+$MNU
+    $UND\0Environment       $OFF
+$MNU c$OFF  Config Menu
+    Most recent tag         :$STA $lasttag$OFF
+    Current Head            :$STA $current_head_trunc$OFF
+$MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
+$MNU s$OFF  Remote Repo/Branch      :$STA $remote_repo/$remote_branch$OFF
+    Remote URL              :$STA$(show_remote_url "$remote_repo")$OFF
+$MNU g$OFF  grep Merge List for     :$STA $mergelist_filter$OFF
+$MNU
+    $UND\0Main Controls     $OFF
+$MNU m$OFF  Get a list of Merge Requests and select one for review
+$MNU M$OFF  Enter a specific Merge Request for review
+$MNU i$OFF  Init to defaults
+$MNU h$OFF  help text
+$MNU q$OFF  Quit this script
+$MNU x$OFF  Toggle Extended Operations Menu
+$OFF
+EOF
+)
+}
+
+show_email_menu() {
+	local opt
+	local email_menu=$(
+cat <<EOF
+$MNU
+    $UND\0Environment       $OFF
+$MNU o$OFF  Operating mode  :$STA $(show_opmode)$OFF
+    Most recent tag         :$STA $lasttag$OFF
+    Current Head            :$STA $current_head_trunc$OFF
+$MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
+$MNU s$OFF  Remote Repo/Branch      :$STA $remote_repo/$remote_branch$OFF
+    Remote URL              :$STA$(show_remote_url "$remote_repo")$OFF
+$MNU d$OFF  $indirstr directory         :$STA $indir$OFF has$STA $infilecount$OFF $patstr\0files
+$MNU w$OFF  $outdirstr directory          :$STA $outdir$OFF
+$MNU e$OFF  Diff Editor             :$STA $editor$OFF
+$MNU f$OFF  Patch Validation fuzz   :$STA $(show_patchvalfuzz)$OFF
+$MNU g$OFF  grep Merge List for     :$STA $mergelist_filter$OFF
+$MNU
+    $UND\0Batch Run Parameters$OFF
+$MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
+$MNU 2$OFF  Patch apply mode        :$STA $(show_applymode)$OFF
+$MNU 3$OFF  Patch apply fail mode   :$STA $(show_applyfailmode)$OFF
+$MNU 4$OFF  Seek missing commits    :$STA $(show_patchseekmode)$OFF\
+ $(show_nextpatch)$BLD
+$MNU
+    $UND\0Main Controls     $OFF
+$MNU m$OFF  Get a list of Merge Requests and select one for review
+$MNU M$OFF  Enter a specific Merge Request for review
+$MNU r$OFF  Run in batch mode
+$MNU i$OFF  Init to defaults
+$MNU h$OFF  help text
+$MNU q$OFF  Quit this script
+$MNU x$OFF  Toggle Extended Menu
+$OFF
+EOF
+)
+}
+
 # show_settings - the main menu display
 #
 # Globals:
@@ -297,6 +466,7 @@ show_settings() {
 cat <<EOF
 $MNU
     $UND\0Environment       $OFF
+$MNU o$OFF  Operating mode  :$STA $(show_opmode)$OFF
     Most recent tag         :$STA $lasttag$OFF
     Current Head            :$STA $current_head_trunc$OFF
 $MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
@@ -312,7 +482,7 @@ $MNU
 $MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
 $MNU 2$OFF  Patch apply mode        :$STA $(show_applymode)$OFF
 $MNU 3$OFF  Patch apply fail mode   :$STA $(show_applyfailmode)$OFF
-$MNU 4$OFF  Seek missing commits    :$STA $(show_patchseekmode)$OFF\
+$MNU 4$OFF  Seek missing commits    :$STA $(show_patchseekmode)$OFF
  $(show_nextpatch)$BLD
 $MNU
     $UND\0Main Controls     $OFF
@@ -365,14 +535,6 @@ menu_parser() {
 		b )	git_setbranch $branchlist
 			git_get_lasttag lasttag $last_tag_file
 			;;
-		d )	prj_set_directory "$indirstr" $prj_indir indir quiet
-			;;
-		w )	prj_set_directory "$outdirstr" $prj_outdir outdir quiet
-			;;
-		e )	set_editor
-			;;
-		f )	set_patchvalfuzz
-			;;
 		x )	ui_cycle_state menumode $menumode_states
 			prj_set_item $prj_menumode $menumode
 			;;
@@ -386,20 +548,6 @@ menu_parser() {
 				&& exec_apply_patches
 			;;
 		V )	view_logs
-			;;
-		1 )	ui_cycle_state cmpmode $cmpmode_states
-			prj_set_item $prj_cmpmode $cmpmode
-			;;
-		2 )	ui_cycle_state applymode $applymode_states
-			prj_set_item $prj_applymode $applymode
-			;;
-		3 )	ui_cycle_state applyfailmode $applyfailmode_states
-			prj_set_item $prj_applyfailmode $applyfailmode
-			;;
-		4 )	ui_cycle_state patchseekmode $patchseek_states
-			prj_set_item $prj_patchseekmode $patchseekmode
-			;;
-		5 )	$b_selpat && select_patch
 			;;
 		C )	clean_directories
 			;;
@@ -471,6 +619,7 @@ init_loopvars() {
 	remote_repo=$(prj_get_item $prj_remote_repo)
 	remote_branch=$(prj_get_item $prj_remote_branch)
 	mergelist_filter=$(prj_get_item $prj_mergelist_filter)
+	opmode=$(prj_get_item $prj_opmode)
 }
 
 function menu_loop {
@@ -521,6 +670,7 @@ init_parms() {
 	prj_remote_repo \
 	prj_remote_branch \
 	prj_mergelist_filter \
+	prj_opmode \
 	prj_b_rename_infiles \
 	prj_b_fmt_upstream
 	do
@@ -579,6 +729,7 @@ EOF
 		patchseekmode=$patchseek_off
 		patchvalfuzz=3
 		menumode=$menumode_ext
+		opmode=$opmode_mr
 		# remote_repo="origin"
 		# remote_branch="master"
 		prj_set_item $prj_menumode $menumode
@@ -589,6 +740,7 @@ EOF
 		prj_set_item $prj_patchvalfuzz $patchvalfuzz
 		prj_set_item $prj_remote_repo $remote_repo
 		prj_set_item $prj_remote_branch $remote_branch
+		prj_set_item $prj_opmode $opmode
 	fi
 
 	b_color=true
