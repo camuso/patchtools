@@ -115,8 +115,7 @@ declare -i applymode_off=0
 declare -i applymode_norm=1
 declare -i applymode_3way=2
 declare -i applymode_patch=3
-declare -i applymode_states=4
-
+declare -i applymode_states=
 declare -i applyfailmode
 declare -i applyfailmode_exit=0
 declare -i applyfailmode_cont=1
@@ -193,6 +192,7 @@ control_c()
 function test_sanity { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
 
 show_opmode() {
+echo "opmode: $opmode"
 	case $opmode in
 		$opmode_mr    ) echo "Merge Request mode" ;;
 		$opmode_email ) echo "email patch mode" ;;
