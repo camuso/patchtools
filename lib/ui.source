@@ -534,7 +534,7 @@ select_from_array() {
 	echo
 
 	while true; do
-		loop_range_q 1 $asize selection
+		loop_range_q 1 $asize selection || return 1
 
 		[ $? -eq 0 ] && eval $3=${array[$((selection-1))]}
 		is_array_member array ${!3}

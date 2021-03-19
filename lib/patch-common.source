@@ -192,10 +192,10 @@ control_c()
 function test_sanity { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
 
 show_opmode() {
-echo "opmode: $opmode"
+	opmode=$(prj_get_item $prj_opmode)
 	case $opmode in
-		$opmode_mr    ) echo "Merge Request mode" ;;
-		$opmode_email ) echo "email patch mode" ;;
+		$opmode_mr    ) echo "Merge Request Mode" ;;
+		$opmode_email ) echo "Email Patch Mode" ;;
 	esac
 }
 
@@ -206,9 +206,11 @@ echo "opmode: $opmode"
 # 	current_mr
 #
 query_acknack() {
-	$b_mrflag || return
-	[ -n "$current_mr" ] || return
-
+	[ -n "$current_mr" ] || {
+		echo -e "${WRN}There is no MR for those patches."
+		echo -e "${INF}Please prese M or m to enter or choose an MR.$OFF"
+		return
+	}
 	local response
 	local b_yes=false
 	local b_ackflag=false
@@ -226,7 +228,7 @@ EOF
 )
 	while :; do
 		echo -e "$acknackmenu"
-		promptgetchar ""$MNU"Enter a, n, or s: $OFF" response
+		promptgetchar ""$MNU"Enter a, n, or q: $OFF" response
 		[[ qna =~ $response ]] && break
 	done
 
@@ -322,7 +324,7 @@ select_merge_request() {
 # 	bp_commits
 #
 get_merge_request() {
-	local selected
+	local selected=
 
 	getuser "Enter a merge request number: " selected
 
@@ -349,7 +351,7 @@ get_merge_request() {
 #	prj_applymode
 #	prj_b_fmt_upstream
 #	prj_b_rename_infiles
-#
+#	current_mr
 # 	valpatchlist
 #	patchcount
 #
@@ -358,6 +360,8 @@ get_merge_request_patches() {
 	local count=$(ls $indir/*.patch 2>/dev/null | wc -l)
 	local b_yes
 	local mypid
+
+	current_mr=$mr
 
 	if [ $count -gt 0 ]; then
 		echo -e ""$WRN"There are $STA$count$WRN patches in $STA$indir$OFF"
@@ -375,7 +379,6 @@ get_merge_request_patches() {
 	prj_set_item $prj_b_fmt_upstream $b_fmt_upstream
 
 	valpatchlist=
-	current_mr="$mr"
 
 	> $bp_commits
 	lab mr show --reverse --patch $mr | grep "^commit " | cut -d' ' -f2 \
@@ -1253,7 +1256,7 @@ format_upstream_patches() {
 
 	[ "$fc" ] && {
 		echo
-		echo -e ""$INF"There are aready upstream patch files in $STA$outdir$OFF"
+		echo -e ""$INF"There are already upstream patch files in $STA$outdir$OFF"
 		getyn "Do you want to replace them?" b_yup
 		$b_yup || return 0
 	}
@@ -1442,14 +1445,14 @@ exec_patcmp() {
 	[ "$valpatchlist" ] || create_patchlist "$patchlist" valpatchlist
 	patchtotal=$(wc -w <<< "$valpatchlist")
 
-# echo "indir: $indir  outdir: $outdir"
-# echo "patchtotal: $patchtotal"
-# echo "patchlist:"
-# echo "${patchlist[@]}"
-# echo
-# echo "valpatchlist:"
-# echo "${valpatchlist[@]}"
-# ui_press_any
+ echo "indir: $indir  outdir: $outdir"
+ echo "patchtotal: $patchtotal"
+ echo "patchlist:"
+ echo "${patchlist[@]}"
+ echo
+ echo "valpatchlist:"
+ echo "${valpatchlist[@]}"
+ ui_press_any
 
 	# If the mmfile does not contain the same number of patches
 	# as the infilecount, then go make the mmfile.

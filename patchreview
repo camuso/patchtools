@@ -277,26 +277,58 @@ nuke() {
 	prj_set_item $prj_applymode $applymode
 }
 
+# show_config_menu - display the configuration options and their current state
+#
+# Globals:
+# 	indir
+# 	indirstr
+# 	infilecount
+# 	outdir
+# 	outdirstr
+# 	patstr
+# 	editor
+#
 show_config_menu() {
-	local opt
 	local config_menu=$(
 cat <<EOF
 $MNU
-    $UND\0Environment         $OFF
+    $UND\0Configuration       $OFF
 $MNU o$OFF  Operating mode          :$STA $(show_opmode)
 $MNU d$OFF  $indirstr directory         :$STA $indir$OFF has$STA $infilecount$OFF $patstr\0files
 $MNU w$OFF  $outdirstr directory          :$STA $outdir
 $MNU e$OFF  Diff Editor             :$STA $editor
-$MNU f$OFF  Patch Validation fuzz   :$STA $(show_patchvalfuzz)\
-$MNU
-$(show_nextpatch)\
+$MNU f$OFF  Patch Validation fuzz   :$STA $(show_patchvalfuzz)
 $MNU q$OFF  Quit and return to previous menu
 \0
 EOF
 )
+	echo -e "$config_menu"
+}
+
+# config_parser - config the options selected from the config menu
+#
+# Globals
+# 	opmode
+# 	opmode_mr
+# 	opmode_states
+# 	b_mrflag
+# 	indir
+# 	indirstr
+# 	prj_indir
+# 	outdir
+# 	outdirstr
+# 	prj_outdir
+#
+config_parser() {
+	local opt
+
 	while :; do
-		echo -e "$config_menu"
+		get_booleans
+		init_files
+		init_loopvars
+		show_config_menu
 		promptgetchar ""$MNU"Enter one of the above: "$OFF"" opt
+
 		case $opt in
 		o )	ui_cycle_state opmode $opmode_states
 			prj_set_item $prj_opmode $opmode
@@ -314,16 +346,28 @@ EOF
 			;;
 		esac
 	done
-
 }
 
+# show_extops - display the extended operations menu
+#
+# Presents the Discrete Operations
+#
+# Globals
+# 	b_mrflag
+# 	indir
+# 	outdir
+# 	current_head_trunc
+# 	indirstr
+# 	outdirstr
+# 	lasttag
+#
 show_extops() {
 	local opt
 	local extops=$(
 cat <<EOF
 $MNU\
-    $UND\0Discrete Operations $OFF
-$( $b_mrflag || echo -e "$MNU R$OFF  Rename mail files in    :$STA $indir$OFF")
+    $UND\0Discrete Operations $OFF \
+$( $b_mrflag || echo -e "\n$MNU R$OFF  Rename mail files in    :$STA $indir$OFF")
 $MNU F$OFF  Format commits into     :$STA $outdir
 $MNU S$OFF  Seek missing commits
 $MNU P$OFF  Compare Patches \
@@ -340,6 +384,16 @@ EOF
 	echo -e "$extops"
 }
 
+# show_mr_menu - display the Merge Request opmode of the Main menu
+#
+# Gobals
+# 	lasttag
+# 	remote_repo
+# 	remote_branch
+# 	mergelist_filter
+# 	menumode
+# 	menumode_ext
+#
 show_mr_menu() {
 	local opt
 	local mr_menu=$(
@@ -347,6 +401,7 @@ cat <<EOF
 $MNU
     $UND\0Environment         $OFF
 $MNU c$OFF  Config Menu
+    Operating mode          :$STA $(show_opmode)$OFF
     Most recent tag         :$STA $lasttag$OFF
     Current Head            :$STA $current_head_trunc$OFF
 $MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
@@ -369,6 +424,14 @@ EOF
 	[ $menumode -eq $menumode_ext ]  && show_extops
 }
 
+# show_email_menu - display the email opmode of the main menu
+#
+# Globals:
+# 	lasttag
+#	current_head_trunc
+#	remote_repo
+# 	remote_branch
+#
 show_email_menu() {
 	local opt
 	local email_menu=$(
@@ -376,6 +439,7 @@ cat <<EOF
 $MNU
     $UND\0Environment       $OFF
 $MNU c$OFF  Config Menu
+    Operating mode          :$STA $(show_opmode)$OFF
     Most recent tag         :$STA $lasttag$OFF
     Current Head            :$STA $current_head_trunc$OFF
 $MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
@@ -386,7 +450,7 @@ $MNU
 $MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
 $MNU 2$OFF  Patch apply mode        :$STA $(show_applymode)$OFF
 $MNU 3$OFF  Patch apply fail mode   :$STA $(show_applyfailmode)$OFF
-$MNU 4$OFF  Seek missing commits    :$STA $(show_patchseekmode)$OFF\
+$MNU 4$OFF  Seek missing commits    :$STA $(show_patchseekmode)$OFF \
  $(show_nextpatch)$BLD
 $MNU
     $UND\0Main Controls     $OFF
@@ -480,14 +544,14 @@ menu_parser() {
 	promptgetchar ""$MNU"Enter one of the above: "$OFF"" setting
 
 	case $setting in
-		c )	show_config_menu
+		c )	config_parser
 			;;
 		g )	$b_mrflag && { getuser "Text to grep in Merge List: " mergelist_filter;
 				       prj_set_item $prj_mergelist_filter $mergelist_filter; }
 			;;
-		m )	( $b_mrflag && select_merge_request ) && return $rc_run
+		m )	$b_mrflag && select_merge_request && return $rc_run
 			;;
-		M )	( $b_mrflag && get_merge_request ) && return $rc_run
+		M )	$b_mrflag && get_merge_request && return $rc_run
 			;;
 		s )	get_remote_seek
 			;;
@@ -540,6 +604,7 @@ menu_parser() {
 		B )	create_branch
 			;;
 		P )	compare_patches
+			if [ $opmode -eq $opmode_mr ]; then query_acknack; fi
 			;;
 		i )	init_menu
 			;;
@@ -589,6 +654,14 @@ init_files() {
 	mmfile="$outdir/$mismatch_file"
 }
 
+# init_loopvars - init the global variables used in menus
+#
+# This needs to be called for every pass through the config and
+# main menus.
+#
+# Globals:
+# 	All clearly visible on every line.
+#
 init_loopvars() {
 	editor=$(prj_get_item $prj_editor)
 	cmpmode=$(prj_get_item $prj_cmpmode)
@@ -604,6 +677,12 @@ init_loopvars() {
 	[ $opmode -eq $opmode_mr ] && b_mrflag=true
 }
 
+# menu_loop - loop containing the call to the menu_parser
+#
+# The main function of this loop is to init all the variables that are
+# presented in the primary and configuration menus, and to call the
+# menu_parser function in a loop.
+#
 function menu_loop {
 
 	get_booleans
@@ -705,6 +784,7 @@ EOF
 		prj_set_directory "$outdirstr" $prj_outdir outdir quiet
 		echo
 		set_editor
+		get_remote_seek
 		cmpmode=$cmpmode_batch
 		applymode=$applymode_norm
 		applyfailmode=$applyfailmode_exit
@@ -740,6 +820,11 @@ EOF
 	git_get_lasttag lasttag $last_tag_file
 }
 
+# main_loop - this is the loop for the top layer of the script
+#
+# When menu_loop returns, the patchreview is executed using the variables
+# and environment selected by the user in the menu_loop.
+#
 main_loop() {
 
 	local stat
@@ -783,6 +868,8 @@ main_loop() {
 	done
 }
 
+# cmd_check_fixes - execute the -S command line option
+#
 cmd_check_fixes() {
 	local stat=0
 
