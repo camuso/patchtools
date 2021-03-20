@@ -573,7 +573,8 @@ menu_parser() {
 			;;
 		F )	format_upstream_patches
 			;;
-		S )	seek_missing_commits
+		S )	[ -n "$remote_repo" ] && [ -n "$remote_branch" ] || get_remote_seek
+			seek_missing_commits
 			;;
 		A )	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
 				&& exec_apply_patches
@@ -784,7 +785,7 @@ EOF
 		prj_set_directory "$outdirstr" $prj_outdir outdir quiet
 		echo
 		set_editor
-		get_remote_seek
+		# get_remote_seek
 		cmpmode=$cmpmode_batch
 		applymode=$applymode_norm
 		applyfailmode=$applyfailmode_exit
