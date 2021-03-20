@@ -330,9 +330,7 @@ config_parser() {
 		promptgetchar ""$MNU"Enter one of the above: "$OFF"" opt
 
 		case $opt in
-		o )	ui_cycle_state opmode $opmode_states
-			prj_set_item $prj_opmode $opmode
-			if [ $opmode -eq $opmode_mr ]; then b_mrflag=true; else b_mrflag=false; fi
+		o )	change_opmode
 			;;
 		d )	prj_set_directory "$indirstr" $prj_indir indir quiet
 			;;
@@ -372,7 +370,7 @@ $MNU F$OFF  Format commits into     :$STA $outdir
 $MNU S$OFF  Seek missing commits
 $MNU P$OFF  Compare Patches \
  $(show_apply_patches)
-$MNU B$OFF  Create a new branch at  :$STA $current_head_trunc
+$MNU B$OFF  Create a new branch at  :$STA $(get_current_head_trunc)
 $MNU C$OFF  Clean the $STA$indirstr$OFF and/or $STA$outdirstr$OFF directories
 $MNU G$OFF  Git reset to            :$STA $lasttag
 $MNU N$OFF  Nuke the directories and reset head to most recent tag \
@@ -399,11 +397,10 @@ show_mr_menu() {
 	local mr_menu=$(
 cat <<EOF
 $MNU
-    $UND\0Environment         $OFF
+    $UND\0Environment:$STA $(show_opmode)$OFF
 $MNU c$OFF  Config Menu
-    Operating mode          :$STA $(show_opmode)$OFF
     Most recent tag         :$STA $lasttag$OFF
-    Current Head            :$STA $current_head_trunc$OFF
+    Current Head            :$STA $(get_current_head_trunc)$OFF
 $MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
 $MNU s$OFF  Remote Repo/Branch      :$STA $remote_repo/$remote_branch$OFF
     Remote URL              :$STA$(show_remote_url "$remote_repo")$OFF
@@ -437,11 +434,10 @@ show_email_menu() {
 	local email_menu=$(
 cat <<EOF
 $MNU
-    $UND\0Environment       $OFF
+    $UND\0Environment:$STA $(show_opmode)$OFF
 $MNU c$OFF  Config Menu
-    Operating mode          :$STA $(show_opmode)$OFF
     Most recent tag         :$STA $lasttag$OFF
-    Current Head            :$STA $current_head_trunc$OFF
+    Current Head            :$STA $(get_current_head_trunc)$OFF
 $MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
 $MNU s$OFF  Remote Repo/Branch      :$STA $remote_repo/$remote_branch$OFF
     Remote URL              :$STA$(show_remote_url "$remote_repo")$OFF
@@ -546,6 +542,10 @@ menu_parser() {
 	case $setting in
 		c )	config_parser
 			;;
+		o )	ui_cycle_state opmode $opmode_states
+			prj_set_item $prj_opmode $opmode
+			if [ $opmode -eq $opmode_mr ]; then b_mrflag=true; else b_mrflag=false; fi
+			;;
 		g )	$b_mrflag && { getuser "Text to grep in Merge List: " mergelist_filter;
 				       prj_set_item $prj_mergelist_filter $mergelist_filter; }
 			;;
@@ -592,7 +592,7 @@ menu_parser() {
 		4 )	$b_mrflag || { ui_cycle_state patchseekmode $patchseek_states;
 			               prj_set_item $prj_patchseekmode $patchseekmode; }
 			;;
-		5 )	( ! $b_mrflag && $b_selpat ) && select_patch
+		5 )	! $b_mrflag && $b_selpat && select_patch
 			;;
 		C )	clean_directories
 			;;

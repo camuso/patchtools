@@ -162,6 +162,7 @@ declare rc_run=1	# Run
 function exit_me {
 	echo -e "$OFF"
 	set_booleans
+	prj_set_item $prj_opmode $opmode
 	prj_set_item $prj_menumode $menumode
 	prj_set_item $prj_applymode $applymode
 	prj_set_item $prj_cmpmode $cmpmode
@@ -189,10 +190,61 @@ control_c()
 	exit_me $CTLC_EXIT
 }
 
+################  SANITY TEST DEBUGER  ###########################
 function test_sanity { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
+###################################################################
 
+# change_opmode - change the operating mode of the script
+#
+# Certain global variables need to be flipped for Merge Request
+# and Email operation modes.
+#
+# Globals
+# 	opmode
+# 	opmode_mr
+# 	opmode_email
+# 	opmode_states
+# 	cmpmode
+# 	cmpmode_batch
+# 	applymode
+# 	applymode_off
+# 	b_rename_files
+# 	b_fmt_upstream
+# 	prj_opmode
+# 	prj_cmpmode
+# 	prj_applymode
+# 	prj_b_rename_files
+# 	prj_b_fmt_upstream
+#
+change_opmode() {
+	ui_cycle_state opmode $opmode_states
+	prj_set_item $prj_opmode $opmode
+
+	case $opmode in
+	$opmode_mr    ) b_mrflag=true
+			b_rename_files=false
+			b_fmt_upstream=true
+			cmpmode=$cmpmode_batch
+			applymode=$applymode_off
+			;;
+	$opmode_email ) b_mrflag=false
+			b_rename_files=false
+			b_fmt_upstream=true
+			cmpmode=$cmpmode_batch
+			applymode=$applymode_norm
+			;;
+	esac
+}
+
+# show_opmode - display whether we're in Merge Request or Email Mode
+#
+# Globals:
+# 	opmode
+# 	opmode_mr
+# 	opmode_email
+# 	prj_opmode
+#
 show_opmode() {
-	opmode=$(prj_get_item $prj_opmode)
 	case $opmode in
 		$opmode_mr    ) echo "Merge Request Mode" ;;
 		$opmode_email ) echo "Email Patch Mode" ;;
@@ -1445,14 +1497,14 @@ exec_patcmp() {
 	[ "$valpatchlist" ] || create_patchlist "$patchlist" valpatchlist
 	patchtotal=$(wc -w <<< "$valpatchlist")
 
- echo "indir: $indir  outdir: $outdir"
- echo "patchtotal: $patchtotal"
- echo "patchlist:"
- echo "${patchlist[@]}"
- echo
- echo "valpatchlist:"
- echo "${valpatchlist[@]}"
- ui_press_any
+# echo "indir: $indir  outdir: $outdir"
+# echo "patchtotal: $patchtotal"
+# echo "patchlist:"
+# echo "${patchlist[@]}"
+# echo
+# echo "valpatchlist:"
+# echo "${valpatchlist[@]}"
+# ui_press_any
 
 	# If the mmfile does not contain the same number of patches
 	# as the infilecount, then go make the mmfile.
@@ -1465,7 +1517,7 @@ exec_patcmp() {
 				     -o $mmfile "$xval"
 		fi
 	else
-		patbatcmpmgr -P -x $valpatchlist -R $indir -U $outdir -o $mmfile
+		patbatcmpmgr -x -P $valpatchlist -R $indir -U $outdir -o $mmfile
 	fi
 	patcmp -m $mmfile $indir $outdir $editor "$us_commits"
 }
@@ -1496,7 +1548,7 @@ init_menu() {
 	startpat=1
 	b_fmt_upstream=true
 	b_allapplied=false
-	b_mrflag=false
+	[ $opmode -eq $opmode_mr ] && b_mrflag=true || b_mrflag=false
 	current_mr=
 	[ -f "$usvbp_commits" ] && rm -f "$usvbp_commits"
 }
