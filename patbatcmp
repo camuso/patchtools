@@ -252,8 +252,12 @@ pr_start() {
 }
 
 get_firstline() {
-	while read line; do let ++lcA; [ "${line:0:10}" == "diff --git" ] && break; done <&5
-	while read line; do let ++lcB; [ "${line:0:10}" == "diff --git" ] && break; done <&6
+	local eocl='--- a/'
+	local len=${#eocl}
+	while read line; do let ++lcA; [ "${line:0:len}" == "$eocl" ] && break; done <&5
+	$nopaths && let ++lcA || let --lcA
+	while read line; do let ++lcB; [ "${line:0:len}" == "$eocl" ] && break; done <&6
+	$nopaths && let ++lcB || let --lcB
 }
 
 # At this point, we know the level of verbosity of the output. We need
@@ -348,7 +352,6 @@ for ((index = 0; index < $fcountA; ++index)); do
 		read -r -u 6 lineB || eofB=true
 		($eofA && $eofB) && b_done=true
 
-
 		# Exclude line positions and index marker.  These can be
 		# different and yet the actual patched code is congruent.
 		#
@@ -381,7 +384,7 @@ for ((index = 0; index < $fcountA; ++index)); do
 		#
 		if [ "$lineA" != "$lineB" ]; then
 
-			([ "${lineA:0:3}" == "-- " ] || [ "${lineB:0:3}" == "-- " ]) \
+			([ "${lineA:0:2}" == "--" ] || [ "${lineB:0:2}" == "--" ]) \
 				&& continue
 
 			equiv=false
