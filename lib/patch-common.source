@@ -148,9 +148,13 @@ declare el9="el9"
 declare remote_repo=
 declare remote_branch=
 
+# Merge Request variables
+#
 declare current_mr=
 declare b_mrflag=false
-
+declare b_reviewed=false
+declare b_acked=false
+declare b_nacked=false
 declare mergelist_filter=
 
 ########################################
@@ -251,22 +255,47 @@ show_opmode() {
 	esac
 }
 
+# show_mrstatus- display the current mr and its status
+#
+# Globals:
+# 	current_mr
+# 	b_reviewed
+# 	b_acked
+# 	b_nacked
+show_mrstatus() {
+	local ackstr
+
+	[ -n "$current_mr" ] || return
+	echo
+	$b_reviewed && {
+		$b_ackstr && ackstr="${STA}ACKED$OFF" \
+			  || $ackstr="${WRN}NACKED$OFF"
+		echo -n "    "
+	} || {
+		echo -en "$MNU a$OFF  "
+		ackstr=
+	}
+	echo -e "Merge Request           : $current_mr $ackstr"
+}
+
 # query_acknack - ask the user if they want to respond to the MR
 #
 # Globals
 # 	b_mrflag
 # 	current_mr
+# 	b_reviewed
+# 	b_acked
+# 	b_nacked
 #
 query_acknack() {
+	$b_mrflag || return 1
 	[ -n "$current_mr" ] || {
 		echo -e "${WRN}There is no MR for those patches."
 		echo -e "${INF}Please prese M or m to enter or choose an MR.$OFF"
-		return
+		return 1
 	}
 	local response
 	local b_yes=false
-	local b_ackflag=false
-	local b_nackflag=false
 	local actstr
 	local acknackmenu=$(
 cat <<EOF
@@ -278,6 +307,15 @@ $MNU q$OFF  Skip this step$OFF
 \0
 EOF
 )
+	$b_reviewed && {
+		$b_acked && actstr="${STA}ACKED$OFF" \
+			 || actstr="${WRN}NACKED$OFF"
+		local donestr="\
+${INF}Merge Request: $STA$current_mr$INF has already been $actstr"
+		echo -e "$donestr"
+		return
+	}
+
 	while :; do
 		echo -e "$acknackmenu"
 		promptgetchar ""$MNU"Enter a, n, or q: $OFF" response
@@ -285,12 +323,14 @@ EOF
 	done
 
 	case "$response" in
-		q ) return
+		q ) return 1
 		    ;;
-		a ) b_ackflag=true
+		a ) b_acked=true
+		    b_reviewed=true
 		    actstr=""$STA"ACK$OFF"
 		    ;;
-		n ) b_nackflag=true
+		n ) b_nacked=true
+		    b_reviewed=true
 		    actstr=""$WRN"NACK$OFF"
 		   ;;
 	esac
@@ -301,9 +341,11 @@ $STA$current_mr$INF (y/n)? $OFF"
 	loop_yn "$querystring" b_yes
 
 	if $b_yes; then
-		$b_ackflag && lab mr approve $current_mr
-		$b_nackflag && lab mr discussion $current_mr
+		$b_acked && lab mr approve $current_mr
+		$b_nacked && lab mr discussion $current_mr
 	fi
+
+	return 0
 }
 
 # call_lab_mr_list - worker function to create the mr list
@@ -400,6 +442,9 @@ get_merge_request() {
 #	b_mrflag
 # 	b_rename_infiles
 #	b_fmt_upstream
+#	b_reviewed
+#	b_acked
+#	b_nacked
 #	prj_applymode
 #	prj_b_fmt_upstream
 #	prj_b_rename_infiles
@@ -423,6 +468,9 @@ get_merge_request_patches() {
 	fi
 
 	b_mrflag=true
+	b_reviewed=false
+	b_acked=false
+	b_nacked=false
 	b_fmt_upstream=true
 	b_rename_infiles=false
 	applymode=$applymode_off

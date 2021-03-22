@@ -406,7 +406,8 @@ $MNU c$OFF  Config Menu
     Most recent tag         :$STA $lasttag$OFF
     Current Head            :$STA $(get_current_head_trunc)$OFF
 $MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
-$MNU g$OFF  grep Merge List for     :$STA $mergelist_filter$OFF
+$MNU g$OFF  grep Merge List for     :$STA $mergelist_filter$OFF \
+ $(show_mrstatus)
 $MNU
     $UND\0Main Controls     $OFF
 $MNU m$OFF  Get a list of Merge Requests and select one for review
@@ -548,6 +549,8 @@ menu_parser() {
 			;;
 		g )	$b_mrflag && { getuser "Text to grep in Merge List: " mergelist_filter;
 				       prj_set_item $prj_mergelist_filter $mergelist_filter; }
+			;;
+		a )	! $b_reviewed && query_acknack
 			;;
 		m )	$b_mrflag && select_merge_request && return $rc_run
 			;;
