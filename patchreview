@@ -296,6 +296,8 @@ $MNU
 $MNU o$OFF  Operating mode          :$STA $(show_opmode)
 $MNU d$OFF  $indirstr directory         :$STA $indir$OFF has$STA $infilecount$OFF $patstr\0files
 $MNU w$OFF  $outdirstr directory          :$STA $outdir
+$MNU s$OFF  Remote Repo/Branch      :$STA $remote_repo/$remote_branch$OFF
+    Remote URL              :$STA$(show_remote_url "$remote_repo")$OFF
 $MNU e$OFF  Diff Editor             :$STA $editor
 $MNU f$OFF  Patch Validation fuzz   :$STA $(show_patchvalfuzz)
 $MNU q$OFF  Quit and return to previous menu
@@ -335,6 +337,8 @@ config_parser() {
 		d )	prj_set_directory "$indirstr" $prj_indir indir quiet
 			;;
 		w )	prj_set_directory "$outdirstr" $prj_outdir outdir quiet
+			;;
+		s )	get_remote_seek
 			;;
 		e )	set_editor
 			;;
@@ -402,8 +406,6 @@ $MNU c$OFF  Config Menu
     Most recent tag         :$STA $lasttag$OFF
     Current Head            :$STA $(get_current_head_trunc)$OFF
 $MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
-$MNU s$OFF  Remote Repo/Branch      :$STA $remote_repo/$remote_branch$OFF
-    Remote URL              :$STA$(show_remote_url "$remote_repo")$OFF
 $MNU g$OFF  grep Merge List for     :$STA $mergelist_filter$OFF
 $MNU
     $UND\0Main Controls     $OFF
@@ -439,8 +441,6 @@ $MNU c$OFF  Config Menu
     Most recent tag         :$STA $lasttag$OFF
     Current Head            :$STA $(get_current_head_trunc)$OFF
 $MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
-$MNU s$OFF  Remote Repo/Branch      :$STA $remote_repo/$remote_branch$OFF
-    Remote URL              :$STA$(show_remote_url "$remote_repo")$OFF
 $MNU
     $UND\0Batch Run Parameters$OFF
 $MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
