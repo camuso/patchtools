@@ -275,7 +275,7 @@ show_mrstatus() {
 		echo -en "$MNU a$OFF  "
 		ackstr=
 	}
-	echo -e "Merge Request           : $current_mr $ackstr"
+	echo -e "Merge Request           : $STA$current_mr $ackstr"
 }
 
 # query_acknack - ask the user if they want to respond to the MR
@@ -357,9 +357,9 @@ call_lab_mr_list() {
 	local outfile="$1"
 
 	if [ -z "$mergelist_filter" ]; then
-		lab mr list --all > $outfile
+		lab mr list > $outfile
 	else
-		lab mr list --all | grep "$mergelist_filter" > $outfile
+		lab mr list | grep "$mergelist_filter" > $outfile
 	fi
 }
 
@@ -399,7 +399,7 @@ select_merge_request() {
 		[ "$selected" == "q" ] && return 1
 		echo ${mrarray[@]} | grep $selected > /dev/null 2>&1
 		[ $? -eq 0 ] && break
-		echo -e "$STA$selected$WRN is not a listed Merge Request."
+		echo -e "$STA$selected$WRN is not an active Merge Request."
 		getuser "Enter a different MR or press $qstr$INF to quit: " selected
 	done
 
@@ -433,7 +433,7 @@ get_merge_request() {
 	return 0
 }
 
-# get_merge_request_patches - checkout a merge request into its own branch
+# get_merge_request_patches - extract the patches from a merge request
 #
 # Inputs:
 # 	$1 - MR ID number
@@ -454,18 +454,14 @@ get_merge_request() {
 #
 get_merge_request_patches() {
 	local mr="$1"
-	local count=$(ls $indir/*.patch 2>/dev/null | wc -l)
 	local b_yes
 	local mypid
 
 	current_mr=$mr
 
-	if [ $count -gt 0 ]; then
-		echo -e ""$WRN"There are $STA$count$WRN patches in $STA$indir$OFF"
-		loop_yn ""$INF"Do you want to delete them? y/n : " b_yes \
-			&& rm -vf $indir/*.patch \
-			|| return 0
-	fi
+	# Erase all the patch files in the indir and build them from
+	# scratch.
+	rm -vf $indir/*.patch
 
 	b_mrflag=true
 	b_reviewed=false
@@ -1348,17 +1344,23 @@ EOF
 # 	1 - no patch files to review
 #
 format_upstream_patches() {
-	local fc=$(find $outdir -maxdepth 1 -not -type d -name "*.patch" -print -quit)
+	local fc=	# $(find $outdir -maxdepth 1 -not -type d -name "*.patch" -print -quit)
 	local b_yup
 	local banner=
 	local pad=
 	local escnt=
 
-	[ "$fc" ] && {
-		echo
-		echo -e ""$INF"There are already upstream patch files in $STA$outdir$OFF"
-		getyn "Do you want to replace them?" b_yup
-		$b_yup || return 0
+	# We don't perform this check for merge request mode. We just write over
+	# everything.
+	$b_mrflag || {
+		fc=$(find $outdir -maxdepth 1 -not -type d -name "*.patch" -print -quit)
+
+		[ "$fc" ] && {
+			echo
+			echo -e ""$INF"There are already upstream patch files in $STA$outdir$OFF"
+			getyn "Do you want to replace them?" b_yup
+			$b_yup || return 0
+		}
 	}
 
 	ls $indir/*.patch > /dev/null 2>&1
