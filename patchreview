@@ -300,6 +300,7 @@ $MNU s$OFF  Remote Repo/Branch      :$STA $remote_repo/$remote_branch$OFF
     Remote URL              :$STA$(show_remote_url "$remote_repo")$OFF
 $MNU e$OFF  Diff Editor             :$STA $editor
 $MNU f$OFF  Patch Validation fuzz   :$STA $(show_patchvalfuzz)
+$MNU p$OFF  Cycle Patch Compare Mode:$STA $(show_cmpmode)$OFF
 $MNU q$OFF  Quit and return to previous menu
 \0
 EOF
@@ -343,6 +344,9 @@ config_parser() {
 		e )	set_editor
 			;;
 		f )	set_patchvalfuzz
+			;;
+		p )	ui_cycle_state cmpmode $cmpmode_states
+			prj_set_item $prj_cmpmode $cmpmode
 			;;
 		q ) 	return
 			;;
