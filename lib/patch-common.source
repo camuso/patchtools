@@ -156,6 +156,7 @@ declare b_reviewed=false
 declare b_acked=false
 declare b_nacked=false
 declare mergelist_filter=
+declare mergelist_author=
 
 ########################################
 # Function Return Codes
@@ -197,6 +198,66 @@ control_c()
 ################  SANITY TEST DEBUGER  ###########################
 function test_sanity { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
 ###################################################################
+
+# show_mrfilter - show the merge list filter
+#
+# Globals
+# 	mergelist_filter
+# 	mergelist_author
+#
+show_mrfilter() {
+	[ -n "$mergelist_filter" ] && \
+		echo -en "${INF}String:$OFF $STA$mergelist_filter$OFF"
+	[ -n "$mergelist_author" ] && \
+		echo -en "${INF}Author:$OFF $STA$mergelist_author$OFF"
+}
+
+# grep_mrlist() - grep or filter the mr list
+#
+# Globals:
+# 	mergelist_filter
+# 	mergelist_author
+# 	prj_mergelist_filter
+#
+grep_mrlist() {
+	$b_mrflag || return
+	local opt
+	local grepmenu=$(
+cat <<EOF
+$MNU
+    ${UND}Filter by:    $OFF
+$MNU a$OFF  MR Author
+$MNU s$OFF  MR Summary String
+$MNU c$OFF  Clear filters and return
+$MNU q$OFF  Just get me out of here
+\0
+EOF
+)
+	while :; do
+		echo -e "$grepmenu"
+		promptgetchar "${MNU}Enter one of the above: $OFF" opt
+
+		case $opt in
+		s ) getuser "Text to grep in Merge List: " mergelist_filter
+		    mergelist_author=
+		    break
+		    ;;
+		a ) getuser "Author to grep in Merge List: " mergelist_author
+		    mergelist_filter=
+		    break
+		    ;;
+		c ) mergelist_author=
+		    mergelist_filter=
+		    return
+		    ;;
+		q ) return
+		    ;;
+		esac
+	done
+
+	prj_set_item $prj_mergelist_filter $mergelist_filter
+	select_merge_request
+}
 
 # change_opmode - change the operating mode of the script
 #
@@ -356,10 +417,13 @@ $STA$current_mr$INF (y/n)? $OFF"
 call_lab_mr_list() {
 	local outfile="$1"
 
-	if [ -z "$mergelist_filter" ]; then
+	if [ -z "$mergelist_filter" ] && [ -z "$mergelist_author" ]; then
 		lab mr list > $outfile
 	else
-		lab mr list | grep "$mergelist_filter" > $outfile
+		[ -n "$mergelist_filter" ] && \
+			lab mr list | grep -i "$mergelist_filter" > $outfile
+		[ -n "$mergelist_author" ] && \
+			lab mr list --author "$mergelist_author" > $outfile
 	fi
 }
 
@@ -393,7 +457,7 @@ select_merge_request() {
 		echo -e " $MNU$mrnum$OFF $mrsub"
 	done < $mrlist
 
-	getuser "Enter a merge request number: " selected
+	getuser "Enter a merge request number or $qstr$INF to exit: " selected
 
 	while :; do
 		[ "$selected" == "q" ] && return 1

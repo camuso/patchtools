@@ -61,7 +61,7 @@ declare UP1="\e[1A"		# move cursor up one line
 
 declare punctset="\"#$%&'()*+,-./:;<=>?@[\\]^_\`{|}~!"
 
-declare qstr="'$BLD\0q$OFF\0'"
+declare qstr="${MNU}'q'$OFF"
 declare msgretry="$msgretry Try again or type $qstr to quit trying: "
 
 # Errors
