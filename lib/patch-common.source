@@ -240,23 +240,32 @@ EOF
 		case $opt in
 		s ) getuser "Text to grep in Merge List: " mergelist_filter
 		    mergelist_author=
+		    [ "$mergelist_filter" == "q" ] && {
+			mergelist_filter=
+			return 1
+		    }
 		    break
 		    ;;
 		a ) getuser "Author to grep in Merge List: " mergelist_author
 		    mergelist_filter=
+		    [ "$mergelist_author" == "q" ] && {
+			mergelist_author=
+			return 1
+		    }
 		    break
 		    ;;
 		c ) mergelist_author=
 		    mergelist_filter=
-		    return
+		    return 1
 		    ;;
-		q ) return
+		q ) return 1
 		    ;;
 		esac
 	done
 
 	prj_set_item $prj_mergelist_filter $mergelist_filter
 	select_merge_request
+	return $?
 }
 
 # change_opmode - change the operating mode of the script
@@ -461,7 +470,7 @@ select_merge_request() {
 
 	while :; do
 		[ "$selected" == "q" ] && return 1
-		echo ${mrarray[@]} | grep $selected > /dev/null 2>&1
+		echo ${mrarray[@]} | grep -w $selected > /dev/null 2>&1
 		[ $? -eq 0 ] && break
 		echo -e "$STA$selected$WRN is not an active Merge Request."
 		getuser "Enter a different MR or press $qstr$INF to quit: " selected
