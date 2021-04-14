@@ -81,6 +81,7 @@ function git_file2patchset {
 	local index=1
 	local pfx=""
 	local pad=
+	local remotes=()
 	local banner=\
 ""$INF"\
 Formatting $STA$patchcount$INF patches from $STA$commitsfile$INF into \
@@ -111,7 +112,10 @@ $STA$destdir$OFF"
 			#
 			[ $? -eq 0 ] || echo "invalid commit: $commit" > $destdir/"$pfx-inv.patch"
 		else
-			echo -n "" > $destdir/"$pfx-no.patch"
+			create_remote_array remotes
+			echo -e "Not found in any of your upstream repos.\n" \
+				> $destdir/"$pfx-no.patch"
+			show_remotes >> $destdir/"$pfx-no.patch"
 		fi
 		let index++
 	done < $commitsfile
@@ -711,6 +715,23 @@ check_fixes() {
 	done < "$commitsfile"
 
 	[ -f $fixfile ] && rm -f $fixfile
+}
+
+show_remotes() {
+	local line
+	local toks=()
+	local gitcfgarray=()
+	local remoteurl=
+
+	gitcfgarray=$(grep -w '\[remote' .git/config)
+	while read line; do
+		ui_strtok "$line" '" ' toks
+		remote=$(echo ${toks[1]} | sed  's/]//')
+		remoteurl=$(show_remote_url "$remote")
+		echo -e "$remote"
+		echo -e "$remoteurl"
+		echo
+	done <<< "$gitcfgarray"
 }
 
 create_remote_array() {
