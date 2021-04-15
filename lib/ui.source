@@ -85,6 +85,22 @@ declare ui_tempfile="/dev/shm/ui_temp_file"
 # Shell Routines
 #########################
 
+# ui_popterm
+#  pop up a default user terminal an optionally execute a command in it.
+#
+# Arguments:
+#  $1 - optional command to execute in the popup terminal
+#
+# Usage:
+#  Optional command must be quoted with single or double quotes
+#
+#  ui_popterm 'less ~/bin/lib/ui.source'
+#
+ui_popterm() {
+	cmd="$1"
+	[ -n "$cmd" ] && x-terminal-emulator -e "$cmd" || x-terminal-emulator
+}
+
 ui_get_screenbackground() {
 	echo
 	echo "Is your terminal background best described as:"
