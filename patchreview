@@ -50,6 +50,7 @@ source $MYLIB/ui.source
 source $MYLIB/project.source
 source $MYLIB/gitutilities.source
 source $MYLIB/patch-common.source
+source $MYLIB/patch-mrutilities.source
 
 #########################################
 # Functions
@@ -294,6 +295,7 @@ cat <<EOF
 $MNU
     $UND\0Configuration       $OFF
 $MNU o$OFF  Operating mode          :$STA $(show_opmode)
+$MNU c$OFF  See comments first      :$STA $(show_mrcomments)
 $MNU d$OFF  $indirstr directory         :$STA $indir$OFF has$STA $infilecount$OFF $patstr\0files
 $MNU w$OFF  $outdirstr directory          :$STA $outdir
 $MNU s$OFF  Remote Repo/Branch      :$STA $remote_repo/$remote_branch$OFF
@@ -334,6 +336,8 @@ config_parser() {
 
 		case $opt in
 		o )	change_opmode
+			;;
+		c )	ui_toggle b_mrcomments
 			;;
 		d )	prj_set_directory "$indirstr" $prj_indir indir quiet
 			;;

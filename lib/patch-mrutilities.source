@@ -1,0 +1,414 @@
+#!/bin/bash
+#
+# lib/patch-mrutilities.source
+#
+# This source file provides routines common to both patchreview and
+# patchdevelop scripts.
+#
+# The following source files must be included before this one.
+#
+
+# Get the directory defaults if they don't already exist
+#
+[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename $0)))
+[ "$MYLIB" ] || declare MYLIB=$(cd $(dirname ${BASH_SOURCE[0]}); pwd)
+
+[ "$ui_loaded" ] || source $MYLIB/ui.source
+
+b_ui_int_first_getyn=false	# For lib/ui.source
+
+# Enable extglob for more specific directory actions
+#
+shopt -s extglob
+
+#######################################
+# Global variables
+#######################################
+declare -i opmode
+declare -i opmode_mr=0
+declare -i opmode_email=1
+declare -i opmode_states=2
+declare prj_opmode
+
+declare b_mrcomments=true
+declare prj_b_mrcomments
+
+declare current_mr=
+declare b_mrflag=false
+declare b_reviewed=false
+declare b_acked=false
+declare b_nacked=false
+declare mergelist_filter=
+declare mergelist_author=
+
+# show_mrcomments - display ON or OFF depening on mrcomments state
+#
+# Globals
+#     mrcomments
+#
+show_mrcomments() {
+	$b_mrcomments && echo "OFF" || echo "ON"
+}
+
+
+# show_mrfilter - show the merge list filter
+#
+# Globals
+# 	mergelist_filter
+# 	mergelist_author
+#
+show_mrfilter() {
+	[ -n "$mergelist_filter" ] && \
+		echo -en "${INF}String:$OFF $STA$mergelist_filter$OFF"
+	[ -n "$mergelist_author" ] && \
+		echo -en "${INF}Author:$OFF $STA$mergelist_author$OFF"
+}
+
+# grep_mrlist() - grep or filter the mr list
+#
+# Globals:
+# 	mergelist_filter
+# 	mergelist_author
+# 	prj_mergelist_filter
+#
+grep_mrlist() {
+	$b_mrflag || return
+	local opt
+	local grepmenu=$(
+cat <<EOF
+$MNU
+    ${UND}Filter by:    $OFF
+$MNU a$OFF  MR Author
+$MNU s$OFF  MR Summary String
+$MNU c$OFF  Clear filters and return
+$MNU q$OFF  Just get me out of here
+\0
+EOF
+)
+	while :; do
+		echo -e "$grepmenu"
+		promptgetchar "${MNU}Enter one of the above: $OFF" opt
+
+		case $opt in
+		s ) getuser "Text to grep in Merge List: " mergelist_filter
+		    mergelist_author=
+		    [ "$mergelist_filter" == "q" ] && {
+			mergelist_filter=
+			return 1
+		    }
+		    break
+		    ;;
+		a ) getuser "Author to grep in Merge List: " mergelist_author
+		    mergelist_filter=
+		    [ "$mergelist_author" == "q" ] && {
+			mergelist_author=
+			return 1
+		    }
+		    break
+		    ;;
+		c ) mergelist_author=
+		    mergelist_filter=
+		    return 1
+		    ;;
+		q ) return 1
+		    ;;
+		esac
+	done
+
+	prj_set_item $prj_mergelist_filter $mergelist_filter
+	select_merge_request
+	return $?
+}
+
+# change_opmode - change the operating mode of the script
+#
+# Certain global variables need to be flipped for Merge Request
+# and Email operation modes.
+#
+# Globals
+# 	opmode
+# 	opmode_mr
+# 	opmode_email
+# 	opmode_states
+# 	cmpmode
+# 	cmpmode_batch
+# 	applymode
+# 	applymode_off
+# 	b_rename_files
+# 	b_fmt_upstream
+# 	prj_opmode
+# 	prj_cmpmode
+# 	prj_applymode
+# 	prj_b_rename_files
+# 	prj_b_fmt_upstream
+#
+change_opmode() {
+	ui_cycle_state opmode $opmode_states
+	prj_set_item $prj_opmode $opmode
+
+	case $opmode in
+	$opmode_mr    ) b_mrflag=true
+			b_rename_files=false
+			b_fmt_upstream=true
+			cmpmode=$cmpmode_batch
+			applymode=$applymode_off
+			;;
+	$opmode_email ) b_mrflag=false
+			b_rename_files=false
+			b_fmt_upstream=true
+			cmpmode=$cmpmode_batch
+			applymode=$applymode_norm
+			;;
+	esac
+}
+
+# show_opmode - display whether we're in Merge Request or Email Mode
+#
+# Globals:
+# 	opmode
+# 	opmode_mr
+# 	opmode_email
+# 	prj_opmode
+#
+show_opmode() {
+	case $opmode in
+		$opmode_mr    ) echo "Merge Request Mode" ;;
+		$opmode_email ) echo "Email Patch Mode" ;;
+	esac
+}
+
+# show_mrstatus- display the current mr and its status
+#
+# Globals:
+# 	current_mr
+# 	b_reviewed
+# 	b_acked
+# 	b_nacked
+show_mrstatus() {
+	local ackstr
+
+	[ -n "$current_mr" ] || return
+	echo
+	$b_reviewed && {
+		$b_ackstr && ackstr="${STA}ACKED$OFF" \
+			  || $ackstr="${WRN}NACKED$OFF"
+		echo -n "    "
+	} || {
+		echo -en "$MNU a$OFF  "
+		ackstr=
+	}
+	echo -e "Merge Request           : $STA$current_mr $ackstr"
+}
+
+# query_acknack - ask the user if they want to respond to the MR
+#
+# Globals
+# 	b_mrflag
+# 	current_mr
+# 	b_reviewed
+# 	b_acked
+# 	b_nacked
+#
+query_acknack() {
+	$b_mrflag || return 1
+	[ -n "$current_mr" ] || {
+		echo -e "${WRN}There is no MR for those patches."
+		echo -e "${INF}Please prese M or m to enter or choose an MR.$OFF"
+		return 1
+	}
+	local response
+	local b_yes=false
+	local actstr
+	local acknackmenu=$(
+cat <<EOF
+
+$MNU Do you want to ...
+$MNU a$STA  ACK$OFF Merge Request $STA$current_mr$OFF
+$MNU n$WRN  NACK$OFF Merge Request $STA$current_mr$OFF
+$MNU q$OFF  Skip this step$OFF
+\0
+EOF
+)
+	$b_reviewed && {
+		$b_acked && actstr="${STA}ACKED$OFF" \
+			 || actstr="${WRN}NACKED$OFF"
+		local donestr="\
+${INF}Merge Request: $STA$current_mr$INF has already been $actstr"
+		echo -e "$donestr"
+		return
+	}
+
+	while :; do
+		echo -e "$acknackmenu"
+		promptgetchar ""$MNU"Enter a, n, or q: $OFF" response
+		[[ qna =~ $response ]] && break
+	done
+
+	case "$response" in
+		q ) return 1
+		    ;;
+		a ) b_acked=true
+		    b_reviewed=true
+		    actstr=""$STA"ACK$OFF"
+		    ;;
+		n ) b_nacked=true
+		    b_reviewed=true
+		    actstr=""$WRN"NACK$OFF"
+		   ;;
+	esac
+
+	local querystring="\
+"$INF"Are you sure you want to $actstr Merge Request \
+$STA$current_mr$INF (y/n)? $OFF"
+	loop_yn "$querystring" b_yes
+
+	if $b_yes; then
+		$b_acked && lab mr approve $current_mr
+		$b_nacked && lab mr discussion $current_mr
+	fi
+
+	return 0
+}
+
+# call_lab_mr_list - worker function to create the mr list
+#
+# Inputs:
+# 	$1 - outfile that will contain the list
+#
+call_lab_mr_list() {
+	local outfile="$1"
+
+	if [ -z "$mergelist_filter" ] && [ -z "$mergelist_author" ]; then
+		lab mr list > $outfile
+	else
+		[ -n "$mergelist_filter" ] && \
+			lab mr list | grep -i "$mergelist_filter" > $outfile
+		[ -n "$mergelist_author" ] && \
+			lab mr list --author "$mergelist_author" > $outfile
+	fi
+}
+
+# select_merge_request - select a MR from a list
+#
+#  Presents a list of Merge Requests for the user to select one.
+#  The selected merge request is checked-out into its own branch
+#  for review.
+#
+# Inputs: none
+#
+select_merge_request() {
+	local mrlist=/dev/shm/mrlist
+	local mrarray=()
+	local mr=
+	local mrnum=
+	local mrsub=
+	local select=
+	local mypid=
+	local selected
+
+	call_lab_mr_list "$mrlist" & mypid=$!
+	ui_waitonproc_tty $mypid .05 \
+		""$INF"Please wait while we get the list of merge requests.$OFF"
+
+	while read mr; do
+		mr=$(echo ${mr:1})
+		mrnum=$(echo $mr | cut -d' ' -f1)
+		mrsub=$(echo $mr | cut -d' ' -f2-)
+		mrarray+=("$mrnum")
+		echo -e " $MNU$mrnum$OFF $mrsub"
+	done < $mrlist
+
+	getuser "Enter a merge request number or $qstr$INF to exit: " selected
+
+	while :; do
+		[ "$selected" == "q" ] && return 1
+		echo ${mrarray[@]} | grep -w $selected > /dev/null 2>&1
+		[ $? -eq 0 ] && break
+		echo -e "$STA$selected$WRN is not an active Merge Request."
+		getuser "Enter a different MR or press $qstr$INF to quit: " selected
+	done
+
+	get_merge_request_patches "$selected"
+
+	return 0
+}
+
+# get_merge_request - check-out a specific MR
+#
+# The entered MR will be checked-out into its own branch for review.
+#
+# Inputs: none
+#
+# Globals:
+# 	bp_commits
+#
+get_merge_request() {
+	local selected=
+
+	getuser "Enter a merge request number: " selected
+
+	while :; do
+		[ "$selected" == "q" ] && return 1
+		get_merge_request_patches "$selected"
+		[ -s $bp_commits ] && break
+		echo -e ""$WRN"Merge Request $STA$selected$WRN was not found!"
+		getuser "Enter a different MR or press $qstr$INF to quit: " selected
+	done
+
+	return 0
+}
+
+# get_merge_request_patches - extract the patches from a merge request
+#
+# Inputs:
+# 	$1 - MR ID number
+#
+# Globals:
+#	b_mrflag
+# 	b_rename_infiles
+#	b_fmt_upstream
+#	b_reviewed
+#	b_acked
+#	b_nacked
+#	prj_applymode
+#	prj_b_fmt_upstream
+#	prj_b_rename_infiles
+#	current_mr
+# 	valpatchlist
+#	patchcount
+#
+get_merge_request_patches() {
+	local mr="$1"
+	local b_yes
+	local mypid
+
+	current_mr=$mr
+
+	# Erase all the patch files in the indir and build them from
+	# scratch.
+	rm -vf $indir/*.patch
+
+	b_mrflag=true
+	b_reviewed=false
+	b_acked=false
+	b_nacked=false
+	b_fmt_upstream=true
+	b_rename_infiles=false
+	applymode=$applymode_off
+	prj_set_item $prj_applymode $applymode
+	prj_set_item $prj_b_rename_infiles $b_rename_infiles
+	prj_set_item $prj_b_fmt_upstream $b_fmt_upstream
+
+	valpatchlist=
+
+	$b_mrcomments && { lab mr show --comments $mr; }
+	> $bp_commits
+	lab mr show --reverse --patch $mr | grep "^commit " | cut -d' ' -f2 \
+		> $bp_commits & mypid=$!
+	ui_waitonproc_tty $mypid .05 ""$INF"Getting patches from MR $STA$selected$OFF"
+
+	patchcount=$(cat $bp_commits | wc -l)
+	git_file2patchset $bp_commits $indir
+}
+
+

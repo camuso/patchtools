@@ -17,7 +17,7 @@ declare prologue_file=
 # If $MYLIB/$ui.source is already loaded, then the $ui_source_loaded
 # variable will not be empty.
 #
-[ "$ui_source_loaded" ] || source $MYLIB/ui.source
+[ "$ui_loaded" ] || source $MYLIB/ui.source
 
 # is_prologue() {
 #
