@@ -216,15 +216,18 @@ query_acknack() {
 		echo -e "${INF}Please prese M or m to enter or choose an MR.$OFF"
 		return 1
 	}
+	local cmt=
 	local response
 	local b_yes=false
 	local actstr
 	local acknackmenu=$(
 cat <<EOF
 
-$MNU Do you want to ...
-$MNU a$STA  ACK$OFF Merge Request $STA$current_mr$OFF
-$MNU n$WRN  NACK$OFF Merge Request $STA$current_mr$OFF
+$MNU For MR $STA$current_mr$MNU, you want to ...
+$MNU a$STA  ACK$OFF
+$MNU A$STA  ACK$OFF with comment
+$MNU n$WRN  NACK$OFF
+$MNU N$WRN  NACK$OFF with comment
 $MNU q$OFF  Skip this step$OFF
 \0
 EOF
@@ -247,10 +250,14 @@ ${INF}Merge Request: $STA$current_mr$INF has already been $actstr"
 	case "$response" in
 		q ) return 1
 		    ;;
+		A ) $cmt='--with-comment'
+		    ;&
 		a ) b_acked=true
 		    b_reviewed=true
 		    actstr=""$STA"ACK$OFF"
 		    ;;
+		N ) cmt='--with-comment'
+		    ;&
 		n ) b_nacked=true
 		    b_reviewed=true
 		    actstr=""$WRN"NACK$OFF"
@@ -263,8 +270,8 @@ $STA$current_mr$INF (y/n)? $OFF"
 	loop_yn "$querystring" b_yes
 
 	if $b_yes; then
-		$b_acked && lab mr approve $current_mr
-		$b_nacked && lab mr discussion $current_mr
+		$b_acked && lab mr approve $cmt $current_mr
+		$b_nacked && lab mr unapprove $cmt $current_mr
 	fi
 
 	return 0
