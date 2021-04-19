@@ -557,7 +557,7 @@ menu_parser() {
 			;;
 		g )	grep_mrlist && return $rc_run
 			;;
-		a )	! $b_reviewed && query_acknack
+		a )	$b_reviewed && query_acknack
 			;;
 		m )	$b_mrflag && select_merge_request && return $rc_run
 			;;

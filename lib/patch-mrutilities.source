@@ -188,8 +188,9 @@ show_mrstatus() {
 	local ackstr
 
 	[ -n "$current_mr" ] || return
+
 	echo
-	$b_reviewed && {
+	$b_reviewed && ( $b_acked || $b_nacked ) && {
 		$b_ackstr && ackstr="${STA}ACKED$OFF" \
 			  || $ackstr="${WRN}NACKED$OFF"
 		echo -n "    "
@@ -197,7 +198,12 @@ show_mrstatus() {
 		echo -en "$MNU a$OFF  "
 		ackstr=
 	}
-	echo -e "Merge Request           : $STA$current_mr $ackstr"
+
+	( $b_acked || $b_nacked ) && {
+		echo -e "Merge Request           : $STA$current_mr $ackstr"
+	} || {
+		echo -e "Ack/Nack Merge Request  : $STA$current_mr"
+	}
 }
 
 # query_acknack - ask the user if they want to respond to the MR
@@ -219,7 +225,7 @@ query_acknack() {
 	local cmt=
 	local response
 	local b_yes=false
-	local actstr
+	local actstr=
 	local acknackmenu=$(
 cat <<EOF
 
@@ -232,7 +238,7 @@ $MNU q$OFF  Skip this step$OFF
 \0
 EOF
 )
-	$b_reviewed && {
+	$b_reviewed && ( $b_acked || $b_nacked ) && {
 		$b_acked && actstr="${STA}ACKED$OFF" \
 			 || actstr="${WRN}NACKED$OFF"
 		local donestr="\
@@ -244,24 +250,24 @@ ${INF}Merge Request: $STA$current_mr$INF has already been $actstr"
 	while :; do
 		echo -e "$acknackmenu"
 		promptgetchar ""$MNU"Enter a, n, or q: $OFF" response
-		[[ qna =~ $response ]] && break
+		[[ qnaNA =~ $response ]] && break
 	done
 
 	case "$response" in
 		q ) return 1
 		    ;;
-		A ) $cmt='--with-comment'
+		A ) cmt="--with-comment"
 		    ;&
 		a ) b_acked=true
 		    b_reviewed=true
 		    actstr=""$STA"ACK$OFF"
 		    ;;
-		N ) cmt='--with-comment'
+		N ) cmt="--with-comment"
 		    ;&
 		n ) b_nacked=true
 		    b_reviewed=true
 		    actstr=""$WRN"NACK$OFF"
-		   ;;
+		    ;;
 	esac
 
 	local querystring="\
@@ -272,6 +278,9 @@ $STA$current_mr$INF (y/n)? $OFF"
 	if $b_yes; then
 		$b_acked && lab mr approve $cmt $current_mr
 		$b_nacked && lab mr unapprove $cmt $current_mr
+	else
+		b_acked=false
+		b_nacked=false
 	fi
 
 	return 0
@@ -352,14 +361,14 @@ select_merge_request() {
 get_merge_request() {
 	local selected=
 
-	getuser "Enter a merge request number: " selected
+	getuser "Enter a merge request number or $qstr$INF to quit: " selected
 
 	while :; do
 		[ "$selected" == "q" ] && return 1
 		get_merge_request_patches "$selected"
 		[ -s $bp_commits ] && break
 		echo -e ""$WRN"Merge Request $STA$selected$WRN was not found!"
-		getuser "Enter a different MR or press $qstr$INF to quit: " selected
+		getuser "Enter a different MR or $qstr$INF to quit: " selected
 	done
 
 	return 0
