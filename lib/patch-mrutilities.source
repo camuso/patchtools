@@ -374,6 +374,36 @@ get_merge_request() {
 	return 0
 }
 
+# get_mrcommits - crate the global bpcommits file for the given MR
+#
+# Globals
+#      patchtount
+#      bp_commits
+#
+#
+get_mrcommits() {
+       local mr="$1"
+       local mrbranch
+       local basecmt
+       local mmbr
+
+       mmbr=$(git branch | grep master >& /dev/null && echo master || echo main)
+       lab mr checkout $mr 2> /dev/null
+       mrbranch="$(git branch --show-current)"
+       basecmt=$(lab mr show | \
+               grep -m 1  "^Labels" | \
+               awk -F "Dependencies::" ' { print $2 }' | \
+               cut -d',' -f1 | xargs)
+
+       [ -z "$basecmt" ] || [ "$basecmt" == "OK" ] && \
+               basecmt=$(git merge-base HEAD $mmbr 2> /dev/null)
+
+       patchcount=$(git rev-list --count $basecmt..)
+       git log -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
+       git checkout $mmbr 2> /dev/null
+       git branch -D $mrbranch 2> /dev/null
+}
+
 # get_merge_request_patches - extract the patches from a merge request
 #
 # Inputs:
@@ -391,7 +421,6 @@ get_merge_request() {
 #	prj_b_rename_infiles
 #	current_mr
 # 	valpatchlist
-#	patchcount
 #
 get_merge_request_patches() {
 	local mr="$1"
@@ -418,13 +447,9 @@ get_merge_request_patches() {
 	valpatchlist=
 
 	$b_mrcomments && { lab mr show --comments $mr; }
-	> $bp_commits
-	lab mr show --reverse --patch $mr | grep "^commit " | cut -d' ' -f2 \
-		> $bp_commits & mypid=$!
+
+	get_mrcommits $mr & mypid=$!
 	ui_waitonproc_tty $mypid .05 ""$INF"Getting patches from MR $STA$selected$OFF"
 
-	patchcount=$(cat $bp_commits | wc -l)
 	git_file2patchset $bp_commits $indir
 }
-
-
