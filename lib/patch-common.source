@@ -185,6 +185,10 @@ control_c()
 function test_sanity { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
 ###################################################################
 
+show_version() {
+       echo -e "${INF}Version: $STA$version$OFF"
+}
+
 # get_remote_seek() - get the remote origin and branch to seek
 #
 # Sets up the remote origin/branch global fields to use when seeking

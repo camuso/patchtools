@@ -409,7 +409,7 @@ show_mr_menu() {
 	local mr_menu=$(
 cat <<EOF
 $MNU
-    $UND\0Environment:$STA $(show_opmode)$OFF
+    $UND\0Environment:$STA $(show_opmode)$MNU Version: $STA$version$OFF
 $MNU c$OFF  Config Menu
     Most recent tag         :$STA $lasttag$OFF
     Current Head            :$STA $(get_current_head_trunc)$OFF
@@ -445,7 +445,7 @@ show_email_menu() {
 	local email_menu=$(
 cat <<EOF
 $MNU
-    $UND\0Environment:$STA $(show_opmode)$OFF
+    $UND\0Environment:$STA $(show_opmode)$MNU Version: $STA$version$OFF
 $MNU c$OFF  Config Menu
     Most recent tag         :$STA $lasttag$OFF
     Current Head            :$STA $(get_current_head_trunc)$OFF
@@ -471,80 +471,8 @@ EOF
 	[ $menumode -eq $menumode_ext ]  && show_extops
 }
 
-# show_settings - the main menu display
-#
-# Globals:
-#	BLD, UND, STA, MNU, INF, OFF - lib/ui.source
-# 	indir
-# 	outdir
-# 	lasttag
-# 	infilecount
-# 	patstr
-# 	editor
-#	b_extmenu        - removed 2020-07-31
-# 	b_rename_infiles
-# 	b_fmt_upstream
-#
-show_settings() {
-	local current_head_trunc=$(get_current_head_trunc $menucols)
-	local settingstr=$(
-cat <<EOF
-$MNU
-    $UND\0Environment       $OFF
-$MNU o$OFF  Operating mode  :$STA $(show_opmode)$OFF
-    Most recent tag         :$STA $lasttag$OFF
-    Current Head            :$STA $current_head_trunc$OFF
-$MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
-$MNU s$OFF  Remote Repo/Branch      :$STA $remote_repo/$remote_branch$OFF
-    Remote URL              :$STA$(show_remote_url "$remote_repo")$OFF
-$MNU d$OFF  $indirstr directory         :$STA $indir$OFF has$STA $infilecount$OFF $patstr\0files
-$MNU w$OFF  $outdirstr directory          :$STA $outdir$OFF
-$MNU e$OFF  Diff Editor             :$STA $editor$OFF
-$MNU f$OFF  Patch Validation fuzz   :$STA $(show_patchvalfuzz)$OFF
-$MNU g$OFF  grep Merge List for     :$STA $mergelist_filter$OFF
-$MNU
-    $UND\0Batch Run Parameters$OFF
-$MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
-$MNU 2$OFF  Patch apply mode        :$STA $(show_applymode)$OFF
-$MNU 3$OFF  Patch apply fail mode   :$STA $(show_applyfailmode)$OFF
-$MNU 4$OFF  Seek missing commits    :$STA $(show_patchseekmode)$OFF
- $(show_nextpatch)$BLD
-$MNU
-    $UND\0Main Controls     $OFF
-$MNU m$OFF  Get a list of Merge Requests and select one for review
-$MNU M$OFF  Enter a specific Merge Request for review
-$MNU r$OFF  Run in batch mode
-$MNU i$OFF  Init to defaults
-$MNU h$OFF  help text
-$MNU q$OFF  Quit this script
-$MNU x$OFF  Toggle Extended Menu
-$OFF
-EOF
-)
-	local extmenu=$(
-cat <<EOF
-$MNU\
-    $UND\0Discrete Operations$OFF
-$MNU R$OFF  Rename mail files in    :$STA $indir$OFF
-$MNU F$OFF  Format commits into     :$STA $outdir$OFF
-$MNU S$OFF  Seek missing commits \
- $(show_apply_patches)$BLD
-$MNU P$OFF  Compare Patches
-$MNU G$OFF  Git reset to            :$STA $lasttag$OFF
-$MNU B$OFF  Create a new branch at  :$STA $current_head_trunc$OFF
-$MNU C$OFF  Clean the $STA$indirstr$OFF and/or $STA$outdirstr$OFF directories
-$MNU N$OFF  Nuke the directories and reset head to most recent tag \
- $(show_view_logs)$BLD
-$OFF
-EOF
-)
-	echo -e "$settingstr"
-	[ $menumode -eq $menumode_ext ]  && echo -e "$extmenu$OFF"
-}
-
 menu_parser() {
 	get_filecount
-	# show_settings
 	if $b_mrflag; then show_mr_menu; else show_email_menu; fi
 	promptgetchar ""$MNU"Enter one of the above: "$OFF"" setting
 
@@ -625,6 +553,8 @@ menu_parser() {
 			return $rc_run
 			;;
 		h )	less $manual
+			;;
+		v )    show_version
 			;;
 #		T )	# test functions
 			# hidden from main menu
@@ -840,11 +770,6 @@ main_loop() {
 
 	local stat
 
-	# Print the Herald
-	#
-	echo -e "$MNU"
-	echo -e " "$UND"Patch Review $STA$version$MNU Review patches and compare to upstream$OFF"
-
 	##############################################
 	# Main Program Loop
 	##############################################
@@ -912,6 +837,7 @@ parse_cmdline() {
 				shift
 				;;
 			   * ) 	echo "argc=$argc argv: $@"
+				shift
 				;;
 		esac
 	done
@@ -923,6 +849,8 @@ parse_cmdline() {
 #############################
 main() {
 	local argc=$#
+
+	[ "$1" == "-v" ] && show_version && exit 0
 
 	# Trap for control-c
 	#
