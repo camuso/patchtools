@@ -1,6 +1,6 @@
-================
-Patchreview v9.3
-================
+===================
+Patchreview v10.0.2
+===================
 
 This menu-driven script allows the user to compare a set of patches
 from one branch with those of another branch. The branches can be
@@ -35,10 +35,8 @@ directory, however that directory must be in your executable path.
 For example:
 
 	$ cd $HOME
-	$ rhrepo='git://git.engineering.redhat.com'
-	$ patchtools='users/tcamuso/patchtools/patchtools.git/.git'
-	$ git clone $rhrepo/$patchtools mybin
-	$ export PATH=$PATH:$HOME/mybin
+	$ git clone https://gitlab.cee.redhat.com/tcamuso/patchtools mybin
+	$ export PATH=$PATH:$HOME/mybin 
 
 After the above sequence of commands, the user can invoke patchreview
 from the command line.
@@ -50,20 +48,16 @@ from the command line.
 The script must be run from the top of a linux git tree. If not, it will
 exit with an error message.
 
-The linux git tree should be configured with the linus tree as master
-and with the user's trees as branches of the linus tree.
+Your repo directory should be configured with gitlab RHEL or CentOS tree
+as origin/main.
 
-For example:
+The linus tree should be added as a remote, i.e:
+	$ git remote add linus \
+	  git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
 
-# Clone the linus tree.
-git clone git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+Add other remote branches as needed.
 
-# Add a rhel kernel tree as a branch, e.g. rhel7
-git remote add rh7 git://git.app.eng.bos.redhat.com/rhel7.git
-git fetch rh7
-git checkout -b rh7 rh7/master
-
-At this point, the git environment is ready to compare rhel7 patches with
+At this point, the git environment is ready to compare RHEL patches with
 their upstream counterparts.
 
 ---------------------------------------
@@ -73,6 +67,8 @@ their upstream counterparts.
 When invoking the script for the first time, or in a new git tree, the
 script queries the user for the following items.
 
+* Whether your terminal background color is light or dark
+
 * The Patch directory
 
 * The Work directory
@@ -81,6 +77,9 @@ script queries the user for the following items.
   vimdiff, emacs, and tkdiff are supported.
 
 Detailed descriptions of these items follow.
+
+
+Background color: is used to determine the correct color scheme.
 
 Patch directory: is the directory containing the backported patches.
 
@@ -121,58 +120,36 @@ state of the git tree.
 ---------------------------------
 _________________________________________________________________________
 
-Patch Review 9.0  Review patches and compare to upstream
+    Environment: Merge Request Mode Version: 10.0.1
+ c  Config Menu
+    Most recent tag         : kernel-4.18.0-304.5.el8
+    Current Head            : e587dc22f3fe [redhat] kernel-4.18.0-304.5.el8
+ b  Current git branch      : main
+ g  grep Merge List for     :   
+ a  Ack/Nack Merge Request  : 379
 
-    Environment
-    -------------------
-    Most recent tag         : kernel-4.18.0-228.el8
-    Current Head            : db0110354e30 xfrm: Fix crash when the hold queue is used.
- b  Current git branch      : 830
- d  Patch directory         : /home/tcamuso/Maildir/work/cur has 10 patch files
- w  Work directory          : ../cmp
- e  Diff Editor             : vimdiff
- f  Patch Validation fuzz   : 2 - case insensitive and ignore commas
-
-    Batch Run Parameters
-    -------------------
- 1  Compare mode            : Batch
- 2  Patch apply mode        : OFF
- 3  Seek missing commits    : Exit
- 4  Patch seek mode         : ON
- 5  Start applying at patch : 1
-
-    Main Controls
-    -------------------
- r  Run in batch mode
+    Main Controls     
+ m  Get a list of Merge Requests and select one for review
+ M  Enter a specific Merge Request for review
  i  Init to defaults
  h  help text
  q  Quit this script
- x  Toggle Extended Menu
+ x  Toggle Extended Operations Menu
 
-    Discrete Operations
-    -------------------
- R  Rename mail files in    : /home/tcamuso/Maildir/work/cur
- F  Format commits into     : ../cmp
+    Discrete Operations  
+ F  Format commits into     : .patches/tmp
  S  Seek missing commits
+ P  Compare Patches  
  A  Apply patches           : apply mode is OFF
- P  Compare Patches
- G  Git reset to            : kernel-4.18.0-228.el8
- B  Create a new branch at  : db0110354e30 xfrm: Fix crash when the hold queue is used.
+ B  Create a new branch at  : e587dc22f3fe [redhat] kernel-4.18.0-304.5.el8
  C  Clean the Patch and/or Work directories
- N  Nuke the directories and reset head to most recent tag
+ G  Git reset to            : kernel-4.18.0-304.5.el8
+ N  Nuke the directories and reset head to most recent tag  
  V  View the log files
 
-Enter one of the above:
+Enter one of the above: q
 _________________________________________________________________________
 Fig 1. Main Menu
-
-IMPORTANT NOTE:
-
-    Because v9.0 offers a number of new options and operations, the option
-    to minimize the menu was introduced. By pressing 'x', (see Fig 1.
-    above) the user can toggle whether the 'Discrete Operations' menu is
-    shown. All the operations of the 'Discrete Operations' menu will still
-    function, they just won't be shown.
 
 -------------------------------------
 4.1 Main Menu selections (See Fig. 1)
@@ -184,6 +161,52 @@ the script. Sticky items will be indicated with a * in the help text below.
 The "Evironment" section of the menu sets up the operating environment
 for the patchreview script with the following selections.
 
+c * Invokes the config menu. These are preferences that will be preserved
+    between invocations of patchreview.
+_________________________________________________________________________
+
+    Configuration       
+ o  Operating mode          : Merge Request Mode
+ c  See comments first      : OFF
+ d  Patch directory         : .patches has 2 patch files
+ w  Work directory          : .patches/tmp
+ s  Remote Repo/Branch      : linus/master
+    Remote URL              : git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+ e  Diff Editor             : vimdiff
+ f  Patch Validation fuzz   : 3 - case insensitive and ignore all punctuation
+ p  Cycle Patch Compare Mode: Batch
+ q  Quit and return to previous menu
+
+Enter one of the above: 
+_________________________________________________________________________
+Fig 2. Configuration Menu
+
+	o - Operating mode, selects between Merge Request and email modes.
+	    Merge Request is the default.
+
+	c - Presents the comments for the Merge request before downloading
+	    the MR patches and comparing them with upstream.
+
+	d - Patch directory will receive the RHEL patches.
+
+	w - Work directory will receive the corresponding upstream patches
+	    and the script log files.
+
+	s - Selects the remote branch to search for missing commits.
+
+	e - Presents a menu from which to select one of the three supported
+	    diff editors.
+	f - Because there can be some differences in the way developers copy
+	    the upstream summary line, fuzz is sometimes necessary to minimize
+	    false positives of invalid commits.
+	    This item will present a menu of available fuzz levels.
+	    The default is 'case insensitive and ignore all punctuation'
+
+	p - This selection will cycle the patch compare mode through its
+	    different states.
+	    The default is Batch, and, unless you're familiar with the
+	    Patch Compare Manager, it's probably best to just leave it.
+
 b * Sets the git branch from which you will be operating. It is assumed
     that you have at least one RHEL branch and one upstream branch in
     your git directory. When selecting this option, you will be
@@ -192,136 +215,40 @@ _________________________________________________________________________
 
 Change Current Branch
 
- 1  76-alt-z
- 2  810
- 3  820
- 4  * 830
- 5  830.kysela
- 6  fee
- 7  ipsec-next
- 8  linus
- 9  rh7
+ 1  leds-1922973
+ 2  linus
+ 3  * main
+ 4  tc
 
 Press 'q' to return without making a selection.
-Please enter a number between 1 and 9 or 'q': 4
+Please enter a number between 1 and 4 or 'q': 
 _________________________________________________________________________
-Fig 2. Branch Select menu (Press 'b' on Main Menu)
+Fig 3. Branch Select menu (Press 'b' on Main Menu)
 
- The current branch is indicated with a *
- To select a different branch from the choices, simply type the number of
- the desired branch at the prompt.
-
-d * RHEL directory, as described above in "Running the script".
-
-w * Working directory, as described above in "Running the script".
-
-e * This is the diff editor that will be used to perform an interactive
-    diff of the files.
-
-f * Because there can be some differences in the way developers copy the
-    upstream summary line, fuzz is sometimes necessary to minimize false
-    positives of invalid commits.
+g * Invokes the following menu to enable filtering results from the 
+    Merge Request query invoked by the 'm' item in the "Main Controls"
+    section of the main menu.
 _________________________________________________________________________
 
-  Select one of the following fuzz levels. Current level has a leading '*'
+    Filter by:    
+ a  MR Author
+ s  MR Summary String
+ c  Clear filters and return
+ q  Just get me out of here
 
-    0 - no fuzz, strictest comparison
-    1 - case insensitive (DEFAULT)
-  * 2 - case insensitive and ignore commas
-    3 - case insensitive and ignore all punctuation
-
-Press 'q' to return without making a selection.
-Please enter a number between 0 and 3 or 'q':
+Enter one of the above: 
 _________________________________________________________________________
-Fig 3. Patch Validation Fuzz Menu (Press 'f' on Main Menu)
+Fig 4. Merge Request list filter menu
 
-The "Run Parameters" section controls what happens when the 'r' (Run in
-Batch Mode) menu selection is pressed. These options can be cycled through
-their states by pressing the corresponding option number.
+-------------------------------------
+4.1 Main Controls
+-------------------------------------
 
-1 * The Comparison Mode is selected by a state switch. The user cycles
-    through the modes by repeatedly pressing this key.
-
-    Batch - (default) This will invoke an automatic batch comparison
-            of the patches.
-
-            The utility will compare the files and create a list of
-            those patch pairs that are not congruent according to the
-            settings in the utility.  The list of incongruent patch
-            pairs is then sent to the interactive comparison script for
-            human inspection.
-
-    Batch Setup - Invokes the setup menu of the batch compare utility
-            which allows the user to set operating parameters. The
-            parameters are sticky across invocations of the utility.
-
-    Interactive Only - In this mode, the batch comparison utility is
-            bypassed, and all the patch pairs are presented for human
-            inspection.
-
-    OFF - In the OFF mode, the pairs of patches are not diff'd after any
-          preceding operations.
-
-2 * The Patch apply mode is selected by a state switch. The user cycles
-    through the modes by repeatedly pressing this key.
-
-    git am - (default) Applies the patches in the RHEL directory to the
-             current branch using "git am".
-
-    git am 3-way merge - Applies the RHEL patches using "git am -3"
-
-    patch --fuzz=3 -p1 - Applies the patches using the patch application.
-
-    OFF - does not attempt to apply the RHEL patches.
-
-3 * Patch apply fail mode determines what happens when a patch fails to
-    apply with the chosen Apply Mode. The fail modes are selected by a
-    state switch cycled by pressing this key.
-
-    Exit - is the default. When a patch fails to apply, the script
-           will exit.
-
-    Continue without applying - tells the script to continue with the
-           to the downstream/upstream patch comparison without
-           attempting to apply any more patches.
-
-    Return to main menu - tells the script to return to the top menu
-           when a patch fails to apply.
-
-4 * Seek missing commits
-    This option toggles the search for commits that are apparently
-    missing from the current series.
-    Default at initialization is OFF.
-
-5   Start from patch <number>
-    This option only appears if there are *.patch files in the Patch
-    directory and they have not been applied yet.
-
-    This non-sticky option is useful if you've encountered a problem
-    with one of the patches in a set and you want to continue applying
-    after you've fixed the problem.
-
-The "Control" section of the menu operations as follows.
-
-r - Run the script in batch mode according to the parameter settings as
-    described above.
-
-i - Initialize the script's parameters to their default settings.
-
-h - Display this help file
-
-q - Exit the script
-
-x - This option toggles whether the "Discrete Operations" menu is
-    visible.
+These controls are largely self-explanatory.
 
 -----------------------------------------
 4.2 Discrete Operations Menu (See Fig. 1)
 -----------------------------------------
-
-R - Rename the extracted mail files in the Patch directory according
-    to their subject lines. This will not alter the contents of the
-    Patch directory if there are any *.patch files in it.
 
 F - Format upstream patches into the Work directory using commit hashes
     discovered in the commit logs of the *.patch files in the Patch
@@ -332,17 +259,15 @@ F - Format upstream patches into the Work directory using commit hashes
 S - Seek commits that may be missing from the serires.
     Files downloaded from email must be renamed with the R control first.
 
-A - Apply the patch or patch series. This option only appears if there
-    are patches remaining to be applied and the patch apply mode is
-    not OFF.
-
 P - Run the patch comparison to compare the submitted patches in the
     Patch directory with the formatted upstream patches in the Work
     directory according to the patch comparison mode.
     Upstream patches must be derived from the hashes in the patches
     in the Patch dirictory with F control first.
 
-G - git reset head of the current branc to it's most recent tag.
+A - Apply the patch or patch series. This option only appears if there
+    are patches remaining to be applied and the patch apply mode is
+    not OFF.
 
 B - Create a new branch at the current git head. This can be useful
     when expecting patches that depend on the currently applied ones.
@@ -352,25 +277,28 @@ C - Presents a submenu giving the user the choice to delete either or
     both the Patch and Work directories. The user can also return from
     the submenu without choosing any of the options.
 
+G - git reset head of the current branc to it's most recent tag.
+
 N - Clears the *.patch files out of the Patch and Wokr directories and
     resets the branch head to the most recent tag.
 
 V - View the session log files. This will present a menu of the currently
     existing log files you can view. The 'less' app is utilized for this
     function, so all the 'less' navigation controls apply.
-_________________________________________________________________________
 
-Select the log file you wish to view.
 
-1 - ../cmp/bp-commits.log
-2 - ../cmp/mm.log
-3 - ../cmp/us-commits.log
-4 - ../cmp/usvbp-commits.log
+After the Merge Request commits have been compared with their upstream
+counterparts, you will be presented with the option to Ack or Nack the
+Merge Request.
 
-Press 'q' to return without making a selection.
-Please enter a number between 1 and 4 or 'q':
-_________________________________________________________________________
-Fig 4. View Logs menu
+ For MR 379, you want to ...
+ a  ACK
+ A  ACK with comment
+ n  NACK
+ N  NACK with comment
+ q  Skip this step
+
+Enter a, n, or q: q
 
 ---------------------
 5. External App Menus
