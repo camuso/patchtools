@@ -1,5 +1,5 @@
 ===================
-Patchreview v10.0.2
+Patchreview v10.0.3
 ===================
 
 This menu-driven script allows the user to compare a set of patches
