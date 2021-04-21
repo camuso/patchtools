@@ -30,9 +30,6 @@ declare -i opmode_email=1
 declare -i opmode_states=2
 declare prj_opmode
 
-declare b_mrcomments=true
-declare prj_b_mrcomments
-
 declare current_mr=
 declare b_mrflag=false
 declare b_reviewed=false
@@ -47,7 +44,7 @@ declare mergelist_author=
 #     mrcomments
 #
 show_mrcomments() {
-	$b_mrcomments && echo "OFF" || echo "ON"
+	$b_mrcomments && echo "ON" || echo "OFF"
 }
 
 
@@ -249,7 +246,7 @@ ${INF}Merge Request: $STA$current_mr$INF has already been $actstr"
 
 	while :; do
 		echo -e "$acknackmenu"
-		promptgetchar ""$MNU"Enter a, n, or q: $OFF" response
+		promptgetchar ""$MNU"Enter a, A, n, N, or q: $OFF" response
 		[[ qnaNA =~ $response ]] && break
 	done
 

@@ -90,10 +90,13 @@ declare prj_remote_branch
 declare prj_mergelist_filter
 declare prj_b_rename_infiles
 declare prj_b_fmt_upstream
+declare prj_b_mrcomments
 
 # These booleans are always set true when the script is inited.
 declare b_rename_infiles
 declare b_fmt_upstream
+declare b_mrcomments=true
+
 
 declare lasttag=
 declare -i patchvalfuzz
