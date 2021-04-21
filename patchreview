@@ -758,7 +758,6 @@ EOF
 	init_files
 	init_loopvars
 	get_booleans
-	git_get_lasttag lasttag $last_tag_file
 }
 
 # main_loop - this is the loop for the top layer of the script
@@ -836,12 +835,24 @@ parse_cmdline() {
 			"-R" )	renpatfiles
 				shift
 				;;
-			   * ) 	echo "argc=$argc argv: $@"
-				shift
-				;;
+
+			"-v" )		;&
+			"-version" )	;&
+			"--version" ) 	show_version
+					shift
+					exit 0
+					;;
+
+			"-h" )		;&
+			"-help" ) 	;&
+			"--help" )	less $manual
+					shift
+					exit 0
+					;;
+			* ) echo -e "$STA$key$WRN is an invalid argument!\n"
+			    exit 1
 		esac
 	done
-
 }
 
 #############################
@@ -849,8 +860,6 @@ parse_cmdline() {
 #############################
 main() {
 	local argc=$#
-
-	[ "$1" == "-v" ] && show_version && exit 0
 
 	# Trap for control-c
 	#
@@ -870,6 +879,7 @@ main() {
 	init_parms
 
 	if [ $argc -eq 0 ]; then
+		git_get_lasttag lasttag $last_tag_file
 		main_loop
 	else
 		parse_cmdline $@
