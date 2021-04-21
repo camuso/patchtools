@@ -8,7 +8,7 @@
 # The following source files must be included before this one.
 #
 
-version="10.0.1"
+version="10.0.2"
 
 # Get the directory defaults if they don't already exist
 #
