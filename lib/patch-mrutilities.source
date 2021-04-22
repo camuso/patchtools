@@ -231,6 +231,7 @@ $MNU a$STA  ACK$OFF
 $MNU A$STA  ACK$OFF with comment
 $MNU n$WRN  NACK$OFF
 $MNU N$WRN  NACK$OFF with comment
+$MNU c$OFF  Comment only
 $MNU q$OFF  Skip this step$OFF
 \0
 EOF
@@ -246,24 +247,30 @@ ${INF}Merge Request: $STA$current_mr$INF has already been $actstr"
 
 	while :; do
 		echo -e "$acknackmenu"
-		promptgetchar ""$MNU"Enter a, A, n, N, or q: $OFF" response
-		[[ qnaNA =~ $response ]] && break
+		promptgetchar ""$MNU"Enter one of the above: $OFF" response
+		[[ qnaNAc =~ $response ]] && break
 	done
 
 	case "$response" in
 		q ) return 1
 		    ;;
-		A ) cmt="--with-comment"
+		A ) cmt="--with-comment --force-linebreak "
 		    ;&
 		a ) b_acked=true
 		    b_reviewed=true
 		    actstr=""$STA"ACK$OFF"
 		    ;;
-		N ) cmt="--with-comment"
+		N ) cmt="--with-comment --force-linebreak "
 		    ;&
 		n ) b_nacked=true
 		    b_reviewed=true
 		    actstr=""$WRN"NACK$OFF"
+		    ;;
+		c ) b_nacked=false
+		    b_acked=false
+		    b_reviewed=true
+		    lab mr note --force-linebreak $current_mr
+		    return 0
 		    ;;
 	esac
 
