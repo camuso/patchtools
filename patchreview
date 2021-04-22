@@ -378,6 +378,8 @@ cat <<EOF
 $MNU\
     $UND\0Discrete Operations $OFF \
 $( $b_mrflag || echo -e "\n$MNU R$OFF  Rename mail files in    :$STA $indir$OFF")
+$MNU i$OFF  Init to defaults
+$MNU h$OFF  help text
 $MNU F$OFF  Format commits into     :$STA $outdir
 $MNU S$OFF  Seek missing commits
 $MNU P$OFF  Compare Patches \
@@ -418,18 +420,18 @@ $MNU g$OFF  grep Merge List for     : $(show_mrfilter) \
  $(show_mrstatus)
 $MNU
     $UND\0Main Controls     $OFF
-$MNU m$OFF  Get a list of Merge Requests and select one for review
 $MNU M$OFF  Enter a specific Merge Request for review
-$MNU i$OFF  Init to defaults
-$MNU h$OFF  help text
+$MNU m$OFF  Show the list of Merge Requests and select one for review
+$MNU r$OFF  Refresh the list of Merge Requests and select one for review
+$MNU a$OFF  Ack, Nack and/or Comment on a Merge Request
 $MNU q$OFF  Quit this script
-$MNU x$OFF  Toggle Extended Operations Menu
+$MNU x$OFF  Toggle Discrete Operations display
 $OFF
 
 EOF
 )
 	echo -e "$mr_menu"
-	[ $menumode -eq $menumode_ext ]  && show_extops
+	[ $menumode -eq $menumode_ext ] && show_extops
 }
 
 # show_email_menu - display the email opmode of the main menu
@@ -485,7 +487,7 @@ menu_parser() {
 			;;
 		g )	grep_mrlist && return $rc_run
 			;;
-		a )	$b_reviewed && query_acknack
+		a )	$b_mrflag && query_acknack
 			;;
 		m )	$b_mrflag && select_merge_request && return $rc_run
 			;;
@@ -549,8 +551,10 @@ menu_parser() {
 			;;
 		q )	exit_me 0
 			;;
-		r )	$b_mrflag || set_booleans
-			return $rc_run
+		r )	$b_mrflag && refresh_mergelist || {
+				set_booleans
+				return $rc_run
+			}
 			;;
 		h )	less $manual
 			;;
@@ -731,7 +735,7 @@ EOF
 		applyfailmode=$applyfailmode_exit
 		patchseekmode=$patchseek_off
 		patchvalfuzz=3
-		menumode=$menumode_ext
+		menumode=$menumode_min
 		opmode=$opmode_mr
 		# remote_repo="origin"
 		# remote_branch="master"
@@ -818,6 +822,16 @@ cmd_check_fixes() {
 	return 0
 }
 
+# refresh_me - used between releases to update $MYDATA/patchreview.prj
+#
+# This is likely to change with each release.
+#
+refresh_me() {
+	echo -e "${INF}Refresh $STA$prjfile$INF to new release states.$OFF"
+	menumode=$menumode_min
+	prj_set_item $prj_menumode $menumode
+}
+
 # parse_cmdline - command line interface
 #
 parse_cmdline() {
@@ -837,6 +851,7 @@ parse_cmdline() {
 				;;
 
 			"-v" )		;&
+			"version" )	;&
 			"-version" )	;&
 			"--version" ) 	show_version
 					shift
@@ -844,8 +859,13 @@ parse_cmdline() {
 					;;
 
 			"-h" )		;&
+			"help" )	;&
 			"-help" ) 	;&
 			"--help" )	less $manual
+					shift
+					exit 0
+					;;
+			"refresh" )	refresh_me
 					shift
 					exit 0
 					;;

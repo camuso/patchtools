@@ -37,6 +37,7 @@ declare b_acked=false
 declare b_nacked=false
 declare mergelist_filter=
 declare mergelist_author=
+declare mergelist_file=$MYDATA/mergelist.log
 
 # show_mrcomments - display ON or OFF depening on mrcomments state
 #
@@ -184,22 +185,16 @@ show_opmode() {
 show_mrstatus() {
 	local ackstr
 
-	[ -n "$current_mr" ] || return
-
-	echo
 	$b_reviewed && ( $b_acked || $b_nacked ) && {
 		$b_ackstr && ackstr="${STA}ACKED$OFF" \
 			  || $ackstr="${WRN}NACKED$OFF"
 		echo -n "    "
 	} || {
-		echo -en "$MNU a$OFF  "
 		ackstr=
 	}
 
 	( $b_acked || $b_nacked ) && {
 		echo -e "Merge Request           : $STA$current_mr $ackstr"
-	} || {
-		echo -e "Ack/Nack Merge Request  : $STA$current_mr"
 	}
 }
 
@@ -214,15 +209,11 @@ show_mrstatus() {
 #
 query_acknack() {
 	$b_mrflag || return 1
-	[ -n "$current_mr" ] || {
-		echo -e "${WRN}There is no MR for those patches."
-		echo -e "${INF}Please prese M or m to enter or choose an MR.$OFF"
-		return 1
-	}
 	local cmt=
 	local response
 	local b_yes=false
 	local actstr=
+	local b_newmr=false
 	local acknackmenu=$(
 cat <<EOF
 
@@ -236,6 +227,18 @@ $MNU q$OFF  Skip this step$OFF
 \0
 EOF
 )
+	[ -z "$current_mr" ] && {
+		getuser "Enter a merge request number or $qstr$INF to exit: " current_mr
+		b_newmr=true
+		b_reviewed=false
+		b_acked=false
+		b_nacked=false
+		[ "$current_mr" == "q" ] && {
+			current_mr=
+			return
+		}
+	}
+
 	$b_reviewed && ( $b_acked || $b_nacked ) && {
 		$b_acked && actstr="${STA}ACKED$OFF" \
 			 || actstr="${WRN}NACKED$OFF"
@@ -252,7 +255,8 @@ ${INF}Merge Request: $STA$current_mr$INF has already been $actstr"
 	done
 
 	case "$response" in
-		q ) return 1
+		q ) current_mr=
+		    return 1
 		    ;;
 		A ) cmt="--with-comment --force-linebreak "
 		    ;&
@@ -285,6 +289,7 @@ $STA$current_mr$INF (y/n)? $OFF"
 	else
 		b_acked=false
 		b_nacked=false
+		current_mr=
 	fi
 
 	return 0
@@ -308,16 +313,29 @@ call_lab_mr_list() {
 	fi
 }
 
+# refresh_mergelist - refresh the file containing the list of merge requests
+#
+# Globals:
+# 	$mergelist_file
+#
+refresh_mergelist() {
+	rm -f "$mergelist_file"
+	select_merge_request
+	return 0
+}
+
 # select_merge_request - select a MR from a list
 #
 #  Presents a list of Merge Requests for the user to select one.
 #  The selected merge request is checked-out into its own branch
 #  for review.
 #
+# Globals
+# 	mergelist_file
+#
 # Inputs: none
 #
 select_merge_request() {
-	local mrlist=/dev/shm/mrlist
 	local mrarray=()
 	local mr=
 	local mrnum=
@@ -326,9 +344,12 @@ select_merge_request() {
 	local mypid=
 	local selected
 
-	call_lab_mr_list "$mrlist" & mypid=$!
-	ui_waitonproc_tty $mypid .05 \
+	[ -s "$mergelist_file" ] || {
+		call_lab_mr_list "$mergelist_file" & mypid=$!
+
+		ui_waitonproc_tty $mypid .05 \
 		""$INF"Please wait while we get the list of merge requests.$OFF"
+	}
 
 	while read mr; do
 		mr=$(echo ${mr:1})
@@ -336,7 +357,7 @@ select_merge_request() {
 		mrsub=$(echo $mr | cut -d' ' -f2-)
 		mrarray+=("$mrnum")
 		echo -e " $MNU$mrnum$OFF $mrsub"
-	done < $mrlist
+	done < $mergelist_file
 
 	getuser "Enter a merge request number or $qstr$INF to exit: " selected
 
