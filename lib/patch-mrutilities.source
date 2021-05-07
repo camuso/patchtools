@@ -302,14 +302,17 @@ $STA$current_mr$INF (y/n)? $OFF"
 #
 call_lab_mr_list() {
 	local outfile="$1"
+	local specifier="$2"
+	local srtcmd="sort -t ! -k2 -h"
+	local labcmd="lab mr list $specifier"
 
 	if [ -z "$mergelist_filter" ] && [ -z "$mergelist_author" ]; then
-		lab mr list > $outfile
+		$labcmd | $srtcmd > $outfile
 	else
 		[ -n "$mergelist_filter" ] && \
-			lab mr list | grep -i "$mergelist_filter" > $outfile
+			$labcmd | grep -i "$mergelist_filter" | $srtcmd > $outfile
 		[ -n "$mergelist_author" ] && \
-			lab mr list --author "$mergelist_author" > $outfile
+			$labcmd --author "$mergelist_author" | $srtcmd > $outfile
 	fi
 }
 
@@ -322,6 +325,99 @@ refresh_mergelist() {
 	rm -f "$mergelist_file"
 	select_merge_request
 	return 0
+}
+
+# get_mrlist_state - get the state specifier for the merge list
+#
+# Outputs
+#     $ - returns the desired state specifier.
+#
+get_mrlist_state() {
+	local state=
+	local statespec=
+	local statemenu=$(
+cat <<EOF
+$MNU
+     ${UND}Specify the MR state to seek  $OFF
+ $MNU a$OFF  All
+ $MNU o$OFF  Opened
+ $MNU c$OFF  Closed
+ $MNU m$OFF  Merged
+\0
+EOF
+)
+	echo -e "$statemenu"
+
+	while :; do
+		promptgetchar "${MNU}Choose the MR State to list: $OFF" statespec
+		case $statespec in
+			a ) state="--state all"; break ;;
+			o ) state="--state opened"; break ;;
+			c ) state="--state closed"; break ;;
+			m ) state="--state merged"; break ;;
+		esac
+	done
+
+	eval $1='$state'
+}
+
+# get_mrlist_specifier - which mr list specifier does the user want
+#
+# Outputs
+#     $1 - specifier string is returned in $1
+#
+get_mrlist_specifier() {
+	local spec=
+	local targbranch=
+	local specmenu=$(
+cat <<EOF
+$MNU
+     ${UND}Specify the MR list type      $OFF
+ $MNU d$OFF  Default list
+ $MNU a$OFF  All MRs on the project
+ $MNU s$OFF  State 'all/opened/closed/merged
+ $MNU t$OFF  Specify a Target Branch
+ $MNU d$OFF  MRs marked as 'draft'
+ $MNU r$OFF  MRs marked as 'ready'
+ $MNU n$OFF  MRs that can be merged
+ $MNU c$OFF  MRs that cannot be merged
+\0
+EOF
+)
+	echo -e "$specmenu"
+
+	while :; do
+		promptgetchar "${MNU}Select a MR list specifier: $OFF" spec
+		case $spec in
+			d ) spec=
+			    break
+			    ;;
+			a ) spec="--all"
+			    break
+			    ;;
+			s ) get_mrlist_state spec
+			    break
+			    ;;
+			d ) spec="--draft"
+			    break
+			    ;;
+			r ) spec="--ready"
+			    break
+			    ;;
+			n ) spec="--no-conflicts"
+			    break
+			    ;;
+			c ) spec="--conflicts"
+			    break
+			    ;;
+			t ) getuser "Enter Target Branch: " targbranch
+			    spec="-t $targbranch"
+			    break
+			    ;;
+		esac
+	done
+
+	eval $1='$spec'
 }
 
 # select_merge_request - select a MR from a list
@@ -343,9 +439,11 @@ select_merge_request() {
 	local select=
 	local mypid=
 	local selected
+	local specifier=
 
 	[ -s "$mergelist_file" ] || {
-		call_lab_mr_list "$mergelist_file" & mypid=$!
+		get_mrlist_specifier specifier
+		call_lab_mr_list "$mergelist_file" "$specifier" & mypid=$!
 
 		ui_waitonproc_tty $mypid .05 \
 		""$INF"Please wait while we get the list of merge requests.$OFF"
@@ -370,6 +468,7 @@ select_merge_request() {
 	done
 
 	get_merge_request_patches "$selected"
+	[ $? -eq 0 ] || return 1
 
 	return 0
 }
@@ -391,6 +490,7 @@ get_merge_request() {
 	while :; do
 		[ "$selected" == "q" ] && return 1
 		get_merge_request_patches "$selected"
+		[ $? -eq 0 ] || return 1
 		[ -s $bp_commits ] && break
 		echo -e ""$WRN"Merge Request $STA$selected$WRN was not found!"
 		getuser "Enter a different MR or $qstr$INF to quit: " selected
@@ -434,6 +534,10 @@ get_mrcommits() {
 # Inputs:
 # 	$1 - MR ID number
 #
+# Returns
+#	0 - after extracting patches from the MR
+#	1 - if user does not want to get the patches
+#
 # Globals:
 #	b_mrflag
 # 	b_rename_infiles
@@ -449,14 +553,17 @@ get_mrcommits() {
 #
 get_merge_request_patches() {
 	local mr="$1"
-	local b_yes
+	local b_yes=false
 	local mypid
 
-	current_mr=$mr
-
-	# Erase all the patch files in the indir and build them from
+	# Ask whether to erase all the patch files in the indir and build them from
 	# scratch.
-	rm -vf $indir/*.patch
+	if [ "$(ls -A $indir)" ]; then
+		getyn "Do you want to overwrite the files in $STA$indir$OFF" b_yes
+		$b_yes && rm -vf $indir/*.patch || return 1
+	fi
+
+	current_mr=$mr
 
 	b_mrflag=true
 	b_reviewed=false
@@ -477,4 +584,5 @@ get_merge_request_patches() {
 	ui_waitonproc_tty $mypid .05 ""$INF"Getting patches from MR $STA$selected$OFF"
 
 	git_file2patchset $bp_commits $indir
+	return 0
 }

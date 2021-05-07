@@ -388,7 +388,7 @@ for ((index = 0; index < $fcountA; ++index)); do
 				&& continue
 
 			equiv=false
-			! $verbose && fecho "PATCH: $((index+1))"
+			fecho "PATCH: $((index+1)): ${faryA[$index]}"
 			break
 		fi
 	done

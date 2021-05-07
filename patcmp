@@ -2,7 +2,7 @@
 #
 # compare submitted patches with upstream
 
-declare version="4.0"
+declare version="5.0"
 
 declare MYDATA=./.data
 declare MYDIR=$(dirname $(which $(basename $0)))
@@ -74,6 +74,10 @@ $(basename $0) [options] dir-1 dir-2 commits-file
 
   -t         - Optional last tag file, file that contains the last tag
                in the current branch.
+
+  -b         - Optional terminal background. If this value is one of
+               tb_lite or tb_dark, as defined in lib/ui.source, then
+	       colors will be used.
 
   -h         - This help text.
 
@@ -164,17 +168,17 @@ get_patch_number() {
 	local saved_mmindex=$mmindex
 	local saved_index=$index
 	local b_limitvio=false
-	local minstr="$OFF < 1, setting patch number to$BLD 1$OFF\n"
-	local maxstr="$OFF > $mlcount, setting patch number to $BLD$mlcount$OFF\n"
+	local minstr="$MNU < ${$STA}1$INF, setting patch number to$STA 1$OFF\n"
+	local maxstr="$MNU > $STA$mlcount$INF, setting patch number to $STA$mlcount$OFF\n"
 
-	echo -e "$BLD""Type 'q' to quit and pick up where you left off $OFF"
+	echo -e "$INF""Type $qstr$INF to quit and pick up where you left off $OFF"
 
 	while :; do
 		getuser "Patch number: " patnum
 		[ "$patnum" == "q" ] && break
 
 		if ! [[ $patnum =~ ^-?[0-9]+$ ]]; then
-			echo -e "$patnum ${BLD}is not a valid number.$OFF"
+			echo -e "$STA$patnum ${WRN}is not a valid number.$OFF"
 			continue
 		fi
 
@@ -184,7 +188,7 @@ get_patch_number() {
 		fi
 
 		if [ $patnum -gt $mlcount ]; then
-			echo -e "\n$BLD$patnum$maxstr"
+			echo -e "\n$STA$patnum$maxstr"
 			patnum=$mlcount
 		fi
 
@@ -251,11 +255,11 @@ replace_commit() {
 }
 
 say_nomismatch() {
-	echo -e " *********************************************"
-	echo -e " *                                           * $BLD"
-	echo -e " *     There are no conflicting patches      * $OFF"
+	echo -e "$INF *********************************************"
+	echo -e     " *                                           *"
+	echo -e " *    $STA There are no conflicting patches $INF     *"
 	echo -e " *                                           *"
-	echo -e " *********************************************"
+	echo -e " ********************************************* $OFF"
 }
 
 # init_mismatch()
@@ -280,8 +284,6 @@ init_mismatch() {
 	line=$(ui_readline 1 $mismatch_file)
 	verbosity=$(echo $line | cut -d':' -f2)
 
-	# echo "Incongruent patches"
-
 	# create the array of mismatched patched file indexes. The index is
 	# 0-based, while the patch sequence number is 1-basd, so subtract 1
 	# from each sequence number to get the index into the mlfiles and
@@ -291,11 +293,8 @@ init_mismatch() {
 		[ "${line:0:6}" == "PATCH:" ] || continue
 		(($verbosity > 0)) && { [[ "$line" == *"!="* ]] || continue; }
 
-		# No quotes around $line in the following, because we want
-		# to strip leading spaces. We are extracting integers, not
-		# strings.
-		#
-		seqno=$(echo $line | cut -d':' -f2)
+		seqno=$(echo "$line" | cut -d':' -f2)
+		echo -e "${WRN}seqno: $STA$seqno$OFF"
 		mismatch_array[$mmindex]=$((seqno - 1))
 
 		mismatch_numbers=$(echo "$mismatch_numbers"; echo $seqno)
@@ -303,18 +302,18 @@ init_mismatch() {
 	done < $mismatch_file
 
 	if [ ${#mismatch_array[@]} -gt 0 ]; then
-		echo -e "${BLD}Patches conflicting with upstream commits$OFF"
-		echo          "========================================="
+		echo -e "${MNU}Patches conflicting with upstream commits$INF"
+		echo -e       "=========================================$OFF"
 		for seqno in ${mismatch_array[@]}; do
-			echo $((seqno + 1))
+			echo -e "$MNU$((seqno + 1)): $STA${mlfiles[seqno]}$OFF"
 		done
 	fi
 
 	mismatch_count=$mmindex
 
 	if [ $mismatch_count -gt 0 ]; then
-		echo -e "Total number of conflicts with upstream: "\
-			"$BLD$mismatch_count$OFF"
+		echo -e "\n${INF}Total number of conflicts with upstream:"\
+			"$STA$mismatch_count$OFF"
 		last_mismatch=${mismatch_array[$((mmindex-1))]}
 		first_mismatch=${mismatch_array[0]}
 		index=$first_mismatch
@@ -332,7 +331,7 @@ init_mismatch() {
 
 getlasttag() {
 
-	echo -n "Getting last git tag.."
+	echo -en "{$INF}Getting last git tag..$OFF"
 	git describe --tags --abbrev=0 > /dev/shm/lasttag &
 
 	while true; do
@@ -357,6 +356,23 @@ tkdiff_cmd() {
 	tkdiff "$1" "$2"
 }
 
+# get_color - if terminal_background is set, color is on.
+#
+# Globals
+# 	terminal_background - defined in lib/ui.source
+# 	b_color - defined in lib/ui.source
+#
+get_color() {
+	local tb=$1
+
+	( [ -z "$tb" ] || [ $tb -eq 0 ] ) && return 1
+
+	terminal_background=$tb
+	b_color=true
+	ui_set_colors
+	return 0
+}
+
 #############################################
 # Initialization
 ############################################
@@ -367,10 +383,10 @@ trap control_c SIGINT
 
 # Herald
 #
-echo -e "\n$BLD\0patcmp $version - Interactively compare submitted patches with upstream$OFF"
+echo -e "\n${MNU}patcmp $STA$version$INF - Interactively compare submitted patches with upstream$OFF"
 # echo -e "\tType '$BLD\0h$OFF' for help\n"
 
-while getopts z:m:h OPTION; do
+while getopts z:m:b:h OPTION; do
     case "$OPTION" in
 
 	z ) zstr="$OPTARG"
@@ -382,6 +398,9 @@ while getopts z:m:h OPTION; do
 	    optcount=$((optcount+2))
 	    ;;
 	t ) lasttagfile="$OPTARG"
+	    optcount=$((optcount+2))
+	    ;;
+	b ) [ -n "$OPTARG" ] && get_color $OPTARG
 	    optcount=$((optcount+2))
 	    ;;
 	h ) usage
@@ -420,10 +439,10 @@ maxindex=$((mlcount - 1))
 #
 if ((mlcount != uscount)); then
 	echo
-	echo "The two directories must have the same number of files."
-	echo -e "\t$usdir has $uscount entries.\n"
-	echo -e "\t$mldir has $mlcount entries.\n"
-	echo "Exiting ..."
+	echo "${WRN}The two directories must have the same number of files.$OFF"
+	echo -e "\t$STA$usdir$INF has $STA$uscount$INF entries.\n"
+	echo -e "\t$STA$mldir$INF has $STA$mlcount$INF entries.\n"
+	echo -e "$INFExiting ...$OFF"
 	echo
 	exit $code_filecount_neq
 fi
@@ -435,24 +454,24 @@ case "$editor" in
 		;;
     "tkdiff"  )	editcmd=tkdiff_cmd
 		;;
-    *         )	echo "$editor"" is not a supported editor."
+    *         )	echo -e "$STA$editor$WRN is not a supported editor.$OFF"
 		exit_patcmp 1
 		;;
 esac
 
 echo
-echo -e "$BLD\0Patches in$OFF $mldir$BLD will be compared with patches in$OFF $usdir"
-echo -e "$BLD\0Editor of choice is$OFF $editor"
+echo -e "${INF}Patches in $STA$mldir$IINF will be compared with patches in$STA $usdir$OFF"
+echo -e "${INF}Editor of choice is$STA $editor$OFF"
 
-echo -e "\n$BLD\0Building the index of patch files$OFF"
-echo            "================================="
+echo -e "\n${INF}Building the index of patch files$OFF"
+echo -e   "${INF}=================================$OFF"
 mlfiles=($valpatchlist)
 for ((i = 0; i < ${#mlfiles[@]}; ++i)) ; do
 	echo "${mlfiles[$i]}"
 done
 
-echo -e "\n$BLD\0Building the index of upstream commits$OFF"
-echo            "======================================"
+echo -e "\n${INF}Building the index of upstream commits$OFF"
+echo -e   "${INF}======================================$OFF"
 index=0
 usfiles=($(ls "$usdir"/*.patch  | sort -V))
 for ((i = 0; i < ${#usfiles[@]}; ++i)) ; do
@@ -483,28 +502,28 @@ previndex=0
 while :; do
 
 	if [ $index -lt 0 ] || [ $index -gt $maxindex ]; then
-		echo -e "There is no patch number:$BLD $((index + 1))$OFF."
+		echo -e "${INF}There is no patch number:$STA $((index + 1))$OFF."
 		if $b_runmismatch; then
 			mmindex=0
 			index=${mismatch_array[$mmindex]}
 		else
 			index=0
 		fi
-		echo -e "Starting with patch number:$BLD $((index + 1))$OFF\n"
+		echo -e "${INF}Starting with patch number:$STA $((index + 1))$OFF\n"
 	fi
 
 	if [ $index -ge $maxindex ]; then
-		echo -e "\n     ******"
-		printf "Patch$BLD %04d$OFF is the last patch in the set.\n" \
+		echo -e "\n$INF     ******"
+		printf "Patch$STA %04d$INF is the last patch in the set.\n" \
 			$((maxindex + 1))
-		echo -e   "     ******"
+		echo -e   "     ******$OFF"
 	fi
 
 	if $b_runmismatch && [ $index -eq $last_mismatch ]; then
-		echo -e "\n     ******"
-		printf "Patch$BLD %04d$OFF is the last conflict in the set.\n" \
+		echo -e "\n$INF     ******"
+		printf "Patch$STA %04d${INF} is the last conflict in the set.\n" \
 			$((last_mismatch + 1))
-		echo -e   "     ******"
+		echo -e   "     ******$OFF"
 	fi
 
 	if ($b_runmismatch && [ $index -gt 0 ] && [ $index -lt $maxindex ]); then
@@ -513,35 +532,35 @@ while :; do
 			     || index=${mismatch_array[0]}
 	fi
 
-	echo -e "\n$BLD\0Interactively Compare patches with upstream commits"
-	echo -e "-----------------------------------------------------------------"
+	echo -e "\n${MNU}Interactively Compare patches with upstream commits"
+	echo -e   "${INF}-----------------------------------------------------------------"
 	echo -en "$OFF"
-	echo -e "$BLD Compare :$OFF $mldir/$(basename ${mlfiles[$index]})"
-	echo -e "$BLD    With :$OFF $usdir/$(basename ${usfiles[$index]})"
+	echo -e "$INF Compare :$STA $mldir/$(basename ${mlfiles[$index]})"
+	echo -e "$INF    With :$STA $usdir/$(basename ${usfiles[$index]})$OFF"
 	if ! $b_nomismatch; then
-	echo -e "${BLD}Conflict :$OFF $((mmindex+1)) ${BLD}of$OFF $mismatch_count"
+	echo -e "${WRN}Conflict :$STA $((mmindex+1)) ${WRN}of$STA $mismatch_count$OFF"
 	fi
 	echo
 
-	echo -en "$BLD"
-	echo -e  "\t    Last Tag :$OFF $lasttag$BLD"
-	echo -e  "\t    RHEL dir :$OFF $mldir$BLD"
-	echo -e  "\tUpstream dir :$OFF $usdir$BLD"
+	echo -en "$MNU"
+	echo -e  "\t    Last Tag :$STA $lasttag$MNU"
+	echo -e  "\t    RHEL dir :$STA $mldir$MNU"
+	echo -e  "\tUpstream dir :$STA $usdir$INF"
 	echo -e "-----------------------------------------------------------------"
-	echo -e  "\tc - run batch file comparison to find conflicts with upstream"
+	echo -e  "\t${MNU}c$OFF - run batch file comparison to find conflicts with upstream$OFF"
 
 	if ! $b_nomismatch; then
-	echo -e  "\tm - only examine patches conflicting with upstream:$OFF $b_runmismatch$BLD"
-	echo -e  "\ts - show contents of conflicts log"
+	echo -e  "\t${MNU}m$OFF - only examine patches conflicting with upstream:$STA $b_runmismatch"
+	echo -e  "\t${MNU}s$OFF - show contents of conflicts log"
 	fi
 
-	echo -e  "\tb - back to the previous patch"
-	echo -e  "\tn - prompt for a number for a specific patch"
-	echo -e	 "\tp - replace current upstream patch with a different commit"
-	echo -e  "\tx - spawns a secondary shell"
-	echo -e  "\tq - quit and return to previous execution environment"
-	$b_zstr && echo -e  "\tz - "$zstr""
-	echo -en "\tor any other key moves forward to the next patch ... "$OFF""
+	echo -e  "\t${MNU}b$OFF - back to the previous patch"
+	echo -e  "\t${MNU}n$OFF - prompt for a number for a specific patch"
+	echo -e	 "\t${MNU}p$OFF - replace current upstream patch with a different commit"
+	echo -e  "\t${MNU}x$OFF - spawns a secondary shell"
+	echo -e  "\t${MNU}q$OFF - quit and return to previous execution environment"
+	$b_zstr && echo -e  "\t${MNU}z$OFF - "$zstr""
+	echo -en "\n\t${INF}or any other key moves forward to the next patch ... "$OFF""
 	read -n1 answer
 	echo
 

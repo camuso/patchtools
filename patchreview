@@ -545,7 +545,7 @@ menu_parser() {
 		B )	create_branch
 			;;
 		P )	compare_patches
-			if [ $opmode -eq $opmode_mr ]; then query_acknack; fi
+			# if [ $opmode -eq $opmode_mr ]; then query_acknack; fi
 			;;
 		i )	init_menu
 			;;

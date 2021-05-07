@@ -1243,11 +1243,13 @@ check_mismatch_file() {
 # 	us_commits
 # 	editor
 # 	patchtotal
+# 	terminal_background
 #
 exec_patcmp() {
 	# echo -e "\n$BLD\0patch-common::exec_patcmp$OFF"
 	local xval="$1"
 	local patchlist="$(ls -1 "$indir"/*.patch)"
+	local tb=$terminal_background
 
 	# If we don't have a valid patch list, create one now.
 	#
@@ -1276,20 +1278,22 @@ exec_patcmp() {
 	else
 		patbatcmpmgr -x -P $valpatchlist -R $indir -U $outdir -o $mmfile
 	fi
-	patcmp -m $mmfile $indir $outdir $editor "$us_commits"
+	patcmp -b $tb -m $mmfile $indir $outdir $editor "$us_commits"
 }
 
 # compare_patches - compare the downstream with the upstream
 #
 # Globals
 #	cmpmode*
+#	terminal_background
 #
 compare_patches() {
+	local tb=$terminal_background
 
 	case $cmpmode in
 		$cmpmode_batch ) exec_patcmp "-X" ;;
 		$cmpmode_setup ) exec_patcmp ;;
-		$cmpmode_inter ) patcmp $indir $outdir $editor $us_commits ;;
+		$cmpmode_inter ) patcmp -b $tb $indir $outdir $editor $us_commits ;;
 			     * ) cmpmode=$cmpmode_off
 	esac
 }
