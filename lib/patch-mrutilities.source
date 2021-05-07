@@ -424,7 +424,7 @@ get_mrcommits() {
                basecmt=$(git merge-base HEAD $mmbr 2> /dev/null)
 
        patchcount=$(git rev-list --count $basecmt..)
-       git log -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
+       git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
        git checkout -q $mmbr 2> /dev/null
        git branch -q -D $mrbranch 2> /dev/null
 }
