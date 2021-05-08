@@ -66,7 +66,6 @@ show_mrfilter() {
 #
 # Globals:
 # 	mergelist_filter
-# 	mergelist_author
 # 	prj_mergelist_filter
 #
 grep_mrlist() {
@@ -76,8 +75,7 @@ grep_mrlist() {
 cat <<EOF
 $MNU
     ${UND}Filter by:    $OFF
-$MNU a$OFF  MR Author
-$MNU s$OFF  MR Summary String
+$MNU s$OFF  String to grep
 $MNU c$OFF  Clear filters and return
 $MNU q$OFF  Just get me out of here
 \0
@@ -96,16 +94,7 @@ EOF
 		    }
 		    break
 		    ;;
-		a ) getuser "Author to grep in Merge List: " mergelist_author
-		    mergelist_filter=
-		    [ "$mergelist_author" == "q" ] && {
-			mergelist_author=
-			return 1
-		    }
-		    break
-		    ;;
-		c ) mergelist_author=
-		    mergelist_filter=
+		c ) mergelist_filter=
 		    return 1
 		    ;;
 		q ) return 1
@@ -306,14 +295,7 @@ call_lab_mr_list() {
 	local srtcmd="sort -t ! -k2 -h"
 	local labcmd="lab mr list $specifier"
 
-	if [ -z "$mergelist_filter" ] && [ -z "$mergelist_author" ]; then
-		$labcmd | $srtcmd > $outfile
-	else
-		[ -n "$mergelist_filter" ] && \
-			$labcmd | grep -i "$mergelist_filter" | $srtcmd > $outfile
-		[ -n "$mergelist_author" ] && \
-			$labcmd --author "$mergelist_author" | $srtcmd > $outfile
-	fi
+	$labcmd | $srtcmd > $outfile
 }
 
 # refresh_mergelist - refresh the file containing the list of merge requests
@@ -372,15 +354,17 @@ get_mrlist_specifier() {
 	local specmenu=$(
 cat <<EOF
 $MNU
-     ${UND}Specify the MR list type      $OFF
- $MNU d$OFF  Default list
+     ${UND}Specify the MR list content   $OFF
  $MNU a$OFF  All MRs on the project
- $MNU s$OFF  State 'all/opened/closed/merged
+ $MNU o$OFF  Open MRs
+ $MNU r$OFF  Ready MRs
+ $MNU d$OFF  Draft MRs
+ $MNU n$OFF  No-conflicts, can be merged
+ $MNU c$OFF  Conflicts, cannot be merged
+ $MNU m$OFF  Merged MRs
+ $MNU A$OFF  Author of MRs
+ $MNU C$OFF  Closed MRs
  $MNU t$OFF  Specify a Target Branch
- $MNU d$OFF  MRs marked as 'draft'
- $MNU r$OFF  MRs marked as 'ready'
- $MNU n$OFF  MRs that can be merged
- $MNU c$OFF  MRs that cannot be merged
 \0
 EOF
 )
@@ -389,25 +373,16 @@ EOF
 	while :; do
 		promptgetchar "${MNU}Select a MR list specifier: $OFF" spec
 		case $spec in
-			d ) spec=
-			    break
-			    ;;
-			a ) spec="--all"
-			    break
-			    ;;
-			s ) get_mrlist_state spec
-			    break
-			    ;;
-			d ) spec="--draft"
-			    break
-			    ;;
-			r ) spec="--ready"
-			    break
-			    ;;
-			n ) spec="--no-conflicts"
-			    break
-			    ;;
-			c ) spec="--conflicts"
+			a ) spec="--state all --all";  break ;;
+			o ) spec="--state opened --all"; break ;;
+			d ) spec="--draft --all"; break ;;
+			r ) spec="--ready --all"; break ;;
+			n ) spec="--no-conflicts --all"; break ;;
+			c ) spec="--conflicts --all"; break ;;
+			m ) spec="--state merged --all"; break ;;
+			C ) spec="--state closed --all"; break ;;
+			A ) getuser "Enter the Author's name: " author
+			    spec="--author $author --all"
 			    break
 			    ;;
 			t ) getuser "Enter Target Branch: " targbranch
@@ -450,6 +425,7 @@ select_merge_request() {
 	}
 
 	while read mr; do
+		[[ $mr == *$mergelist_filter* ]] || continue
 		mr=$(echo ${mr:1})
 		mrnum=$(echo $mr | cut -d' ' -f1)
 		mrsub=$(echo $mr | cut -d' ' -f2-)
