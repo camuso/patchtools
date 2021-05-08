@@ -294,7 +294,6 @@ init_mismatch() {
 		(($verbosity > 0)) && { [[ "$line" == *"!="* ]] || continue; }
 
 		seqno=$(echo "$line" | cut -d':' -f2)
-		echo -e "${WRN}seqno: $STA$seqno$OFF"
 		mismatch_array[$mmindex]=$((seqno - 1))
 
 		mismatch_numbers=$(echo "$mismatch_numbers"; echo $seqno)
@@ -331,7 +330,7 @@ init_mismatch() {
 
 getlasttag() {
 
-	echo -en "{$INF}Getting last git tag..$OFF"
+	echo -en "${INF}Getting last git tag..$OFF"
 	git describe --tags --abbrev=0 > /dev/shm/lasttag &
 
 	while true; do
@@ -521,7 +520,7 @@ while :; do
 
 	if $b_runmismatch && [ $index -eq $last_mismatch ]; then
 		echo -e "\n$INF     ******"
-		printf "Patch$STA %04d${INF} is the last conflict in the set.\n" \
+		printf "Patch$STA %04d${INF} is the last$WRN conflict$INF in the set.\n" \
 			$((last_mismatch + 1))
 		echo -e   "     ******$OFF"
 	fi
