@@ -1,5 +1,5 @@
 ===================
-Patchreview v10.0.3
+Patchreview v10.1.0
 ===================
 
 This menu-driven script allows the user to compare a set of patches
@@ -36,7 +36,7 @@ For example:
 
 	$ cd $HOME
 	$ git clone https://gitlab.cee.redhat.com/tcamuso/patchtools mybin
-	$ export PATH=$PATH:$HOME/mybin 
+	$ export PATH=$PATH:$HOME/mybin
 
 After the above sequence of commands, the user can invoke patchreview
 from the command line.
@@ -120,34 +120,39 @@ state of the git tree.
 ---------------------------------
 _________________________________________________________________________
 
-    Environment: Merge Request Mode Version: 10.0.1
+    Environment: Merge Request Mode Version: 10.1.0
+    -----------------------------------------------
  c  Config Menu
-    Most recent tag         : kernel-4.18.0-304.5.el8
-    Current Head            : e587dc22f3fe [redhat] kernel-4.18.0-304.5.el8
+    Most recent tag         : kernel-4.18.0-305.3.el8
+    Current Head            : 4a65f7024d21 [redhat] kernel-4.18.0-305.3.el8
  b  Current git branch      : main
- g  grep Merge List for     :   
- a  Ack/Nack Merge Request  : 379
+ g  grep Merge List for     :
+    Merge Request           : 418 ACKED
 
-    Main Controls     
- m  Get a list of Merge Requests and select one for review
+    Main Controls
+    ------------------
  M  Enter a specific Merge Request for review
+ m  Show the list of Merge Requests and select one for review
+ r  Refresh the list of Merge Requests and select one for review
+ a  Ack, Nack and/or Comment on a Merge Request
+ q  Quit this script
+ x  Toggle Discrete Operations display
+
+    Discrete Operations
+    -------------------
  i  Init to defaults
  h  help text
- q  Quit this script
- x  Toggle Extended Operations Menu
-
-    Discrete Operations  
  F  Format commits into     : .patches/tmp
  S  Seek missing commits
- P  Compare Patches  
+ P  Compare Patches
  A  Apply patches           : apply mode is OFF
- B  Create a new branch at  : e587dc22f3fe [redhat] kernel-4.18.0-304.5.el8
+ B  Create a new branch at  : 4a65f7024d21 [redhat] kernel-4.18.0-305.3.el8
  C  Clean the Patch and/or Work directories
- G  Git reset to            : kernel-4.18.0-304.5.el8
- N  Nuke the directories and reset head to most recent tag  
+ G  Git reset to            : kernel-4.18.0-305.3.el8
+ N  Nuke the directories and reset head to most recent tag
  V  View the log files
 
-Enter one of the above: q
+Enter one of the above:
 _________________________________________________________________________
 Fig 1. Main Menu
 
@@ -165,7 +170,8 @@ c * Invokes the config menu. These are preferences that will be preserved
     between invocations of patchreview.
 _________________________________________________________________________
 
-    Configuration       
+    Configuration
+    ------------------
  o  Operating mode          : Merge Request Mode
  c  See comments first      : OFF
  d  Patch directory         : .patches has 2 patch files
@@ -221,30 +227,50 @@ Change Current Branch
  4  tc
 
 Press 'q' to return without making a selection.
-Please enter a number between 1 and 4 or 'q': 
+Please enter a number between 1 and 4 or 'q':
 _________________________________________________________________________
 Fig 3. Branch Select menu (Press 'b' on Main Menu)
 
-g * Invokes the following menu to enable filtering results from the 
-    Merge Request query invoked by the 'm' item in the "Main Controls"
-    section of the main menu.
-_________________________________________________________________________
 
-    Filter by:    
- a  MR Author
- s  MR Summary String
- c  Clear filters and return
- q  Just get me out of here
-
-Enter one of the above: 
-_________________________________________________________________________
-Fig 4. Merge Request list filter menu
+g * Prompts the user for a string to grep for in the Merge List.
 
 -------------------------------------
 4.1 Main Controls
 -------------------------------------
 
-These controls are largely self-explanatory.
+M - Enter a specific Merge Request to review
+
+m - Show the list of Merge Requests obtained by the 'r' menu entry.
+    If the list does not exist, the user will be presented with a
+    menu to select the contents of the Merge Request list.
+
+r - Refresh the Merge Request list. The user will be presented with
+    the following menu.
+_________________________________________________________________________
+     Specify the MR list content
+     ------------------------------
+  a  All MRs on the project
+  o  Open MRs
+  r  Ready MRs
+  d  Draft MRs
+  n  No-conflicts, can be merged
+  c  Conflicts, cannot be merged
+  m  Merged MRs
+  A  Author of MRs
+  C  Closed MRs
+  t  Specify a Target Branch
+  q  Quit and return to main menu
+
+Select a MR list specifier:
+_________________________________________________________________________
+Fig 4. Merge Request List content specifier menu
+
+a - Ack/Nack or Comment on the current Merge Request
+
+q - quit the script and return to the shell
+
+x - Toggle the presence of the extended controls menu. The menu entries
+    remain active whether or not the extended menu is presented.
 
 -----------------------------------------
 4.2 Discrete Operations Menu (See Fig. 1)
