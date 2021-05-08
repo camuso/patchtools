@@ -70,38 +70,14 @@ show_mrfilter() {
 #
 grep_mrlist() {
 	$b_mrflag || return
-	local opt
-	local grepmenu=$(
+
+	local promptstr=$(
 cat <<EOF
-$MNU
-    ${UND}Filter by:    $OFF
-$MNU s$OFF  String to grep
-$MNU c$OFF  Clear filters and return
-$MNU q$OFF  Just get me out of here
-\0
+Enter grep string or just press$STA Enter$INF to clear it and return: 
 EOF
 )
-	while :; do
-		echo -e "$grepmenu"
-		promptgetchar "${MNU}Enter one of the above: $OFF" opt
-
-		case $opt in
-		s ) getuser "Text to grep in Merge List: " mergelist_filter
-		    mergelist_author=
-		    [ "$mergelist_filter" == "q" ] && {
-			mergelist_filter=
-			return 1
-		    }
-		    break
-		    ;;
-		c ) mergelist_filter=
-		    return 1
-		    ;;
-		q ) return 1
-		    ;;
-		esac
-	done
-
+	getuser "$promptstr" mergelist_filter
+	[ -n "$mergelist_filter" ] || return 1
 	prj_set_item $prj_mergelist_filter $mergelist_filter
 	select_merge_request
 	return $?
