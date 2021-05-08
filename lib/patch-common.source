@@ -5,10 +5,7 @@
 # This source file provides routines common to both patchreview and
 # patchdevelop scripts.
 #
-# The following source files must be included before this one.
-#
-
-version="10.0.5"
+version="10.1.0"
 
 # Get the directory defaults if they don't already exist
 #
