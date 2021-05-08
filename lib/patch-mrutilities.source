@@ -174,17 +174,16 @@ show_opmode() {
 show_mrstatus() {
 	local ackstr
 
-	$b_reviewed && ( $b_acked || $b_nacked ) && {
-		$b_ackstr && ackstr="${STA}ACKED$OFF" \
+	[ -n "$current_mr" ] || return 1
+
+	( $b_acked || $b_nacked ) && {
+		$b_acked && ackstr="${STA}ACKED$OFF" \
 			  || $ackstr="${WRN}NACKED$OFF"
-		echo -n "    "
 	} || {
 		ackstr=
 	}
 
-	( $b_acked || $b_nacked ) && {
-		echo -e "Merge Request           : $STA$current_mr $ackstr"
-	}
+	echo -e "\n    Merge Request           : $STA$current_mr $ackstr"
 }
 
 # query_acknack - ask the user if they want to respond to the MR
@@ -244,8 +243,7 @@ ${INF}Merge Request: $STA$current_mr$INF has already been $actstr"
 	done
 
 	case "$response" in
-		q ) current_mr=
-		    return 1
+		q ) return 1
 		    ;;
 		A ) cmt="--with-comment --force-linebreak "
 		    ;&
@@ -278,7 +276,6 @@ $STA$current_mr$INF (y/n)? $OFF"
 	else
 		b_acked=false
 		b_nacked=false
-		current_mr=
 	fi
 
 	return 0
@@ -309,40 +306,6 @@ refresh_mergelist() {
 	return 0
 }
 
-# get_mrlist_state - get the state specifier for the merge list
-#
-# Outputs
-#     $ - returns the desired state specifier.
-#
-get_mrlist_state() {
-	local state=
-	local statespec=
-	local statemenu=$(
-cat <<EOF
-$MNU
-     ${UND}Specify the MR state to seek  $OFF
- $MNU a$OFF  All
- $MNU o$OFF  Opened
- $MNU c$OFF  Closed
- $MNU m$OFF  Merged
-\0
-EOF
-)
-	echo -e "$statemenu"
-
-	while :; do
-		promptgetchar "${MNU}Choose the MR State to list: $OFF" statespec
-		case $statespec in
-			a ) state="--state all"; break ;;
-			o ) state="--state opened"; break ;;
-			c ) state="--state closed"; break ;;
-			m ) state="--state merged"; break ;;
-		esac
-	done
-
-	eval $1='$state'
-}
-
 # get_mrlist_specifier - which mr list specifier does the user want
 #
 # Outputs
@@ -350,6 +313,7 @@ EOF
 #
 get_mrlist_specifier() {
 	local spec=
+	local author=
 	local targbranch=
 	local specmenu=$(
 cat <<EOF
@@ -365,6 +329,7 @@ $MNU
  $MNU A$OFF  Author of MRs
  $MNU C$OFF  Closed MRs
  $MNU t$OFF  Specify a Target Branch
+ $MNU q$OFF  Quit and return to main menu
 \0
 EOF
 )
@@ -373,6 +338,7 @@ EOF
 	while :; do
 		promptgetchar "${MNU}Select a MR list specifier: $OFF" spec
 		case $spec in
+			q ) current_mr= ; return 1 ;;
 			a ) spec="--state all --all";  break ;;
 			o ) spec="--state opened --all"; break ;;
 			d ) spec="--draft --all"; break ;;
@@ -382,17 +348,18 @@ EOF
 			m ) spec="--state merged --all"; break ;;
 			C ) spec="--state closed --all"; break ;;
 			A ) getuser "Enter the Author's name: " author
-			    spec="--author $author --all"
+			    spec="--state all --all --author $author"
 			    break
 			    ;;
 			t ) getuser "Enter Target Branch: " targbranch
-			    spec="-t $targbranch"
+			    spec="--state all --all -t $targbranch"
 			    break
 			    ;;
 		esac
 	done
 
 	eval $1='$spec'
+	return 0
 }
 
 # select_merge_request - select a MR from a list
@@ -403,6 +370,7 @@ EOF
 #
 # Globals
 # 	mergelist_file
+# 	current_mr
 #
 # Inputs: none
 #
@@ -413,13 +381,12 @@ select_merge_request() {
 	local mrsub=
 	local select=
 	local mypid=
-	local selected
 	local specifier=
 
 	[ -s "$mergelist_file" ] || {
 		get_mrlist_specifier specifier
+		[ $? -eq 0 ] || return 1
 		call_lab_mr_list "$mergelist_file" "$specifier" & mypid=$!
-
 		ui_waitonproc_tty $mypid .05 \
 		""$INF"Please wait while we get the list of merge requests.$OFF"
 	}
@@ -433,17 +400,17 @@ select_merge_request() {
 		echo -e " $MNU$mrnum$OFF $mrsub"
 	done < $mergelist_file
 
-	getuser "Enter a merge request number or $qstr$INF to exit: " selected
+	getuser "Enter a merge request number or $qstr$INF to exit: " current_mr
 
 	while :; do
-		[ "$selected" == "q" ] && return 1
-		echo ${mrarray[@]} | grep -w $selected > /dev/null 2>&1
+		[ "$current_mr" == "q" ] && { current_mr= ; return 1; }
+		echo ${mrarray[@]} | grep -w $current_mr > /dev/null 2>&1
 		[ $? -eq 0 ] && break
-		echo -e "$STA$selected$WRN is not an active Merge Request."
-		getuser "Enter a different MR or press $qstr$INF to quit: " selected
+		echo -e "$STA$current_mr$WRN is not in the current list of Merge Requests."
+		getuser "Enter a different MR or press $qstr$INF to quit: " current_mr
 	done
 
-	get_merge_request_patches "$selected"
+	get_merge_request_patches "$current_mr"
 	[ $? -eq 0 ] || return 1
 
 	return 0
@@ -457,19 +424,19 @@ select_merge_request() {
 #
 # Globals:
 # 	bp_commits
+# 	current_mr
 #
 get_merge_request() {
-	local selected=
 
-	getuser "Enter a merge request number or $qstr$INF to quit: " selected
+	getuser "Enter a merge request number or $qstr$INF to quit: " current_mr
 
 	while :; do
-		[ "$selected" == "q" ] && return 1
-		get_merge_request_patches "$selected"
+		[ "$current_mr" == "q" ] && return 1
+		get_merge_request_patches "$current_mr"
 		[ $? -eq 0 ] || return 1
 		[ -s $bp_commits ] && break
-		echo -e ""$WRN"Merge Request $STA$selected$WRN was not found!"
-		getuser "Enter a different MR or $qstr$INF to quit: " selected
+		echo -e ""$WRN"Merge Request $STA$current_mr$WRN was not found!"
+		getuser "Enter a different MR or $qstr$INF to quit: " current_mr
 	done
 
 	return 0
@@ -557,7 +524,7 @@ get_merge_request_patches() {
 	$b_mrcomments && { lab mr show --comments $mr; }
 
 	get_mrcommits $mr & mypid=$!
-	ui_waitonproc_tty $mypid .05 ""$INF"Getting patches from MR $STA$selected$OFF"
+	ui_waitonproc_tty $mypid .05 ""$INF"Getting patches from MR $STA$current_mr$OFF"
 
 	git_file2patchset $bp_commits $indir
 	return 0
