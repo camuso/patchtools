@@ -399,18 +399,17 @@ select_merge_request() {
 # Inputs: none
 #
 # Globals:
-# 	bp_commits
+# 	us_commits
 # 	current_mr
 #
 get_merge_request() {
-
+	$ui_b_debug && echo -e "${STA}get_merge_request$OFF"
 	getuser "Enter a merge request number or $qstr$INF to quit: " current_mr
-
 	while :; do
 		[ "$current_mr" == "q" ] && return 1
 		get_merge_request_patches "$current_mr"
 		[ $? -eq 0 ] || return 1
-		[ -s $bp_commits ] && break
+		[ -s "$us_commits" ] && break
 		echo -e ""$WRN"Merge Request $STA$current_mr$WRN was not found!"
 		getuser "Enter a different MR or $qstr$INF to quit: " current_mr
 	done
@@ -469,17 +468,21 @@ get_mrcommits() {
 #	prj_b_rename_infiles
 #	current_mr
 # 	valpatchlist
+#	bp_commits
+#	indir
 #
 get_merge_request_patches() {
+	$ui_b_debug && echo -e "${STA}get_merge_request_patches$OFF"
 	local mr="$1"
 	local b_yes=false
 	local mypid
 
 	# Ask whether to erase all the patch files in the indir and build them from
 	# scratch.
-	if [ "$(ls -A $indir)" ]; then
-		getyn "Do you want to overwrite the files in $STA$indir$OFF" b_yes
-		$b_yes && rm -vf $indir/*.patch || return 1
+	if [ "$(ls -A $indir/*.patch)" ]; then
+		echo -e "${INF}There are already RHEL patch files in $STA$indir$OFF."
+		getyn "Do you want to replace them? " b_yes
+		$b_yes && rm -vf $indir/*.patch || return 0
 	fi
 
 	current_mr=$mr

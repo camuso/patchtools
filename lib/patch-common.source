@@ -336,6 +336,7 @@ EOF
 )
 	echo -e "$fuzz_msg\n"
 	loop_range_q 0 3 patchvalfuzz
+	prj_set_item $prj_patchvalfuzz $patchvalfuzz
 }
 
 # show_patchvalfuzz - show the current patch validation fuzz level
@@ -1048,23 +1049,20 @@ EOF
 # 	1 - no patch files to review
 #
 format_upstream_patches() {
+	$ui_b_debug && echo -e "${STA}format_upstream_patches$OFF"
 	local fc=	# $(find $outdir -maxdepth 1 -not -type d -name "*.patch" -print -quit)
 	local b_yup
 	local banner=
 	local pad=
 	local escnt=
 
-	# We don't perform this check for merge request mode. We just write over
-	# everything.
-	$b_mrflag || {
-		fc=$(find $outdir -maxdepth 1 -not -type d -name "*.patch" -print -quit)
+	fc=$(find $outdir -maxdepth 1 -not -type d -name "*.patch" -print -quit)
 
-		[ "$fc" ] && {
-			echo
-			echo -e ""$INF"There are already upstream patch files in $STA$outdir$OFF"
-			getyn "Do you want to replace them?" b_yup
-			$b_yup || return 0
-		}
+	[ "$fc" ] && {
+		echo
+		echo -e ""$INF"There are already upstream patch files in $STA$outdir$OFF"
+		getyn "Do you want to replace them? " b_yup
+		$b_yup || return 0
 	}
 
 	ls $indir/*.patch > /dev/null 2>&1

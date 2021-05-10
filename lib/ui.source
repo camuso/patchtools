@@ -15,7 +15,7 @@
 ##############################
 
 declare ui_loaded=true
-declare ui_debug=false
+declare ui_b_debug=false
 
 #
 # Text Attributes

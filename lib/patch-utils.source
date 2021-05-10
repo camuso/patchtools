@@ -26,7 +26,7 @@ declare prologue_file=
 #	returns 0 if prologue, 1 if not
 #
 is_prologue() {
-	# echo -e "\n$BLD\0patch-utils::is_prologue$OFF"
+	$ui_b_debug && echo -e "${STA}patch-utils::is_prologue$OFF"
 	local pfile="$1"
 	local subj=$(grep -m1 "Subject: " "$pfile")
 	local subarray
@@ -73,7 +73,7 @@ is_prologue() {
 # GLOBALS
 #
 create_patchlist() {
-	# echo -e "\n$BLD\0patch-utils::create_patchlist$OFF"
+	$ui_b_debug && echo -e "${STA}patch-utils::create_patchlist$OFF"
 	local list=($1)
 	local startpat=$3
 	local snum=0

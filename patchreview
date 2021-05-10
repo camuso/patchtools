@@ -782,7 +782,7 @@ main_loop() {
 		menu_stat=$?
 		# echo "menu_loop_stat: $menu_stat"
 
-		if $b_rename_infiles; then
+		if ! $b_mrflag && $b_rename_infiles; then
 			exec_boolean b_rename_infiles false "renpatfiles"
 			[ $? -ne 0 ] && continue
 		fi
