@@ -109,7 +109,7 @@ $STA$destdir$OFF"
 		commitnum=$(echo $commit | tr -s 0)
 		pfx=$(printf "%04d" $index)
 
-		if [ ${commitnum} -eq 0 ]; then
+		if [[ 16#${commitnum} -eq 0 ]]; then
 			echo "No upstream commit detected." > $destdir/"$pfx-nocommit.patch"
 		else
 			git format-patch -1 -k --start-number $index $commit -o $destdir
