@@ -39,6 +39,15 @@ declare mergelist_filter=
 declare mergelist_author=
 declare mergelist_file=$MYDATA/mergelist.log
 
+declare -i mr_inv=1
+declare -i mr_nop=2
+declare -a mr_errs=(
+""
+"${WRN}Merge Request not found$OFF"
+"${WRN}No patches found for Merge Request$OFF"
+)
+
+
 # show_mrcomments - display ON or OFF depening on mrcomments state
 #
 # Globals
@@ -404,13 +413,15 @@ select_merge_request() {
 #
 get_merge_request() {
 	$ui_b_debug && echo -e "${STA}get_merge_request$OFF"
+	local stat=0
+
 	getuser "Enter a merge request number or $qstr$INF to quit: " current_mr
 	while :; do
 		[ "$current_mr" == "q" ] && return 1
 		get_merge_request_patches "$current_mr"
-		[ $? -eq 0 ] || return 1
-		[ -s "$us_commits" ] && break
-		echo -e ""$WRN"Merge Request $STA$current_mr$WRN was not found!"
+		stat=$?
+		[ $stat -eq 0 ] && break
+		echo -e "$WRN${mr_errs[$stat]}$INF : MR $STA$current_mr$OFF"
 		getuser "Enter a different MR or $qstr$INF to quit: " current_mr
 	done
 
@@ -476,13 +487,21 @@ get_merge_request_patches() {
 	local mr="$1"
 	local b_yes=false
 	local mypid
+	local stat
+	local patches=$(ls $indir/*.patch 2>/dev/null)
 
 	# Ask whether to erase all the patch files in the indir and build them from
 	# scratch.
-	if [ "$(ls -A $indir/*.patch > /dev/null 2>&1)" ]; then
+
+	if [ -n "$patches" ]; then
 		echo -e "${INF}There are already RHEL patch files in $STA$indir$OFF."
 		getyn "Do you want to replace them? " b_yes
-		$b_yes && rm -vf $indir/*.patch || return 0
+
+		if $b_yes; then
+			rm -f $indir/* 2>/dev/null
+		else
+			return 0
+		fi
 	fi
 
 	current_mr=$mr
@@ -500,11 +519,14 @@ get_merge_request_patches() {
 
 	valpatchlist=
 
-	$b_mrcomments && { lab mr show --comments $mr; }
+	lab mr show --comments $mr
+	stat=$?
+	[ $stat -eq 1 ] && return $mr_inv
 
 	get_mrcommits $mr & mypid=$!
 	ui_waitonproc_tty $mypid .05 ""$INF"Getting patches from MR $STA$current_mr$OFF"
 
 	git_file2patchset $bp_commits $indir
-	return 0
+	stat=$?
+	[ $stat -ne 0 ] && return $mr_nop || return 0
 }

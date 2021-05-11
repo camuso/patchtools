@@ -1062,7 +1062,12 @@ format_upstream_patches() {
 		echo
 		echo -e ""$INF"There are already upstream patch files in $STA$outdir$OFF"
 		getyn "Do you want to replace them? " b_yup
-		$b_yup || return 0
+
+		if $b_yup; then
+			rm -f $outdir/* > /dev/null 2>&1
+		else
+			return 0
+		fi
 	}
 
 	ls $indir/*.patch > /dev/null 2>&1

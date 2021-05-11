@@ -787,7 +787,11 @@ main_loop() {
 			[ $? -ne 0 ] && continue
 		fi
 
-		$b_fmt_upstream && format_upstream_patches
+		if $b_mrflag; then
+			format_upstream_patches
+		else
+			$b_fmt_upstream && format_upstream_patches
+		fi
 
 		if [ $patchseekmode -eq $patchseek_on ]; then
 			[ -f "$us_commits" ] || format_upstream_patches
