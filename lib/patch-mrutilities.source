@@ -479,7 +479,7 @@ get_merge_request_patches() {
 
 	# Ask whether to erase all the patch files in the indir and build them from
 	# scratch.
-	if [ "$(ls -A $indir/*.patch)" ]; then
+	if [ "$(ls -A $indir/*.patch > /dev/null 2>&1)" ]; then
 		echo -e "${INF}There are already RHEL patch files in $STA$indir$OFF."
 		getyn "Do you want to replace them? " b_yes
 		$b_yes && rm -vf $indir/*.patch || return 0
