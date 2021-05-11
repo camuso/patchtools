@@ -443,11 +443,12 @@ function promptgetchar {
 # $2 - the character to be returned
 #
 loop_yn() {
-	local ans
+	local ans=
 	while true; do
 		promptgetchar "$1" ans
-		[[ "yY" == *"$ans"* ]] && eval $2=true  && return 0
-		[[ "nN" == *"$ans"* ]] && eval $2=false && return 1
+		[ -z "$ans" ] && continue
+		[ "$ans" == "y" ] && eval $2=true  && return 0
+		[ "$ans" == "n" ] && eval $2=false && return 1
 		echo -e "Please enter 'y' or 'n'."
 	done
 }
