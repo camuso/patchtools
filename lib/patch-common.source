@@ -1246,7 +1246,7 @@ check_mismatch_file() {
 # 	terminal_background
 #
 exec_patcmp() {
-	# echo -e "\n$BLD\0patch-common::exec_patcmp$OFF"
+	$ui_b_debug && echo -e "${STA}patch-common::exec_patcmp$OFF"
 	local xval="$1"
 	local patchlist="$(ls -1 "$indir"/*.patch)"
 	local tb=$terminal_background
@@ -1279,6 +1279,7 @@ exec_patcmp() {
 		patbatcmpmgr -x -P $valpatchlist -R $indir -U $outdir -o $mmfile
 	fi
 	patcmp -b $tb -m $mmfile $indir $outdir $editor "$us_commits"
+	return $?
 }
 
 # compare_patches - compare the downstream with the upstream
@@ -1289,13 +1290,16 @@ exec_patcmp() {
 #
 compare_patches() {
 	local tb=$terminal_background
+	local stat=
 
 	case $cmpmode in
-		$cmpmode_batch ) exec_patcmp "-X" ;;
-		$cmpmode_setup ) exec_patcmp ;;
-		$cmpmode_inter ) patcmp -b $tb $indir $outdir $editor $us_commits ;;
+		$cmpmode_batch ) exec_patcmp "-X" stat=$? ;;
+		$cmpmode_setup ) exec_patcmp stat=$? ;;
+		$cmpmode_inter ) patcmp -b $tb $indir $outdir $editor $us_commits stat=$? ;;
 			     * ) cmpmode=$cmpmode_off
 	esac
+
+	return $stat
 }
 
 # init_menu - initialize the menu loop with default global values

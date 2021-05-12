@@ -2,7 +2,7 @@
 #
 # compare submitted patches with upstream
 
-declare version="5.0"
+declare version="5.1"
 
 declare MYDATA=./.data
 declare MYDIR=$(dirname $(which $(basename $0)))
@@ -168,7 +168,7 @@ get_patch_number() {
 	local saved_mmindex=$mmindex
 	local saved_index=$index
 	local b_limitvio=false
-	local minstr="$MNU < ${$STA}1$INF, setting patch number to$STA 1$OFF\n"
+	local minstr="$MNU < ${STA}1$INF, setting patch number to$STA 1$OFF\n"
 	local maxstr="$MNU > $STA$mlcount$INF, setting patch number to $STA$mlcount$OFF\n"
 
 	echo -e "$INF""Type $qstr$INF to quit and pick up where you left off $OFF"
@@ -380,11 +380,6 @@ get_color() {
 #
 trap control_c SIGINT
 
-# Herald
-#
-echo -e "\n${MNU}patcmp $STA$version$INF - Interactively compare submitted patches with upstream$OFF"
-# echo -e "\tType '$BLD\0h$OFF' for help\n"
-
 while getopts z:m:b:h OPTION; do
     case "$OPTION" in
 
@@ -409,6 +404,11 @@ while getopts z:m:b:h OPTION; do
 	    exit 127
     esac
 done
+
+# Herald
+#
+echo -e "\n${MNU}patcmp $STA$version$INF - Interactively compare submitted patches with upstream$OFF"
+# echo -e "\tType '$BLD\0h$OFF' for help\n"
 
 # Shift past the options and see if we still have the right number of
 # arguments.
@@ -438,7 +438,7 @@ maxindex=$((mlcount - 1))
 #
 if ((mlcount != uscount)); then
 	echo
-	echo "${WRN}The two directories must have the same number of files.$OFF"
+	echo -e "${WRN}The two directories must have the same number of files.$OFF"
 	echo -e "\t$STA$usdir$INF has $STA$uscount$INF entries.\n"
 	echo -e "\t$STA$mldir$INF has $STA$mlcount$INF entries.\n"
 	echo -e "$INFExiting ...$OFF"

@@ -806,6 +806,7 @@ main_loop() {
 
 		if [ $cmpmode -ne $cmpmode_off ]; then
 			compare_patches
+			[ $? -ne 0 ] && continue
 			$b_mrflag && query_acknack
 		fi
 	done

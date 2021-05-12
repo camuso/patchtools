@@ -129,7 +129,7 @@ press_any() {
 # Print usage string and exit with nonzero status
 #
 usage() {
-	echo -e "$usagestr"
+	$b_external || echo -e "$usagestr"
 	exit 1
 }
 
@@ -148,10 +148,10 @@ $dirB has $fcountB .patch files.
 Both directories must have the same number of .patch files.
 "
 	press_any
-	$b_external || usage
+	usage
 }
 
-while getopts hdpsvVo:P: OPTION; do
+while getopts xhdpsvVo:P: OPTION; do
     case "$OPTION" in
 
 	h ) usage

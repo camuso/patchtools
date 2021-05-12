@@ -490,20 +490,6 @@ get_merge_request_patches() {
 	local stat
 	local patches=$(ls $indir/*.patch 2>/dev/null)
 
-	# Ask whether to erase all the patch files in the indir and build them from
-	# scratch.
-
-	if [ -n "$patches" ]; then
-		echo -e "${INF}There are already RHEL patch files in $STA$indir$OFF."
-		getyn "Do you want to replace them? " b_yes
-
-		if $b_yes; then
-			rm -f $indir/* 2>/dev/null
-		else
-			return 0
-		fi
-	fi
-
 	current_mr=$mr
 
 	b_mrflag=true
@@ -522,6 +508,17 @@ get_merge_request_patches() {
 	lab mr show --comments $mr
 	stat=$?
 	[ $stat -eq 1 ] && return $mr_inv
+
+	if [ -n "$patches" ]; then
+		echo -e "${INF}There are already RHEL patch files in $STA$indir$OFF."
+		getyn "Do you want to replace them? " b_yes
+
+		if $b_yes; then
+			rm -f $indir/* 2>/dev/null
+		else
+			return 0
+		fi
+	fi
 
 	get_mrcommits $mr & mypid=$!
 	ui_waitonproc_tty $mypid .05 ""$INF"Getting patches from MR $STA$current_mr$OFF"

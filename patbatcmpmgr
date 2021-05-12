@@ -182,7 +182,7 @@ declare rc_run=1	# Run comparison
 
 
 usage() {
-	echo -e "$usagestr"
+	$b_exec_exit || echo -e "$usagestr"
 	exit $1
 }
 
@@ -498,10 +498,10 @@ while true; do
 
 	if $b_valpatchlist; then
 		# echo -e "patbatcmp $optstr -o $ofile -P \"$valpatchlist\" $usdir"
-		patbatcmp $optstr -o $ofile -P "$valpatchlist" $rhdir $usdir
+		patbatcmp -x $optstr -o $ofile -P "$valpatchlist" $rhdir $usdir
 	else
 		echo "patbatcmp $optstr -o $ofile $rhdir $usdir"
-		patbatcmp $optstr -o $ofile $rhdir $usdir
+		patbatcmp -x $optstr -o $ofile $rhdir $usdir
 	fi
 
 	# Only one pass if all we want is to execute and exit.
