@@ -39,8 +39,10 @@ declare mergelist_filter=
 declare mergelist_author=
 declare mergelist_file=$MYDATA/mergelist.log
 
-declare -i mr_inv=1
-declare -i mr_nop=2
+declare -i mr_val=0	# valid mr
+declare -i mr_inv=1	# invalid mr
+declare -i mr_nop=2	# no patches found
+declare -i mr_norev=3	# skip the review
 declare -a mr_errs=(
 ""
 "${WRN}Merge Request not found$OFF"
@@ -347,6 +349,31 @@ EOF
 	return 0
 }
 
+# show_mrlist - display the list of MRs obtained by call_lab_mr_list
+#
+#  Globals
+#	current_mr
+#	mergelist_file
+#
+show_mrlist() {
+	local -n mrarray=$1	# pass array by reference
+	local mr=
+	local mrnum=
+	local mrsub=
+
+	while read mr; do
+		[[ $mr == *$mergelist_filter* ]] || continue
+		mr=$(echo ${mr:1})
+		mrnum=$(echo $mr | cut -d' ' -f1)
+		mrsub=$(echo $mr | cut -d' ' -f2-)
+		mrarray+=("$mrnum")
+		echo -e " $MNU$mrnum$OFF $mrsub"
+	done < $mergelist_file
+
+	getuser "Enter a merge request number or $qstr$INF to exit: " current_mr
+
+}
+
 # select_merge_request - select a MR from a list
 #
 #  Presents a list of Merge Requests for the user to select one.
@@ -360,7 +387,7 @@ EOF
 # Inputs: none
 #
 select_merge_request() {
-	local mrarray=()
+	local mrs=()
 	local mr=
 	local mrnum=
 	local mrsub=
@@ -376,27 +403,19 @@ select_merge_request() {
 		""$INF"Please wait while we get the list of merge requests.$OFF"
 	}
 
-	while read mr; do
-		[[ $mr == *$mergelist_filter* ]] || continue
-		mr=$(echo ${mr:1})
-		mrnum=$(echo $mr | cut -d' ' -f1)
-		mrsub=$(echo $mr | cut -d' ' -f2-)
-		mrarray+=("$mrnum")
-		echo -e " $MNU$mrnum$OFF $mrsub"
-	done < $mergelist_file
-
-	getuser "Enter a merge request number or $qstr$INF to exit: " current_mr
-
 	while :; do
+		show_mrlist mrs
 		[ "$current_mr" == "q" ] && { current_mr= ; return 1; }
-		echo ${mrarray[@]} | grep -w $current_mr > /dev/null 2>&1
-		[ $? -eq 0 ] && break
+		echo ${mrs[@]} | grep -w $current_mr > /dev/null 2>&1
+
+		if [ $? -eq 0 ]; then
+			get_merge_request_patches "$current_mr"
+			[ $? -eq 0 ] && break || continue
+		fi
+
 		echo -e "$STA$current_mr$WRN is not in the current list of Merge Requests."
 		getuser "Enter a different MR or press $qstr$INF to quit: " current_mr
 	done
-
-	get_merge_request_patches "$current_mr"
-	[ $? -eq 0 ] || return 1
 
 	return 0
 }
@@ -418,10 +437,12 @@ get_merge_request() {
 	getuser "Enter a merge request number or $qstr$INF to quit: " current_mr
 	while :; do
 		[ "$current_mr" == "q" ] && return 1
-		get_merge_request_patches "$current_mr"
+		get_merge_request_patches "$current_mr" "get_merge_request"
 		stat=$?
 		[ $stat -eq 0 ] && break
-		echo -e "$WRN${mr_errs[$stat]}$INF : MR $STA$current_mr$OFF"
+		[ $stat -lt $mr_norev ] && {
+			echo -e "$WRN${mr_errs[$stat]}$INF : $STA$current_mr$OFF"
+		}
 		getuser "Enter a different MR or $qstr$INF to quit: " current_mr
 	done
 
@@ -489,6 +510,8 @@ get_merge_request_patches() {
 	local mypid
 	local stat
 	local patches=$(ls $indir/*.patch 2>/dev/null)
+	local mrcomments=/dev/shm/mrcomments.log
+	local ackcount=
 
 	current_mr=$mr
 
@@ -505,9 +528,25 @@ get_merge_request_patches() {
 
 	valpatchlist=
 
-	lab mr show --comments $mr
+	lab mr show --comments $mr > $mrcomments
 	stat=$?
 	[ $stat -eq 1 ] && return $mr_inv
+
+	ackcount=$(grep '^Approved By' $mrcomments | cut -d':' -f2- | wc -w)
+	less $mrcomments
+
+	grep '^Approved By' $mrcomments | grep $USER
+	if [ $? -eq 0 ]; then
+		echo -e "${INF}You have already ACKed MR $STA$mr$INF."
+		loop_yn "${MNU}Continue with review? y/n: " b_yes
+		$b_yes || return $mr_norev
+	fi
+
+	if [ $ackcount -ge 3 ]; then
+		echo -e "${INF}MR $STA$mr$INF already has 3 ACKs."
+		loop_yn "${MNU}Continue with review? y/n: " b_yes
+		$b_yes || return $mr_norev
+	fi
 
 	if [ -n "$patches" ]; then
 		echo -e "${INF}There are already RHEL patch files in $STA$indir$OFF."

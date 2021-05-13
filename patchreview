@@ -489,9 +489,11 @@ menu_parser() {
 			;;
 		a )	$b_mrflag && query_acknack
 			;;
-		m )	$b_mrflag && select_merge_request && return $rc_run
+		m )	$b_mrflag && select_merge_request
+			[ $? -eq 0 ] && return $rc_run
 			;;
-		M )	$b_mrflag && get_merge_request && return $rc_run
+		M )	$b_mrflag && get_merge_request
+			[ $? -eq 0 ] && return $rc_run
 			;;
 		s )	get_remote_seek
 			;;
