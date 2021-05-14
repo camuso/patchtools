@@ -88,8 +88,8 @@ Enter grep string or just press$STA Enter$INF to clear it and return:
 EOF
 )
 	getuser "$promptstr" mergelist_filter
-	[ -n "$mergelist_filter" ] || return 1
 	prj_set_item $prj_mergelist_filter $mergelist_filter
+	[ -n "$mergelist_filter" ] || return 1
 	select_merge_request
 	return $?
 }
@@ -457,26 +457,22 @@ get_merge_request() {
 #
 #
 get_mrcommits() {
-       local mr="$1"	# MR, the Merge Reqest
-       local mrbranch	# branch of MR created by 'lab checkout MR'
-       local basecmt	# base commit of the MR
-       local mmbr	# "main" or "master" for origin
+	local mr="$1"	# MR, the Merge Reqest
+	local basecmt	# base commit of the MR
+	local mmbr	# "main" or "master" for origin
+	local mrbranch="patchreview"
+	local patchcount
 
-       mmbr=$(git branch | grep master >& /dev/null && echo master || echo main)
-       lab mr checkout $mr 2> /dev/null
-       mrbranch="$(git branch --show-current)"
-       basecmt=$(lab mr show | \
-               grep -m 1  "^Labels" | \
-               awk -F "Dependencies::" ' { print $2 }' | \
-               cut -d',' -f1 | xargs)
+	mmbr=$(git branch | grep master >& /dev/null && echo master || echo main)
+	patchcount=$(lab mr show --comments $mr \
+		| grep 'Total number of commits analyzed' \
+		| tail -1 \
+		| cut -d'*' -f3)
 
-       [ -z "$basecmt" ] || [ "$basecmt" == "OK" ] && \
-               basecmt=$(git merge-base HEAD $mmbr 2> /dev/null)
-
-       patchcount=$(git rev-list --count $basecmt..)
-       git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
-       git checkout -q $mmbr 2> /dev/null
-       git branch -q -D $mrbranch 2> /dev/null
+	lab mr checkout -b $mrbranch $mr 2> /dev/null
+	git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
+	git checkout -q -f $mmbr
+	git branch -q -D $mrbranch
 }
 
 # get_merge_request_patches - extract the patches from a merge request
