@@ -252,12 +252,18 @@ pr_start() {
 }
 
 get_firstline() {
-	local eocl='--- a/'
+	local eocl='--- '
 	local len=${#eocl}
 	while read line; do let ++lcA; [ "${line:0:len}" == "$eocl" ] && break; done <&5
 	$nopaths && let ++lcA || let --lcA
 	while read line; do let ++lcB; [ "${line:0:len}" == "$eocl" ] && break; done <&6
 	$nopaths && let ++lcB || let --lcB
+}
+
+is_patch() {
+	local file=$1
+	grep -m1 -q 'diff --git' $file
+	return $?
 }
 
 # At this point, we know the level of verbosity of the output. We need
@@ -273,9 +279,20 @@ $b_stdout || fprintf "verbose level: %d\n" $verbosity
 # The first file in the pair is the control. When it ends, the comparison
 # ends, and the for loop moves to the next pair of files.
 #
+echo # start with a blank crlf
+
 for ((index = 0; index < $fcountA; ++index)); do
 
 	# echo "${faryA[$index]}" >> $tlog
+
+	# Set loop control variables.
+	#
+	equiv=true	# will be set to false if a mismatch is detected
+	eofA=false	# will be set true if we detect an end of file
+	eofB=false	# :
+	b_done=false	# Will be set true if both eof markers are set
+
+	# tcnt=0
 
 	lcA=0	# Line counter for line from file A
 	lcB=0   # Line counter for line from file B
@@ -288,6 +305,16 @@ for ((index = 0; index < $fcountA; ++index)); do
 	[ ${#fname} -gt $tcols ] && fname=${fname:$tcols}
 	[ "$ofile" == "/dev/stdout" ] || echo "$fname"
 
+	$(is_patch "${faryA[$index]}") || {
+		equiv=false
+		b_done=true
+	}
+
+	$(is_patch "${faryB[$index]}") || {
+		equiv=false
+		b_done=true
+	}
+
 	# Open file descriptors based on the filenames in each array
 	#
 	exec 5<"${faryA[$index]}"	# open the files for reading
@@ -298,15 +325,6 @@ for ((index = 0; index < $fcountA; ++index)); do
 
 	get_firstline
 	$vverbose && pr_start
-
-	# Set loop control variables.
-	#
-	equiv=true	# will be set to false if a mismatch is detected
-	eofA=false	# will be set true if we detect an end of file
-	eofB=false	# :
-	b_done=false	# Will be set true if both eof markers are set
-
-	# tcnt=0
 
 	# Read lines from each patch file in a loop and compare them until
 	# a mismatch is detected or we've reached the end of the first
@@ -361,6 +379,7 @@ for ((index = 0; index < $fcountA; ++index)); do
 		[ "${lineA:0:6}" == "index " ] && continue
 		$nopaths && [ "${lineA:0:6}" == "--- a/" ] && continue
 		$nopaths && [ "${lineA:0:6}" == "+++ b/" ] && continue
+		$nopaths && [ "$lineA" == "--- /dev/null" ] && continue
 		$nodiffst && [ "${lineA:0:10}" == "diff --git" ] && continue
 
 		# If strict is true, then user only wants to compare lines
@@ -408,8 +427,8 @@ for ((index = 0; index < $fcountA; ++index)); do
 	# How to do a if-then-if-then-else-fi-fi on one line ;)
 	#
 	$verbose && { $equiv \
-		&& fprintf "PATCH: %d: == patches are congruent ==\n" $((index+1)) \
-		|| fprintf "PATCH: %d: != patches are different !=\n" $((index+1)); }
+		&& fprintf "PATCH: %d: == No conflicts detected ==\n" $((index+1)) \
+		|| fprintf "PATCH: %d: != There are conflicts !=\n" $((index+1)); }
 
 	$vverbose && fecho
 
