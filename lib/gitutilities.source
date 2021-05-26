@@ -112,18 +112,18 @@ $STA$destdir$OFF"
 		if [[ 16#${commitnum} -eq 0 ]]; then
 			echo "No upstream commit detected." > $destdir/"$pfx-nocommit.patch"
 		else
-			git format-patch -1 -k --start-number $index $commit -o $destdir
-			#
-			# If we could not format the patch, then create an empty
-			# patch with the bad patch number in it.
-			#
-			[ $? -eq 0 ] || {
+			if git show $commit > /dev/null 2>&1; then
+				git format-patch -1 -k --start-number $index $commit -o $destdir
+			else
+				# If we could not format the patch, then create an empty
+				# patch with the bad patch number in it.
+				#
 				create_remote_array remotes
 				echo "Commit $commit" > $destdir/"$pfx-notfound.patch"
 				echo "$notfound" >> $destdir/"$pfx-notfound.patch"
 				echo >> $destdir/"$pfx-notfound.patch"
 				show_remotes >> $destdir/"$pfx-notfound.patch"
-			}
+			fi
 		fi
 		let index++
 	done < $commitsfile
