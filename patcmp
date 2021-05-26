@@ -2,7 +2,7 @@
 #
 # compare submitted patches with upstream
 
-declare version="5.1"
+declare version="5.2"
 
 declare MYDATA=./.data
 declare MYDIR=$(dirname $(which $(basename $0)))
@@ -407,7 +407,7 @@ done
 
 # Herald
 #
-echo -e "\n${MNU}patcmp $STA$version$INF - Interactively compare submitted patches with upstream$OFF"
+echo -e "\n${MNU}patcmp $STA$version$INF - Compare submitted patches with upstream$OFF"
 # echo -e "\tType '$BLD\0h$OFF' for help\n"
 
 # Shift past the options and see if we still have the right number of

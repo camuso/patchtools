@@ -308,11 +308,13 @@ for ((index = 0; index < $fcountA; ++index)); do
 	$(is_patch "${faryA[$index]}") || {
 		equiv=false
 		b_done=true
+		fecho "PATCH: $((index+1)): ${faryA[$index]}"
 	}
 
 	$(is_patch "${faryB[$index]}") || {
 		equiv=false
 		b_done=true
+		$eqiv && fecho "PATCH: $((index+1)): ${faryA[$index]}"
 	}
 
 	# Open file descriptors based on the filenames in each array
