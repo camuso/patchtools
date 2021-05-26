@@ -466,8 +466,7 @@ get_mrcommits_git() {
 	# mmbr=$(git branch | grep master >& /dev/null && echo master || echo main)
 	mmbr=$(grep -B1 'remote = origin' .git/config | head -1 | cut -d'"' -f2)
 	lab mr checkout -b $mrbranch $mr 2> /dev/null
-	mrbranch="$(git branch --show-current)"
-	basecmt=$(lab mr show | \
+	basecmt=$(lab mr show $mr | \
                grep -m 1  "^Labels" | \
                awk -F "Dependencies::" ' { print $2 }' | \
                cut -d',' -f1 | xargs)
