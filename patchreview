@@ -422,8 +422,10 @@ $MNU
     $UND\0Main Controls     $OFF
 $MNU M$OFF  Enter a specific Merge Request for review
 $MNU m$OFF  Show the list of Merge Requests and select one for review
+$MNU v$OFF  $(show_comments)
 $MNU r$OFF  Refresh the list of Merge Requests and select one for review
 $MNU a$OFF  Ack, Nack and/or Comment on a Merge Request
+$MNU i$OFF  $(show_init)
 $MNU q$OFF  Quit this script
 $MNU x$OFF  Toggle Discrete Operations display
 $OFF
@@ -560,7 +562,7 @@ menu_parser() {
 			;;
 		h )	less $manual
 			;;
-		v )    show_version
+		v )     view_comments
 			;;
 #		T )	# test functions
 			# hidden from main menu

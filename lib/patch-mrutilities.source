@@ -49,6 +49,18 @@ declare -a mr_errs=(
 "${WRN}No patches found for Merge Request$OFF"
 )
 
+# show_init - display the init menu option
+#
+# Globals:
+# 	current_mr
+#
+show_init() {
+	echo -n "Init to defaults"
+	if [ "$current_mr" ]; then
+		echo -en " and clear MR $STA$current_mr$OFF"
+	fi
+	echo
+}
 
 # show_mrcomments - display ON or OFF depening on mrcomments state
 #
@@ -294,6 +306,29 @@ refresh_mergelist() {
 	return 0
 }
 
+# show_comments - display the view comments menu option
+#
+# Globals
+# 	current_mr
+#
+show_comments() {
+	if [ -n "$current_mr" ]; then
+		echo "View comments for MR $STA$current_mr$OFF"
+	else
+		echo "View comments for a specific MR"
+	fi
+}
+
+# view_comments - view the comments only for a specific MR
+#
+# Globals
+# 	current_mr
+#
+view_comments() {
+	[ -n "$current_mr" ] && { lab mr show --comments $current_mr; return; }
+	get_merge_request "comments"
+}
+
 # get_mrlist_specifier - which mr list specifier does the user want
 #
 # Outputs
@@ -425,7 +460,8 @@ select_merge_request() {
 #
 # The entered MR will be checked-out into its own branch for review.
 #
-# Inputs: none
+# Inputs:
+#	$1 - if it exists, then don't get the patches
 #
 # Globals:
 # 	us_commits
@@ -433,13 +469,19 @@ select_merge_request() {
 #
 get_merge_request() {
 	$ui_b_debug && echo -e "${STA}get_merge_request$OFF"
+	local comments_only="$1"
 	local stat=0
 
 	getuser "Enter a merge request number or $qstr$INF to quit: " current_mr
 	while :; do
-		[ "$current_mr" == "q" ] && return 1
-		get_merge_request_patches "$current_mr" "get_merge_request"
-		stat=$?
+		[ "$current_mr" == "q" ] && { current_mr=; return 1; }
+		if [ -n "$comments_only" ]; then
+			lab mr show --comments $current_mr;
+			stat=$?
+		else
+			get_merge_request_patches "$current_mr" "get_merge_request"
+			stat=$?
+		fi
 		[ $stat -eq 0 ] && break
 		[ $stat -lt $mr_norev ] && {
 			echo -e "$WRN${mr_errs[$stat]}$INF : $STA$current_mr$OFF"
