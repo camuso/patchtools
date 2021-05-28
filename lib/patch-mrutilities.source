@@ -547,7 +547,7 @@ get_mrcommits_cki() {
 		| tail -1 \
 		| cut -d'*' -f3)
 
-	[ $patchcount -eq 0 ] && get_mrcommits_git $mr "$mrbranch"
+	[ -z "$patchcount" ] && get_mrcommits_git $mr "$mrbranch"
 
 	lab mr checkout -b $mrbranch $mr 2> /dev/null
 	git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
@@ -653,6 +653,7 @@ get_merge_request_patches() {
 
 		if $b_yes; then
 			rm -f $indir/* 2>/dev/null
+			rm -f $outdir/* 2>/dev/null
 		else
 			return 0
 		fi
