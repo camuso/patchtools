@@ -170,6 +170,7 @@ show_opmode() {
 # 	b_reviewed
 # 	b_acked
 # 	b_nacked
+#
 show_mrstatus() {
 	local ackstr
 
@@ -485,7 +486,8 @@ get_merge_request() {
 		[ $stat -eq 0 ] && break
 		[ $stat -lt $mr_norev ] && {
 			echo -e "$WRN${mr_errs[$stat]}$INF : $STA$current_mr$OFF"
-		}
+		} || return 0
+
 		getuser "Enter a different MR or $qstr$INF to quit: " current_mr
 	done
 
@@ -528,6 +530,10 @@ get_mrcommits_git() {
 #      patchcount - number of patches in the patch series
 #      bp_commits - file that will contain the backported commits
 #
+# Other ways to extract patchcount:
+#
+#   lab mr show -p 621 | grep '^Author:' | grep 'redhat\.com' | wc -l
+#
 get_mrcommits_cki() {
 	local mr="$1"	# MR, the Merge Reqest
 	local mrbranch="$2"
@@ -540,6 +546,8 @@ get_mrcommits_cki() {
 		| grep 'Total number of commits analyzed' \
 		| tail -1 \
 		| cut -d'*' -f3)
+
+	[ $patchcount -eq 0 ] && get_mrcommits_git $mr "$mrbranch"
 
 	lab mr checkout -b $mrbranch $mr 2> /dev/null
 	git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
@@ -650,7 +658,7 @@ get_merge_request_patches() {
 		fi
 	fi
 
-	get_mrcommits_git $mr "$brname" & mypid=$!
+	get_mrcommits_cki $mr "$brname" & mypid=$!
 	ui_waitonproc_tty $mypid .05 ""$INF"Getting patches from MR $STA$current_mr$OFF"
 
 	git_file2patchset $bp_commits $indir
