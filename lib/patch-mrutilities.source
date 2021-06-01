@@ -57,7 +57,7 @@ declare -a mr_errs=(
 show_init() {
 	echo -n "Init to defaults"
 	if [ "$current_mr" ]; then
-		echo -en " and clear MR $STA$current_mr$OFF"
+		echo -en " and clear MR $STA$current_mr$OFF and its files"
 	fi
 	echo
 }

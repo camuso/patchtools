@@ -1314,8 +1314,12 @@ init_menu() {
 	b_fmt_upstream=true
 	b_allapplied=false
 	[ $opmode -eq $opmode_mr ] && b_mrflag=true || b_mrflag=false
-	current_mr=
 	[ -f "$usvbp_commits" ] && rm -f "$usvbp_commits"
+	if $b_mrflag; then
+		current_mr=
+		rm -f $indir/* 2>/dev/null
+		rm -f $outdir/* 2>/dev/null
+	fi
 }
 
 # check_patch_count
