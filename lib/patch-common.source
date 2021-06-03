@@ -684,6 +684,11 @@ show_colors() {
 	$b_color && echo -e "ON" || echo -e "OFF"
 }
 
+show_patches() {
+	echo -en "$MNU d$OFF  $indirstr directory         : "
+	echo -e  "$STA$indir$OFF has $STA$infilecount$OFF ${patstr}files."
+}
+
 show_cmpmode() {
 
 	case $cmpmode in

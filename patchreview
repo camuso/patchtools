@@ -296,7 +296,7 @@ $MNU
     $UND\0Configuration       $OFF
 $MNU o$OFF  Operating mode          :$STA $(show_opmode)
 $MNU c$OFF  See comments first      :$STA $(show_mrcomments)
-$MNU d$OFF  $indirstr directory         :$STA $indir$OFF has$STA $infilecount$OFF $patstr\0files
+$(show_patches)
 $MNU w$OFF  $outdirstr directory          :$STA $outdir
 $MNU s$OFF  Remote Repo/Branch      :$STA $remote_repo/$remote_branch$OFF
     Remote URL              :$STA$(show_remote_url "$remote_repo")$OFF
@@ -416,6 +416,7 @@ $MNU c$OFF  Config Menu
     Most recent tag         :$STA $lasttag$OFF
     Current Head            :$STA $(get_current_head_trunc)$OFF
 $MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
+$(show_patches)
 $MNU g$OFF  grep Merge List for     : $(show_mrfilter) \
  $(show_mrstatus)
 $MNU
@@ -454,6 +455,7 @@ $MNU c$OFF  Config Menu
     Most recent tag         :$STA $lasttag$OFF
     Current Head            :$STA $(get_current_head_trunc)$OFF
 $MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
+$(show_patches)
 $MNU
     $UND\0Batch Run Parameters$OFF
 $MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
