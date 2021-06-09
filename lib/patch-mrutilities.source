@@ -567,7 +567,7 @@ get_mrcommits_pat() {
 	local mmbr	# "main" or "master" for origin
 
 	mmbr=$(grep -B1 'remote = origin' .git/config | head -1 | cut -d'"' -f2)
-	patchcount=$(lab mr show -p $mr | grep '^Author:' | grep 'redhat\.com' | wc -l)
+	patchcount=$(lab mr show -p $mr | grep '^Author:' | wc -l)
 
 	lab mr checkout -b $mrbranch $mr 2> /dev/null
 	git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
