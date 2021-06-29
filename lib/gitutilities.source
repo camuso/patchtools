@@ -665,6 +665,8 @@ find_fixes () {
 # $1 - path to the file containing the commits. The commit is expected to
 #      be the first field in each line of the file.
 #
+# $2 - the remote_repo/remote_branch in which to seek missing commits
+#
 # Returns
 # 	0 - all is well
 # 	1 - something went wrong
@@ -672,6 +674,7 @@ find_fixes () {
 check_fixes() {
 	local commitsfile="$1"
 	local rembranch="$2"
+	local missing_file="$3"
 	local line=
 	local fixes=
 	local commitid=
@@ -716,7 +719,7 @@ check_fixes() {
 				if ! grep "$commit_fix_id" "$commitsfile" >& /dev/null; then
 					# WARN ONLY. There may be a reason a commit is
 					# is skipped.
-					echo -e "$msg $commit_fix"
+					echo -e "$msg $commit_fix" | tee -a $missing_file
 				fi
 			done
 		fi

@@ -185,6 +185,8 @@ show_mrstatus() {
 	}
 
 	echo -e "\n    Merge Request           : $STA$current_mr $ackstr"
+	[ -s "$missing_commits" ] && echo -e \
+		"   $WRN There are missing commits listed in $STA$missing_commits$OFF"
 }
 
 # query_acknack - ask the user if they want to respond to the MR
@@ -598,6 +600,7 @@ get_mrcommits_pat() {
 # 	valpatchlist
 #	bp_commits
 #	indir
+#	missing_commits
 #
 get_merge_request_patches() {
 	$ui_b_debug && echo -e "${STA}get_merge_request_patches$OFF"
@@ -628,6 +631,7 @@ get_merge_request_patches() {
 	prj_set_item $prj_b_rename_infiles $b_rename_infiles
 	prj_set_item $prj_b_fmt_upstream $b_fmt_upstream
 
+	> $missing_commits
 	valpatchlist=
 
 	lab mr show --comments $mr > $mrcomments
@@ -662,10 +666,8 @@ get_merge_request_patches() {
 		echo -e "${INF}MR $STA$mr$INF already has 3 ACKs."
 	fi
 
-	if ($b_already_acked || $b_has_3_acks); then
-		loop_yn "${MNU}Continue with review? y/n: " b_yes
-		$b_yes || return $mr_norev
-	fi
+	loop_yn "${MNU}Continue with review? y/n: " b_yes
+	$b_yes || return $mr_norev
 
 	if [ -n "$patches" ]; then
 		echo -e "${INF}There are already RHEL patch files in $STA$indir$OFF."

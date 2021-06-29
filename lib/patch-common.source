@@ -143,6 +143,7 @@ declare el9="el9"
 
 declare remote_repo=
 declare remote_branch=
+declare missing_commits
 
 ########################################
 # Function Return Codes
@@ -216,6 +217,8 @@ get_remote_seek() {
 #
 seek_missing_commits() {
 	[ -f "$us_commits" ] || format_upstream_patches
+	[ -n "$remote_repo" ] || select_remrepo remote_repo
+	[ -n "$remote_branch" ] || select_rembranch "$remote_repo" remote_branch
 
 	# See if the remote/branch exists. If not, query for them
 	while :; do
@@ -225,8 +228,10 @@ seek_missing_commits() {
 		get_remote_seek
 	done
 
-	check_fixes "$us_commits" "$remote_repo/$remote_branch"
-
+	> $missing_commits
+	check_fixes "$us_commits" "$remote_repo/$remote_branch" "$missing_commits"
+	[ -s "$missing_commits" ] && echo -e\
+		"${WRN}There are missing commits listed in $STA$missing_commits$OFF"
 }
 
 # test_editor() - tests for the existence of the chosen editor

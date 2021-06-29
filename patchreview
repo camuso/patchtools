@@ -603,6 +603,7 @@ init_files() {
 	us_commits="$outdir/$us_commits_name"
 	usvbp_commits="$outdir/$usvbp_commits_name"
 	mmfile="$outdir/$mismatch_file"
+	missing_commits="$outdir/missing_commits"
 }
 
 # init_loopvars - init the global variables used in menus
