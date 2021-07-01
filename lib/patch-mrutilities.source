@@ -681,7 +681,7 @@ get_merge_request_patches() {
 		fi
 	fi
 
-	get_mrcommits_pat $mr "$brname" & mypid=$!
+	get_mrcommits_git $mr "$brname" & mypid=$!
 	ui_waitonproc_tty $mypid .05 ""$INF"Getting patches from MR $STA$current_mr$OFF"
 
 	git_file2patchset $bp_commits $indir
