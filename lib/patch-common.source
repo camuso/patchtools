@@ -230,7 +230,7 @@ seek_missing_commits() {
 
 	> $missing_commits
 	check_fixes "$us_commits" "$remote_repo/$remote_branch" "$missing_commits"
-	[ -s "$missing_commits" ] && echo -e\
+	[ -s "$missing_commits" ] && echo -e \
 		"${WRN}There are missing commits listed in $STA$missing_commits$OFF"
 }
 

@@ -513,17 +513,23 @@ get_mrcommits_git() {
 	mmbr=$(grep -B1 'remote = origin' .git/config | head -1 | cut -d'"' -f2)
 	lab mr checkout -b $mrbranch $mr 2> /dev/null
 	basecmt=$(lab mr show $mr | \
-               grep -m 1  "^Labels" | \
-               awk -F "Dependencies::" ' { print $2 }' | \
-               cut -d',' -f1 | xargs)
+		grep -m 1  "^Labels" | \
+		awk -F "Dependencies::" ' { print $2 }' | \
+		cut -d',' -f1 | xargs)
 
-       [ -z "$basecmt" ] || [ "$basecmt" == "OK" ] && \
-               basecmt=$(git merge-base HEAD $mmbr 2> /dev/null)
+echo
+echo "basecmt: $basecmt"
+	if [ -z "$basecmt" ] || [ "$basecmt" == "OK" ]; then
+		patchcount=$(lab mr show -p $mr | grep '^Author:' | wc -l)
+	else
+		patchcount=$(git rev-list --count $basecmt..HEAD)
+	fi
 
-       patchcount=$(git rev-list --count $basecmt..HEAD)
-       git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
-       git checkout -q $mmbr 2> /dev/null
-       git branch -q -D $mrbranch 2> /dev/null
+echo "patchcount: $patchcount"
+
+	git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
+	git checkout -q $mmbr 2> /dev/null
+	git branch -q -D $mrbranch 2> /dev/null
 }
 
 # get_mrcommits_cki - create the global bpcommits file for the given MR
