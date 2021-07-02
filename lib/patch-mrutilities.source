@@ -488,7 +488,7 @@ get_merge_request() {
 		[ $stat -eq 0 ] && break
 		[ $stat -lt $mr_norev ] && {
 			echo -e "$WRN${mr_errs[$stat]}$INF : $STA$current_mr$OFF"
-		} || return 0
+		} || return $mr_norev
 
 		getuser "Enter a different MR or $qstr$INF to quit: " current_mr
 	done
@@ -520,7 +520,7 @@ get_mrcommits_git() {
        [ -z "$basecmt" ] || [ "$basecmt" == "OK" ] && \
                basecmt=$(git merge-base HEAD $mmbr 2> /dev/null)
 
-       patchcount=$(git rev-list --count $basecmt..)
+       patchcount=$(git rev-list --count $basecmt..HEAD)
        git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
        git checkout -q $mmbr 2> /dev/null
        git branch -q -D $mrbranch 2> /dev/null
