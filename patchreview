@@ -50,6 +50,7 @@ source $MYLIB/ui.source
 source $MYLIB/project.source
 source $MYLIB/gitutilities.source
 source $MYLIB/patch-common.source
+source $MYLIB/patch-utils.source
 source $MYLIB/patch-mrutilities.source
 
 #########################################

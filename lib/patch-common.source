@@ -143,7 +143,9 @@ declare el9="el9"
 
 declare remote_repo=
 declare remote_branch=
-declare missing_commits
+declare missing_commits=	# File to contain missing commits
+
+declare gl_projid=	# gitlab project ID
 
 ########################################
 # Function Return Codes
