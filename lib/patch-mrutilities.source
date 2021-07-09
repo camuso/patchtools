@@ -14,6 +14,7 @@
 [ "$MYLIB" ] || declare MYLIB=$(cd $(dirname ${BASH_SOURCE[0]}); pwd)
 
 [ "$ui_loaded" ] || source $MYLIB/ui.source
+[ "$patchcommon_loaded" ] || source $MYLIB/patch-common.source
 
 b_ui_int_first_getyn=false	# For lib/ui.source
 
@@ -38,6 +39,7 @@ declare b_nacked=false
 declare mergelist_filter=
 declare mergelist_author=
 declare mergelist_file=$MYDATA/mergelist.log
+declare gl_projid=24118165	# gitlab project ID
 
 declare -i mr_val=0	# valid mr
 declare -i mr_inv=1	# invalid mr
@@ -520,11 +522,12 @@ get_mrcommits_git() {
 echo
 echo "basecmt: $basecmt"
 	if [ -z "$basecmt" ] || [ "$basecmt" == "OK" ]; then
-		patchcount=$(lab mr show -p $mr | grep '^Author:' | wc -l)
+		# patchcount=$(lab mr show -p $mr | grep '^Author:' | wc -l)
+		patchcount=$(mrpatcount.py $gl_projid $mr)
 	else
 		patchcount=$(git rev-list --count $basecmt..HEAD)
 	fi
-
+echo
 echo "patchcount: $patchcount"
 
 	git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
@@ -576,6 +579,27 @@ get_mrcommits_pat() {
 
 	mmbr=$(grep -B1 'remote = origin' .git/config | head -1 | cut -d'"' -f2)
 	patchcount=$(lab mr show -p $mr | grep '^Author:' | wc -l)
+
+	lab mr checkout -b $mrbranch $mr 2> /dev/null
+	git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
+	git checkout -q -f $mmbr
+	git branch -q -D $mrbranch
+}
+
+# get_mrcommits_pyapi - create the global bpcommits file for the given MR
+#
+# Globals
+#      patchcount - number of patches in the patch series
+#      bp_commits - file that will contain the backported commits
+#      gl_projid  - gitlab project ID
+#
+get_mrcommits_pyapi() {
+	local mr="$1"
+	local mrbranch="$2"
+	local mmbr	# "main" or "master" for origin
+
+	mmbr=$(grep -B1 'remote = origin' .git/config | head -1 | cut -d'"' -f2)
+	patchcount=$(mrpatcount.py $gl_projid $mr)
 
 	lab mr checkout -b $mrbranch $mr 2> /dev/null
 	git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
