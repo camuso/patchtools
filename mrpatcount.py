@@ -27,7 +27,7 @@
 #
 # USAGE:
 #
-# mrpatcount 24118165 859
+# mrpatcount.py 24118165 859
 #
 # Where:
 #
@@ -43,19 +43,8 @@ import gitlab
 project_id = str(sys.argv[1])
 mr_id   = str(sys.argv[2])
 
-# outfil  = str(sys.argv[3])
-# f = open(outfil, 'w')
-
 gl = gitlab.Gitlab.from_config('gitlab')
 gl_project = gl.projects.get(project_id)
 mr = gl_project.mergerequests.get(mr_id)
 ncommits = len(mr.commits())
-print(f'{ncommits}')
-
-# print(f'Working on {gl_project.name} MR {mr_id}')
-# print(f"MR author: {mr.author['name']}")
-# print(f'Number of commits: {ncommits}')
-
-
-# f.write(str(ncommits))
-# f.close
+print(ncommits)
