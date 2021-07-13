@@ -88,11 +88,13 @@ declare prj_mergelist_filter
 declare prj_b_rename_infiles
 declare prj_b_fmt_upstream
 declare prj_b_mrcomments
+declare prj_b_verbose
 
 # These booleans are always set true when the script is inited.
 declare b_rename_infiles
 declare b_fmt_upstream
 declare b_mrcomments=true
+declare b_verbose
 
 
 declare lasttag=
@@ -167,6 +169,7 @@ function exit_me {
 	prj_set_item $prj_remote_repo $remote_repo
 	prj_set_item $prj_remote_branch $remote_branch
 	prj_set_item $prj_mergelist_filter $mergelist_filter
+	prj_set_item $prj_b_verbose $b_verbose
 	b_prologue=false
 	[ -f "$prologue_file".txt ] && 	mv "$prologue_file".txt "$prologue_file"
 	[ -e "$last_tag_file" ] && rm -f $last_tag_file
@@ -689,9 +692,21 @@ show_colors() {
 	$b_color && echo -e "ON" || echo -e "OFF"
 }
 
+show_verbose() {
+	$b_verbose && echo -e "${MNU}verbose is$STA ON$OFF" \
+		   || echo -e "${MNU}verbose is$STA OFF$OFF"
+}
+
 show_patches() {
-	echo -en "$MNU d$OFF  $indirstr directory         : "
-	echo -e  "$STA$indir$OFF has $STA$infilecount$OFF ${patstr}files."
+	echo -en "$MNU d$OFF  $indirstr directory"
+	printf "%*c" $((15 - ${#indirstr})) " "
+	echo -e  ":$STA $indir$OFF has $STA$infilecount$OFF ${patstr}files."
+}
+
+show_workdir() {
+	echo -en "$MNU w$OFF  $outdirstr directory"
+	printf "%*c" $((15 - ${#outdirstr})) " "
+	echo -e ":$STA $outdir"
 }
 
 show_cmpmode() {

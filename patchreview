@@ -61,8 +61,14 @@ function init_booleans {
 	b_prologue=false
 
 	[ $index -eq 0 ] && return
-	for ((index=boolindex; index <= prj_entries; index++)); do
-		prj_set_item $index true
+	# Only these two booleans are inited to true at the
+	# beginning of every invocation of the script.
+	#
+	for bool in \
+	$prj_b_rename_infiles \
+	$prj_b_fmt_upstream
+	do
+		prj_set_item $bool true
 	done
 }
 
@@ -109,7 +115,8 @@ function get_booleans {
 	[ $index -eq 0 ] && return
 	for bool in \
 	b_rename_infiles \
-	b_fmt_upstream
+	b_fmt_upstream \
+	b_verbose
 	do
 		eval $bool=$(prj_get_item $index)
 		ui_digit2bool $bool
@@ -295,15 +302,16 @@ show_config_menu() {
 cat <<EOF
 $MNU
     $UND\0Configuration       $OFF
-$MNU o$OFF  Operating mode          :$STA $(show_opmode)
-$MNU c$OFF  See comments first      :$STA $(show_mrcomments)
+$MNU o$OFF  Operating mode           :$STA $(show_opmode)
+$MNU c$OFF  See comments first       :$STA $(show_mrcomments)
 $(show_patches)
-$MNU w$OFF  $outdirstr directory          :$STA $outdir
-$MNU s$OFF  Remote Repo/Branch      :$STA $remote_repo/$remote_branch$OFF
-    Remote URL              :$STA$(show_remote_url "$remote_repo")$OFF
-$MNU e$OFF  Diff Editor             :$STA $editor
-$MNU f$OFF  Patch Validation fuzz   :$STA $(show_patchvalfuzz)
-$MNU p$OFF  Cycle Patch Compare Mode:$STA $(show_cmpmode)$OFF
+$(show_workdir)
+$MNU s$OFF  Remote Repo/Branch       :$STA $remote_repo/$remote_branch$OFF
+    Remote URL               :$STA$(show_remote_url "$remote_repo")$OFF
+$MNU e$OFF  Diff Editor              :$STA $editor
+$MNU f$OFF  Patch Validation fuzz    :$STA $(show_patchvalfuzz)
+$MNU p$OFF  Cycle Patch Compare Mode :$STA $(show_cmpmode)$OFF
+$MNU v$OFF  Toggle verbose mode      : $(show_verbose)
 $MNU q$OFF  Quit and return to previous menu
 \0
 EOF
@@ -352,6 +360,9 @@ config_parser() {
 			;;
 		p )	ui_cycle_state cmpmode $cmpmode_states
 			prj_set_item $prj_cmpmode $cmpmode
+			;;
+		v )	ui_toggle b_verbose
+			prj_set_item $prj_b_verbose $b_verbose
 			;;
 		q ) 	return
 			;;
@@ -686,7 +697,8 @@ init_parms() {
 	prj_mergelist_filter \
 	prj_opmode \
 	prj_b_rename_infiles \
-	prj_b_fmt_upstream
+	prj_b_fmt_upstream \
+	prj_b_verbose
 	do
 		let index++
 		let $offset=$index
@@ -745,6 +757,7 @@ EOF
 		patchvalfuzz=3
 		menumode=$menumode_min
 		opmode=$opmode_mr
+		b_verbose=true
 		# remote_repo="origin"
 		# remote_branch="master"
 		prj_set_item $prj_menumode $menumode
@@ -756,6 +769,7 @@ EOF
 		prj_set_item $prj_remote_repo $remote_repo
 		prj_set_item $prj_remote_branch $remote_branch
 		prj_set_item $prj_opmode $opmode
+		prj_set_item $prj_b_verbose $b_verbose
 	fi
 
 	b_color=true
