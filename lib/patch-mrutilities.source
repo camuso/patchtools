@@ -519,16 +519,16 @@ get_mrcommits_git() {
 		awk -F "Dependencies::" ' { print $2 }' | \
 		cut -d',' -f1 | xargs)
 
-echo
-echo "basecmt: $basecmt"
+	[ -n "$basecmt" ] && echo -e "\nbasecmt: $basecmt"
+
 	if [ -z "$basecmt" ] || [ "$basecmt" == "OK" ]; then
-		# patchcount=$(lab mr show -p $mr | grep '^Author:' | wc -l)
-		patchcount=$(mrpatcount.py $gl_projid $mr)
+		patchcount=$(lab mr show -p $mr | grep '^Author:' | wc -l)
+		# patchcount=$(mrpatcount.py $gl_projid $mr)
 	else
 		patchcount=$(git rev-list --count $basecmt..HEAD)
 	fi
-echo
-echo "patchcount: $patchcount"
+
+	echo -e "\npatchcount: $patchcount"
 
 	git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
 	git checkout -q $mmbr 2> /dev/null
