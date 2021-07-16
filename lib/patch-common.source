@@ -839,13 +839,13 @@ show_apply_patches() {
 	echo -en "\n$MNU A$OFF  Apply patches"
 
 	if [ $applymode -eq $applymode_off ] && $b_allapplied; then
-		echo -en "           :$OFF "
+		echo -en "            :$OFF "
 		echo -en "already applied and apply mode ${STA}OFF${OFF}"
 	elif [ $applymode -eq $applymode_off ] && ! $b_allapplied; then
-		echo -en "           :$OFF "
+		echo -en "            :$OFF "
 		echo -en "apply mode is ${STA}OFF$OFF"
 	elif [ $applymode -ne $applymode_off ] && $b_allapplied; then
-		echo -en "           :$OFF "
+		echo -en "            :$OFF "
 		echo -en "already applied"
 	fi
 }
@@ -1080,6 +1080,10 @@ format_upstream_patches() {
 	local banner=
 	local pad=
 	local escnt=
+	local stat=0
+	local quiet=
+
+	$b_verbose || quiet="-q"
 
 	fc=$(find $outdir -maxdepth 1 -not -type d -name "*.patch" -print -quit)
 
@@ -1105,8 +1109,17 @@ format_upstream_patches() {
 	rm -vf "$outdir"/* > /dev/null 2>&1
 	> "$us_commits"
 	echo
-	git_comment2commitsfile $indir "$us_commits" 40 $patchvalfuzz
+	git_comment2commitsfile -i $indir -o "$us_commits" -f $patchvalfuzz $quiet
+	stat=$?
 	echo
+	[ $stat -eq 0 ] || {
+		echo -en "$WRN${ui_err_msg[$stat]}"
+		case $stat in
+			$ui_err_invdir )  echo -e " : $STA$indir$OFF";;
+			$ui_err_invfile ) echo -e " : $STA$us_commits$OFF";;
+		esac
+	}
+
 	banner=""$INF"Upstream commits extracted from the patches in $STA$us_commits$OFF"
 	escnt=$((${#STA} + ${#INF} + ${#OFF}))
 	pad=$(ui_putnchar '=' $(( ${#banner} - $escnt)))
