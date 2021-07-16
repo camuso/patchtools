@@ -392,13 +392,13 @@ $MNU\
 $( $b_mrflag || echo -e "\n$MNU R$OFF  Rename mail files in    :$STA $indir$OFF")
 $MNU i$OFF  Init to defaults
 $MNU h$OFF  help text
-$MNU F$OFF  Format commits into     :$STA $outdir
+$MNU F$OFF  Format commits into      :$STA $outdir
 $MNU S$OFF  Seek missing commits
 $MNU P$OFF  Compare Patches \
  $(show_apply_patches)
-$MNU B$OFF  Create a new branch at  :$STA $(get_current_head_trunc)
+$MNU B$OFF  Create a new branch at   :$STA $(get_current_head_trunc)
 $MNU C$OFF  Clean the $STA$indirstr$OFF and/or $STA$outdirstr$OFF directories
-$MNU G$OFF  Git reset to            :$STA $lasttag
+$MNU G$OFF  Git reset to             :$STA $lasttag
 $MNU N$OFF  Nuke the directories and reset head to most recent tag \
  $(show_view_logs)
 $OFF
@@ -425,11 +425,11 @@ cat <<EOF
 $MNU
     $UND\0Environment:$STA $(show_opmode)$MNU Version: $STA$version$OFF
 $MNU c$OFF  Config Menu
-    Most recent tag         :$STA $lasttag$OFF
-    Current Head            :$STA $(get_current_head_trunc)$OFF
-$MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
+    Most recent tag          :$STA $lasttag$OFF
+    Current Head             :$STA $(get_current_head_trunc)$OFF
+$MNU b$OFF  Current git branch       :$STA $(git_getcurrentbranch)$OFF
 $(show_patches)
-$MNU g$OFF  grep Merge List for     : $(show_mrfilter) \
+$MNU g$OFF  grep Merge List for      : $(show_mrfilter) \
  $(show_mrstatus)
 $MNU
     $UND\0Main Controls     $OFF
