@@ -371,15 +371,15 @@ validate_commit() {
 # $4 - patch validation fuzz level (optional)
 #
 function git_comment2commitsfile {
-	local srcdir="$1"
-	local commitsfile="$2"
-	local hashsize=$3
-	local valfuzz=$4
-	local srcfile=""
-	local line=""
+	local srcdir=
+	local commitsfile=
+	local hashsize=40
+	local valfuzz=1
+	local srcfile=
+	local line=
 	local index=1
 	local jdex
-	local patchlist=$(ls $srcdir/*.patch | sort -V)
+	local patchlist=
 	local cmtindex=1
 	local linenumber=0
 	local commitarray
@@ -393,10 +393,26 @@ function git_comment2commitsfile {
 	local banner=
 	local b_found_vcmt=false	# valid commit flag
 	local savedIFS="$IFS"
+	local b_quiet=false
+
+	while [ -n "$1" ]; do
+		opt="$1"
+		case $opt in
+			"-i" ) srcdir="$2"; shift 2;;
+			"-o" ) commitsfile="$2"; shift 2;;
+			"-h" ) hashsize=$2; shift 2;;
+			"-f" ) valfuzz=$2; shift 2;;
+			"-q" ) b_quiet=true; shift 1;;
+		esac
+	done
+
+	[ -d $srcdir ] || return $ui_err_invdir
+	[ -f $commitsfile ] || return $ui_err_invfile
 
 	> $commitsfile
 	> $scratchfile
 
+	patchlist=$(ls $srcdir/*.patch | sort -V)
 	patchtotal=$(wc -w <<< "$patchlist")
 	create_patchlist "$patchlist" valpatchlist
 	filecount=$( wc -w <<< "$valpatchlist")
@@ -407,7 +423,9 @@ function git_comment2commitsfile {
 
 	for srcfile in $valpatchlist; do
 
-		echo $srcfile
+		$b_quiet && ui_clearline
+		echo -n $srcfile
+
 		b_found_vcmt=false
 		subject=$(extract_subject $srcfile)
 
@@ -498,6 +516,7 @@ function git_comment2commitsfile {
 		fi
 		let index++
 	done
+	$b_quiet && echo
 }
 
 # git_mailhead2commitsfile
