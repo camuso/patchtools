@@ -73,6 +73,15 @@ declare -i ui_err_invlinec=4
 declare -i ui_err_nofiles=5
 declare -i ui_err_notdigit=6
 
+declare -a ui_err_msg=(
+""
+"Invalid argument count"
+"Invalid file"
+"Invalid directory"
+"Invalid line count"
+"No files found"
+"not a didgit"
+)
 
 # Contlol-C exit code
 # see http://www.tldp.org/LDP/abs/html/exitcodes.html
