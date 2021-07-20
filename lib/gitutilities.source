@@ -423,8 +423,13 @@ function git_comment2commitsfile {
 
 	for srcfile in $valpatchlist; do
 
-		$b_quiet && ui_clearline
-		echo -n $srcfile
+		# If verbose is off, then just print each file on one
+		# line.
+		# Else, print every file on a newline.
+		$b_quiet && {
+			ui_clearline
+			echo -n $srcfile
+		} || echo $srcfile
 
 		b_found_vcmt=false
 		subject=$(extract_subject $srcfile)
@@ -517,6 +522,7 @@ function git_comment2commitsfile {
 		let index++
 	done
 	$b_quiet && echo
+	return 0
 }
 
 # git_mailhead2commitsfile
