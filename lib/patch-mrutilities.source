@@ -714,7 +714,7 @@ get_merge_request_patches() {
 	get_mrcommits_git $mr "$brname" & mypid=$!
 	ui_waitonproc_tty $mypid .05 ""$INF"Getting patches from MR $STA$current_mr$OFF"
 
-	git_file2patchset $bp_commits $indir
+	git_file2patchset $bp_commits $indir $b_verbose
 	stat=$?
 	[ $stat -ne 0 ] && return $mr_nop || return 0
 }

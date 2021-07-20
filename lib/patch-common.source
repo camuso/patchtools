@@ -1120,16 +1120,18 @@ format_upstream_patches() {
 		esac
 	}
 
-	banner=""$INF"Upstream commits extracted from the patches in $STA$us_commits$OFF"
-	escnt=$((${#STA} + ${#INF} + ${#OFF}))
-	pad=$(ui_putnchar '=' $(( ${#banner} - $escnt)))
-	echo -e "$banner\n$pad$OFF"
+	if $b_verbose; then
+		banner=""$INF"Upstream commits extracted from the patches in $STA$us_commits$OFF"
+		escnt=$((${#STA} + ${#INF} + ${#OFF}))
+		pad=$(ui_putnchar '=' $(( ${#banner} - $escnt)))
+		echo -e "$banner\n$pad$OFF"
 
-	cat "$us_commits"
-	echo
+		cat "$us_commits"
+		echo
+	fi
 
 	exec_boolean b_fmt_upstream false \
-		"git_file2patchset ${us_commits} ${outdir}"
+		"git_file2patchset ${us_commits} ${outdir} ${b_verbose}"
 	return 0
 }
 
@@ -1288,6 +1290,9 @@ exec_patcmp() {
 	local xval="$1"
 	local patchlist="$(ls -1 "$indir"/*.patch)"
 	local tb=$terminal_background
+	local quiet=
+
+	$b_verbose || quiet="-q"
 
 	# If we don't have a valid patch list, create one now.
 	#
@@ -1316,7 +1321,7 @@ exec_patcmp() {
 	else
 		patbatcmpmgr -x -P $valpatchlist -R $indir -U $outdir -o $mmfile
 	fi
-	patcmp -b $tb -m $mmfile $indir $outdir $editor "$us_commits"
+	patcmp $quiet -b $tb -m $mmfile $indir $outdir $editor "$us_commits"
 	return $?
 }
 
@@ -1330,10 +1335,15 @@ compare_patches() {
 	local tb=$terminal_background
 	local stat=
 
+	local quiet=
+
+	$b_verbose || quiet="-q"
+
 	case $cmpmode in
-		$cmpmode_batch ) exec_patcmp "-X" stat=$? ;;
-		$cmpmode_setup ) exec_patcmp stat=$? ;;
-		$cmpmode_inter ) patcmp -b $tb $indir $outdir $editor $us_commits stat=$? ;;
+		$cmpmode_batch ) exec_patcmp "-X"; stat=$? ;;
+		$cmpmode_setup ) exec_patcmp; stat=$? ;;
+		$cmpmode_inter ) patcmp $quiet -b $tb $indir $outdir $editor $us_commits
+				 stat=$? ;;
 			     * ) cmpmode=$cmpmode_off
 	esac
 

@@ -70,12 +70,13 @@ function git_commit2patch {
 #
 # $1 - path of file containing the list of commits.
 # $2 - destination directory for the patch set.
-# $3 - optional - will return the number of patches formatted
+# $3 - optional verbose true or false
 #
 function git_file2patchset {
 	$ui_b_debug && echo -e "${STA}git_file2patchset$OFF"
 	local commitsfile="$1"
 	local destdir="$2"
+	[ $# -eq 3 ] && b_verbose=$3 || b_verbose=true
 	local patchcount=$(cat "$commitsfile" | wc -l)
 	local commit=""
 	local commitnum=0
@@ -83,6 +84,7 @@ function git_file2patchset {
 	local pfx=""
 	local pad=
 	local remotes=()
+	local outline
 	local banner=\
 ""$INF"\
 Formatting $STA$patchcount$INF patches from $STA$commitsfile$INF into \
@@ -91,6 +93,7 @@ $STA$destdir$OFF"
 	local notfound=\
 "was not found in any of the upstream repos in your .git/config file"
 	local escnt=$(((${#STA} * 3) +(${#INF} * 3) + ${#OFF}))
+
 
 	if [ $patchcount -eq 0 ]; then
 		echo
@@ -102,6 +105,7 @@ $STA$destdir$OFF"
 
 	pad=$(ui_putnchar '=' $(( ${#banner} - $escnt )))
 	echo -e "$banner\n$INF$pad$OFF"
+	$verbose || echo
 
 	while read line; do
 		[ "${line:0:1}" == "#" ] && continue
@@ -110,10 +114,12 @@ $STA$destdir$OFF"
 		pfx=$(printf "%04d" $index)
 
 		if [[ 16#${commitnum} -eq 0 ]]; then
-			echo "No upstream commit detected." > $destdir/"$pfx-nocommit.patch"
+			outline="No upstream commit detected for patch $index."
+			echo "$outline" > $destdir/"$pfx-nocommit.patch"
 		else
 			if git show $commit > /dev/null 2>&1; then
-				git format-patch -1 -k --start-number $index $commit -o $destdir
+				outline=$(git format-patch -1 -k \
+					--start-number $index $commit -o $destdir)
 			else
 				# If we could not format the patch, then create an empty
 				# patch with the bad patch number in it.
@@ -123,12 +129,19 @@ $STA$destdir$OFF"
 				echo "$notfound" >> $destdir/"$pfx-notfound.patch"
 				echo >> $destdir/"$pfx-notfound.patch"
 				show_remotes >> $destdir/"$pfx-notfound.patch"
+				outline="No upstream found for $commit"
 			fi
 		fi
+
+		$b_verbose && echo $outline || {
+			ui_clearline
+			echo -n $outline
+		}
+
 		let index++
 	done < $commitsfile
 
-	[ $# -eq 3 ] && eval $3=$patchcount
+	$b_verbose || echo
 	return 0
 }
 
