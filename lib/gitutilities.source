@@ -407,6 +407,7 @@ function git_comment2commitsfile {
 	local b_found_vcmt=false	# valid commit flag
 	local savedIFS="$IFS"
 	local b_quiet=false
+	local opt
 
 	while [ -n "$1" ]; do
 		opt="$1"
