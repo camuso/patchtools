@@ -15,7 +15,7 @@ declare value=
 declare usagestr=$(
 cat <<EOF
 
-$(basename $0) -f config-file -<r|w> key [new value] [-b background]
+$(basename $0) -f config-file -<r|w> key [new value] [-dark | -light]]
 
 Description:
 	Simple configuration file manager. The configuration file simply
@@ -27,7 +27,11 @@ Arguments:
 	-k : the key in the config file to access
 	-r : read the value of the key stored in the config file
 	-w <value> : write the key with a new value
-	-b : terminal background, light=1 or dark=2
+	-dark | -light : this option sets the message color scheme
+	                 for dark or light terminal operation.
+			 You can alias config-manager for either,
+			 e.g...
+			 alias config-manager='config-manager -dark'
 
 EXample:
 	$(basename $0) -f myconfig -w somekey newval -b 2
@@ -60,6 +64,12 @@ exit_err() {
 	exit $err
 }
 
+set_color() {
+	b_color=true
+	terminal_background=$1
+	ui_set_colors
+}
+
 set_write() {
 	key="$1"
 	value="$2"
@@ -89,7 +99,8 @@ parse_cmd() {
 			"-r" ) b_readop=true; key=$2; shift 2;;
 			"-w" ) b_writeop=true; key=$2; value="$3"; shift 3;;
 			"-h" ) usage; exit $aok;;
-			"-b" ) b_color=true; terminal_background=$2; ui_set_colors; shift 2;;
+			"-dark" ) set_color $tb_dark; shift 1;;
+			"-light" ) set_color $tb_lite; shift 1;;
 			* ) b_err=true; erropt="$1"; shift;;
 		esac
 	done
