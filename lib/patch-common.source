@@ -27,6 +27,7 @@ shopt -s extglob
 
 declare manual="$MYDIR/man/$(basename $0).txt"
 declare MYDATA=./.data
+declare configfile=
 
 #######################################
 # External Scripts
