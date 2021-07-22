@@ -126,7 +126,6 @@ write_key() {
 	line=$(echo "$line" | cut -d":" -f2- | cut -d"=" -f1)
 	line="$line""= $value"
 	ui_replaceline_raw $linenumber "$line" "$configfile"
-
 }
 
 main() {
