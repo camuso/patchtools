@@ -675,46 +675,26 @@ init_parms() {
 	local offset=0
 	local index=0
 	local stat=0
+	local confline
+	local lary
 
-	# This loop enumerates and counts the items in the project file.
-	# Add new booleans to the end of the list.
-	# Add new non-boolean parameters before the first boolean, but
-	# after all the non-booleans.
+	# If the config file doens't exist, copy the default one
+	# from MYLIB.
 	#
-	for offset in \
-	prj_menumode \
-	prj_patchvalfuzz \
-	prj_patchseekmode \
-	prj_applyfailmode \
-	prj_applymode \
-	prj_cmpmode \
-	prj_editor \
-	prj_indir \
-	prj_outdir \
-	prj_background \
-	prj_remote_repo \
-	prj_remote_branch \
-	prj_mergelist_filter \
-	prj_opmode \
-	prj_b_rename_infiles \
-	prj_b_fmt_upstream \
-	prj_b_verbose
-	do
-		let index++
-		let $offset=$index
-		if [ "${offset:3:3}" == "_b_" ]; then
-			let boolcount++
-			if ! $b_found_first_bool; then
-				boolindex=$index
-				b_found_first_bool=true
-			fi
-		fi
-	done
-
-	prj_entries=$index
 	[ -d "$MYDATA" ] || mkdir $MYDATA
+	configfile="$MYDATA/patchreview.conf"
+	[ -f "$configfile" ] || cp $MYLIB/patchreview.conf $configfile
 
-	# Init the project file and test for blank fields that must not be blank
+	while read confline; do
+		strtok "$confline" "= " lary
+		eval ${lary[0]}=${lary[1]}
+	done < $configfile
+
+	# Init the config fields that must not be blank
+	#
+	[ -z "$editor" ] && set_editor
+	[ -z "$indir" ] && ui_getnewdir
+
 	#
 	prj_init_prjfile $MYDATA/patchreview.prj $index \
 		$prj_editor \
