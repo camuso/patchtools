@@ -60,15 +60,14 @@ source $MYLIB/patch-mrutilities.source
 function init_booleans {
 	b_prologue=false
 
-	[ $index -eq 0 ] && return
 	# Only these two booleans are inited to true at the
 	# beginning of every invocation of the script.
 	#
 	for bool in \
-	$prj_b_rename_infiles \
-	$prj_b_fmt_upstream
+	b_rename_infiles \
+	b_fmt_upstream
 	do
-		prj_set_item $bool true
+		config-manager -w $bool true
 	done
 }
 
@@ -111,16 +110,13 @@ function init_booleans {
 function get_booleans {
 	# echo "patchreview::get_booleans()"
 	local bool
-	index=$boolindex
-	[ $index -eq 0 ] && return
 	for bool in \
 	b_rename_infiles \
 	b_fmt_upstream \
 	b_verbose
 	do
-		eval $bool=$(prj_get_item $index)
+		eval $bool=$(config-manager -r $bool)
 		ui_digit2bool $bool
-		let index++
 	done
 }
 
@@ -163,13 +159,12 @@ function get_booleans {
 function set_booleans {
 	# echo "patchreview::set_booleans()"
 	local bool
-	index=$boolindex
-	[ $index -eq 0 ] && return 0
+
 	for bool in \
 	b_rename_infiles \
 	b_fmt_upstream
 	do
-		prj_set_item $index ${!bool}
+		config-manager -w $bool ${!bool}
 		let index++
 	done
 	b_prologue=false
@@ -267,7 +262,6 @@ EOF
 # Globals:
 # 	indir
 # 	outdir
-# 	prj_applymode
 # 	applymode
 #
 nuke() {
@@ -283,7 +277,7 @@ nuke() {
 
 	# Set the apply mode to its default value
 	applymode=$applymode_norm
-	prj_set_item $prj_applymode $applymode
+	config-manager -w applymode $applymode
 }
 
 # show_config_menu - display the configuration options and their current state
@@ -609,8 +603,8 @@ init_files() {
 
 	# get the patch and work directories.
 	#
-	check_dir $prj_indir "$indirstr" indir
-	check_dir $prj_outdir "$outdirstr" outdir
+	indir=$(config-manager -r indir)
+	outdir=$(config-manager -r outdir)
 	bp_commits="$outdir/$bp_commits_name"
 	us_commits="$outdir/$us_commits_name"
 	usvbp_commits="$outdir/$usvbp_commits_name"
@@ -627,17 +621,17 @@ init_files() {
 # 	All clearly visible on every line.
 #
 init_loopvars() {
-	editor=$(prj_get_item $prj_editor)
-	cmpmode=$(prj_get_item $prj_cmpmode)
-	applymode=$(prj_get_item $prj_applymode)
-	applyfailmode=$(prj_get_item $prj_applyfailmode)
-	patchseekmode=$(prj_get_item $prj_patchseekmode)
-	patchvalfuzz=$(prj_get_item $prj_patchvalfuzz)
-	menumode=$(prj_get_item $prj_menumode)
-	remote_repo=$(prj_get_item $prj_remote_repo)
-	remote_branch=$(prj_get_item $prj_remote_branch)
-	mergelist_filter=$(prj_get_item $prj_mergelist_filter)
-	opmode=$(prj_get_item $prj_opmode)
+	editor=$(config-manager -r editor)
+	cmpmode=$(config-manager -r cmpmode)
+	applymode=$(config-manager -r applymode)
+	applyfailmode=$(config-manager -r applyfailmode)
+	patchseekmode=$(config-manager -r patchseekmode)
+	patchvalfuzz=$(config-manager -r patchvalfuzz)
+	menumode=$(config-manager -r menumode)
+	remote_repo=$(config-manager -r remote_repo)
+	remote_branch=$(config-manager -r remote_branch)
+	mergelist_filter=$(config-manager -r mergelist_filter)
+	opmode=$(config-manager -r opmode)
 	[ $opmode -eq $opmode_mr ] && b_mrflag=true
 }
 
@@ -672,93 +666,58 @@ function menu_loop {
 # Parameter Initialization
 ###########################################
 init_parms() {
-	local offset=0
-	local index=0
-	local stat=0
 	local confline
 	local lary
+	local newcfgstr=$(
+cat <<EOF
+$INF
+There was no$STA $MYDATA/patchreview.conf$INF file, so a new one has been created.
 
+We will need to know:
+1. The $STA$indirstr$INF directory to contain the patches for review
+2. The $STA$outdirstr$INF directory to contain output from this script
+3. Your choice of$STA diff editor$INF
+4. The upstream repo/branch to reference for upstream commit hashes.
+$OFF
+EOF
+)
 	# If the config file doens't exist, copy the default one
-	# from MYLIB.
+	# from MYLIB and get the color scheme.
 	#
 	[ -d "$MYDATA" ] || mkdir $MYDATA
 	configfile="$MYDATA/patchreview.conf"
-	[ -f "$configfile" ] || cp $MYLIB/patchreview.conf $configfile
+	alias config-manager='config-manager -f $configfile'
+
+	[ -f "$configfile" ] || {
+		cp $MYLIB/patchreview.conf $configfile
+		b_color=true
+		ui_use_colors
+		config-manager -w background $terminal_background
+	}
 
 	while read confline; do
 		strtok "$confline" "= " lary
 		eval ${lary[0]}=${lary[1]}
 	done < $configfile
 
+	# ################################################################
+	#
 	# Init the config fields that must not be blank
+	# 	indir
+	# 	outdir
+	# 	editor
+	# 	remote_repo
+	# 	remote_branch
 	#
+	# ################################################################
+
+	[ -z "$indir" ] && set_dir $indirstr "indir" indir
+	[ -z "$outdir" ] && {
+		outdir="$indir/tmp"
+		set_dir $outdirstr "outdir" outdir
+	}
 	[ -z "$editor" ] && set_editor
-	[ -z "$indir" ] && ui_getnewdir
-
-	#
-	prj_init_prjfile $MYDATA/patchreview.prj $index \
-		$prj_editor \
-		$prj_indir \
-		$prj_outdir \
-		$prj_background
-	stat=$?
-
-	# If the above call to prj_init_prjfile returns nonzero, it means that a
-	# new project file has been created and its values must be initialized.
-	#
-	if [ $stat -ne 0 ]; then
-		ui_use_colors
-		prj_set_item $prj_background $terminal_background # lib/ui.source
-
-		local newprjstr=$(
-cat <<EOF
-$INF
-The project file has changed, or a new one has been created.
-
-We will need to know:
-1. The $STA$indirstr$INF directory to contain the patches for review
-2. The $STA$outdirstr$INF directory to contain output from this script
-3. Your choice of$STA diff editor
-$OFF
-EOF
-)
-		echo -e "$newprjstr"
-		prj_set_directory "$indirstr" $prj_indir indir quiet
-		echo
-		prj_set_item $prj_outdir "$indir/tmp"
-		prj_set_directory "$outdirstr" $prj_outdir outdir quiet
-		echo
-		set_editor
-		# get_remote_seek
-		cmpmode=$cmpmode_batch
-		applymode=$applymode_norm
-		applyfailmode=$applyfailmode_exit
-		patchseekmode=$patchseek_off
-		patchvalfuzz=3
-		menumode=$menumode_min
-		opmode=$opmode_mr
-		b_verbose=true
-		# remote_repo="origin"
-		# remote_branch="master"
-		prj_set_item $prj_menumode $menumode
-		prj_set_item $prj_cmpmode $cmpmode
-		prj_set_item $prj_applymode $applymode
-		prj_set_item $prj_applyfailmode $applyfailmode
-		prj_set_item $prj_patchseekmode $patchseekmode
-		prj_set_item $prj_patchvalfuzz $patchvalfuzz
-		prj_set_item $prj_remote_repo $remote_repo
-		prj_set_item $prj_remote_branch $remote_branch
-		prj_set_item $prj_opmode $opmode
-		prj_set_item $prj_b_verbose $b_verbose
-	fi
-
-	b_color=true
-
-	if $b_color; then
-		terminal_background=$(prj_get_item $prj_background)
-		(( $terminal_background > 0 && $terminal_background < 3 )) || ui_get_screenbackground
-		ui_set_colors
-	fi
+	([ -z "$remote_repo" ] || [ -z "$remote_branch" ]) && get_remote_seek
 
 	init_booleans
 	init_files

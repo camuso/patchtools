@@ -151,30 +151,37 @@ declare missing_commits=	# File to contain missing commits
 ########################################
 # Function Return Codes
 ########################################
-declare rc_continue=0	# Continue for another pass
+config-manager -w declare rc_continue=0	# Continue for another pass
 declare rc_run=1	# Run
 
 function exit_me {
 	echo -e "$OFF"
 	set_booleans
-	prj_set_item $prj_opmode $opmode
-	prj_set_item $prj_menumode $menumode
-	prj_set_item $prj_applymode $applymode
-	prj_set_item $prj_cmpmode $cmpmode
-	prj_set_item $prj_applyfailmode $applyfailmode
-	prj_set_item $prj_patchseekmode $patchseekmode
-	prj_set_item $prj_patchvalfuzz $patchvalfuzz
-	prj_set_item $prj_background $terminal_background
-	prj_set_item $prj_b_rename_infiles $b_rename_infiles
-	prj_set_item $prj_b_fmt_upstream $b_fmt_upstream
-	prj_set_item $prj_remote_repo $remote_repo
-	prj_set_item $prj_remote_branch $remote_branch
-	prj_set_item $prj_mergelist_filter $mergelist_filter
-	prj_set_item $prj_b_verbose $b_verbose
-	b_prologue=false
+	for item in \
+		menumode \
+		patchvalfuzz \
+		patchseekmode \
+		applyfailmode \
+		applymode \
+		cmpmode \
+		editor \
+		indir \
+		outdir \
+		background \
+		remote_repo \
+		remote_branch \
+		mergelist_filter \
+		opmode \
+		rename_infiles \
+		fmt_upstream \
+		verbose ;
+	do config-manager -w $item ${!item}; done
+
+	_prologue=false
 	[ -f "$prologue_file".txt ] && 	mv "$prologue_file".txt "$prologue_file"
 	[ -e "$last_tag_file" ] && rm -f $last_tag_file
 	[ -e "$branchlist" ] && rm -f "$branchlist"
+	unalias config-manager
 	exit $1
 }
 
@@ -202,14 +209,12 @@ show_version() {
 # GLOBALS:
 # 	remote_repo
 # 	remote_branch
-# 	prj_remote_repo
-# 	prj_remote_branch
 #
 get_remote_seek() {
 	select_remrepo remote_repo
 	select_rembranch "$remote_repo" remote_branch
-	prj_set_item $prj_remote_repo $remote_repo
-	prj_set_item $prj_remote_branch $remote_branch
+	config-manager -w remote_repo "$remote_repo"
+	config-manager -w remote_branch "$remote_branch"
 }
 
 # seek_missing_commits() - search remote/branch for missing commits
@@ -258,9 +263,9 @@ test_editor() {
 	local _editor_="$1"
 	local _ans_
 	local _noed_=\
-"$BLD$_editor_$OFF is not installed. Do you want to exit and install it now?$OFF"
+"$WRN$_editor_$INF is not installed. Do you want to exit and install it now?$OFF"
 	local _pstr_=\
-"$OFF\0Press '$BLD\0y$OFF' to exit now or '$BLD\0n$OFF' to select another editor: "
+"${INF}Press '${MNU}y$INF' to exit now or '${MNU}n$INF' to select another editor: $INF"
 
 	which "$_editor_" > /dev/null 2>&1
 
@@ -274,7 +279,6 @@ test_editor() {
 	prj_set_item $prj_editor "$_editor_"
 	return 0
 }
-
 
 function set_editor {
 	local choice
@@ -293,6 +297,7 @@ function set_editor {
 		test_editor "$editor"
 		[ $? -eq 0 ] && break
 	done
+	config-manager -w editor "$editor"
 }
 
 # get_currentfuzz - get the current patch validation fuzz level
@@ -364,6 +369,33 @@ show_patchvalfuzz() {
 		3 ) echo "3 - case insensitive and ignore all punctuation"
 		    ;;
 	esac
+}
+
+# set_dir
+#
+set_dir() {
+	local dirstr="$1"
+	local dircfgkey="$2"
+	local dir="$3"
+
+	[ -n "$dir" ] && {
+		echo -e "${INF}Current $STA$dirstr$INF directory : $STA$dir$OFF"
+		echo -e "${INF}Type $qstr$INF to leave it as it is.$OFF"
+	}
+
+	# We can't accept a NULL directory name, so cycle until we get one.
+	#
+	while :; do
+		ui_getnewdir "${INF}New $STA$dirstr$INF directory : $OFF" dir
+
+		[ -n "$dir" ] && {
+			[ -d "$outdir" ] || mkdir -p "$outdir"
+			break
+		}
+	done
+
+	config-manager -w $dircfgkey "$dir"
+	eval $3=$dir
 }
 
 # check_dir
