@@ -51,6 +51,14 @@ ui_err_msg+=(
 	"Invalid operation"
 )
 
+# run if user hits control-c
+#
+control_c()
+{
+	echo -en "\nCtrl-c detected\nCleaning up and exiting.\n"
+	exit $CTLC_EXIT
+}
+
 usage() {
 	echo -en "$usagestr"
 }
@@ -73,10 +81,11 @@ set_color() {
 set_write() {
 	key="$1"
 	value="$2"
-	local twoargs="-w requires two args, key and value."
+	# local twoargs="-w requires two args, key and value."
 
-	[ $# -eq 2 ] || err_exit $ui_err_invargc "$twoargs"
-	[ ${value:0:1} == "-" ] && err_exit $err_invopt "$twoargs"
+	# [ $# -eq 2 ] || err_exit $ui_err_invargc "$twoargs"
+	# [ ${value:0:1} == "-" ] && err_exit $err_invopt "$twoargs"
+	[ ${value:0:1} == "-" ] && value=
 	$b_read && err_exit $err_invoper "Cannot write when read was requested."
 }
 
@@ -135,6 +144,10 @@ main() {
 	$b_readop && read_key
 	$b_writeop && write_key
 }
+
+# Trap for control-c
+#
+trap control_c SIGINT
 
 main $@
 
