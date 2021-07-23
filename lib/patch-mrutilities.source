@@ -655,9 +655,9 @@ get_merge_request_patches() {
 	b_has_3_acks=false
 
 	applymode=$applymode_off
-	prj_set_item $prj_applymode $applymode
-	prj_set_item $prj_b_rename_infiles $b_rename_infiles
-	prj_set_item $prj_b_fmt_upstream $b_fmt_upstream
+	set_cfg_item "applymode" $applymode
+	set_cfg_item "b_rename_infiles" $b_rename_infiles
+	set_cfg_item "b_fmt_upstream" $b_fmt_upstream
 
 	> $missing_commits
 	valpatchlist=
