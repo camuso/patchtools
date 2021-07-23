@@ -12,10 +12,10 @@ version="10.2.5"
 [ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename $0)))
 [ "$MYLIB" ] || declare MYLIB=$MYDIR/lib
 
-[ "$ui_loaded" ]           || source $MYLIB/ui.source
-[ "$project_loaded" ]      || source $MYLIB/project.source
-[ "$gitutilities_loaded" ] || source $MYLIB/gitutilities.source
-[ "$patchutils_loaded" ]   || source $MYLIB/patch-utils.source
+[ "$ui_loaded" ]            || source $MYLIB/ui.source
+[ "$gitutilities_loaded" ]  || source $MYLIB/gitutilities.source
+[ "$patchutils_loaded" ]    || source $MYLIB/patch-utils.source
+[ "$configmanager_loaded" ] || source $MYLIB/config-manager.source
 
 declare patchcommon_loaded=true
 
@@ -157,7 +157,7 @@ function exit_me {
 		rename_infiles \
 		fmt_upstream \
 		verbose ;
-	do config-manager -w $item ${!item}; done
+	do set_cfg_item $item ${!item}; done
 
 	_prologue=false
 	[ -f "$prologue_file".txt ] && 	mv "$prologue_file".txt "$prologue_file"
@@ -179,15 +179,11 @@ function test_sanity { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
 ###################################################################
 
 set_cfg_item() {
-set -x
-	config-manager -f $configfile -w $1 $2
-set +x
+	cfg_write_key $1 $2
 }
 
-get_cfg_iten() {
-set -x
-	config-manager -f $configfile -r $1
-set +x
+get_cfg_item() {
+	cfg_read_key $1
 }
 
 show_version() {
@@ -206,8 +202,8 @@ show_version() {
 get_remote_seek() {
 	select_remrepo remote_repo
 	select_rembranch "$remote_repo" remote_branch
-	config-manager -w remote_repo "$remote_repo"
-	config-manager -w remote_branch "$remote_branch"
+	set_cfg_item "remote_repo" "$remote_repo"
+	set_cfg_item "remote_branch" "$remote_branch"
 }
 
 # seek_missing_commits() - search remote/branch for missing commits
@@ -290,7 +286,7 @@ function set_editor {
 		test_editor "$editor"
 		[ $? -eq 0 ] && break
 	done
-	config-manager -w editor "$editor"
+	set_cfg_item "editor" "$editor"
 }
 
 # get_currentfuzz - get the current patch validation fuzz level
@@ -388,12 +384,12 @@ set_dir() {
 		ui_getnewdir "${INF}New $STA$dirstr$INF directory : $OFF" dir
 
 		[ -n "$dir" ] && {
-			[ -d "$outdir" ] || mkdir -p "$outdir"
+			[ -d "$dir" ] || mkdir -p "$dir"
 			break
 		}
 	done
 
-	config-manager -w $dircfgkey "$dir"
+	set_cfg_item $dircfgkey "$dir"
 	eval $3=$dir
 }
 

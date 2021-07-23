@@ -1,0 +1,56 @@
+#!/bin/bash
+#
+# config-manager.source
+#
+# The configfile must be declared and defined globally and externally.
+#
+
+[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename $0)))
+[ "$MYLIB" ] || declare MYLIB=$MYDIR/lib
+[ "$ui_loaded" ] || source $MYLIB/ui.source
+
+declare configmanager_loaded=true
+
+declare -i cfg_err_nokey=1
+declare -i cfg_err_invopt=2
+declare -i cfg_err_invoper=3
+
+cfg_err_msg=(
+	""
+	"Key not found"
+	"Invalid option"
+	"Invalid operation"
+)
+
+cfg_return_err() {
+	local err=$1
+	local val="$2"
+
+	echo -e "\n$WRN${cfg_err_msg[$cfg_err]} $INF: $STA$val$OFF"
+	return $err
+}
+
+cfg_read_key() {
+	local key="$1"
+	local keyline=
+	local ary
+
+	keyline=$(grep -w $key $configfile)
+	[ $? -eq 0 ] || cfg_return_err $cfg_err_nokey $key
+	ui_strtok "$keyline" "= " ary
+	echo ${ary[1]}
+}
+
+cfg_write_key() {
+	local key="$1"
+	local value="$2"
+	local keyline=
+	local linenumber=
+
+	keyline=$(grep -nw "$key" "$configfile")
+	[ $? -eq 0 ] || cfg_return_err $cfg_err_nokey $key
+	linenumber=$(echo "$keyline" | cut -d":" -f1)
+	keyline=$(echo "$keyline" | cut -d":" -f2- | cut -d"=" -f1)
+	keyline="$keyline""= $value"
+	ui_replaceline_raw $linenumber "$keyline" "$configfile"
+}

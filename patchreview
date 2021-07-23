@@ -47,11 +47,11 @@ declare MYLIB=$MYDIR/lib
 # External Source Files
 #######################################
 source $MYLIB/ui.source
-source $MYLIB/project.source
 source $MYLIB/gitutilities.source
 source $MYLIB/patch-common.source
 source $MYLIB/patch-utils.source
 source $MYLIB/patch-mrutilities.source
+source $MYLIB/config-manager.source
 
 #########################################
 # Functions
@@ -689,6 +689,7 @@ EOF
 
 	# Init the config globals
 	#
+
 	while read confline; do
 		ui_strtok "$confline" "= " lary
 		eval ${lary[0]}=${lary[1]}

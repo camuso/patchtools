@@ -15,6 +15,9 @@
 
 [ "$ui_loaded" ] || source $MYLIB/ui.source
 [ "$patchcommon_loaded" ] || source $MYLIB/patch-common.source
+[ "$configmanager_loaded" ] || source $MYLIB/config-manager.source
+
+patchmrutilities_loaded=true
 
 b_ui_int_first_getyn=false	# For lib/ui.source
 
@@ -101,7 +104,7 @@ Enter grep string or just press$STA Enter$INF to clear it and return:
 EOF
 )
 	getuser "$promptstr" mergelist_filter
-	config-manager -w "mergelist_filter" $mergelist_filter
+	set_cfg_item "mergelist_filter" $mergelist_filter
 	[ -n "$mergelist_filter" ] || return 1
 	select_merge_request
 	return $?
@@ -127,7 +130,7 @@ EOF
 #
 change_opmode() {
 	ui_cycle_state opmode $opmode_states
-	config-manager -w "opmode" $opmode
+	set_cfg_item "opmode" $opmode
 
 	case $opmode in
 	$opmode_mr    ) b_mrflag=true
