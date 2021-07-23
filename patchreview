@@ -756,7 +756,7 @@ main_loop() {
 		# echo "menu_loop_stat: $menu_stat"
 
 		if ! $b_mrflag && $b_rename_infiles; then
-			exec_boolean b_rename_infiles false "renpatfiles"
+			exec_boolean "b_rename_infiles" false "renpatfiles"
 			[ $? -ne 0 ] && continue
 		fi
 
@@ -791,7 +791,7 @@ cmd_check_fixes() {
 	local stat=0
 
 	get_filecount
-	$b_rename_infiles exec_boolean b_rename_infiles false "renpatfiles"
+	$b_rename_infiles && exec_boolean "b_rename_infiles" false "renpatfiles"
 
 	[ -f "$us_commits" ] || format_upstream_patches
 	[ -f "$us_commits" ] &&	check_fixes "$us_commits" \
