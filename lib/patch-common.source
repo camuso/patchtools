@@ -48,7 +48,6 @@ declare patstr		# string used by show_settings,
 			# : empty if there are no patch files
 
 declare editor
-declare prj_entries=0
 declare index=0
 declare boolcount=0
 declare boolindex=0
@@ -72,24 +71,6 @@ declare branchlist="$MYDATA/branchlist"
 declare mismatch_file="mm.log"	# patchreview/develop will complete mmfile path
 declare mmfile			# complete name of mmfile set by patchreview/devlop
 declare valpatchlist=		# inited by call to patch-utils::create_patchlist
-
-declare prj_menumode
-declare prj_patchvalfuzz
-declare prj_patchseekmode
-declare prj_applyfailmode
-declare prj_indir
-declare prj_outdir
-declare prj_editor
-declare prj_cmpmode
-declare prj_applymode
-declare prj_background
-declare prj_remote_repo
-declare prj_remote_branch
-declare prj_mergelist_filter
-declare prj_b_rename_infiles
-declare prj_b_fmt_upstream
-declare prj_b_mrcomments
-declare prj_b_verbose
 
 # These booleans are always set true when the script is inited.
 declare b_rename_infiles
@@ -151,11 +132,12 @@ declare missing_commits=	# File to contain missing commits
 ########################################
 # Function Return Codes
 ########################################
-config-manager -w declare rc_continue=0	# Continue for another pass
+declare rc_continue=0	# Continue for another pass
 declare rc_run=1	# Run
 
 function exit_me {
 	echo -e "$OFF"
+	exit $1
 	set_booleans
 	for item in \
 		menumode \
@@ -181,7 +163,6 @@ function exit_me {
 	[ -f "$prologue_file".txt ] && 	mv "$prologue_file".txt "$prologue_file"
 	[ -e "$last_tag_file" ] && rm -f $last_tag_file
 	[ -e "$branchlist" ] && rm -f "$branchlist"
-	unalias config-manager
 	exit $1
 }
 
@@ -196,6 +177,18 @@ control_c()
 ################  SANITY TEST DEBUGER  ###########################
 function test_sanity { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
 ###################################################################
+
+set_cfg_item() {
+set -x
+	config-manager -f $configfile -w $1 $2
+set +x
+}
+
+get_cfg_iten() {
+set -x
+	config-manager -f $configfile -r $1
+set +x
+}
 
 show_version() {
        echo -e "${INF}Version: $STA$version$OFF"
@@ -276,7 +269,7 @@ test_editor() {
 		return 1
 	fi
 
-	prj_set_item $prj_editor "$_editor_"
+	set_cfg_item editor "$_editor_"
 	return 0
 }
 
@@ -350,7 +343,7 @@ EOF
 )
 	echo -e "$fuzz_msg\n"
 	loop_range_q 0 3 patchvalfuzz
-	prj_set_item $prj_patchvalfuzz $patchvalfuzz
+	set_cfg_item patchvalfuzz $patchvalfuzz
 }
 
 # show_patchvalfuzz - show the current patch validation fuzz level
@@ -371,12 +364,18 @@ show_patchvalfuzz() {
 	esac
 }
 
-# set_dir
+# set_dir - set a directory variable and save it in the config file
+#
+# Arguments
+#   $1 - string to be used in the prompt describing the directory
+#   $2 - the config file key for the directory variable name
+#   $3 - the current value of the directory variable. Will be updated
+#        if the user changes the directory name.
 #
 set_dir() {
 	local dirstr="$1"
 	local dircfgkey="$2"
-	local dir="$3"
+	local dir="${!3}"
 
 	[ -n "$dir" ] && {
 		echo -e "${INF}Current $STA$dirstr$INF directory : $STA$dir$OFF"
@@ -398,39 +397,6 @@ set_dir() {
 	eval $3=$dir
 }
 
-# check_dir
-# 	Checks whether the directory coming from the project file is valid.
-# 	If not, calls prj_set_directory to get the new directory name.
-# 	The prj_set_directory routine calls ui_getnewdir, which will ask
-# 	if the user wants to create the directory if it does not already
-# 	exist.
-#
-# $1 - index into the project file where the directory name string goes
-# $2 - string representing the directory type, e.g. "Patch" or "Work"
-# $3 - returns the name of the directory
-#
-function check_dir {
-	local index=$1
-	local dirtype="$2"
-	local dirname=$(prj_get_item $index)
-	local b_getdirflag=false
-
-	if [ -z "$dirname" ]; then
-		echo -e ""$INF"Entry for $STA$dirtype$INF is empty"
-		b_getdirflag=true
-	elif ! [ -d "$dirname" ]; then
-		echo -e "\n"$STA"$dirname$INF does not exist.\n";
-		b_getdirflag=true
-	fi
-
-	if $b_getdirflag; then
-		prj_set_directory "$dirtype" $index dirname quiet
-		dirname=$(prj_get_item $index)
-	fi
-
-	eval $3=$dirname
-}
-
 # exec_boolean
 #
 # Execute a command string and pass the boolean that was
@@ -450,8 +416,6 @@ function exec_boolean {
 	local boolean=$1
 	local b_newval=$2
 	local cmdstr="$(echo "$@" | cut -d' ' -f$argc-)"
-	local offset=prj_${boolean}
-	# echo ${!offset}
 	$cmdstr
 	stat=$?
 	# echo "$cmdstr status: $stat"
@@ -459,7 +423,7 @@ function exec_boolean {
 		if [ $argc -eq 3 ]; then
 			$b_newval && boolean=true || boolean=false
 		fi
-		[ $argc -ge 2 ] && prj_set_item ${!offset} $boolean
+		[ $argc -ge 2 ] && set_cfg_item "$boolean" $b_newval
 	else
 		echo "$cmdstr"
 		echo -e "\tDid not execute successfully"
@@ -701,24 +665,6 @@ function apply_patches {
 
 	[ $stat -eq 0 ] && b_allapplied=true || tail -1 "$bp_commits"
 	return $stat
-}
-
-toggle_colors() {
-
-	terminal_background=$(prj_get_item $prj_background)
-
-	# If the terminal_background is NULL, then assume that
-	# the user is asking for color for the first time.
-	if [ -z $terminal_background ]; then
-		b_color=true
-		ui_query_colors
-		prj_set_item $prj_background $terminal_background
-	else
-		$b_color && b_color=false || b_color=true
-	fi
-
-	prj_set_item $prj_colors $b_color
-	ui_set_colors
 }
 
 show_colors() {
@@ -1249,7 +1195,6 @@ EOF
 # Globals:
 # 	patchcount
 # 	applymode
-# 	prj_applymode
 # 	applyfailmode
 # 	applyfailmode_menu
 #
@@ -1270,7 +1215,7 @@ exec_apply_patches(){
 		&& return $stat
 
 	applymode=$applymode_off
-	prj_set_item $prj_applymode $applymode
+	set_cfg_item "applymode" $applymode
 
 	return 0
 }
@@ -1389,7 +1334,7 @@ init_menu() {
 	init_booleans
 	get_booleans
 	applymode=$applymode_norm
-	prj_set_item $prj_applymode $applymode
+	set_cfg_item applymode $applymode
 	patchcount=0
 	startpat=1
 	b_fmt_upstream=true

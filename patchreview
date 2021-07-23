@@ -67,7 +67,7 @@ function init_booleans {
 	b_rename_infiles \
 	b_fmt_upstream
 	do
-		config-manager -w $bool true
+		set_cfg_item $bool true
 	done
 }
 
@@ -115,7 +115,7 @@ function get_booleans {
 	b_fmt_upstream \
 	b_verbose
 	do
-		eval $bool=$(config-manager -r $bool)
+		eval $bool=$(get_cfg_item $bool)
 		ui_digit2bool $bool
 	done
 }
@@ -164,7 +164,7 @@ function set_booleans {
 	b_rename_infiles \
 	b_fmt_upstream
 	do
-		config-manager -w $bool ${!bool}
+		set_cfg_item $bool ${!bool}
 		let index++
 	done
 	b_prologue=false
@@ -277,7 +277,7 @@ nuke() {
 
 	# Set the apply mode to its default value
 	applymode=$applymode_norm
-	config-manager -w applymode $applymode
+	set_cfg_item applymode $applymode
 }
 
 # show_config_menu - display the configuration options and their current state
@@ -322,10 +322,8 @@ EOF
 # 	b_mrflag
 # 	indir
 # 	indirstr
-# 	prj_indir
 # 	outdir
 # 	outdirstr
-# 	prj_outdir
 #
 config_parser() {
 	local opt
@@ -341,10 +339,11 @@ config_parser() {
 		o )	change_opmode
 			;;
 		c )	ui_toggle b_mrcomments
+			set_cfg_item "b_mrcomments" $b_mrcomments
 			;;
-		d )	prj_set_directory "$indirstr" $prj_indir indir quiet
+		d )	set_dir "$indirstr" "indir" indir
 			;;
-		w )	prj_set_directory "$outdirstr" $prj_outdir outdir quiet
+		w )	set_dir "$outdirstr" "outdir" outdir
 			;;
 		s )	get_remote_seek
 			;;
@@ -353,10 +352,10 @@ config_parser() {
 		f )	set_patchvalfuzz
 			;;
 		p )	ui_cycle_state cmpmode $cmpmode_states
-			prj_set_item $prj_cmpmode $cmpmode
+			set_cfg_item "cmpmode" $cmpmode
 			;;
 		v )	ui_toggle b_verbose
-			prj_set_item $prj_b_verbose $b_verbose
+			set_cfg_item "b_verbose" $b_verbose
 			;;
 		q ) 	return
 			;;
@@ -492,7 +491,7 @@ menu_parser() {
 		c )	config_parser
 			;;
 		o )	ui_cycle_state opmode $opmode_states
-			prj_set_item $prj_opmode $opmode
+			set_cfg_item "opmode" $opmode
 			if [ $opmode -eq $opmode_mr ]; then b_mrflag=true; else b_mrflag=false; fi
 			;;
 		g )	grep_mrlist && return $rc_run
@@ -510,16 +509,16 @@ menu_parser() {
 		b )	git_setbranch $branchlist
 			git_get_lasttag lasttag $last_tag_file
 			;;
-		d )	prj_set_directory "$indirstr" $prj_indir indir quiet
+		d )	set_dir "$indirstr" "indir" indir
 			;;
-		w )	prj_set_directory "$outdirstr" $prj_outdir outdir quiet
+		w )	set_dir "$outdirstr" "outdir" outdir
 			;;
 		e )	set_editor
 			;;
 		f )	set_patchvalfuzz
 			;;
 		x )	ui_cycle_state menumode $menumode_states
-			prj_set_item $prj_menumode $menumode
+			set_cfg_item "menumode" $menumode
 			;;
 		R )	$b_mrflag || renpatfiles
 			;;
@@ -534,16 +533,16 @@ menu_parser() {
 		V )	view_logs
 			;;
 		1 )	$b_mrflag || { ui_cycle_state cmpmode $cmpmode_states;
-				       prj_set_item $prj_cmpmode $cmpmode; }
+				       set_cfg_item "cmpmode" $cmpmode; }
 			;;
 		2 )	$b_mrflag || { ui_cycle_state applymode $applymode_states;
-			               prj_set_item $prj_applymode $applymode; }
+			               set_cfg_item "applymode" $applymode; }
 			;;
 		3 )	$b_mrflag || { ui_cycle_state applyfailmode $applyfailmode_states;
-			               prj_set_item $prj_applyfailmode $applyfailmode; }
+			               set_cfg_item "applyfailmode" $applyfailmode; }
 			;;
 		4 )	$b_mrflag || { ui_cycle_state patchseekmode $patchseek_states;
-			               prj_set_item $prj_patchseekmode $patchseekmode; }
+			               set_cfg_item "patchseekmode" $patchseekmode; }
 			;;
 		5 )	! $b_mrflag && $b_selpat && select_patch
 			;;
@@ -585,8 +584,6 @@ menu_parser() {
 # throughout the script.
 #
 # Globals:
-# 	prj_indir
-# 	prj_outdir
 # 	indirstr
 # 	outdirstr
 # 	indir
@@ -603,8 +600,8 @@ init_files() {
 
 	# get the patch and work directories.
 	#
-	indir=$(config-manager -r indir)
-	outdir=$(config-manager -r outdir)
+	indir=$(get_cfg_item indir)
+	outdir=$(get_cfg_item outdir)
 	bp_commits="$outdir/$bp_commits_name"
 	us_commits="$outdir/$us_commits_name"
 	usvbp_commits="$outdir/$usvbp_commits_name"
@@ -621,17 +618,17 @@ init_files() {
 # 	All clearly visible on every line.
 #
 init_loopvars() {
-	editor=$(config-manager -r editor)
-	cmpmode=$(config-manager -r cmpmode)
-	applymode=$(config-manager -r applymode)
-	applyfailmode=$(config-manager -r applyfailmode)
-	patchseekmode=$(config-manager -r patchseekmode)
-	patchvalfuzz=$(config-manager -r patchvalfuzz)
-	menumode=$(config-manager -r menumode)
-	remote_repo=$(config-manager -r remote_repo)
-	remote_branch=$(config-manager -r remote_branch)
-	mergelist_filter=$(config-manager -r mergelist_filter)
-	opmode=$(config-manager -r opmode)
+	editor=$(get_cfg_item editor)
+	cmpmode=$(get_cfg_item cmpmode)
+	applymode=$(get_cfg_item applymode)
+	applyfailmode=$(get_cfg_item applyfailmode)
+	patchseekmode=$(get_cfg_item patchseekmode)
+	patchvalfuzz=$(get_cfg_item patchvalfuzz)
+	menumode=$(get_cfg_item menumode)
+	remote_repo=$(get_cfg_item remote_repo)
+	remote_branch=$(get_cfg_item remote_branch)
+	mergelist_filter=$(get_cfg_item mergelist_filter)
+	opmode=$(get_cfg_item opmode)
 	[ $opmode -eq $opmode_mr ] && b_mrflag=true
 }
 
@@ -681,24 +678,38 @@ We will need to know:
 $OFF
 EOF
 )
+	b_color=true
+
 	# If the config file doens't exist, copy the default one
 	# from MYLIB and get the color scheme.
 	#
 	[ -d "$MYDATA" ] || mkdir $MYDATA
 	configfile="$MYDATA/patchreview.conf"
-	alias config-manager='config-manager -f $configfile'
+	[ -f "$configfile" ] || cp $MYLIB/patchreview.conf $configfile
 
-	[ -f "$configfile" ] || {
-		cp $MYLIB/patchreview.conf $configfile
-		b_color=true
-		ui_use_colors
-		config-manager -w background $terminal_background
-	}
-
+	# Init the config globals
+	#
 	while read confline; do
-		strtok "$confline" "= " lary
+		ui_strtok "$confline" "= " lary
 		eval ${lary[0]}=${lary[1]}
 	done < $configfile
+
+	# If color hasn't already been set up, then query the user for terminal
+	# background color and init the color engine.
+	# Else just init the terminal_background variable from the config global.
+	#
+	if [ -z "$background" ] ||(( background < 1 || background > 2 )); then
+		ui_use_colors
+		background=$terminal_background
+		set_cfg_item background $terminal_background
+	else
+		terminal_background=$background
+		ui_set_colors
+	fi
+
+	# Trap for control-c
+	#
+	trap control_c SIGINT
 
 	# ################################################################
 	#
@@ -788,16 +799,6 @@ cmd_check_fixes() {
 	return 0
 }
 
-# refresh_me - used between releases to update $MYDATA/patchreview.prj
-#
-# This is likely to change with each release.
-#
-refresh_me() {
-	echo -e "${INF}Refresh $STA$prjfile$INF to new release states.$OFF"
-	menumode=$menumode_min
-	prj_set_item $prj_menumode $menumode
-}
-
 # parse_cmdline - command line interface
 #
 parse_cmdline() {
@@ -831,10 +832,6 @@ parse_cmdline() {
 					shift
 					exit 0
 					;;
-			"refresh" )	refresh_me
-					shift
-					exit 0
-					;;
 			* ) echo -e "$STA$key$WRN is an invalid argument!\n"
 			    exit 1
 		esac
@@ -846,10 +843,6 @@ parse_cmdline() {
 #############################
 main() {
 	local argc=$#
-
-	# Trap for control-c
-	#
-	trap control_c SIGINT
 
 	! $(git_checkrepo) && git_invrepomsg && exit 1
 
