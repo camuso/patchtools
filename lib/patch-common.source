@@ -412,13 +412,11 @@ function exec_boolean {
 	local boolean=$1
 	local b_newval=$2
 	local cmdstr="$(echo "$@" | cut -d' ' -f$argc-)"
+
 	$cmdstr
 	stat=$?
 	# echo "$cmdstr status: $stat"
 	if [ $stat -eq 0 ]; then
-		if [ $argc -eq 3 ]; then
-			$b_newval && boolean=true || boolean=false
-		fi
 		[ $argc -ge 2 ] && set_cfg_item "$boolean" $b_newval
 	else
 		echo "$cmdstr"
