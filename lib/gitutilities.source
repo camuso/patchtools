@@ -719,7 +719,7 @@ check_fixes() {
 	local commitid=
 	local commit_fix=
 	local commit_fix_id=
-	local msg=""$WRN"WARNING: found missing commit$OFF"
+	local msg="WARNING: found missing commit"
 	local mypid
 	local fixfile="/dev/shm/fixfile"
 	local currentbranch=$(git branch | egrep \* | cut -d' ' -f2)
@@ -758,7 +758,8 @@ check_fixes() {
 				if ! grep "$commit_fix_id" "$commitsfile" >& /dev/null; then
 					# WARN ONLY. There may be a reason a commit is
 					# is skipped.
-					echo -e "$msg $commit_fix" | tee -a $missing_file
+					echo -e "$WRN$msg $MNU$commit_fix$WRN after $STA$commitid$OFF" 
+					echo "$msg $commit_fix after $commitid" >> $missing_file
 				fi
 			done
 		fi
