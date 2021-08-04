@@ -22,11 +22,11 @@ cfg_err_msg=(
 	"Invalid operation"
 )
 
-cfg_return_err() {
+cfg_show_err() {
 	local err=$1
 	local val="$2"
 
-	echo -e "\n$WRN${cfg_err_msg[$cfg_err]} $INF: $STA$val$OFF"
+	echo -e "\n$WRN${cfg_err_msg[$err]} $INF: $STA$val$OFF"
 	return $err
 }
 
@@ -36,7 +36,10 @@ cfg_read_key() {
 	local ary
 
 	keyline=$(grep -w $key $configfile)
-	[ $? -eq 0 ] || cfg_return_err $cfg_err_nokey $key
+	[ $? -eq 0 ] || {
+		cfg_show_err $cfg_err_nokey $key
+		return $cfg_err_nokey
+	}
 	ui_strtok "$keyline" "= " ary
 	echo ${ary[1]}
 }
@@ -48,7 +51,10 @@ cfg_write_key() {
 	local linenumber=
 
 	keyline=$(grep -nw "$key" "$configfile")
-	[ $? -eq 0 ] || cfg_return_err $cfg_err_nokey $key
+	[ $? -eq 0 ] || {
+		cfg_show_err $cfg_err_nokey $key
+		return $cfg_err_nokey
+	}
 	linenumber=$(echo "$keyline" | cut -d":" -f1)
 	keyline=$(echo "$keyline" | cut -d":" -f2- | cut -d"=" -f1)
 	keyline="$keyline""= $value"
