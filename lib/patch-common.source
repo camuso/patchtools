@@ -137,8 +137,8 @@ declare rc_run=1	# Run
 
 function exit_me {
 	echo -e "$OFF"
-	exit $1
 	set_booleans
+
 	for item in \
 		menumode \
 		patchvalfuzz \
@@ -154,9 +154,9 @@ function exit_me {
 		remote_branch \
 		mergelist_filter \
 		opmode \
-		rename_infiles \
-		fmt_upstream \
-		verbose ;
+		b_rename_infiles \
+		b_fmt_upstream \
+		b_verbose ;
 	do set_cfg_item $item ${!item}; done
 
 	_prologue=false
