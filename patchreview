@@ -386,7 +386,7 @@ $( $b_mrflag || echo -e "\n$MNU R$OFF  Rename mail files in    :$STA $indir$OFF"
 $MNU i$OFF  Init to defaults
 $MNU h$OFF  help text
 $MNU F$OFF  Format commits into      :$STA $outdir
-$MNU S$OFF  Seek missing commits
+$MNU S$OFF  Seek missing Fixes
 $MNU P$OFF  Compare Patches \
  $(show_apply_patches)
 $MNU B$OFF  Create a new branch at   :$STA $(get_current_head_trunc)
@@ -466,7 +466,7 @@ $MNU
 $MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
 $MNU 2$OFF  Patch apply mode        :$STA $(show_applymode)$OFF
 $MNU 3$OFF  Patch apply fail mode   :$STA $(show_applyfailmode)$OFF
-$MNU 4$OFF  Seek missing commits    :$STA $(show_patchseekmode)$OFF \
+$MNU 4$OFF  Seek missing Fixes      :$STA $(show_patchseekmode)$OFF \
  $(show_nextpatch)$BLD
 $MNU
     $UND\0Main Controls     $OFF
@@ -525,7 +525,7 @@ menu_parser() {
 		F )	format_upstream_patches
 			;;
 		S )	[ -n "$remote_repo" ] && [ -n "$remote_branch" ] || get_remote_seek
-			seek_missing_commits
+			seek_missing_fixes
 			;;
 		A )	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
 				&& exec_apply_patches
@@ -606,7 +606,7 @@ init_files() {
 	us_commits="$outdir/$us_commits_name"
 	usvbp_commits="$outdir/$usvbp_commits_name"
 	mmfile="$outdir/$mismatch_file"
-	missing_commits="$outdir/missing_commits"
+	missing_fixes="$outdir/missing_fixes"
 }
 
 # init_loopvars - init the global variables used in menus
@@ -674,7 +674,7 @@ We will need to know:
 1. The $STA$indirstr$INF directory to contain the patches for review
 2. The $STA$outdirstr$INF directory to contain output from this script
 3. Your choice of$STA diff editor$INF
-4. The upstream repo/branch to reference for upstream commit hashes.
+4. The upstream repo/branch to reference 'Seek missing Fixes'.
 $OFF
 EOF
 )
@@ -833,7 +833,7 @@ parse_cmdline() {
 					shift
 					exit 0
 					;;
-			* ) echo -e "$STA$key$WRN is an invalid argument!\n"
+			* ) echo -e "$STA$key ${WRN}is an invalid argument!$OFF\n"
 			    exit 1
 		esac
 	done

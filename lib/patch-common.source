@@ -127,7 +127,7 @@ declare el9="el9"
 
 declare remote_repo=
 declare remote_branch=
-declare missing_commits=	# File to contain missing commits
+declare missing_fixes=	# File to contain missing fixes
 
 ########################################
 # Function Return Codes
@@ -194,27 +194,41 @@ show_version() {
 # get_remote_seek() - get the remote origin and branch to seek
 #
 # Sets up the remote origin/branch global fields to use when seeking
-# missing commits.
+# missing fixes.
 #
 # GLOBALS:
 # 	remote_repo
 # 	remote_branch
 #
 get_remote_seek() {
-	select_remrepo remote_repo
-	select_rembranch "$remote_repo" remote_branch
+local remrepo_msg=$(
+cat <<EOF
+$INF
+ This selection will determine the remote repo/branch to search for
+ any missing fixes. A fix is defined by the upstream patch submission
+ rules as follows:
+
+    If your patch fixes a bug in a specific commit, e.g. you found
+    an issue using git bisect, please use the ‘Fixes:’ tag with the
+    first 12 characters of the SHA-1 ID, and the one line summary.
+    For example:
+    Fixes: e21d2170f366 ("video: remove unnecessary platform_set_drvdata()"$OFF
+EOF
+)
+	echo -e "$remrepo_msg"
+	select_remrepo remote_repo && select_rembranch "$remote_repo" remote_branch
 	set_cfg_item "remote_repo" "$remote_repo"
 	set_cfg_item "remote_branch" "$remote_branch"
 }
 
-# seek_missing_commits() - search remote/branch for missing commits
+# seek_missing_fixes() - search remote/branch for missing commits
 #
 # GLOBALS
 # 	us_commits
 # 	remote_repo
 # 	remote_branch
 #
-seek_missing_commits() {
+seek_missing_fixes() {
 	[ -f "$us_commits" ] || format_upstream_patches
 	[ -n "$remote_repo" ] || select_remrepo remote_repo
 	[ -n "$remote_branch" ] || select_rembranch "$remote_repo" remote_branch
@@ -227,10 +241,10 @@ seek_missing_commits() {
 		get_remote_seek
 	done
 
-	> $missing_commits
-	check_fixes "$us_commits" "$remote_repo/$remote_branch" "$missing_commits"
-	[ -s "$missing_commits" ] && echo -e \
-		"${WRN}There are missing commits listed in $STA$missing_commits$OFF"
+	> $missing_fixes
+	check_fixes "$us_commits" "$remote_repo/$remote_branch" "$missing_fixes"
+	[ -s "$missing_fixes" ] && echo -e \
+		"${WRN}There are missing fixes listed in $STA$missing_fixes$OFF"
 }
 
 # test_editor() - tests for the existence of the chosen editor

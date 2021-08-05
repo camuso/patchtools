@@ -1,5 +1,5 @@
 ===================
-Patchreview v10.1.0
+Patchreview v10.3.2
 ===================
 
 This menu-driven script allows the user to compare a set of patches
@@ -143,7 +143,7 @@ _________________________________________________________________________
  i  Init to defaults
  h  help text
  F  Format commits into     : .patches/tmp
- S  Seek missing commits
+ S  Seek missing Fixes
  P  Compare Patches
  A  Apply patches           : apply mode is OFF
  B  Create a new branch at  : 4a65f7024d21 [redhat] kernel-4.18.0-305.3.el8
@@ -198,7 +198,16 @@ Fig 2. Configuration Menu
 	w - Work directory will receive the corresponding upstream patches
 	    and the script log files.
 
-	s - Selects the remote branch to search for missing commits.
+	s - Selects the remote branch to search for missing fixes.
+	    Fixes are defined in the upsteam patch submission rules as
+	    follows.
+	    If your patch fixes a bug in a specific commit, e.g. you found
+	    an issue using git bisect, please use the ‘Fixes:’ tag with the
+	    first 12 characters of the SHA-1 ID, and the one line summary.
+	    For example:
+	    Fixes: e21d2170f366 ("video: remove unnecessary platform_set_drvdata()"$OFF
+
+	    See: https://www.kernel.org/doc/html/v4.17/process/submitting-patches.html
 
 	e - Presents a menu from which to select one of the three supported
 	    diff editors.
@@ -282,7 +291,7 @@ F - Format upstream patches into the Work directory using commit hashes
     if there are any *.patch files in it.
     Files downloaded from email must be renamed with the R control first.
 
-S - Seek commits that may be missing from the serires.
+S - Seek fixes that may be missing from the serires.
     Files downloaded from email must be renamed with the R control first.
 
 P - Run the patch comparison to compare the submitted patches in the

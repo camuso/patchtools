@@ -185,8 +185,8 @@ show_mrstatus() {
 	}
 
 	echo -e "\n    Merge Request           : $STA$current_mr $ackstr"
-	[ -s "$missing_commits" ] && echo -e \
-		"   $WRN There are missing commits listed in $STA$missing_commits$OFF"
+	[ -s "$missing_fixes" ] && echo -e \
+		"   $WRN There are missing fixes listed in $STA$missing_fixes$OFF"
 }
 
 # query_acknack - ask the user if they want to respond to the MR
@@ -628,7 +628,7 @@ get_mrcommits_pyapi() {
 # 	valpatchlist
 #	bp_commits
 #	indir
-#	missing_commits
+#	missing_fixes
 #
 get_merge_request_patches() {
 	$ui_b_debug && echo -e "${STA}get_merge_request_patches$OFF"
@@ -659,7 +659,7 @@ get_merge_request_patches() {
 	set_cfg_item "b_rename_infiles" $b_rename_infiles
 	set_cfg_item "b_fmt_upstream" $b_fmt_upstream
 
-	> $missing_commits
+	> $missing_fixes
 	valpatchlist=
 
 	lab mr show --comments $mr > $mrcomments
