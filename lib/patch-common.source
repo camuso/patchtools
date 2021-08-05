@@ -156,7 +156,8 @@ function exit_me {
 		opmode \
 		b_rename_infiles \
 		b_fmt_upstream \
-		b_verbose ;
+		b_verbose \
+		b_mrcomments;
 	do set_cfg_item $item ${!item}; done
 
 	_prologue=false
