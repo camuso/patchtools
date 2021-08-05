@@ -25,6 +25,8 @@ unset UND && declare UND="\033[4m"
 unset OFF && declare OFF="\033[m"
 #
 # Text color definitions
+# For color tables see:
+# http://bitmote.com/index.php?post/2012/11/19/Using-ANSI-Color-Codes-to-Colorize-Your-Bash-Prompt-on-Linux
 #
 unset BLK && declare BLK='\e[0;30m'
 unset RED && declare RED='\e[0;31m'
@@ -45,6 +47,8 @@ unset BBLU && declare BBLU='\e[1;94m'
 unset BMGT && declare BMGT='\e[1;95m'
 unset BCYN && declare BCYN='\e[1;96m'
 unset BWHT && declare BWHT='\e[1;97m'
+
+unset BWOR && declare BWOR='\e[1;37;41m'
 
 declare terminal_background=0
 declare tb_lite=1
@@ -139,6 +143,7 @@ ui_set_colors() {
 		$tb_dark ) INF=$OFF$YEL
 			   MNU=$BYEL
 			   STA=$BGRN
+			   # WRN=$BWOR
 			   WRN=$BRED
 			   ;;
 	esac
