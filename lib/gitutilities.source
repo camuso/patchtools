@@ -664,7 +664,15 @@ function git_setbranch {
 	return $status
 }
 
-# find_fixes - grep for all the commits since the one passed as $1
+# find_fixes - grep for all the commits since the one passed as $1 where
+#              $1 is named as a fix.
+#
+# See : https://www.kernel.org/doc/html/v4.17/process/submitting-patches.html
+#
+#       "If your patch fixes a bug in a specific commit, e.g. you found an
+#        issue using git bisect, please use the ‘Fixes:’ tag with the first
+#        12 characters of the SHA-1 ID, and the one line summary. For example:
+#        Fixes: e21d2170f366 ("video: remove unnecessary platform_set_drvdata()")
 #
 # $1 - a line expected to contain only a valid commit.
 #
