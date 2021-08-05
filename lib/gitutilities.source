@@ -697,12 +697,12 @@ find_fixes () {
 		--oneline \
 		--pretty='%h ("%s")' \
 		--since="$commit_date" \
-		--grep="$short_hash" \
+		--grep="Fixes: $short_hash" \
 		$rembranch > $tmpfil
 
 }
 
-# check_fixes - look for missed commits
+# check_fixes - look for missing fixes
 #
 # Walk through the file of upstream commits looking for any that may have
 # been missed. If the upstream commits have already been applied, then the
@@ -712,7 +712,7 @@ find_fixes () {
 # $1 - path to the file containing the commits. The commit is expected to
 #      be the first field in each line of the file.
 #
-# $2 - the remote_repo/remote_branch in which to seek missing commits
+# $2 - the remote_repo/remote_branch in which to seek missing fixes
 #
 # Returns
 # 	0 - all is well
@@ -739,7 +739,7 @@ check_fixes() {
 		return 1
 	}
 
-	echo -e "\n"$INF"Looking for missing commits in $STA$rembranch$INF...$OFF"
+	echo -e "\n"$INF"Looking for missing fixes in $STA$rembranch$INF...$OFF"
 
 	while read line; do
 		commitid=$(echo "$line" | cut -d' ' -f1)
@@ -810,26 +810,23 @@ create_remote_array() {
 }
 
 select_remrepo() {
-	local current="${!1}"
 	local cur="${!1}"
-	local curnum
 	local remotes=()
 	local num_of_remotes
-	local selection
-	local rem
-	local i
+	local stat
 
 	create_remote_array remotes
 	num_of_remotes=${#remotes[@]}
 
 	[ $num_of_remotes -gt 0 ] || {
-		echo -e ""$WRN"No remotes could be detected in .git/config.$OFF"
+		echo -e "${WRN}No remotes could be detected in .git/config.$OFF"
 		return 1
 	}
 
 	select_from_array remotes "remote repos" cur
+	stat=$?
 	eval $1=$cur
-	return 0
+	return $stat
 }
 
 show_remote_url() {
