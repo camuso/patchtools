@@ -74,38 +74,7 @@ function init_booleans {
 # get_booleans
 #
 # Read the values of the program flow control booleans from the
-# project file.
-#
-# removed in v3.0
-#	b_restore_githead
-#	b_clean_indir
-#	b_clean_outdir
-#
-# added in v 4.0
-#	b_patbatcmp
-#
-# removed in v4.4
-# 	b_patcmp
-# 	b_patbatcmp
-#
-# added in v4.4
-# 	b_40digit
-#
-# removed in v5.0
-#	b_apply_patches
-#
-# removed in v7.0
-# 	b_save_githead
-# 	b_gitam_err_abort
-#
-# removed in v9.0
-#	b_40digit
-#
-# added in v9.0
-#	b_extmenu
-#
-# removed in v9.1
-# 	b_extmenu
+# config file.
 #
 function get_booleans {
 	# echo "patchreview::get_booleans()"
@@ -113,7 +82,9 @@ function get_booleans {
 	for bool in \
 	b_rename_infiles \
 	b_fmt_upstream \
-	b_verbose
+	b_verbose \
+	b_mrcomments \
+	b_seekfixes
 	do
 		eval $bool=$(get_cfg_item $bool)
 		ui_digit2bool $bool
@@ -123,38 +94,7 @@ function get_booleans {
 # set_booleans
 #
 # Write the current values of the program flow booleans into the
-# project file.
-#
-# removed in v3.0
-#	b_restore_githead \
-#	b_clean_indir \
-#	b_clean_outdir \
-#
-# added in v 4.0
-#	b_patbatcmp
-#
-# removed in v4.4
-# 	b_patcmp
-# 	b_patbatcmp
-#
-# added in v4.4
-# 	b_40digit
-#
-# removed in v5.0
-#	b_apply_patches
-#
-# removed in v7.0
-# 	b_save_githead
-# 	b_gitam_err_abort
-#
-# removed in v9.0
-#	b_40digit
-#
-# added in v9.0
-#	b_extmenu
-#
-# removed in v9.1
-# 	b_extmenu
+# config file.
 #
 function set_booleans {
 	# echo "patchreview::set_booleans()"
@@ -162,7 +102,10 @@ function set_booleans {
 
 	for bool in \
 	b_rename_infiles \
-	b_fmt_upstream
+	b_fmt_upstream \
+	b_verbose \
+	b_mrcomments \
+	b_seekfixes
 	do
 		set_cfg_item $bool ${!bool}
 		let index++
@@ -298,9 +241,10 @@ $MNU
     $UND\0Configuration       $OFF
 $MNU o$OFF  Operating mode           :$STA $(show_opmode)
 $MNU c$OFF  See comments first       :$STA $(show_mrcomments)
+$MNU s$OFF  Automatically Seek Fixes :$STA $(show_seekfixes)
 $(show_patches)
 $(show_workdir)
-$MNU s$OFF  Remote Repo/Branch       :$STA $remote_repo/$remote_branch$OFF
+$MNU r$OFF  Remote Repo/Branch       :$STA $remote_repo/$remote_branch$OFF
     Remote URL               :$STA$(show_remote_url "$remote_repo")$OFF
 $MNU e$OFF  Diff Editor              :$STA $editor
 $MNU f$OFF  Patch Validation fuzz    :$STA $(show_patchvalfuzz)
@@ -345,7 +289,7 @@ config_parser() {
 			;;
 		w )	set_dir "$outdirstr" "outdir" outdir
 			;;
-		s )	get_remote_seek
+		r )	get_remote_seek
 			;;
 		e )	set_editor
 			;;
@@ -356,6 +300,9 @@ config_parser() {
 			;;
 		v )	ui_toggle b_verbose
 			set_cfg_item "b_verbose" $b_verbose
+			;;
+		s )	ui_toggle b_seekfixes
+			set_cfg_item "b_seekfixes" $b_seekfixes
 			;;
 		q ) 	return
 			;;
@@ -665,6 +612,7 @@ function menu_loop {
 init_parms() {
 	local confline
 	local lary
+	local cfgdif
 	local newcfgstr=$(
 cat <<EOF
 $INF
@@ -685,7 +633,22 @@ EOF
 	#
 	[ -d "$MYDATA" ] || mkdir $MYDATA
 	configfile="$MYDATA/patchreview.conf"
-	[ -f "$configfile" ] || cp $MYLIB/patchreview.conf $configfile
+
+	# If the configfile in $MYLIB has more lines in it than the users
+	# configfile, then add the extra lines to the user's config file.
+	# The configfile in $MYLIB must always have new lines added to the
+	# end. We could create an empty file and copy all the old contents
+	# and add the new contents, but why make more work when a little
+	# bit of planning ahead goes a long way.
+	#
+	if [ -f "$configfile" ]; then
+		local n_libcfg=$(cat $MYLIB/patchreview.conf | wc -l)
+		local n_usrcfg=$(cat $configfile | wc -l)
+		local n_cfgdif=$((n_libcfg - n_usrcfg))
+		[ $n_cfgdif -eq 0 ] || tail -$n_cfgdif $MYLIB/patchreview.conf >> $configfile
+	else
+		cp $MYLIB/patchreview.conf $configfile
+	fi
 
 	# Init the config globals
 	#
@@ -769,13 +732,16 @@ main_loop() {
 		if [ $patchseekmode -eq $patchseek_on ]; then
 			[ -f "$us_commits" ] || format_upstream_patches
 			[ -f "$us_commits" ] &&	check_fixes "$us_commits" \
-				"$remote_repo/$remote_branch"
+				"$remote_repo/$remote_branch" $b_verbose
 		fi
 
 		if [ $applymode -ne $applymode_off ]; then
 			exec_apply_patches
 			[ $? -ne 0 ] && continue
 		fi
+
+		$b_seekfixes && check_fixes "$us_commits" \
+			"$remote_repo/$remote_branch" "$missing_fixes" $b_verbose
 
 		if [ $cmpmode -ne $cmpmode_off ]; then
 			compare_patches
@@ -793,9 +759,10 @@ cmd_check_fixes() {
 	get_filecount
 	$b_rename_infiles && exec_boolean "b_rename_infiles" false "renpatfiles"
 
+	[ -n "$remote_repo" ] && [ -n "$remote_branch" ] || get_remote_seek
 	[ -f "$us_commits" ] || format_upstream_patches
 	[ -f "$us_commits" ] &&	check_fixes "$us_commits" \
-		"$remote_repo/$remote_branch"
+		"$remote_repo/$remote_branch" "$missing_fixes" $b_verbose
 
 	return 0
 }
@@ -805,18 +772,78 @@ cmd_check_fixes() {
 parse_cmdline() {
 	local argc=$#
 
-	init_files
-	init_loopvars
+	init_parms
+
+	local cmdlineops=$(
+cat <<EOF
+
+  $MNU$(basename $0)$INF command line options and operations$OFF
+
+  $MNU-v$INF |$MNU --version$INF |$MNU version$INF : show $(basename $0) version
+  $MNU-h$INF |$MNU --help   $INF |$MNU help   $INF : show this text$MNU
+
+  editor   $INF ; choose one of three available editors for diff presentation$MNU
+  remotes  $INF : choose a remote repo/branch from the ones availaible in your
+              .git/config file$MNU
+  branch   $INF : choose the branch having the MR or the patches applied$MNU
+  indir    $INF : name the directory that contains the patches$MNU
+  outdir   $INF : name the directory to contain the upstream git-formatted patches$MNU
+  compare  $INF : compare the RHEL patches with upstream and present any diffs in
+              the diff editor.$MNU
+
+  -R$INF : rename patchfiles in $indir, useful if downloaded from a mail client$MNU
+  -F$INF : format upstream patches into $STA$outdir$INF, using upstream commits from
+       patches in $STA$indir$MNU
+  -S$INF : Seek missing fixes in $STA$remote_repo${INF}/$STA$remote_branch
+$OFF
+EOF
+)
 
 	while (( $# > 0 )) ;do
 		key="$1"
 		case $key in
 			"-S" ) 	cmd_check_fixes
 				shift
+				exit
 				;;
 			"-R" )	renpatfiles
 				shift
 				;;
+			"-F" )  format_upstream_patches
+				shift
+				;;
+			"-P" )		;&
+			"compare" )	compare_patches
+					shift
+					;;
+
+			"editor" )	set_editor
+					exit 0
+					;;
+
+			"branch" )	git_setbranch $branchlist
+					exit 0
+					;;
+
+			"remote" )	;&
+			"remotes" )	get_remote_seek
+					exit 0
+					;;
+
+			"outdir" )	set_dir "$outdirstr" "outdir" outdir
+					shift
+					;;
+
+			"indir" )	set_dir "$indirstr" "indir" indir
+					shift
+					;;
+
+			"-V" )		;&
+			"-vv" )		;&
+			"-verbose" )	ui_toggle b_verbose
+					set_cfg_item "b_verbose" $b_verbose
+					shift
+					;;
 
 			"-v" )		;&
 			"version" )	;&
@@ -829,7 +856,7 @@ parse_cmdline() {
 			"-h" )		;&
 			"help" )	;&
 			"-help" ) 	;&
-			"--help" )	less $manual
+			"--help" )	echo -e "$cmdlineops"
 					shift
 					exit 0
 					;;
