@@ -184,7 +184,7 @@ show_mrstatus() {
 		ackstr=
 	}
 
-	echo -e "\n    Merge Request           : $STA$current_mr $ackstr"
+	echo -e "\n    Merge Request            : $STA$current_mr $ackstr"
 	[ -s "$missing_fixes" ] && echo -e \
 		"   $WRN There are missing fixes listed in $STA$missing_fixes$OFF"
 }
