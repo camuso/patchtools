@@ -77,7 +77,7 @@ declare b_rename_infiles
 declare b_fmt_upstream
 declare b_mrcomments=true
 declare b_verbose
-
+declare b_seekfixes
 
 declare lasttag=
 declare -i patchvalfuzz
@@ -157,7 +157,8 @@ function exit_me {
 		b_rename_infiles \
 		b_fmt_upstream \
 		b_verbose \
-		b_mrcomments;
+		b_mrcomments \
+		b_seekfixes
 	do set_cfg_item $item ${!item}; done
 
 	_prologue=false
@@ -189,6 +190,10 @@ get_cfg_item() {
 
 show_version() {
        echo -e "${INF}Version: $STA$version$OFF"
+}
+
+show_seekfixes() {
+	$b_seekfixes && echo "ON" || echo "OFF"
 }
 
 # get_remote_seek() - get the remote origin and branch to seek
@@ -1082,6 +1087,7 @@ format_upstream_patches() {
 
 		if $b_yup; then
 			rm -f $outdir/* > /dev/null 2>&1
+			> $missing_fixes
 		else
 			return 0
 		fi
