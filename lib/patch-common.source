@@ -242,7 +242,7 @@ seek_missing_fixes() {
 	done
 
 	> $missing_fixes
-	check_fixes "$us_commits" "$remote_repo/$remote_branch" "$missing_fixes"
+	check_fixes "$us_commits" "$remote_repo/$remote_branch" "$missing_fixes" $b_verbose
 	[ -s "$missing_fixes" ] && echo -e \
 		"${WRN}There are missing fixes listed in $STA$missing_fixes$OFF"
 }
