@@ -685,7 +685,8 @@ find_fixes () {
 	local commit_date=
 
 	# get the author date, which is what is displayed in git-log output
-	commit_info=$(git log --pretty="%h|%ad" -1 "$commit_id")
+	commit_info=$(git log --pretty="%h|%ad" -1 "$commit_id" 2>/dev/null)
+	[ $? -eq 0 ] || return 1
 	short_hash=$(echo "$commit_info" | awk -F "|"  ' { print $1 } ')
 	commit_date=$(echo "$commit_info" | awk -F "|"  ' { print $2 } ')
 
