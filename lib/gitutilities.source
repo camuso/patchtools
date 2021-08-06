@@ -714,6 +714,10 @@ find_fixes () {
 #
 # $2 - the remote_repo/remote_branch in which to seek missing fixes
 #
+# $3 - file to contain the list of missing fixes
+#
+# $4 - optional verbose boolean true or false. Default is true.
+#
 # Returns
 # 	0 - all is well
 # 	1 - something went wrong
@@ -727,10 +731,13 @@ check_fixes() {
 	local commitid=
 	local commit_fix=
 	local commit_fix_id=
-	local msg="WARNING: found missing commit"
+	local msg="WARNING: found missing fix"
 	local mypid
 	local fixfile="/dev/shm/fixfile"
 	local currentbranch=$(git branch | egrep \* | cut -d' ' -f2)
+	local verbose=true
+
+	[ -n "$4" ] && verbose=$4
 
 	[ -f $commitsfile ] || {
 		echo -e ""$INF"Expecting file: $STA$commitsfile$OFF"
@@ -749,6 +756,7 @@ check_fixes() {
 
 		find_fixes "$commitid" $fixfile "$rembranch" & mypid=$!
 		ui_waitonproc_tty $mypid .05 "Checking $commitid"
+		$verbose || ui_clearline up
 
 		if [ -s "$fixfile" ]; then
 
@@ -761,12 +769,13 @@ check_fixes() {
 				git log | grep -m1 "commit $commit_fix_id" > /dev/null 2>&1 \
 					$currentbranch && continue
 
-				# If the missing commit is not in the list of upstream
+				# If the missing fix is not in the list of upstream
 				# commits, then it truly is missing from the patch set.
 				if ! grep "$commit_fix_id" "$commitsfile" >& /dev/null; then
 					# WARN ONLY. There may be a reason a commit is
 					# is skipped.
-					echo -e "$WRN$msg $MNU$commit_fix$WRN after $STA$commitid$OFF" 
+					commitid=${commitid:0:12}
+					echo -e "$WRN$msg $MNU$commit_fix$WRN for $STA$commitid$OFF"
 					echo "$msg $commit_fix after $commitid" >> $missing_file
 				fi
 			done
