@@ -767,6 +767,38 @@ cmd_check_fixes() {
 	return 0
 }
 
+cmd_show_verbose() {
+	local current_verbose_state
+	local next_verbose_state
+
+	if $b_verbose; then
+		curr="${STA}ON$OFF"
+		next="${STA}OFF$OFF"
+	else
+		curr="${STA}OFF$OFF"
+		next="${STA}ON$OFF"
+	fi
+
+	echo -e "set verbose displays $next$INF : currently $curr"
+}
+
+cmd_show_status() {
+	local statscreen=$(
+cat <<EOF
+
+  $MNU${UND}Current $(basename $0) status$INF
+  editor    : $STA$editor$INF
+  indir     : $STA$indir$INF
+  outdir    : $STA$outdir$INF
+  branch    : $STA$(git_getcurrentbranch)$INF
+  remote    : $STA$remote_repo$MNU/$STA$remote_branch$INF
+  verbose   : $STA$($b_verbose && echo "ON" || echo "OFF")$INF
+$OFF
+EOF
+)
+	echo -e "$statscreen"
+}
+
 # parse_cmdline - command line interface
 #
 parse_cmdline() {
@@ -788,11 +820,14 @@ cat <<EOF
   branch   $INF : choose the branch having the MR or the patches applied$MNU
   indir    $INF : name the directory that contains the patches$MNU
   outdir   $INF : name the directory to contain the upstream git-formatted patches$MNU
+  remote   $INF : get the remote repo/branch to be used for upstream fixe$MNU
+  verbose  $INF : $(cmd_show_verbose)$MNU
+  status   $INF : show the current status of the above parameters$MNU
   compare  $INF : compare the RHEL patches with upstream and present any diffs in
               the diff editor.$MNU
 
   -R$INF : rename patchfiles in $indir, useful if downloaded from a mail client$MNU
-  -F$INF : format upstream patches into $STA$outdir$INF, using upstream commits from
+  -F$INF : format upstream patches into $STA$outdir$INF using upstream commits from
        patches in $STA$indir$MNU
   -S$INF : Seek missing fixes in $STA$remote_repo${INF}/$STA$remote_branch
 $OFF
@@ -812,6 +847,9 @@ EOF
 			"-F" )  format_upstream_patches
 				shift
 				;;
+			"status" )	cmd_show_status
+					exit 0
+					;;
 			"-P" )		;&
 			"compare" )	compare_patches
 					shift
@@ -840,6 +878,7 @@ EOF
 
 			"-V" )		;&
 			"-vv" )		;&
+			"verbose" )	;&
 			"-verbose" )	ui_toggle b_verbose
 					set_cfg_item "b_verbose" $b_verbose
 					shift
