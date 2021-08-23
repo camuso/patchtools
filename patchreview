@@ -809,27 +809,31 @@ parse_cmdline() {
 	local cmdlineops=$(
 cat <<EOF
 
-  $MNU$(basename $0)$INF command line options and operations$OFF
+  $MNU$(basename $0)$INF command line options and operations$MNU
 
-  $MNU-v$INF |$MNU --version$INF |$MNU version$INF : show $(basename $0) version
-  $MNU-h$INF |$MNU --help   $INF |$MNU help   $INF : show this text$MNU
+  version  $INF : show $MNU$(basename $0)$INF version$MNU
+  help     $INF : command line help (this text)$MNU
+  man      $INF : full patchreview manual$MNU
 
   editor   $INF ; choose one of three available editors for diff presentation$MNU
   remotes  $INF : choose a remote repo/branch from the ones availaible in your
               .git/config file$MNU
+
   branch   $INF : choose the branch having the MR or the patches applied$MNU
   indir    $INF : name the directory that contains the patches$MNU
   outdir   $INF : name the directory to contain the upstream git-formatted patches$MNU
   remote   $INF : get the remote repo/branch to be used for upstream fixe$MNU
-  verbose  $INF : $(cmd_show_verbose)$MNU
+  verbose  $INF : set screen output to verbose mode$MNU
+  quiet    $INF : set screen output to quiet mode$MNU
   status   $INF : show the current status of the above parameters$MNU
   compare  $INF : compare the RHEL patches with upstream and present any diffs in
               the diff editor.$MNU
 
-  -R$INF : rename patchfiles in $indir, useful if downloaded from a mail client$MNU
-  -F$INF : format upstream patches into $STA$outdir$INF using upstream commits from
-       patches in $STA$indir$MNU
-  -S$INF : Seek missing fixes in $STA$remote_repo${INF}/$STA$remote_branch
+  rename   $INF : rename patchfiles in $indir, useful if downloaded from a mail client$MNU
+  format   $INF : format upstream patches into $STA$outdir$INF using upstream commits from
+              patches in $STA$indir$MNU
+
+  seek     $INF : Seek missing fixes in $STA$remote_repo${INF}/$STA$remote_branch
 $OFF
 EOF
 )
@@ -837,16 +841,16 @@ EOF
 	while (( $# > 0 )) ;do
 		key="$1"
 		case $key in
-			"-S" ) 	cmd_check_fixes
-				shift
-				exit
-				;;
-			"-R" )	renpatfiles
-				shift
-				;;
-			"-F" )  format_upstream_patches
-				shift
-				;;
+			"seek" ) 	cmd_check_fixes
+					shift
+					exit
+					;;
+			"rename" )	renpatfiles
+					shift
+					;;
+			"format" )  format_upstream_patches
+					shift
+					;;
 			"status" )	cmd_show_status
 					exit 0
 					;;
@@ -879,7 +883,12 @@ EOF
 			"-V" )		;&
 			"-vv" )		;&
 			"verbose" )	;&
-			"-verbose" )	ui_toggle b_verbose
+			"-verbose" )	b_verbose=true
+					set_cfg_item "b_verbose" $b_verbose
+					shift
+					;;
+
+			"quiet" )	b_verbose=false
 					set_cfg_item "b_verbose" $b_verbose
 					shift
 					;;
@@ -888,7 +897,6 @@ EOF
 			"version" )	;&
 			"-version" )	;&
 			"--version" ) 	show_version
-					shift
 					exit 0
 					;;
 
@@ -896,7 +904,10 @@ EOF
 			"help" )	;&
 			"-help" ) 	;&
 			"--help" )	echo -e "$cmdlineops"
-					shift
+					exit 0
+					;;
+
+			"man" )		less $manual
 					exit 0
 					;;
 			* ) echo -e "$STA$key ${WRN}is an invalid argument!$OFF\n"
