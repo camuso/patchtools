@@ -509,7 +509,10 @@ menu_parser() {
 			;;
 		q )	exit_me 0
 			;;
-		r )	$b_mrflag && refresh_mergelist || {
+		r )	$b_mrflag && {
+				refresh_mergelist
+				[ $? -eq 0 ] && return $rc_run
+			} || {
 				set_booleans
 				return $rc_run
 			}
