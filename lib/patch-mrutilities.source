@@ -304,9 +304,11 @@ call_lab_mr_list() {
 # 	$mergelist_file
 #
 refresh_mergelist() {
+	local stat
 	rm -f "$mergelist_file"
 	select_merge_request
-	return 0
+	stat=$?
+	return $stat
 }
 
 # show_comments - display the view comments menu option
@@ -444,7 +446,7 @@ select_merge_request() {
 
 	while :; do
 		show_mrlist mrs
-		[ "$current_mr" == "q" ] && { current_mr= ; return 1; }
+		[ "$current_mr" == "q" ] && return 1
 		echo ${mrs[@]} | grep -w $current_mr > /dev/null 2>&1
 
 		if [ $? -eq 0 ]; then
