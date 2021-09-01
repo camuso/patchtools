@@ -392,6 +392,17 @@ set_dir() {
 	local dirstr="$1"
 	local dircfgkey="$2"
 	local dir="${!3}"
+	local b_msgshown=false
+	local ndirmsg=$(
+cat <<EOF
+$INF
+This directory has not yet been named.
+You must provide a directory path for me to continue.
+If the path does not exist, I will offer to create it
+for you.
+$OFF
+EOF
+)
 
 	[ -n "$dir" ] && {
 		echo -e "${INF}Current $STA$dirstr$INF directory : $STA$dir$OFF"
@@ -403,10 +414,13 @@ set_dir() {
 	while :; do
 		ui_getnewdir "${INF}New $STA$dirstr$INF directory : $OFF" dir
 
-		[ -n "$dir" ] && {
+		if [ -n "$dir" ]; then
 			[ -d "$dir" ] || mkdir -p "$dir"
 			break
-		}
+		else
+			$b_msgshown || echo -e "$ndirmsg"
+			b_msgshown=true
+		fi
 	done
 
 	set_cfg_item $dircfgkey "$dir"

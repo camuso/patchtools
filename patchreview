@@ -669,6 +669,7 @@ EOF
 		ui_use_colors
 		background=$terminal_background
 		set_cfg_item background $terminal_background
+		echo
 	else
 		terminal_background=$background
 		ui_set_colors
@@ -689,10 +690,14 @@ EOF
 	#
 	# ################################################################
 
-	[ -z "$indir" ] && set_dir $indirstr "indir" indir
+	[ -z "$indir" ] && {
+		set_dir $indirstr "indir" indir
+		echo
+	}
 	[ -z "$outdir" ] && {
 		outdir="$indir/tmp"
 		set_dir $outdirstr "outdir" outdir
+		echo
 	}
 	[ -z "$editor" ] && set_editor
 	([ -z "$remote_repo" ] || [ -z "$remote_branch" ]) && get_remote_seek
@@ -806,9 +811,6 @@ EOF
 #
 parse_cmdline() {
 	local argc=$#
-
-	init_parms
-
 	local cmdlineops=$(
 cat <<EOF
 
@@ -844,21 +846,21 @@ EOF
 	while (( $# > 0 )) ;do
 		key="$1"
 		case $key in
-			"seek" ) 	cmd_check_fixes
+			"seek" ) 	init_parms; cmd_check_fixes
 					shift
 					exit
 					;;
-			"rename" )	renpatfiles
+			"rename" )	rinit_parms; enpatfiles
 					shift
 					;;
-			"format" )  format_upstream_patches
+			"format" )  	init_parms; format_upstream_patches
 					shift
 					;;
 			"status" )	cmd_show_status
 					exit 0
 					;;
 			"-P" )		;&
-			"compare" )	compare_patches
+			"compare" )	cinit_parms; ompare_patches
 					shift
 					;;
 
