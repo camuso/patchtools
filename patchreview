@@ -807,6 +807,29 @@ EOF
 	echo -e "$statscreen"
 }
 
+check_labstatus() {
+	local labmsg=$(
+cat <<EOF
+$WRN
+  You Must install the lab ustility.$INF
+  Please see: $STA
+    https://docs.google.com/document/d/1PLPBqrnV-m4hr8Jos_7dhYGYqtMdiuCZZC72t2ljyEA/edit
+$OFF
+EOF
+)
+	which lab > /dev/null 2>&1
+	if [ $? -ne 0 ]; then
+		echo -e "$labmsg"
+		exit 1
+	fi
+}
+
+check_env() {
+	check_labstatus
+	! $(git_checkrepo) && git_invrepomsg && exit 1
+	init_parms
+}
+
 # parse_cmdline - command line interface
 #
 parse_cmdline() {
@@ -846,21 +869,21 @@ EOF
 	while (( $# > 0 )) ;do
 		key="$1"
 		case $key in
-			"seek" ) 	init_parms; cmd_check_fixes
+			"seek" ) 	check_env; cmd_check_fixes
 					shift
 					exit
 					;;
-			"rename" )	rinit_parms; enpatfiles
+			"rename" )	check_env; renpatfiles
 					shift
 					;;
-			"format" )  	init_parms; format_upstream_patches
+			"format" )  	check_env; format_upstream_patches
 					shift
 					;;
-			"status" )	cmd_show_status
+			"status" )	check_env; cmd_show_status
 					exit 0
 					;;
 			"-P" )		;&
-			"compare" )	cinit_parms; ompare_patches
+			"compare" )	check_env; compare_patches
 					shift
 					;;
 
@@ -868,20 +891,24 @@ EOF
 					exit 0
 					;;
 
-			"branch" )	git_setbranch $branchlist
+			"branch" )	! $(git_checkrepo) && git_invrepomsg && exit 1
+					git_setbranch $branchlist
 					exit 0
 					;;
 
 			"remote" )	;&
-			"remotes" )	get_remote_seek
+			"remotes" )	! $(git_checkrepo) && git_invrepomsg && exit 1
+					get_remote_seek
 					exit 0
 					;;
 
-			"outdir" )	set_dir "$outdirstr" "outdir" outdir
+			"outdir" )	! $(git_checkrepo) && git_invrepomsg && exit 1
+					set_dir "$outdirstr" "outdir" outdir
 					shift
 					;;
 
-			"indir" )	set_dir "$indirstr" "indir" indir
+			"indir" )	! $(git_checkrepo) && git_invrepomsg && exit 1
+					set_dir "$indirstr" "indir" indir
 					shift
 					;;
 
@@ -927,20 +954,8 @@ EOF
 main() {
 	local argc=$#
 
-	! $(git_checkrepo) && git_invrepomsg && exit 1
-
-	# Check for "lab" installation for gitlab support
-	which lab > /dev/null 2>&1
-	if [ $? -ne 0 ]; then
-		echo -e "\n"$WRN"You must install the \"lab\" utility$OFF"
-		echo -e ""$INF"Please see:$OFF"
-		echo -e ""$STA"  https://docs.google.com/document/d/1PLPBqrnV-m4hr8Jos_7dhYGYqtMdiuCZZC72t2ljyEA/edit$OFF\n"
-		exit 1
-	fi
-
-	init_parms
-
 	if [ $argc -eq 0 ]; then
+		check_env
 		git_get_lasttag lasttag $last_tag_file
 		main_loop
 	else
