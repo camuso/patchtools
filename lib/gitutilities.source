@@ -732,11 +732,13 @@ check_fixes() {
 	local commitid=
 	local commit_fix=
 	local commit_fix_id=
-	local msg="WARNING: found missing fix"
+	local tmsg="WARNING: found missing fix "
+	local emsg="$WRN$tmsg$MNU"
 	local mypid
 	local fixfile="/dev/shm/fixfile"
 	local currentbranch=$(git branch | egrep \* | cut -d' ' -f2)
 	local verbose=true
+	local patch=
 
 	[ -n "$4" ] && verbose=$4
 
@@ -751,12 +753,13 @@ check_fixes() {
 
 	while read line; do
 		commitid=$(echo "$line" | cut -d' ' -f1)
+		patch=$(echo "$line" | cut -d' ' -f2)
 
 		# If the commitid is empty, get the next line in commitsfile.
 		(( 16#$commitid )) || continue
 
 		find_fixes "$commitid" $fixfile "$rembranch" & mypid=$!
-		ui_waitonproc_tty $mypid .05 "Checking $commitid"
+		ui_waitonproc_tty $mypid .05 "${INF}Checking $STA$patch${INF}: $commitid$OFF"
 		$verbose || ui_clearline up
 
 		if [ -s "$fixfile" ]; then
@@ -776,8 +779,8 @@ check_fixes() {
 					# WARN ONLY. There may be a reason a commit is
 					# is skipped.
 					commitid=${commitid:0:12}
-					echo -e "$WRN$msg $MNU$commit_fix$WRN for $STA$commitid$OFF"
-					echo "$msg $commit_fix after $commitid" >> $missing_file
+					echo -e "$emsg$commit_fix$WRN for $STA$patch: $commitid$OFF"
+					echo "$tmsg$commit_fix for $patch: $commitid" >> $missing_file
 				fi
 			done
 		fi
