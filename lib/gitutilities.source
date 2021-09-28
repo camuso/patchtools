@@ -703,6 +703,56 @@ find_fixes () {
 
 }
 
+# parse_missingfix - parse the missing fix
+#
+# Determine whether the fix has already been included in RHEL, or was
+# intentionally omitted, or is truly missing. Send output to the screen
+# and to the missing_commits file.
+#
+# $1 - line to parse
+# $2 - 12-digit commit id being checked for fixes
+# $3 - enumeration of the commit id in the series
+# $4 - file containing the list of RHEL commits being reviewed
+# $5 - file that will contain any missing fixes
+#
+parse_missingfix() {
+	local fix_line="$1"
+	local commit12="$2"
+	local commitnum="$3"
+	local commitsfile="$4"
+	local missing_file=$5
+
+	local fix_id=
+	local missing="Missing Fix"
+	local tmsg="WARNING: found $missing "
+	local tskip="Intentionally Omitted $missing : "
+	local tokay="This series contains $missing : "
+	local merged=" was merged earlier."
+	local currentbranch=$(git branch | egrep \* | cut -d' ' -f2)
+	local fix_line=
+
+	fix_id=$(echo "$fix_line" | awk ' { print $1 } ')
+
+	# If the "missing" commit is in the current branch,
+	# then the upstream commitid has already been applied.
+	# In that case, inform the user and return.
+	if git log | grep -m1 "commit $fix_id" > /dev/null 2>&1 $currentbranch; then
+		echo -e "$INF$missing $fix_line for $commitnum: $commit12 $merged$OFF"
+		echo "$missing $fix_line for $commitnum: $commit12 $merged" > $missing_file
+		return
+	fi
+
+	# If the missing fix is not in the list of upstream
+	# commits, then it truly is missing from the patch set.
+	if fix_line=$(grep "$fix_id" "$commitsfile" >& /dev/null; then
+		# WARN ONLY. There may be a reason a commit is
+		# is skipped.
+		commitid=${commitid:0:12}
+		echo -e "$emsg$commit_fix$WRN for $STA$patch: $commitid$OFF"
+		echo "$tmsg$commit_fix for $patch: $commitid" >> $missing_file
+	fi
+}
+
 # check_fixes - look for missing fixes
 #
 # Walk through the file of upstream commits looking for any that may have
@@ -734,6 +784,8 @@ check_fixes() {
 	local commit_fix_id=
 	local tmsg="WARNING: found missing fix "
 	local emsg="$WRN$tmsg$MNU"
+	local tskip="Intentionally Omitted Fix : "
+	local eskip="$MNU$tskip$STA"
 	local mypid
 	local fixfile="/dev/shm/fixfile"
 	local currentbranch=$(git branch | egrep \* | cut -d' ' -f2)
