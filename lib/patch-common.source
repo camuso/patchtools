@@ -1600,3 +1600,27 @@ renpatfiles() {
     return $?
 }
 
+# find_filebynumber - echo a filename with a leading %04d
+#
+# This is only useful for finding a filename that begins with a
+# number padded with zeroes to four digits. It's useful when trying
+# to find a patch in a directory when you have only the patch number.
+#
+# $1 - file number
+# $2 - directory to search
+#
+find_filebynumber() {
+	local num="$1"
+	local dir="$2"
+
+	# If the number is expressed as num/total, then extract just
+	# the number. This will still work, even if the number is not
+	# expressed as a fraction.
+	num=$(echo "$num" | cut -d'/' -f1)
+
+	# pad the number out to four digits with leading zeroes.
+	num=$(printf "%04d" $num)
+
+	# find and echo the filename.
+	ls -1 "$dir" | grep -m1 "$num"
+}

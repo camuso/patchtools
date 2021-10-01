@@ -703,6 +703,23 @@ find_fixes () {
 
 }
 
+# extract_commitlog - extract the commit log from a patch
+#
+# $1 - patchfile
+# $2 - destination file
+#
+extract_commitlog() {
+	local patchfile="$1"
+	local outfile="$2"
+
+	> $outfile
+
+	while read line; do
+		[ "${line:0:3}" == "---" ] && break
+		echo "$line" >> $outfile
+	done < $patchfile
+}
+
 # parse_missingfix - parse the missing fix
 #
 # Determine whether the fix has already been included in RHEL, or was
@@ -714,6 +731,7 @@ find_fixes () {
 # $3 - enumeration of the commit id in the series
 # $4 - file containing the list of RHEL commits being reviewed
 # $5 - file that will contain any missing fixes
+# $6 - file containing Merge Request commit log for the specific patch
 #
 parse_missingfix() {
 	local fix_line="$1"
@@ -721,35 +739,44 @@ parse_missingfix() {
 	local commitnum="$3"
 	local commitsfile="$4"
 	local missing_file=$5
+	local mr_commitlog="$6"
 
-	local fix_id=
-	local missing="Missing Fix"
-	local tmsg="WARNING: found $missing "
-	local tskip="Intentionally Omitted $missing : "
-	local tokay="This series contains $missing : "
-	local merged=" was merged earlier."
+	local fix_id=$(echo "$fix_line" | awk ' { print $1 } ')
 	local currentbranch=$(git branch | egrep \* | cut -d' ' -f2)
-	local fix_line=
+	local missing="Missing Fix"
+	local tskip="Intentionally Omitted Fix :"
+	local merged="Already merged Fix :"
+	local tokay="This series contains Fix :"
+	local tmsg="WARNING: found $missing :"
+	local stat
 
-	fix_id=$(echo "$fix_line" | awk ' { print $1 } ')
+	# If the "missing" commit was intentionally omitted, print a message
+	# and return.
+	if cat $mr_commitlog | grep "^Omitted-Fix" | grep "$fix_id" > /dev/null 2>&1; then
+		echo -e "$INF$tskip $fix_line for $commitnum: $commit12 $OFF"
+		echo "$tskip $fix_line for $commitnum: $commit12" >> $missing_file
+		return
+	fi
 
 	# If the "missing" commit is in the current branch,
 	# then the upstream commitid has already been applied.
 	# In that case, inform the user and return.
 	if git log | grep -m1 "commit $fix_id" > /dev/null 2>&1 $currentbranch; then
-		echo -e "$INF$missing $fix_line for $commitnum: $commit12 $merged$OFF"
-		echo "$missing $fix_line for $commitnum: $commit12 $merged" > $missing_file
+		echo -e "$INF$merged $fix_line for $commitnum: $commit12 $OFF"
+		echo "$merged $fix_line for $commitnum: $commit12"  >> $missing_file
 		return
 	fi
 
-	# If the missing fix is not in the list of upstream
-	# commits, then it truly is missing from the patch set.
-	if fix_line=$(grep "$fix_id" "$commitsfile" >& /dev/null; then
-		# WARN ONLY. There may be a reason a commit is
-		# is skipped.
-		commitid=${commitid:0:12}
-		echo -e "$emsg$commit_fix$WRN for $STA$patch: $commitid$OFF"
-		echo "$tmsg$commit_fix for $patch: $commitid" >> $missing_file
+	# If the missing fix is in the list of upstream commits, then it's
+	# applied later in the current MR.
+	if grep "$fix_id" "$commitsfile" >& /dev/null; then
+		echo -e "$INF$tokay $fix_line for $commitnum: $commit12 $OFF"
+		echo "$tokay $fix_line for $commitnum: $commit12" >> $missing_file
+		return
+	else
+		# The missing fix is truly missing, so warn accordingly.
+		echo -e "$WRN$tmsg $MNU$fix_line$WRN for $STA$commitnum: $commit12$OFF"
+		echo "$tmsg $fix_line for $commitnum: $commit12" >> $missing_file
 	fi
 }
 
@@ -760,8 +787,11 @@ parse_missingfix() {
 # backported commits will be reported as false positives, so precaution is
 # taken to see if the "missing" commits are in the current branch.
 #
-# $1 - path to the file containing the commits. The commit is expected to
-#      be the first field in each line of the file.
+# GLOBALS
+#   indir - directory containing the MR patches
+#
+# $1 - path to the file containing the upstream commits. Each commit is
+#      expected to be the first field in each line of the file.
 #
 # $2 - the remote_repo/remote_branch in which to seek missing fixes
 #
@@ -791,6 +821,8 @@ check_fixes() {
 	local currentbranch=$(git branch | egrep \* | cut -d' ' -f2)
 	local verbose=true
 	local patch=
+	local mr_commitlog="/dev/shm/mr_commit.log"
+	local patch_filename=
 
 	[ -n "$4" ] && verbose=$4
 
@@ -816,24 +848,17 @@ check_fixes() {
 
 		if [ -s "$fixfile" ]; then
 
+			patch_filename=$(find_filebynumber "$patch" "$indir")
+			extract_commitlog "$indir/$patch_filename" "$mr_commitlog"
+
 			cat "$fixfile" | while read -r commit_fix; do
-				commit_fix_id=$(echo "$commit_fix" | awk ' { print $1 } ')
-
-				# If the "missing" commit is in the current branch,
-				# then the upstream commitid has already been applied.
-				# In that case, get the next upstream commitid.
-				git log | grep -m1 "commit $commit_fix_id" > /dev/null 2>&1 \
-					$currentbranch && continue
-
-				# If the missing fix is not in the list of upstream
-				# commits, then it truly is missing from the patch set.
-				if ! grep "$commit_fix_id" "$commitsfile" >& /dev/null; then
-					# WARN ONLY. There may be a reason a commit is
-					# is skipped.
-					commitid=${commitid:0:12}
-					echo -e "$emsg$commit_fix$WRN for $STA$patch: $commitid$OFF"
-					echo "$tmsg$commit_fix for $patch: $commitid" >> $missing_file
-				fi
+				parse_missingfix \
+					"$commit_fix" \
+					"${commitid:0:12}"  \
+					"$patch" \
+					"$commmitsfile" \
+					"$missing_file" \
+					"$mr_commitlog"
 			done
 		fi
 	done < "$commitsfile"
