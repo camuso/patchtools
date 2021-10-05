@@ -727,56 +727,59 @@ extract_commitlog() {
 # and to the missing_commits file.
 #
 # $1 - line to parse
-# $2 - 12-digit commit id being checked for fixes
-# $3 - enumeration of the commit id in the series
-# $4 - file containing the list of RHEL commits being reviewed
-# $5 - file that will contain any missing fixes
-# $6 - file containing Merge Request commit log for the specific patch
+# $2 - enumeration of the commit id in the series
+# $3 - file containing the list of RHEL commits being reviewed
+# $4 - file that will contain any missing fixes
+# $5 - file containing Merge Request commit log for the specific patch
+#
+# Returns 1 if a fix is really missing, 0 otherwise.
 #
 parse_missingfix() {
 	local fix_line="$1"
-	local commit12="$2"
-	local commitnum="$3"
-	local commitsfile="$4"
-	local missing_file=$5
-	local mr_commitlog="$6"
+	local commitnum="$2"
+	local commitsfile="$3"
+	local missing_file=$4
+	local mr_commitlog="$5"
 
 	local fix_id=$(echo "$fix_line" | awk ' { print $1 } ')
 	local currentbranch=$(git branch | egrep \* | cut -d' ' -f2)
-	local missing="Missing Fix"
-	local tskip="Intentionally Omitted Fix :"
-	local merged="Already merged Fix :"
-	local tokay="This series contains Fix :"
-	local tmsg="WARNING: found $missing :"
-	local stat
+	local missing="Missing Fix:"
+	local tskip="Intentionally Omitted Fix:"
+	local merged="$currentbranch already has Fix:"
+	local tokay="contains Fix:"
+	local tmsg="WARNING: found $missing"
+	local found=
+	local found_id=
 
 	# If the "missing" commit was intentionally omitted, print a message
 	# and return.
 	if cat $mr_commitlog | grep "^Omitted-Fix" | grep "$fix_id" > /dev/null 2>&1; then
-		echo -e "$INF$tskip $fix_line for $commitnum: $commit12 $OFF"
-		echo "$tskip $fix_line for $commitnum: $commit12" >> $missing_file
-		return
+		echo -e "$INF$tskip $fix_line for $commitnum $OFF"
+		echo "$tskip $fix_line for $commitnum" >> $missing_file
+		return 0
 	fi
 
 	# If the "missing" commit is in the current branch,
 	# then the upstream commitid has already been applied.
 	# In that case, inform the user and return.
 	if git log | grep -m1 "commit $fix_id" > /dev/null 2>&1 $currentbranch; then
-		echo -e "$INF$merged $fix_line for $commitnum: $commit12 $OFF"
-		echo "$merged $fix_line for $commitnum: $commit12"  >> $missing_file
-		return
+		echo -e "$INF$merged $fix_line for $commitnum$OFF"
+		echo "$merged $fix_line for $commitnum"  >> $missing_file
+		return 0
 	fi
 
 	# If the missing fix is in the list of upstream commits, then it's
 	# applied later in the current MR.
-	if grep "$fix_id" "$commitsfile" >& /dev/null; then
-		echo -e "$INF$tokay $fix_line for $commitnum: $commit12 $OFF"
-		echo "$tokay $fix_line for $commitnum: $commit12" >> $missing_file
-		return
+	if found=$(grep "$fix_id" "$commitsfile"); then
+		found_id=$(echo "$found" | cut -d' ' -f2)
+		echo -e "$INF$found_id $tokay $fix_line for $commitnum$OFF"
+		echo "$found_id $tokay $fix_line for $commitnum" >> $missing_file
+		return 0
 	else
 		# The missing fix is truly missing, so warn accordingly.
-		echo -e "$WRN$tmsg $MNU$fix_line$WRN for $STA$commitnum: $commit12$OFF"
-		echo "$tmsg $fix_line for $commitnum: $commit12" >> $missing_file
+		echo -e "$WRN$tmsg $MNU$fix_line$WRN for $STA$commitnum$OFF"
+		echo "$tmsg $fix_line for $commitnum" >> $missing_file
+		return 1
 	fi
 }
 
@@ -823,6 +826,7 @@ check_fixes() {
 	local patch=
 	local mr_commitlog="/dev/shm/mr_commit.log"
 	local patch_filename=
+	local stat=0
 
 	[ -n "$4" ] && verbose=$4
 
@@ -851,19 +855,22 @@ check_fixes() {
 			patch_filename=$(find_filebynumber "$patch" "$indir")
 			extract_commitlog "$indir/$patch_filename" "$mr_commitlog"
 
-			cat "$fixfile" | while read -r commit_fix; do
+			while read -r commit_fix; do
 				parse_missingfix \
 					"$commit_fix" \
-					"${commitid:0:12}"  \
 					"$patch" \
-					"$commmitsfile" \
+					"$commitsfile" \
 					"$missing_file" \
 					"$mr_commitlog"
-			done
+
+				[ $? -eq 0 ] || stat=1
+
+			done < "$fixfile"
 		fi
 	done < "$commitsfile"
 
 	[ -f $fixfile ] && rm -f $fixfile
+	return $stat
 }
 
 show_remotes() {
