@@ -64,9 +64,8 @@ declare CCR="\e[K"    		# clear line and carriage return
 declare UP1="\e[1A"		# move cursor up one line
 
 declare punctset="\"#$%&'()*+,-./:;<=>?@[\\]^_\`{|}~!"
-
 declare qstr="${MNU}'q'$OFF"
-declare msgretry="$msgretry Try again or type $qstr to quit trying: "
+declare msgretry="${INF}Retry or type $qstr$INF to quit: $OFF"
 
 # Errors
 #
@@ -613,14 +612,14 @@ function ui_getfilespec {
 	local filespec
 	local found=false
 	local retval=0
-	local msginvfilnam="Invalid file name. $msgretry"
+	local msginvfilnam="${WRN}Invalid file name. $msgretry"
 
 	while :; do
 		getuser "$prompt" filespec
 		[ "$filespec" ] || echo -e "$msginvfilnam"
 		[ "$filespec" = "q" ] && return 1
 		[ -f "$filespec" ] && break
-		echo -e "$BLD$filespec$OFF is not a valid file."
+		echo -e "$WRN$filespec is not a valid file.$OFF"
 	done
 
 	eval $2=$filespec
@@ -658,10 +657,10 @@ ui_verifydir() {
 	stat=$?
 
 	case $stat in
-		0 )	echo "\"$dir\" does not exist."
+		0 )	echo "$MNU\"$dir\"$WRN does not exist.$OFF"
 			return 1
 			;;
-		1 )	echo -e "\"$dir\" already exists as a file."
+		1 )	echo -e "$MNU\"$dir\"$WRN already exists as a file.$OFF"
 			return 1
 			;;
 		2 ) 	return 0
@@ -679,12 +678,19 @@ ui_verifydir() {
 # If the name already exists as a directory, asks if user wants to
 # use that directory, warning that all its contents may be altered.
 #
-
+# Returns:
+# 	0 - newly created directory
+# 	2 - valid existing directory
+# 	3 - user quitting
+#
 function ui_getnewdir {
 	local prompt="$1"
 	local newdir
 	local stat
 	local ans=true
+	local exists="$WRN\"$newdir\" already exists as a file. $msgretry"
+	local noexist="$MNU\"$STA$newdir$MNU\"$INF does not exist.$OFF"
+	local fail="${WRN}Could not create directory: $newdir$OFF"
 
 	while true; do
 		getuser "$prompt" newdir
@@ -693,7 +699,7 @@ function ui_getnewdir {
 		local stat=$?
 
 		case $stat in
-		1 )	echo -e "\"$newdir\" already exists as a file. $msgretry"
+		1 )	echo -e "$exists"
 			;;
 		2   ) 	eval $2="$newdir"	# valid existing directory
 			return $stat
@@ -701,15 +707,15 @@ function ui_getnewdir {
 		3 )	# echo "ui_getnewdir: newdir: $newdir"
 			return $stat	# user wants to quit trying
 			;;
-		4 )	echo -e "No directory selected. $msgretry"
+		4 )	echo -e "${WRN}Nothing entered. $msgretry"
 			;;
-		0 )	echo "\"$newdir\" does not exist."
+		0 )	echo "$noexist"
 			getyn "Want to create "$newdir" now?" ans
 			if $ans; then
 				mkdir -p "$newdir"
 				stat=$?
 				if [ $stat -ne 0 ]; then
-					echo "Could not create directory "$newdir""
+					echo -e "$fail"
 					continue
 				fi
 			else
@@ -720,7 +726,6 @@ function ui_getnewdir {
 			;;
 		esac
 	done
-
 }
 
 function ui_testdir {

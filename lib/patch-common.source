@@ -129,6 +129,8 @@ declare remote_repo=
 declare remote_branch=
 declare missing_fixes=	# File to contain missing fixes
 
+declare torvaldsdir=
+
 ########################################
 # Function Return Codes
 ########################################
@@ -154,6 +156,7 @@ function exit_me {
 		remote_branch \
 		mergelist_filter \
 		opmode \
+		torvaldsdir \
 		b_rename_infiles \
 		b_fmt_upstream \
 		b_verbose \
@@ -194,6 +197,61 @@ show_version() {
 
 show_seekfixes() {
 	$b_seekfixes && echo "ON" || echo "OFF"
+}
+
+#####################################################################
+#
+# set_torvalds - get the upstream linus repo
+#
+# GLOBALS
+# 	torvaldsdir: name of the directory with upstream repo
+#
+set_torvalds() {
+	local pathname
+	local stat
+	local getlinstr=$(
+cat <<EOF
+$INF
+The mainline linux repo 'torvalds/linux.git' was not detected in
+your .git/config in this directory.
+
+If you have a directory with the mainline linux repo in it, please
+enter it now or just press ${MNU}ENTER$INF to create it.
+$OFF
+EOF
+)
+	local newrepostr=$(
+cat <<EOF
+$INF
+$STA$pathname$INF will be created with the following command.
+   git clone \
+      git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git \
+      $pathname
+
+$ mkdir -p /path/to/my/upstream/linux
+$ cd /path/to/my/upstream
+$ git clone git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+$ cd linux
+$ git fetch linux
+$OFF
+EOF
+)
+	echo -e "$getlinstr"
+	ui_getnewdir "Directory with upstream linux repo: " pathname
+	stat=$?
+
+	case $stat in
+	0 ) mkdir -p $pathname
+	    git clone \
+	       git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git \
+	       $pathname
+	    ;;
+    	3 ) exitme 0
+	    ;;
+	esac
+
+	torvaldsdir="$pathname"
+	set_cfg_item "torvaldsdir" "$torvaldsdir"
 }
 
 # get_remote_seek() - get the remote origin and branch to seek

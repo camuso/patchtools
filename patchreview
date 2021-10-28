@@ -552,6 +552,7 @@ init_files() {
 	#
 	indir=$(get_cfg_item indir)
 	outdir=$(get_cfg_item outdir)
+	torvaldsdir=$(get_cfg_item torvaldsdir)
 	bp_commits="$outdir/$bp_commits_name"
 	us_commits="$outdir/$us_commits_name"
 	usvbp_commits="$outdir/$usvbp_commits_name"
@@ -701,6 +702,10 @@ EOF
 	}
 	[ -z "$editor" ] && set_editor
 	([ -z "$remote_repo" ] || [ -z "$remote_branch" ]) && get_remote_seek
+
+	if ! grep 'torvalds\/linux\.git' .git/config > /dev/null 2>&1; then
+		[ -z "$torvaldsdir" ] && set_torvalds
+	fi
 
 	init_booleans
 	init_files
