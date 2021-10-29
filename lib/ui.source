@@ -467,6 +467,24 @@ loop_yn() {
 	done
 }
 
+# loop_yn_ro() - return-only version
+#
+# Loop until user gives either a y or n answer.
+# Simpler than the getyn() routine above.
+#
+# $1 - prompt string
+#
+loop_yn_ro() {
+	local ans=
+	while true; do
+		promptgetchar "$1" ans
+		[ -z "$ans" ] && continue
+		[ "$ans" == "y" ] && return 0
+		[ "$ans" == "n" ] && return 1
+		echo -e "Please enter 'y' or 'n'."
+	done
+}
+
 # loop_range()
 #
 # Loop until user gives a number in the range defined by the args
@@ -689,7 +707,7 @@ function ui_getnewdir {
 	local stat
 	local ans=true
 	local exists="$WRN\"$newdir\" already exists as a file. $msgretry"
-	local noexist="$MNU\"$STA$newdir$MNU\"$INF does not exist.$OFF"
+	local noexist="${INF}: does not exist.$OFF"
 	local fail="${WRN}Could not create directory: $newdir$OFF"
 
 	while true; do
@@ -709,7 +727,7 @@ function ui_getnewdir {
 			;;
 		4 )	echo -e "${WRN}Nothing entered. $msgretry"
 			;;
-		0 )	echo "$noexist"
+		0 )	echo -e "$STA$newdir $noexist"
 			getyn "Want to create "$newdir" now?" ans
 			if $ans; then
 				mkdir -p "$newdir"

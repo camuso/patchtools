@@ -655,8 +655,7 @@ EOF
 	fi
 
 	# Init the config globals
-	#
-
+	# This simply executes the assignment made in text in the configfile.
 	while read confline; do
 		ui_strtok "$confline" "= " lary
 		eval ${lary[0]}=${lary[1]}
@@ -667,10 +666,7 @@ EOF
 	# Else just init the terminal_background variable from the config global.
 	#
 	if [ -z "$background" ] ||(( background < 1 || background > 2 )); then
-		ui_use_colors
-		background=$terminal_background
-		set_cfg_item background $terminal_background
-		echo
+		set_colors
 	else
 		terminal_background=$background
 		ui_set_colors
@@ -691,21 +687,20 @@ EOF
 	#
 	# ################################################################
 
-	[ -z "$indir" ] && {
-		set_dir $indirstr "indir" indir
-		echo
-	}
+	[ -z "$editor" ] && set_editor
+
+	[ -z "$indir" ] && set_dir $indirstr "indir" indir
+
 	[ -z "$outdir" ] && {
 		outdir="$indir/tmp"
 		set_dir $outdirstr "outdir" outdir
-		echo
 	}
-	[ -z "$editor" ] && set_editor
-	([ -z "$remote_repo" ] || [ -z "$remote_branch" ]) && get_remote_seek
 
 	if ! grep 'torvalds\/linux\.git' .git/config > /dev/null 2>&1; then
 		[ -z "$torvaldsdir" ] && set_torvalds
 	fi
+
+	([ -z "$remote_repo" ] || [ -z "$remote_branch" ]) && get_remote_seek
 
 	init_booleans
 	init_files
