@@ -128,8 +128,7 @@ declare el9="el9"
 declare remote_repo=
 declare remote_branch=
 declare missing_fixes=	# File to contain missing fixes
-
-declare torvaldsdir=
+declare remotedir=
 
 ########################################
 # Function Return Codes
@@ -199,63 +198,78 @@ show_seekfixes() {
 	$b_seekfixes && echo "ON" || echo "OFF"
 }
 
-#####################################################################
-#
-# set_torvalds - get the upstream linus repo
+# set_remotedir - name the directory where the upstream remotes are
 #
 # GLOBALS
-# 	torvaldsdir: name of the directory with upstream repo
+# 	remotedir
 #
-set_torvalds() {
-	local pathname
+set_remotedir() {
 	local stat
-	local getlinstr=$(
+	local remotetutor=$(
 cat <<EOF
 $INF
-The mainline linux repo 'torvalds/linux.git' was not detected in
-your .git/config in this directory.
+ Create the main upstream directory and repo.
+ ${STA}$ ${MNU}mkdir /path/to/upstream
+ ${STA}$ ${MNU}git clone \\\
 
-If you have a directory with the mainline linux repo in it, please
-enter it now or just press ${MNU}ENTER$INF to create it.
+     git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git \\\
+
+     /path/to/upstream
+$INF
+ Add a remote repo with the following command template
+     ${MNU}git remote add <name> <url-of-repo>
+$INF
+ Where 'name' can be whatever you like and url-of-repo is the url
+ of the remote git repo.
+
+ Example for adding the upstream scsi repo:
+ ${STA}$ ${MNU}cd /path/to/upstream
+ ${STA}$ ${MNU}git remote add scsi \\\
+
+     https://git.kernel.org/pub/scm/linux/kernel/git/jejb/scsi.git
+ ${STA}$ ${MNU}git fetch scsi
 $OFF
 EOF
 )
-	local newrepostr=$(
+	local remdirmsg=$(
 cat <<EOF
 $INF
-$STA$pathname$INF will be created with the following command.
-   git clone \
-      git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git \
-      $pathname
-
-$ mkdir -p /path/to/my/upstream/linux
-$ cd /path/to/my/upstream
-$ git clone git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
-$ cd linux
-$ git fetch linux
+The upstream repos must be located in a directory of their own
+outside of your current directory, $MNU$PWD
 $OFF
 EOF
 )
-	echo -e "$getlinstr"
-	ui_getnewdir "Directory with upstream linux repo: " pathname
-	stat=$?
+	echo -e "$remdirmsg"
+	loop_yn_ro "${INF}Do you want to see a brief tutorial?$MNU (y/n) :$OFF "
+	[ $? -eq 0 ] && echo -e "$remotetutor"
 
-	case $stat in
-	0 ) mkdir -p $pathname
-	    git clone \
-	       git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git \
-	       $pathname
-	    ;;
-    	3 ) exitme 0
-	    ;;
-	esac
+	while :; do
+		ui_getnewdir "${MNU}Directory with upstream repos: $OFF" remotedir
+		stat=$?
+		if [ $stat -ne 3 ]; then
+			break
+		else
+			echo -e \
+			    "${WRN}You must provide an upstream directory.$OFF"
+		fi
+	done
 
-	torvaldsdir="$pathname"
-	set_cfg_item "torvaldsdir" "$torvaldsdir"
-	echo -e "${INF}Your upstream repo is in $STA$torvaldsdir$OFF\n"
+	# get the full pathname of the remote directory.
+	# If there is no git repo in it, print the tutor to the screen
+	# and exit gracefully.
+	#
+	remotedir=$(realpath $remotedir)
+	[ -d $remotedir/.git/config ] || {
+		echo -e "${WRN}No git repo detected in $MNU$remotedir$OFF"
+		echo -e "${INF}This script will exit now."
+		echo -e "Please follow these instructions.$OFF"
+		echo -e "$remotetutor"
+		exitme 1
+	}
+	set_cfg_item "remotedir" "$remotedir"
 }
 
-# get_remote_seek() - get the remote origin and branch to seek
+# set_remote_seek() - get the remote origin and branch to seek
 #
 # Sets up the remote origin/branch global fields to use when seeking
 # missing fixes.
@@ -264,11 +278,11 @@ EOF
 # 	remote_repo
 # 	remote_branch
 #
-get_remote_seek() {
-local remrepo_msg=$(
+set_remote_seek() {
+	local remrepo_msg=$(
 cat <<EOF
 $INF
- This selection will determine the remote repo/branch to search for
+ This selection will determine the upstream repo/branch to search for
  any missing fixes. A fix is defined by the upstream patch submission
  rules as follows:
 
@@ -277,10 +291,37 @@ $INF
     first 12 characters of the SHA-1 ID, and the one line summary.
     For example:
     Fixes: e21d2170f366 ("video: remove unnecessary platform_set_drvdata()"$OFF
+$INF
+ Your remote repos must exist in a directory other than $STA$PWD$INF
+ Remote repos should be added as remotes to your upstream Linus repo.
+$OFF
+EOF
+)
+	local remtut=$(
+cat <<EOF
+$INF
+ Add a remote repo with the following command template
+ ${STA}$ ${MNU}git remote add <name> <url-of-repo>
+$INF
+ Where 'name' can be whatever you like and url-of-repo is the url
+ of the remote git repo.
+
+ Example for adding the upstream scsi repo:
+ ${STA}$ ${MNU}cd /path/to/upstream
+ ${STA}$ ${MNU}git remote add scsi \\\
+
+   https://git.kernel.org/pub/scm/linux/kernel/git/jejb/scsi.git
+ ${STA}$ ${MNU}git fetch scsi
+$OFF
 EOF
 )
 	echo -e "$remrepo_msg"
+	loop_yn_ro "${INF}Do you want to see a brief tutorial?$MNU (y/n) :$OFF"
+	[ $? -eq 0 ] && echo -e "$remtut"
+
+	cd $remotedir
 	select_remrepo remote_repo && select_rembranch "$remote_repo" remote_branch
+	cd -
 	set_cfg_item "remote_repo" "$remote_repo"
 	set_cfg_item "remote_branch" "$remote_branch"
 }
@@ -293,6 +334,7 @@ EOF
 # 	remote_branch
 #
 seek_missing_fixes() {
+	cd $remotedir
 	[ -f "$us_commits" ] || format_upstream_patches
 	[ -n "$remote_repo" ] || select_remrepo remote_repo
 	[ -n "$remote_branch" ] || select_rembranch "$remote_repo" remote_branch
@@ -301,14 +343,17 @@ seek_missing_fixes() {
 	while :; do
 		git branch -r | grep "$remote_repo/$remote_branch" > /dev/null 2>&1
 		[ $? -eq 0 ] && break
-		echo -e ""$WRN"Cannot find $STA$remote_repo/$remote_branch$OFF"
+		echo -e "${WRN}Cannot find $STA$remote_repo/$remote_branch$WRN"
+		echo -e "in remote directory: $STA$remotedir$OFF"
 		get_remote_seek
 	done
 
 	> $missing_fixes
-	check_fixes "$us_commits" "$remote_repo/$remote_branch" "$missing_fixes" $b_verbose
+	check_fixes "$us_commits" "$remote_repo" "$missing_fixes" $b_verbose
 	([ $? -ne 0 ] && [ -s "$missing_fixes" ]) && echo -e \
 		"${WRN}There are missing fixes listed in $STA$missing_fixes$OFF"
+	cd -
+	return 0
 }
 
 # test_editor() - tests for the existence of the chosen editor
@@ -501,6 +546,7 @@ EOF
 		fi
 	done
 
+	dir=$(realpath $dir)
 	set_cfg_item $dircfgkey "$dir"
 	echo -e "$INF$dirstr directory is $STA$dir$OFF\n"
 	eval $3=$dir

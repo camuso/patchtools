@@ -289,7 +289,7 @@ config_parser() {
 			;;
 		w )	set_dir "$outdirstr" "outdir" outdir
 			;;
-		r )	get_remote_seek
+		r )	set_remote_seek
 			;;
 		e )	set_editor
 			;;
@@ -451,7 +451,7 @@ menu_parser() {
 		M )	$b_mrflag && get_merge_request
 			[ $? -eq 0 ] && return $rc_run
 			;;
-		s )	get_remote_seek
+		s )	set_remote_seek
 			;;
 		b )	git_setbranch $branchlist
 			git_get_lasttag lasttag $last_tag_file
@@ -471,7 +471,7 @@ menu_parser() {
 			;;
 		F )	format_upstream_patches
 			;;
-		S )	[ -n "$remote_repo" ] && [ -n "$remote_branch" ] || get_remote_seek
+		S )	[ -n "$remote_repo" ] && [ -n "$remote_branch" ] || set_remote_seek
 			seek_missing_fixes
 			;;
 		A )	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
@@ -688,19 +688,13 @@ EOF
 	# ################################################################
 
 	[ -z "$editor" ] && set_editor
-
 	[ -z "$indir" ] && set_dir $indirstr "indir" indir
-
 	[ -z "$outdir" ] && {
 		outdir="$indir/tmp"
 		set_dir $outdirstr "outdir" outdir
 	}
-
-	if ! grep 'torvalds\/linux\.git' .git/config > /dev/null 2>&1; then
-		[ -z "$torvaldsdir" ] && set_torvalds
-	fi
-
-	([ -z "$remote_repo" ] || [ -z "$remote_branch" ]) && get_remote_seek
+	[ -z "$remotedir" ] && set_remotedir
+	([ -z "$remote_repo" ] || [ -z "$remote_branch" ]) && set_remote_seek
 
 	init_booleans
 	init_files
@@ -767,7 +761,7 @@ cmd_check_fixes() {
 	get_filecount
 	$b_rename_infiles && exec_boolean "b_rename_infiles" false "renpatfiles"
 
-	[ -n "$remote_repo" ] && [ -n "$remote_branch" ] || get_remote_seek
+	[ -n "$remote_repo" ] && [ -n "$remote_branch" ] || set_remote_seek
 	[ -f "$us_commits" ] || format_upstream_patches
 	[ -f "$us_commits" ] &&	check_fixes "$us_commits" \
 		"$remote_repo/$remote_branch" "$missing_fixes" $b_verbose
@@ -898,7 +892,7 @@ EOF
 
 			"remote" )	;&
 			"remotes" )	! $(git_checkrepo) && git_invrepomsg && exit 1
-					get_remote_seek
+					set_remote_seek
 					exit 0
 					;;
 
