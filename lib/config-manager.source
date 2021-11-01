@@ -14,12 +14,54 @@ declare configmanager_loaded=true
 declare -i cfg_err_nokey=1
 declare -i cfg_err_invopt=2
 declare -i cfg_err_invoper=3
+declare -i cfg_err_notready=4
+declare cfg_file=
+declare cfg_template=
+declare cfg_b_ready=false
+
+cfg_manager_help() {
+	local helpmsg=$(
+cat <<EOF
+	The config manager bash routines provide a means for maintaining
+	a config file of global variables with each line formatted as:
+		key = value
+
+	Scripts can then call these routines to obtain or update values
+	in their respective config files.
+
+	To use the config manager, you must first supply two files
+	One is the template which will be updated when saved variables
+	change, the other is the individual config file for the script
+	using this config manager.
+
+	cfg_set_template <template for the main script's config file>
+	cfg_set_configfile <path to the main script's config file>
+
+EOF
+)
+	echo -e "$helpmsg"
+}
+
+cfg_set_configfile() {
+	cfg_file="$1"
+	[ -f $cfg_template ] && cfg_b_ready=true
+}
+
+cfg_get_configfile() {
+	eval $1="$cfg_file"
+}
+
+cfg_set_template() {
+	cfg_template="$1"
+	[ -f $cfg_file ] && cfg_b_ready=true
+}
 
 cfg_err_msg=(
 	""
 	"Key not found"
 	"Invalid option"
 	"Invalid operation"
+	"Config files missing: need config template and config file"
 )
 
 cfg_show_err() {
@@ -30,12 +72,21 @@ cfg_show_err() {
 	return $err
 }
 
+cfg_test_ready() {
+	$cfg_b_ready || {
+		echo -e "\n$WRN${cfg_err_msg[$cfg_err_notready]}$OFF"
+		return $cfg_err_notready
+	}
+}
+
 cfg_read_key() {
 	local key="$1"
 	local keyline=
 	local ary
 
-	keyline=$(grep -w $key $configfile)
+	$cfg_test_ready || return $cfg_err_notready
+
+	keyline=$(grep -w $key $cfg_file)
 	[ $? -eq 0 ] || {
 		cfg_show_err $cfg_err_nokey $key
 		return $cfg_err_nokey
@@ -50,7 +101,9 @@ cfg_write_key() {
 	local keyline=
 	local linenumber=
 
-	keyline=$(grep -nw "$key" "$configfile")
+	$cfg_test_ready || return $cfg_err_notready
+
+	keyline=$(grep -nw "$key" "$cfg_file")
 	[ $? -eq 0 ] || {
 		cfg_show_err $cfg_err_nokey $key
 		return $cfg_err_nokey
@@ -58,5 +111,71 @@ cfg_write_key() {
 	linenumber=$(echo "$keyline" | cut -d":" -f1)
 	keyline=$(echo "$keyline" | cut -d":" -f2- | cut -d"=" -f1)
 	keyline="$keyline""= $value"
-	ui_replaceline_raw $linenumber "$keyline" "$configfile"
+	ui_replaceline_raw $linenumber "$keyline" "$cfg_file"
+}
+
+cfg_compare_configfiles() {
+	local key1=
+	local key2=
+	local tmp=
+	local stat=
+
+	$cfg_test_ready || return $cfg_err_notready
+
+	[ $(cat "$cfg_template" | wc -l) -ne $(cat "$cfg_file" | wc -l) ] && return 1
+
+	exec 5<"$cfg_template"
+	exec 6<"$cfg_file"
+
+	while :; do
+		read -r -u 5 key1 tmp
+		read -r -u 6 key2 tmp
+		[ -z "$key1" ] && { stat=0; break; }
+		[ "$key1" == "$key2" ] || { stat=1; break; }
+	done
+
+	exec 5<&-
+	exec 6<&-
+	return $stat
+}
+
+cfg_read_configfile() {
+	local confline=
+	local lary
+
+	$cfg_test_ready || return $cfg_err_notready
+
+	while read confline; do
+		ui_strtok "$confline" "= " lary
+		eval ${lary[0]}=${lary[1]}
+	done < $cfg_file
+}
+
+cfg_update_configfile() {
+	local key1=
+	local tmp=
+	local tmpfile=/dev/shm/cfg_temp
+	local stat=
+
+	$cfg_test_ready || return $cfg_err_notready
+
+	exec 5<"$cfg_template"
+	> $tmpfile
+
+	while :; do
+		read -r -u 5 key1 tmp || break
+		cfgline=$(grep "^$key1" $cfg_file) \
+			&& echo $cfgline >> $tmpfile \
+			|| echo "$key1 $tmp" >> $tmpfile
+	done
+
+	cp -f $tmpfile $cfg_file
+	rm -f $tmpfile
+
+	exec 5<&-
+}
+
+cfg_init() {
+	cfg_compare_configfiles || cfg_update_configfile
+	cfg_read_configfile
 }

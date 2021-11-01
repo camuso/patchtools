@@ -617,6 +617,8 @@ init_parms() {
 	local confline
 	local lary
 	local cfgdif
+	local configfile="$MYDATA/patchreview.conf"
+	local cfgtemplate="$MYLIB/patchreview.conf"
 	local newcfgstr=$(
 cat <<EOF
 $INF
@@ -632,40 +634,26 @@ EOF
 )
 	b_color=true
 
+	# If the .data directory has not been created yet, do that and
+	# get its realpath.
+	[ -d "$MYDATA" ] || mkdir -p $MYDATA
+
 	# If the config file doens't exist, copy the default one
-	# from MYLIB and get the color scheme.
+	# from MYLIB.
 	#
-	[ -d "$MYDATA" ] || mkdir $MYDATA
-	configfile="$MYDATA/patchreview.conf"
+	[ -f "$configfile" ] || cp $cfgtemplate $configfile
 
-	# If the configfile in $MYLIB has more lines in it than the users
-	# configfile, then add the extra lines to the user's config file.
-	# The configfile in $MYLIB must always have new lines added to the
-	# end. We could create an empty file and copy all the old contents
-	# and add the new contents, but why make more work when a little
-	# bit of planning ahead goes a long way.
+	# Initialize the config manager and get the global variables.
 	#
-	if [ -f "$configfile" ]; then
-		local n_libcfg=$(cat $MYLIB/patchreview.conf | wc -l)
-		local n_usrcfg=$(cat $configfile | wc -l)
-		local n_cfgdif=$((n_libcfg - n_usrcfg))
-		[ $n_cfgdif -eq 0 ] || tail -$n_cfgdif $MYLIB/patchreview.conf >> $configfile
-	else
-		cp $MYLIB/patchreview.conf $configfile
-	fi
-
-	# Init the config globals
-	# This simply executes the assignment made in text in the configfile.
-	while read confline; do
-		ui_strtok "$confline" "= " lary
-		eval ${lary[0]}=${lary[1]}
-	done < $configfile
+	cfg_set_template "$cfgtemplate"
+	cfg_set_configfile "$configfile"
+	cfg_init
 
 	# If color hasn't already been set up, then query the user for terminal
 	# background color and init the color engine.
 	# Else just init the terminal_background variable from the config global.
 	#
-	if [ -z "$background" ] ||(( background < 1 || background > 2 )); then
+	if [ -z "$background" ] || (( background < 1 || background > 2 )); then
 		set_colors
 	else
 		terminal_background=$background
@@ -693,7 +681,7 @@ EOF
 		outdir="$indir/tmp"
 		set_dir $outdirstr "outdir" outdir
 	}
-	[ -z "$remotedir" ] && set_remotedir
+	[ -z "$remote_dir" ] && set_remotedir
 	([ -z "$remote_repo" ] || [ -z "$remote_branch" ]) && set_remote_seek
 
 	init_booleans

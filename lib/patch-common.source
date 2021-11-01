@@ -26,7 +26,7 @@ b_ui_int_first_getyn=false	# For lib/ui.source
 shopt -s extglob
 
 declare manual="$MYDIR/man/$(basename $0).txt"
-declare MYDATA=./.data
+declare MYDATA=$(realpath ./.data)
 declare configfile=
 
 #######################################
@@ -128,7 +128,7 @@ declare el9="el9"
 declare remote_repo=
 declare remote_branch=
 declare missing_fixes=	# File to contain missing fixes
-declare remotedir=
+declare remote_dir=
 
 ########################################
 # Function Return Codes
@@ -151,11 +151,11 @@ function exit_me {
 		indir \
 		outdir \
 		background \
+		remote_dir \
 		remote_repo \
 		remote_branch \
 		mergelist_filter \
 		opmode \
-		torvaldsdir \
 		b_rename_infiles \
 		b_fmt_upstream \
 		b_verbose \
@@ -201,7 +201,7 @@ show_seekfixes() {
 # set_remotedir - name the directory where the upstream remotes are
 #
 # GLOBALS
-# 	remotedir
+# 	remote_dir
 #
 set_remotedir() {
 	local stat
@@ -244,7 +244,7 @@ EOF
 	[ $? -eq 0 ] && echo -e "$remotetutor"
 
 	while :; do
-		ui_getnewdir "${MNU}Directory with upstream repos: $OFF" remotedir
+		ui_getnewdir "${MNU}Directory with upstream repos: $OFF" remote_dir
 		stat=$?
 		if [ $stat -ne 3 ]; then
 			break
@@ -258,15 +258,16 @@ EOF
 	# If there is no git repo in it, print the tutor to the screen
 	# and exit gracefully.
 	#
-	remotedir=$(realpath $remotedir)
-	[ -d $remotedir/.git/config ] || {
-		echo -e "${WRN}No git repo detected in $MNU$remotedir$OFF"
+	remote_dir=$(realpath $remote_dir)
+	[ -d $remote_dir/.git ] || {
+		echo -e "${WRN}No git repo detected in $MNU$remote_dir$OFF"
 		echo -e "${INF}This script will exit now."
 		echo -e "Please follow these instructions.$OFF"
 		echo -e "$remotetutor"
-		exitme 1
+		exit_me 1
 	}
-	set_cfg_item "remotedir" "$remotedir"
+
+	set_cfg_item "remote_dir" "$remote_dir"
 }
 
 # set_remote_seek() - get the remote origin and branch to seek
@@ -319,7 +320,7 @@ EOF
 	loop_yn_ro "${INF}Do you want to see a brief tutorial?$MNU (y/n) :$OFF"
 	[ $? -eq 0 ] && echo -e "$remtut"
 
-	cd $remotedir
+	cd $remote_dir
 	select_remrepo remote_repo && select_rembranch "$remote_repo" remote_branch
 	cd -
 	set_cfg_item "remote_repo" "$remote_repo"
@@ -334,7 +335,7 @@ EOF
 # 	remote_branch
 #
 seek_missing_fixes() {
-	cd $remotedir
+	cd $remote_dir
 	[ -f "$us_commits" ] || format_upstream_patches
 	[ -n "$remote_repo" ] || select_remrepo remote_repo
 	[ -n "$remote_branch" ] || select_rembranch "$remote_repo" remote_branch
@@ -344,7 +345,7 @@ seek_missing_fixes() {
 		git branch -r | grep "$remote_repo/$remote_branch" > /dev/null 2>&1
 		[ $? -eq 0 ] && break
 		echo -e "${WRN}Cannot find $STA$remote_repo/$remote_branch$WRN"
-		echo -e "in remote directory: $STA$remotedir$OFF"
+		echo -e "in remote directory: $STA$remote_dir$OFF"
 		get_remote_seek
 	done
 
