@@ -107,11 +107,6 @@ declare -i applyfailmode_cont=1
 declare -i applyfailmode_menu=2
 declare -i applyfailmode_states=3
 
-declare -i patchseekmode
-declare -i patchseek_off=0
-declare -i patchseek_on=1
-declare -i patchseek_states=2
-
 declare -i startpat=1
 declare -i menucols=30
 
@@ -143,7 +138,6 @@ function exit_me {
 	for item in \
 		menumode \
 		patchvalfuzz \
-		patchseekmode \
 		applyfailmode \
 		applymode \
 		cmpmode \
@@ -205,52 +199,34 @@ show_seekfixes() {
 #
 set_remotedir() {
 	local stat
-	local remotetutor=$(
-cat <<EOF
-$INF
- Create the main upstream directory and repo.
- ${STA}$ ${MNU}mkdir /path/to/upstream
- ${STA}$ ${MNU}git clone \\\
+	local b_exists=false
 
-     git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git \\\
+	echo -e "\n$INF Set the directory that contains the remote repo to " \
+		"search or missing fixes.$OFF"
 
-     /path/to/upstream
-$INF
- Add a remote repo with the following command template
-     ${MNU}git remote add <name> <url-of-repo>
-$INF
- Where 'name' can be whatever you like and url-of-repo is the url
- of the remote git repo.
-
- Example for adding the upstream scsi repo:
- ${STA}$ ${MNU}cd /path/to/upstream
- ${STA}$ ${MNU}git remote add scsi \\\
-
-     https://git.kernel.org/pub/scm/linux/kernel/git/jejb/scsi.git
- ${STA}$ ${MNU}git fetch scsi
-$OFF
-EOF
-)
-	local remdirmsg=$(
-cat <<EOF
-$INF
-The upstream repos must be located in a directory of their own
-outside of your current directory, $MNU$PWD
-$OFF
-EOF
-)
-	echo -e "$remdirmsg"
-	loop_yn_ro "${INF}Do you want to see a brief tutorial?$MNU (y/n) :$OFF "
-	[ $? -eq 0 ] && echo -e "$remotetutor"
+	if [ -n "$remote_dir" ]; then
+		echo -e "$INF Your current remote directory is: $STA$remote_dir"
+		prstr=$(echo "$INF Enter a new remote directory or press " \
+			"$qstr$INF to leave it unchanged : $OFF")
+		b_exists=true
+	else
+		prstr="$INF Enter a new remote directory : $OFF"
+		b_exists=false
+	fi
 
 	while :; do
-		ui_getnewdir "${MNU}Directory with upstream repos: $OFF" remote_dir
+		ui_getnewdir "$prstr" remote_dir
 		stat=$?
-		if [ $stat -ne 3 ]; then
-			break
+
+		if ($b_exists && [ $stat -eq 3 ]); then
+			return
 		else
-			echo -e \
-			    "${WRN}You must provide an upstream directory.$OFF"
+			if [ $stat -ne 3 ]; then
+				break
+			else
+				echo -e \
+				    "${WRN}You must provide an upstream directory.$OFF"
+			fi
 		fi
 	done
 
@@ -262,15 +238,20 @@ EOF
 	[ -d $remote_dir/.git ] || {
 		echo -e "${WRN}No git repo detected in $MNU$remote_dir$OFF"
 		echo -e "${INF}This script will exit now."
-		echo -e "Please follow these instructions.$OFF"
-		echo -e "$remotetutor"
 		exit_me 1
 	}
 
+	# Changing the remote directory means changing the remote
+	# origin/branch, too.
+	#
+	remote_repo=
+	remote_branch=
+	set_cfg_item "remote_repo" "$remote_repo"
+	set_cfg_item "remote_branch" "$remote_branch"
 	set_cfg_item "remote_dir" "$remote_dir"
 }
 
-# set_remote_seek() - get the remote origin and branch to seek
+# set_remote_seek() - set the remote origin and branch to seek
 #
 # Sets up the remote origin/branch global fields to use when seeking
 # missing fixes.
@@ -280,51 +261,31 @@ EOF
 # 	remote_branch
 #
 set_remote_seek() {
+	local remotes=
+	local b_set=true
 	local remrepo_msg=$(
 cat <<EOF
 $INF
- This selection will determine the upstream repo/branch to search for
- any missing fixes. A fix is defined by the upstream patch submission
- rules as follows:
-
-    If your patch fixes a bug in a specific commit, e.g. you found
-    an issue using git bisect, please use the ‘Fixes:’ tag with the
-    first 12 characters of the SHA-1 ID, and the one line summary.
-    For example:
-    Fixes: e21d2170f366 ("video: remove unnecessary platform_set_drvdata()"$OFF
-$INF
- Your remote repos must exist in a directory other than $STA$PWD$INF
- Remote repos should be added as remotes to your upstream Linus repo.
-$OFF
+ Set the upstream origin/branch in: $STA$remote_dir$INF
+ to search for any missing fixes.$OFF
 EOF
 )
-	local remtut=$(
-cat <<EOF
-$INF
- Add a remote repo with the following command template
- ${STA}$ ${MNU}git remote add <name> <url-of-repo>
-$INF
- Where 'name' can be whatever you like and url-of-repo is the url
- of the remote git repo.
-
- Example for adding the upstream scsi repo:
- ${STA}$ ${MNU}cd /path/to/upstream
- ${STA}$ ${MNU}git remote add scsi \\\
-
-   https://git.kernel.org/pub/scm/linux/kernel/git/jejb/scsi.git
- ${STA}$ ${MNU}git fetch scsi
-$OFF
-EOF
-)
+	[ -n "$remote_dir" ] || set_remotedir
 	echo -e "$remrepo_msg"
-	loop_yn_ro "${INF}Do you want to see a brief tutorial?$MNU (y/n) :$OFF"
-	[ $? -eq 0 ] && echo -e "$remtut"
 
-	cd $remote_dir
-	select_remrepo remote_repo && select_rembranch "$remote_repo" remote_branch
-	cd -
-	set_cfg_item "remote_repo" "$remote_repo"
-	set_cfg_item "remote_branch" "$remote_branch"
+	if ([ -n "$remote_repo" ] && [ -n "$remote_branch" ]); then
+		remotes="$remote_repo/$remote_branch"
+		echo -e "$INF Your current remote repo/branch is: $STA$remotes"
+		loop_yn "$MNU Do you want to change this? (y/n) : $OFF" b_set
+	fi
+
+	if $b_set; then
+		cd $remote_dir
+		select_remrepo remote_repo && select_rembranch "$remote_repo" remote_branch
+		cd -
+		set_cfg_item "remote_repo" "$remote_repo"
+		set_cfg_item "remote_branch" "$remote_branch"
+	fi
 }
 
 # seek_missing_fixes() - search remote/branch for missing commits
@@ -333,12 +294,15 @@ EOF
 # 	us_commits
 # 	remote_repo
 # 	remote_branch
+# 	remote_dir
 #
 seek_missing_fixes() {
-	cd $remote_dir
 	[ -f "$us_commits" ] || format_upstream_patches
 	[ -n "$remote_repo" ] || select_remrepo remote_repo
 	[ -n "$remote_branch" ] || select_rembranch "$remote_repo" remote_branch
+	[ -d $remote_dir ] || set_remotedir
+
+	cd $remote_dir
 
 	# See if the remote/branch exists. If not, query for them
 	while :; do
@@ -346,14 +310,14 @@ seek_missing_fixes() {
 		[ $? -eq 0 ] && break
 		echo -e "${WRN}Cannot find $STA$remote_repo/$remote_branch$WRN"
 		echo -e "in remote directory: $STA$remote_dir$OFF"
-		get_remote_seek
+		set_remote_seek
 	done
 
 	> $missing_fixes
-	check_fixes "$us_commits" "$remote_repo" "$missing_fixes" $b_verbose
+	check_fixes "$us_commits" "$remote_repo/$remote_branch" "$missing_fixes" $remote_dir $b_verbose
 	([ $? -ne 0 ] && [ -s "$missing_fixes" ]) && echo -e \
 		"${WRN}There are missing fixes listed in $STA$missing_fixes$OFF"
-	cd -
+	cd - > /dev/null 2>&1
 	return 0
 }
 
@@ -527,7 +491,6 @@ for you.
 $OFF
 EOF
 )
-
 	[ -n "$dir" ] && {
 		echo -e "${INF}Current $STA$dirstr$INF directory : $STA$dir$OFF"
 		echo -e "${INF}Type $qstr$INF to leave it as it is.$OFF"
@@ -871,13 +834,6 @@ show_applyfailmode() {
 	    $applyfailmode_cont ) echo "Continue without applying" ;;
 	    $applyfailmode_menu ) echo "Return to main menu" ;;
 	                      * ) echo "Not a valid failover mode" ;;
-	esac
-}
-
-show_patchseekmode() {
-	case $patchseekmode in
-		$patchseek_off ) echo -n "OFF" ;;
-		$patchseek_on  ) echo -n "ON" ;;
 	esac
 }
 

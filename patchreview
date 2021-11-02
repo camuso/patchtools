@@ -337,8 +337,8 @@ $MNU S$OFF  Seek missing Fixes
 $MNU P$OFF  Compare Patches \
  $(show_apply_patches)
 $MNU B$OFF  Create a new branch at   :$STA $(get_current_head_trunc)
-$MNU C$OFF  Clean the $STA$indirstr$OFF and/or $STA$outdirstr$OFF directories
 $MNU G$OFF  Git reset to             :$STA $lasttag
+$MNU C$OFF  Clean the $STA$indirstr$OFF and/or $STA$outdirstr$OFF directories
 $MNU N$OFF  Nuke the directories and reset head to most recent tag \
  $(show_view_logs)
 $OFF
@@ -360,6 +360,7 @@ EOF
 #
 show_mr_menu() {
 	local opt
+	local remotes="$remote_dir : $remote_repo/$remote_branch"
 	local mr_menu=$(
 cat <<EOF
 $MNU
@@ -369,6 +370,7 @@ $MNU c$OFF  Config Menu
     Current Head             :$STA $(get_current_head_trunc)$OFF
 $MNU b$OFF  Current git branch       :$STA $(git_getcurrentbranch)$OFF
 $(show_patches)
+$MNU s$OFF  Remote dir : repo/branch :$STA $remotes$OFF
 $MNU g$OFF  grep Merge List for      : $(show_mrfilter) \
  $(show_mrstatus)
 $MNU
@@ -413,7 +415,7 @@ $MNU
 $MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
 $MNU 2$OFF  Patch apply mode        :$STA $(show_applymode)$OFF
 $MNU 3$OFF  Patch apply fail mode   :$STA $(show_applyfailmode)$OFF
-$MNU 4$OFF  Seek missing Fixes      :$STA $(show_patchseekmode)$OFF \
+$MNU 4$OFF  Seek missing Fixes      :$STA $(show_seekfixes)$OFF \
  $(show_nextpatch)$BLD
 $MNU
     $UND\0Main Controls     $OFF
@@ -451,7 +453,8 @@ menu_parser() {
 		M )	$b_mrflag && get_merge_request
 			[ $? -eq 0 ] && return $rc_run
 			;;
-		s )	set_remote_seek
+		s )	set_remotedir
+			set_remote_seek
 			;;
 		b )	git_setbranch $branchlist
 			git_get_lasttag lasttag $last_tag_file
@@ -488,8 +491,8 @@ menu_parser() {
 		3 )	$b_mrflag || { ui_cycle_state applyfailmode $applyfailmode_states;
 			               set_cfg_item "applyfailmode" $applyfailmode; }
 			;;
-		4 )	$b_mrflag || { ui_cycle_state patchseekmode $patchseek_states;
-			               set_cfg_item "patchseekmode" $patchseekmode; }
+		4 )	$b_mrflag || { ui_toggle b_seekfixes;
+				       set_cfg_item "b_seekfixes" $b_seekfixes; }
 			;;
 		5 )	! $b_mrflag && $b_selpat && select_patch
 			;;
@@ -573,7 +576,6 @@ init_loopvars() {
 	cmpmode=$(get_cfg_item cmpmode)
 	applymode=$(get_cfg_item applymode)
 	applyfailmode=$(get_cfg_item applyfailmode)
-	patchseekmode=$(get_cfg_item patchseekmode)
 	patchvalfuzz=$(get_cfg_item patchvalfuzz)
 	menumode=$(get_cfg_item menumode)
 	remote_repo=$(get_cfg_item remote_repo)
@@ -719,19 +721,12 @@ main_loop() {
 			$b_fmt_upstream && format_upstream_patches
 		fi
 
-		if [ $patchseekmode -eq $patchseek_on ]; then
-			[ -f "$us_commits" ] || format_upstream_patches
-			[ -f "$us_commits" ] &&	check_fixes "$us_commits" \
-				"$remote_repo/$remote_branch" $b_verbose
-		fi
-
 		if [ $applymode -ne $applymode_off ]; then
 			exec_apply_patches
 			[ $? -ne 0 ] && continue
 		fi
 
-		$b_seekfixes && check_fixes "$us_commits" \
-			"$remote_repo/$remote_branch" "$missing_fixes" $b_verbose
+		$b_seekfixes && seek_missing_fixes
 
 		if [ $cmpmode -ne $cmpmode_off ]; then
 			compare_patches
@@ -748,12 +743,7 @@ cmd_check_fixes() {
 
 	get_filecount
 	$b_rename_infiles && exec_boolean "b_rename_infiles" false "renpatfiles"
-
-	[ -n "$remote_repo" ] && [ -n "$remote_branch" ] || set_remote_seek
-	[ -f "$us_commits" ] || format_upstream_patches
-	[ -f "$us_commits" ] &&	check_fixes "$us_commits" \
-		"$remote_repo/$remote_branch" "$missing_fixes" $b_verbose
-
+	seek_missing_fixes
 	return 0
 }
 
@@ -879,7 +869,8 @@ EOF
 					;;
 
 			"remote" )	;&
-			"remotes" )	! $(git_checkrepo) && git_invrepomsg && exit 1
+			"remotes" )	check_env
+					set_remotedir
 					set_remote_seek
 					exit 0
 					;;

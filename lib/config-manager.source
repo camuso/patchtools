@@ -23,19 +23,23 @@ cfg_manager_help() {
 	local helpmsg=$(
 cat <<EOF
 	The config manager bash routines provide a means for maintaining
-	a config file of global variables with each line formatted as:
+	a config file of global variables with each line formatted as ...
+
 		key = value
+
+	... where 'key' is the name of the variable that will be assigned
+	the value.
 
 	Scripts can then call these routines to obtain or update values
 	in their respective config files.
 
 	To use the config manager, you must first supply two files
 	One is the template which will be updated when saved variables
-	change, the other is the individual config file for the script
+	change. The other is the individual config file for the script
 	using this config manager.
 
 	cfg_set_template <template for the main script's config file>
-	cfg_set_configfile <path to the main script's config file>
+	cfg_set_configfile <main script's config file>
 
 EOF
 )
@@ -128,9 +132,8 @@ cfg_compare_configfiles() {
 	exec 6<"$cfg_file"
 
 	while :; do
-		read -r -u 5 key1 tmp
+		read -r -u 5 key1 tmp || { stat=0; break; }
 		read -r -u 6 key2 tmp
-		[ -z "$key1" ] && { stat=0; break; }
 		[ "$key1" == "$key2" ] || { stat=1; break; }
 	done
 
@@ -165,7 +168,7 @@ cfg_update_configfile() {
 	while :; do
 		read -r -u 5 key1 tmp || break
 		cfgline=$(grep "^$key1" $cfg_file) \
-			&& echo $cfgline >> $tmpfile \
+			&& echo "$cfgline" >> $tmpfile \
 			|| echo "$key1 $tmp" >> $tmpfile
 	done
 

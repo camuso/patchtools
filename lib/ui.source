@@ -454,7 +454,11 @@ function promptgetchar {
 # Simpler than the getyn() routine above.
 #
 # $1 - prompt string
-# $2 - the character to be returned
+# $2 - the boolean value to be returned (true/false)
+#
+# RETURNS
+#  0 for yes
+#  1 for no
 #
 loop_yn() {
 	local ans=
@@ -470,9 +474,12 @@ loop_yn() {
 # loop_yn_ro() - return-only version
 #
 # Loop until user gives either a y or n answer.
-# Simpler than the getyn() routine above.
 #
 # $1 - prompt string
+#
+# RETURNS
+#  0 for yes
+#  1 for no
 #
 loop_yn_ro() {
 	local ans=
@@ -534,7 +541,7 @@ loop_range_q() {
 	local pstr=\
 ""$OFF$IINF"Please enter a number between $MNU$min$INF and $MNU$max$OFF or $qstr: "
 
-	echo -e ""$INF"Press $qstr to return without making a selection.$OFF"
+	echo -e ""$INF"Press $qstr$INF to return without making a selection.$OFF"
 	[ $max -lt 10 ] && cmd=promptgetchar || cmd=getuser
 	# echo "cmd: $cmd"
 

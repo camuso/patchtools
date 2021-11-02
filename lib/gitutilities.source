@@ -800,7 +800,9 @@ parse_missingfix() {
 #
 # $3 - file to contain the list of missing fixes
 #
-# $4 - optional verbose boolean true or false. Default is true.
+# $4 - directory containing the upstream repo
+#
+# $5 - optional verbose boolean true or false. Default is true.
 #
 # Returns
 # 	0 - all is well
@@ -810,6 +812,7 @@ check_fixes() {
 	local commitsfile="$1"
 	local rembranch="$2"
 	local missing_file="$3"
+	local remotedir="$4"
 	local line=
 	local fixes=
 	local commitid=
@@ -828,7 +831,9 @@ check_fixes() {
 	local patch_filename=
 	local stat=0
 
-	[ -n "$4" ] && verbose=$4
+	[ -n "$5" ] && verbose=$5
+
+	cd $remotedir
 
 	[ -f $commitsfile ] || {
 		echo -e ""$INF"Expecting file: $STA$commitsfile$OFF"
@@ -915,13 +920,17 @@ select_remrepo() {
 	create_remote_array remotes
 	num_of_remotes=${#remotes[@]}
 
-	[ $num_of_remotes -gt 0 ] || {
-		echo -e "${WRN}No remotes could be detected in .git/config.$OFF"
-		return 1
-	}
+	case $num_of_remotes in
+		0 ) echo -e "${WRN}No remotes could be detected in .git/config.$OFF"
+		    return 1
+		    ;;
+		1 ) cur=${remotes[0]}
+		    stat=0
+		    ;;
+		* ) select_from_array remotes "remote repos" cur
+		    stat=$?
+	esac
 
-	select_from_array remotes "remote repos" cur
-	stat=$?
 	eval $1=$cur
 	return $stat
 }
@@ -937,10 +946,23 @@ show_remote_url() {
 select_rembranch() {
 	local repo="$1"
 	local cur="${!2}"
+	local brstr=
 	local brancharray=()
 
-	brancharray=($(git branch -r | grep "$repo" | cut -d'/' -f2))
-	select_from_array brancharray "remote branches" cur
+	# Get all the branches into one string
+	brstr=$(git branch -r | grep "$repo" | cut -d'/' -f2)
+
+	# Filter out lines with '-> in them, because they are not branches
+	while read s; do [[ $s == *"->"* ]] || brancharray+=($s); done <<< "$brstr"
+
+	if [ ${#brancharray[@]} -gt 1 ]; then
+		select_from_array brancharray "remote branches in $remote_repo" cur
+	else
+		cur=${brancharray[0]}
+		echo -e "$INF Only one branch in this repo: $STA$cur$OFF"
+		echo -e "$INF Nothing else to choose from.$OFF"
+	fi
+
 	eval $2=$cur
 	return 0
 }
