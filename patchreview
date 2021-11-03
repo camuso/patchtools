@@ -329,7 +329,7 @@ show_extops() {
 cat <<EOF
 $MNU\
     $UND\0Discrete Operations $OFF \
-$( $b_mrflag || echo -e "\n$MNU R$OFF  Rename mail files in    :$STA $indir$OFF")
+$( $b_mrflag || echo -e "\n$MNU R$OFF  Rename mail files in     :$STA $indir$OFF")
 $MNU i$OFF  Init to defaults
 $MNU h$OFF  help text
 $MNU F$OFF  Format commits into      :$STA $outdir
@@ -370,7 +370,8 @@ $MNU c$OFF  Config Menu
     Current Head             :$STA $(get_current_head_trunc)$OFF
 $MNU b$OFF  Current git branch       :$STA $(git_getcurrentbranch)$OFF
 $(show_patches)
-$MNU s$OFF  Remote dir : repo/branch :$STA $remotes$OFF
+$(show_workdir)
+$MNU u$OFF  Upstream dir repo/branch :$STA $remotes$OFF
 $MNU g$OFF  grep Merge List for      : $(show_mrfilter) \
  $(show_mrstatus)
 $MNU
@@ -382,7 +383,7 @@ $MNU r$OFF  Refresh the list of Merge Requests and select one for review
 $MNU a$OFF  Ack, Nack and/or Comment on a Merge Request
 $MNU i$OFF  $(show_init)
 $MNU q$OFF  Quit this script
-$MNU x$OFF  Toggle Discrete Operations display
+$(show_discrete_ops)
 $OFF
 
 EOF
@@ -401,21 +402,24 @@ EOF
 #
 show_email_menu() {
 	local opt
+	local remotes="$remote_dir : $remote_repo/$remote_branch"
 	local email_menu=$(
 cat <<EOF
 $MNU
     $UND\0Environment:$STA $(show_opmode)$MNU Version: $STA$version$OFF
 $MNU c$OFF  Config Menu
-    Most recent tag         :$STA $lasttag$OFF
-    Current Head            :$STA $(get_current_head_trunc)$OFF
-$MNU b$OFF  Current git branch      :$STA $(git_getcurrentbranch)$OFF
+    Most recent tag          :$STA $lasttag$OFF
+    Current Head             :$STA $(get_current_head_trunc)$OFF
+$MNU b$OFF  Current git branch       :$STA $(git_getcurrentbranch)$OFF
 $(show_patches)
+$(show_workdir)
+$MNU u$OFF  Upstream dir repo/branch :$STA $remotes$OFF
 $MNU
     $UND\0Batch Run Parameters$OFF
-$MNU 1$OFF  Compare mode            :$STA $(show_cmpmode)$OFF
-$MNU 2$OFF  Patch apply mode        :$STA $(show_applymode)$OFF
-$MNU 3$OFF  Patch apply fail mode   :$STA $(show_applyfailmode)$OFF
-$MNU 4$OFF  Seek missing Fixes      :$STA $(show_seekfixes)$OFF \
+$MNU 1$OFF  Compare mode             :$STA $(show_cmpmode)$OFF
+$MNU 2$OFF  Patch apply mode         :$STA $(show_applymode)$OFF
+$MNU 3$OFF  Patch apply fail mode    :$STA $(show_applyfailmode)$OFF
+$MNU 4$OFF  Seek missing Fixes       :$STA $(show_seekfixes)$OFF \
  $(show_nextpatch)$BLD
 $MNU
     $UND\0Main Controls     $OFF
@@ -423,7 +427,7 @@ $MNU r$OFF  Run in batch mode
 $MNU i$OFF  Init to defaults
 $MNU h$OFF  help text
 $MNU q$OFF  Quit this script
-$MNU x$OFF  Toggle Extended Menu
+$(show_discrete_ops)
 $OFF
 EOF
 )
@@ -453,7 +457,7 @@ menu_parser() {
 		M )	$b_mrflag && get_merge_request
 			[ $? -eq 0 ] && return $rc_run
 			;;
-		s )	set_remotedir
+		u )	set_remotedir
 			set_remote_seek
 			;;
 		b )	git_setbranch $branchlist
@@ -474,8 +478,7 @@ menu_parser() {
 			;;
 		F )	format_upstream_patches
 			;;
-		S )	[ -n "$remote_repo" ] && [ -n "$remote_branch" ] || set_remote_seek
-			seek_missing_fixes
+		S )	seek_missing_fixes
 			;;
 		A )	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
 				&& exec_apply_patches
@@ -506,7 +509,6 @@ menu_parser() {
 		B )	create_branch
 			;;
 		P )	compare_patches
-			# if [ $opmode -eq $opmode_mr ]; then query_acknack; fi
 			;;
 		i )	init_menu
 			;;
@@ -580,6 +582,7 @@ init_loopvars() {
 	menumode=$(get_cfg_item menumode)
 	remote_repo=$(get_cfg_item remote_repo)
 	remote_branch=$(get_cfg_item remote_branch)
+	remote_dir=$(get_cfg_item remote_dir)
 	mergelist_filter=$(get_cfg_item mergelist_filter)
 	opmode=$(get_cfg_item opmode)
 	[ $opmode -eq $opmode_mr ] && b_mrflag=true
@@ -736,6 +739,45 @@ main_loop() {
 	done
 }
 
+cmd_getmr() {
+	while :; do
+		getuser "Enter a merge request number or $qstr$INF to quit: " \
+			current_mr
+		if [ "$current_mr" == "q" ]; then
+			current_mr=
+			exit_me $ui_err_missing_arg
+		else
+			break
+		fi
+	done
+}
+
+cmd_mr() {
+	local cmdline=
+	local stat
+	local cmdary
+	local index
+	local regex='^[0-9]+$'
+
+	current_mr=
+
+	while (( $# > 0 )) ;do
+		[[ $1 =~ $regex ]] && current_mr=$1 || cmdline="$cmdline $1"
+		shift
+	done
+
+	[ -n "$current_mr" ] || cmd_getmr
+
+	if ([ -z "$cmdline" ] || [[ $cmdline == *"run"* ]]); then
+		get_merge_request_patches $current_mr && \
+		format_upstream_patches || exit_me 0
+		seek_missing_fixes
+		compare_patches
+		query_acknack
+		exit_me 0
+	fi
+}
+
 # cmd_check_fixes - execute the -S command line option
 #
 cmd_check_fixes() {
@@ -768,9 +810,10 @@ cat <<EOF
 
   $MNU${UND}Current $(basename $0) status$INF
   editor    : $STA$editor$INF
-  indir     : $STA$indir$INF
-  outdir    : $STA$outdir$INF
   branch    : $STA$(git_getcurrentbranch)$INF
+  patch     : $STA$indir$INF
+  work      : $STA$outdir$INF
+  upstream  : $STA$remote_dir$INF
   remote    : $STA$remote_repo$MNU/$STA$remote_branch$INF
   verbose   : $STA$($b_verbose && echo "ON" || echo "OFF")$INF
 $OFF
@@ -809,116 +852,104 @@ parse_cmdline() {
 	local cmdlineops=$(
 cat <<EOF
 
-  $MNU$(basename $0)$INF command line options and operations$MNU
+  $MNU$UND$(basename $0) command line interface$OFF$MNU
 
-  version  $INF : show $MNU$(basename $0)$INF version$MNU
+              $STA${UND}Environment$OFF$MNU
+  version  $INF : show $(basename $0) version$MNU
   help     $INF : command line help (this text)$MNU
   man      $INF : full patchreview manual$MNU
 
   editor   $INF ; choose one of three available editors for diff presentation$MNU
-  remotes  $INF : choose a remote repo/branch from the ones availaible in your
-              .git/config file$MNU
+  upstream $INF : select a directory for your upstream repo and remote/branches$MNU
+  branch   $INF : select the downstream branch to work on$MNU
+  patch    $INF : name the directory that contains the downstream patches$MNU
+  work     $INF : name the directory to receive the git-formatted patches from
+              the upstream repos in the upstream repo directory.$MNU
 
-  branch   $INF : choose the branch having the MR or the patches applied$MNU
-  indir    $INF : name the directory that contains the patches$MNU
-  outdir   $INF : name the directory to contain the upstream git-formatted patches$MNU
-  remote   $INF : get the remote repo/branch to be used for upstream fixe$MNU
-  verbose  $INF : set screen output to verbose mode$MNU
-  quiet    $INF : set screen output to quiet mode$MNU
+  remote   $INF : select the upstream remote repo/branch to search for upstream
+              fixes$MNU
+
+  verbose  $INF : set screen output to verbose mode (verbose ON)$MNU
+  quiet    $INF : set screen output to quiet mode (verbose OFF)$MNU
   status   $INF : show the current status of the above parameters$MNU
+
+              $STA${UND}Operations$OFF$MNU
+  mr <num> $INF : run patchreview on the mr number. This will automatically run
+              the format, seek, and compare commands in that order.$MNU
+
+  format   $INF : format upstream patches into the $outdirstr directory using upstream
+              commits automatically extracted from patches in the $indirstr directory$MNU
+
+  seek     $INF : Seek missing fixes in the remote repo/branch, typically added to
+              the upstream repo in the upstream directory.$MNU
+
   compare  $INF : compare the RHEL patches with upstream and present any diffs in
               the diff editor.$MNU
 
-  rename   $INF : rename patchfiles in $indir, useful if downloaded from a mail client$MNU
-  format   $INF : format upstream patches into $STA$outdir$INF using upstream commits from
-              patches in $STA$indir$MNU
-
-  seek     $INF : Seek missing fixes in $STA$remote_repo${INF}/$STA$remote_branch
-$OFF
+  rename   $INF : rename patchfiles in the $indirstr directory. Useful if downloaded
+              from a mail client$OFF
 EOF
 )
-
 	while (( $# > 0 )) ;do
 		key="$1"
 		case $key in
-			"seek" ) 	check_env; cmd_check_fixes
-					shift
-					exit
+			"mr" )		shift; cmd_mr $@
 					;;
-			"rename" )	check_env; renpatfiles
-					shift
+			"seek" ) 	cmd_check_fixes
 					;;
-			"format" )  	check_env; format_upstream_patches
-					shift
+			"rename" )	renpatfiles
 					;;
-			"status" )	check_env; cmd_show_status
-					exit 0
+			"format" )  	format_upstream_patches
+					;;
+			"status" )	cmd_show_status
 					;;
 			"-P" )		;&
-			"compare" )	check_env; compare_patches
-					shift
+			"compare" )	compare_patches
 					;;
-
 			"editor" )	set_editor
-					exit 0
 					;;
-
 			"branch" )	! $(git_checkrepo) && git_invrepomsg && exit 1
 					git_setbranch $branchlist
-					exit 0
 					;;
-
-			"remote" )	;&
-			"remotes" )	check_env
-					set_remotedir
+			"upstream" )	set_remotedir
 					set_remote_seek
-					exit 0
 					;;
-
-			"outdir" )	! $(git_checkrepo) && git_invrepomsg && exit 1
+			"remote" )	;&
+			"remotes" )	set_remote_seek
+					;;
+			"work" )	! $(git_checkrepo) && git_invrepomsg && exit 1
 					set_dir "$outdirstr" "outdir" outdir
-					shift
 					;;
-
-			"indir" )	! $(git_checkrepo) && git_invrepomsg && exit 1
+			"patch" )	! $(git_checkrepo) && git_invrepomsg && exit 1
 					set_dir "$indirstr" "indir" indir
-					shift
 					;;
-
 			"-V" )		;&
 			"-vv" )		;&
 			"verbose" )	;&
 			"-verbose" )	b_verbose=true
 					set_cfg_item "b_verbose" $b_verbose
-					shift
 					;;
-
 			"quiet" )	b_verbose=false
 					set_cfg_item "b_verbose" $b_verbose
-					shift
 					;;
-
 			"-v" )		;&
 			"version" )	;&
 			"-version" )	;&
 			"--version" ) 	show_version
-					exit 0
 					;;
-
 			"-h" )		;&
 			"help" )	;&
 			"-help" ) 	;&
 			"--help" )	echo -e "$cmdlineops"
-					exit 0
 					;;
-
 			"man" )		less $manual
-					exit 0
 					;;
 			* ) echo -e "$STA$key ${WRN}is an invalid argument!$OFF\n"
 			    exit 1
 		esac
+		shift
 	done
+	exit_me 0
 }
 
 #############################
@@ -928,10 +959,13 @@ main() {
 	local argc=$#
 
 	if [ $argc -eq 0 ]; then
+		b_cmdline=false
 		check_env
 		git_get_lasttag lasttag $last_tag_file
 		main_loop
 	else
+		b_cmdline=true
+		check_env
 		parse_cmdline $@
 	fi
 

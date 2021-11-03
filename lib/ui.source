@@ -75,7 +75,8 @@ declare -i ui_err_invdir=3
 declare -i ui_err_invlinec=4
 declare -i ui_err_nofiles=5
 declare -i ui_err_notdigit=6
-declare -i ui_err_boundary=$ui_err_notdigit
+declare -i ui_err_missing_arg=7
+declare -i ui_err_boundary=$ui_err_missing_arg
 
 declare -a ui_err_msg=(
 ""
@@ -85,6 +86,7 @@ declare -a ui_err_msg=(
 "Invalid line count"
 "No files found"
 "not a didgit"
+"missing argument"
 )
 
 # Contlol-C exit code

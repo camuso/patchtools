@@ -125,6 +125,8 @@ declare remote_branch=
 declare missing_fixes=	# File to contain missing fixes
 declare remote_dir=
 
+declare b_cmdline=false
+
 ########################################
 # Function Return Codes
 ########################################
@@ -784,6 +786,14 @@ function apply_patches {
 	return $stat
 }
 
+show_discrete_ops() {
+	echo -en "$MNU x$OFF  Turn $MNU${UND}Discrete Operations$OFF Menu"
+	case $menumode in
+		$menumode_ext ) echo -e "$STA OFF$OFF" ;;
+		$menumode_min ) echo -e "$STA ON$OFF";;
+	esac
+}
+
 show_colors() {
 	$b_color && echo -e "ON" || echo -e "OFF"
 }
@@ -904,7 +914,7 @@ show_nextpatch() {
 	local shownext=$(
 cat <<EOF
 $MNU
- 5$OFF  Start applying at patch :$STA $startpat$OFF
+ 5$OFF  Start applying at patch  :$STA $startpat$OFF
 EOF
 )
 	[ $infilecount -eq 0 ] && { b_selpat=false; return; }
@@ -1157,6 +1167,7 @@ EOF
 # 	outdir
 # 	us_commits
 # 	b_fmt_upstream
+# 	remote_dir
 #
 # Returns
 # 	0 - all good
@@ -1185,7 +1196,7 @@ format_upstream_patches() {
 			rm -f $outdir/* > /dev/null 2>&1
 			> $missing_fixes
 		else
-			return 0
+			return 1
 		fi
 	}
 
@@ -1199,7 +1210,10 @@ format_upstream_patches() {
 	rm -vf "$outdir"/* > /dev/null 2>&1
 	> "$us_commits"
 	echo
+
+	cd $remote_dir
 	git_comment2commitsfile -i $indir -o "$us_commits" -f $patchvalfuzz $quiet
+	cd -
 	stat=$?
 	echo
 	[ $stat -eq 0 ] || {
@@ -1208,11 +1222,12 @@ format_upstream_patches() {
 			$ui_err_invdir )  echo -e " : $STA$indir$OFF";;
 			$ui_err_invfile ) echo -e " : $STA$us_commits$OFF";;
 		esac
+		return 1
 	}
 
 	if $b_verbose; then
-		banner=""$INF"Upstream commits extracted from the patches in $STA$us_commits$OFF"
-		escnt=$((${#STA} + ${#INF} + ${#OFF}))
+		banner=""$INF"Upstream commits extracted from the patches in $STA$us_commits$INF"
+		escnt=$((${#INF} + ${#STA} + ${#INF}))
 		pad=$(ui_putnchar '=' $(( ${#banner} - $escnt)))
 		echo -e "$banner\n$pad$OFF"
 
