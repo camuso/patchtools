@@ -800,9 +800,7 @@ parse_missingfix() {
 #
 # $3 - file to contain the list of missing fixes
 #
-# $4 - directory containing the upstream repo
-#
-# $5 - optional verbose boolean true or false. Default is true.
+# $4 - optional verbose boolean true or false. Default is true.
 #
 # Returns
 # 	0 - all is well
@@ -812,7 +810,6 @@ check_fixes() {
 	local commitsfile="$1"
 	local rembranch="$2"
 	local missing_file="$3"
-	local remotedir="$4"
 	local line=
 	local fixes=
 	local commitid=
@@ -831,9 +828,7 @@ check_fixes() {
 	local patch_filename=
 	local stat=0
 
-	[ -n "$5" ] && verbose=$5
-
-	cd $remotedir
+	[ -n "$4" ] && verbose=$4
 
 	[ -f $commitsfile ] || {
 		echo -e ""$INF"Expecting file: $STA$commitsfile$OFF"
