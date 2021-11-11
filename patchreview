@@ -274,7 +274,6 @@ config_parser() {
 
 	while :; do
 		get_booleans
-		init_files
 		init_loopvars
 		show_config_menu
 		promptgetchar ""$MNU"Enter one of the above: "$OFF"" opt
@@ -533,31 +532,7 @@ menu_parser() {
 	return $rc_continue
 }
 
-# init_files
-#
-# Initialize the global names of the directories and files to be used
-# throughout the script.
-#
-# Globals:
-# 	indirstr
-# 	outdirstr
-# 	indir
-# 	outdir
-# 	bp_commits_name
-# 	us_commits_name
-# 	bp_commists
-# 	us_commits
-# 	usvbp_commits_name
-# 	usvp_commits
-# 	mismatch_file
-#
 init_files() {
-
-	# get the patch and work directories.
-	#
-	indir=$(get_cfg_item indir)
-	outdir=$(get_cfg_item outdir)
-	torvaldsdir=$(get_cfg_item torvaldsdir)
 	bp_commits="$outdir/$bp_commits_name"
 	us_commits="$outdir/$us_commits_name"
 	usvbp_commits="$outdir/$usvbp_commits_name"
@@ -574,6 +549,8 @@ init_files() {
 # 	All clearly visible on every line.
 #
 init_loopvars() {
+	indir=$(get_cfg_item indir)
+	outdir=$(get_cfg_item outdir)
 	editor=$(get_cfg_item editor)
 	cmpmode=$(get_cfg_item cmpmode)
 	applymode=$(get_cfg_item applymode)
@@ -586,6 +563,7 @@ init_loopvars() {
 	mergelist_filter=$(get_cfg_item mergelist_filter)
 	opmode=$(get_cfg_item opmode)
 	[ $opmode -eq $opmode_mr ] && b_mrflag=true
+	init_files
 }
 
 # menu_loop - loop containing the call to the menu_parser
@@ -597,7 +575,6 @@ init_loopvars() {
 function menu_loop {
 
 	get_booleans
-	init_files
 	init_loopvars
 
 	# delete any "scratch" file from the indir
@@ -675,24 +652,20 @@ EOF
 	# 	indir
 	# 	outdir
 	# 	editor
+	#	remote_dir
 	# 	remote_repo
 	# 	remote_branch
 	#
 	# ################################################################
 
-	[ -z "$editor" ] && set_editor
-	[ -z "$indir" ] && set_dir $indirstr "indir" indir
-	[ -z "$outdir" ] && {
+	[ -n "$editor" ] || set_editor
+	[ -d "$indir" ]  || set_dir $indirstr "indir" indir
+	[ -d "$outdir" ] || {
 		outdir="$indir/tmp"
 		set_dir $outdirstr "outdir" outdir
 	}
-	[ -z "$remote_dir" ] && set_remotedir
+	[ -d "$remote_dir" ] || set_remotedir
 	([ -z "$remote_repo" ] || [ -z "$remote_branch" ]) && set_remote_seek
-
-	init_booleans
-	init_files
-	init_loopvars
-	get_booleans
 }
 
 # main_loop - this is the loop for the top layer of the script
@@ -843,6 +816,7 @@ check_env() {
 	check_labstatus
 	! $(git_checkrepo) && git_invrepomsg && exit 1
 	init_parms
+	init_files
 }
 
 # parse_cmdline - command line interface
