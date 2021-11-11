@@ -203,8 +203,8 @@ set_remotedir() {
 	local stat
 	local b_exists=false
 
-	echo -e "\n$INF Set the directory that contains the remote repo to " \
-		"search or missing fixes.$OFF"
+	echo -e "\n$INF Set the directory that contains the remote repo to" \
+		"search for missing fixes.$OFF"
 
 	if [ -n "$remote_dir" ]; then
 		echo -e "$INF Your current remote directory is: $STA$remote_dir"
