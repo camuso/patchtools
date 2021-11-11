@@ -787,11 +787,12 @@ function apply_patches {
 }
 
 show_discrete_ops() {
-	echo -en "$MNU x$OFF  Turn $MNU${UND}Discrete Operations$OFF Menu"
+	echo -en "$MNU x$OFF  "
 	case $menumode in
-		$menumode_ext ) echo -e "$STA OFF$OFF" ;;
-		$menumode_min ) echo -e "$STA ON$OFF";;
+		$menumode_ext ) echo -en "Hide " ;;
+		$menumode_min ) echo -en "Show ";;
 	esac
+	echo -e "$MNU${UND}Discrete Operations$OFF Menu"
 }
 
 show_colors() {
