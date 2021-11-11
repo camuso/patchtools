@@ -38,8 +38,16 @@ cat <<EOF
 	change. The other is the individual config file for the script
 	using this config manager.
 
+	The cfgtemplate file will be tested against the config file by
+	cfg_init to see if there have been any changes in config variables
+	If so, the existing configfile will be updated to match the
+	contents of the cfgfile.
+
+	Init sequence:
 	cfg_set_template <template for the main script's config file>
 	cfg_set_configfile <main script's config file>
+	cfg_init - copies the contents of the configfile to the caller's
+	           global variables stored in the configfile
 
 EOF
 )
