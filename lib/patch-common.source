@@ -1236,8 +1236,10 @@ format_upstream_patches() {
 		echo
 	fi
 
+	cd $remote_dir
 	exec_boolean b_fmt_upstream false \
 		"git_file2patchset ${us_commits} ${outdir} ${b_verbose}"
+	cd - > /dev/null 2>&1
 	return 0
 }
 
