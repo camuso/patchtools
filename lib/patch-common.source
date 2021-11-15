@@ -1212,9 +1212,7 @@ format_upstream_patches() {
 	> "$us_commits"
 	echo
 
-	cd $remote_dir
 	git_comment2commitsfile -i $indir -o "$us_commits" -f $patchvalfuzz $quiet
-	cd - > /dev/null 2>&1
 	stat=$?
 	echo
 	[ $stat -eq 0 ] || {
