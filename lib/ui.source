@@ -245,6 +245,8 @@ ui_waitonproc () {
         echo -n '.';
         sleep $__time__;
     done
+    wait $__pid__
+    return $?
 }
 
 # ui_waitonproc_tty
@@ -282,6 +284,8 @@ ui_waitonproc_tty () {
     # Leave the TTY as it was before we were called.
     #
     ui_clearline
+    wait $pid
+    return $?
 }
 
 # ui_sh_backout
