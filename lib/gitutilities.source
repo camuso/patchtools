@@ -745,6 +745,7 @@ extract_commitlog() {
 # $4 - file containing the list of RHEL commits being reviewed
 # $5 - file that will contain any missing fixes
 # $6 - file containing Merge Request commit log for the specific patch
+# $7 - verbose flag
 #
 # Returns 1 if a fix is really missing, 0 otherwise.
 #
@@ -765,6 +766,7 @@ parse_missingfix() {
 	local tmsg="WARNING: found $missing"
 	local found=
 	local found_id=
+	local mypid=
 
 	# If the "missing" commit was intentionally omitted, print a message
 	# and return.
@@ -786,7 +788,9 @@ parse_missingfix() {
 	# If the "missing" commit is in the current branch,
 	# then the upstream commitid has already been applied.
 	# In that case, inform the user and return.
-	if git log --since="$cmtdate" | grep -m1 "commit $fix_id" > /dev/null 2>&1; then
+	git log --since="$cmtdate" | grep -m1 "commit $fix_id" > /dev/null 2>&1 & mypid=$!
+	ui_waitonproc_tty $mypid .05
+	if [ $? -eq 0 ]; then
 		echo -e "$INF$merged $fix_line for $commitnum$OFF"
 		echo "$merged $fix_line for $commitnum"  >> $missing_file
 		return 1
