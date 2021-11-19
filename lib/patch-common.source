@@ -290,6 +290,26 @@ EOF
 	fi
 }
 
+# check_upstream - check the upstream dir and remote branches
+#
+# 	remote_repo
+# 	remote_branch
+# 	remote_dir
+#
+check_upstream() {
+
+	# See if the remote/branch exists. If not, query for them
+	cd $remote_dir
+	while :; do
+		git branch -r | grep "$remote_repo/$remote_branch" > /dev/null 2>&1
+		[ $? -eq 0 ] && break
+		echo -e "${WRN}Cannot find $STA$remote_repo/$remote_branch$WRN"
+		echo -e "in remote directory: $STA$remote_dir$OFF"
+		set_remote_seek
+	done
+	cd - > /dev/null 2>&1
+}
+
 # seek_missing_fixes() - search remote/branch for missing commits
 #
 # GLOBALS
@@ -299,27 +319,22 @@ EOF
 # 	remote_dir
 #
 seek_missing_fixes() {
-	[ -f "$us_commits" ] || format_upstream_patches
+	[ -d $remote_dir ] || set_remotedir
 	[ -n "$remote_repo" ] || select_remrepo remote_repo
 	[ -n "$remote_branch" ] || select_rembranch "$remote_repo" remote_branch
-	[ -d $remote_dir ] || set_remotedir
+	[ -f "$us_commits" ] || format_upstream_patches
 
-	cd $remote_dir
-
-	# See if the remote/branch exists. If not, query for them
-	while :; do
-		git branch -r | grep "$remote_repo/$remote_branch" > /dev/null 2>&1
-		[ $? -eq 0 ] && break
-		echo -e "${WRN}Cannot find $STA$remote_repo/$remote_branch$WRN"
-		echo -e "in remote directory: $STA$remote_dir$OFF"
-		set_remote_seek
-	done
+	check_upstream
 
 	> $missing_fixes
-	check_fixes "$us_commits" "$remote_repo/$remote_branch" "$missing_fixes" $b_verbose
+	check_fixes "$us_commits" \
+		"$remote_dir" \
+		"$remote_repo/$remote_branch" \
+		"$missing_fixes" \
+		$b_verbose
+
 	([ $? -ne 0 ] && [ -s "$missing_fixes" ]) && echo -e \
 		"${WRN}There are missing fixes listed in $STA$missing_fixes$OFF"
-	cd - > /dev/null 2>&1
 	return 0
 }
 
