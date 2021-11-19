@@ -675,11 +675,15 @@ function git_setbranch {
 #        Fixes: e21d2170f366 ("video: remove unnecessary platform_set_drvdata()")
 #
 # $1 - a line expected to contain only a valid commit.
+# $2 - file to receive the output
+# $3 - directory of the remote repo
+# $4 - the remote branch to parse
 #
 find_fixes () {
 	local commit_id="$1"
 	local tmpfil="$2"
-	local rembranch="$3"
+	local remdir="$3"
+	local rembranch="$4"
 	local commit_info=
 	local short_hash=
 	local commit_date=
@@ -690,7 +694,13 @@ find_fixes () {
 	short_hash=$(echo "$commit_info" | awk -F "|"  ' { print $1 } ')
 	commit_date=$(echo "$commit_info" | awk -F "|"  ' { print $2 } ')
 
-	> $tmpfil
+	# cd to the remote repo directory
+	#
+	cd "$remdir"
+
+	# Make the commit date the first line in the tmpfil
+	#
+	echo "$commit_date" > $tmpfil
 
 	# use the date to do a git log --since=$commit_date and grep for Fixes?
 	# then look for short hash
@@ -699,8 +709,11 @@ find_fixes () {
 		--pretty='%h ("%s")' \
 		--since="$commit_date" \
 		--grep="Fixes: $short_hash" \
-		$rembranch > $tmpfil
+		$rembranch >> $tmpfil
 
+	# Return to the original directory
+	#
+	cd - > /dev/null 2>&1
 }
 
 # extract_commitlog - extract the commit log from a patch
@@ -726,20 +739,22 @@ extract_commitlog() {
 # intentionally omitted, or is truly missing. Send output to the screen
 # and to the missing_commits file.
 #
-# $1 - line to parse
-# $2 - enumeration of the commit id in the series
-# $3 - file containing the list of RHEL commits being reviewed
-# $4 - file that will contain any missing fixes
-# $5 - file containing Merge Request commit log for the specific patch
+# $1 - commit date to start search
+# $2 - line to parse
+# $3 - enumeration of the commit id in the series
+# $4 - file containing the list of RHEL commits being reviewed
+# $5 - file that will contain any missing fixes
+# $6 - file containing Merge Request commit log for the specific patch
 #
 # Returns 1 if a fix is really missing, 0 otherwise.
 #
 parse_missingfix() {
-	local fix_line="$1"
-	local commitnum="$2"
-	local commitsfile="$3"
-	local missing_file=$4
-	local mr_commitlog="$5"
+	local cmtdate="$1"
+	local fix_line="$2"
+	local commitnum="$3"
+	local commitsfile="$4"
+	local missing_file=$5
+	local mr_commitlog="$6"
 
 	local fix_id=$(echo "$fix_line" | awk ' { print $1 } ')
 	local currentbranch=$(git branch | egrep \* | cut -d' ' -f2)
@@ -753,19 +768,10 @@ parse_missingfix() {
 
 	# If the "missing" commit was intentionally omitted, print a message
 	# and return.
-	if cat $mr_commitlog | grep -i "^omitted-fix" | grep "$fix_id" > /dev/null 2>&1; then
+	if cat $mr_commitlog | grep -i "omitted-fix" | grep "$fix_id" > /dev/null 2>&1; then
 		echo -e "$INF$tskip $fix_line for $commitnum $OFF"
 		echo "$tskip $fix_line for $commitnum" >> $missing_file
-		return 0
-	fi
-
-	# If the "missing" commit is in the current branch,
-	# then the upstream commitid has already been applied.
-	# In that case, inform the user and return.
-	if git log | grep -m1 "commit $fix_id" > /dev/null 2>&1 $currentbranch; then
-		echo -e "$INF$merged $fix_line for $commitnum$OFF"
-		echo "$merged $fix_line for $commitnum"  >> $missing_file
-		return 0
+		return 1
 	fi
 
 	# If the missing fix is in the list of upstream commits, then it's
@@ -774,13 +780,24 @@ parse_missingfix() {
 		found_id=$(echo "$found" | cut -d' ' -f2)
 		echo -e "$INF$found_id $tokay $fix_line for $commitnum$OFF"
 		echo "$found_id $tokay $fix_line for $commitnum" >> $missing_file
-		return 0
+		return 1
+	fi
+
+	# If the "missing" commit is in the current branch,
+	# then the upstream commitid has already been applied.
+	# In that case, inform the user and return.
+	if git log --since="$cmtdate" | grep -m1 "commit $fix_id" > /dev/null 2>&1; then
+		echo -e "$INF$merged $fix_line for $commitnum$OFF"
+		echo "$merged $fix_line for $commitnum"  >> $missing_file
+		return 1
 	else
 		# The missing fix is truly missing, so warn accordingly.
 		echo -e "$WRN$tmsg $MNU$fix_line$WRN for $STA$commitnum$OFF"
 		echo "$tmsg $fix_line for $commitnum" >> $missing_file
-		return 1
+		return 2
 	fi
+
+	return 0
 }
 
 # check_fixes - look for missing fixes
@@ -796,11 +813,13 @@ parse_missingfix() {
 # $1 - path to the file containing the upstream commits. Each commit is
 #      expected to be the first field in each line of the file.
 #
-# $2 - the remote_repo/remote_branch in which to seek missing fixes
+# $2 - remote directory containing the remote_repo/remote_branch
 #
-# $3 - file to contain the list of missing fixes
+# $3 - the remote_repo/remote_branch in which to seek missing fixes
 #
-# $4 - optional verbose boolean true or false. Default is true.
+# $4 - file to contain the list of missing fixes
+#
+# $5 - optional verbose boolean true or false. Default is true.
 #
 # Returns
 # 	0 - all is well
@@ -808,8 +827,9 @@ parse_missingfix() {
 #
 check_fixes() {
 	local commitsfile="$1"
-	local rembranch="$2"
-	local missing_file="$3"
+	local remdir="$2"
+	local rembranch="$3"
+	local missing_file="$4"
 	local line=
 	local fixes=
 	local commitid=
@@ -827,8 +847,9 @@ check_fixes() {
 	local mr_commitlog="/dev/shm/mr_commit.log"
 	local patch_filename=
 	local stat=0
+	local cmtdate=
 
-	[ -n "$4" ] && verbose=$4
+	[ -n "$5" ] && verbose=$5
 
 	[ -f $commitsfile ] || {
 		echo -e ""$INF"Expecting file: $STA$commitsfile$OFF"
@@ -837,7 +858,7 @@ check_fixes() {
 		return 1
 	}
 
-	echo -e "\n"$INF"Looking for missing fixes in $STA$rembranch$INF...$OFF"
+	echo -e "\n"$INF"Looking for missing fixes in $STA$remdir : $rembranch$INF...$OFF"
 
 	while read line; do
 		commitid=$(echo "$line" | cut -d' ' -f1)
@@ -846,27 +867,38 @@ check_fixes() {
 		# If the commitid is empty, get the next line in commitsfile.
 		(( 16#$commitid )) || continue
 
-		find_fixes "$commitid" $fixfile "$rembranch" & mypid=$!
+		find_fixes "$commitid" "$fixfile" "$remdir" "$rembranch" & mypid=$!
 		ui_waitonproc_tty $mypid .05 "${INF}Checking $STA$patch${INF}: $commitid$OFF"
 		$verbose || ui_clearline up
 
-		if [ -s "$fixfile" ]; then
+		# The fixfile will always have at least one line in it. The first line
+		# is always the date of the commit being tested for fixes.
+		#
+		if [ $(cat "$fixfile" | wc -l) -gt 1 ]; then
 
 			patch_filename=$(find_filebynumber "$patch" "$indir")
 			extract_commitlog "$indir/$patch_filename" "$mr_commitlog"
 
+			cmtdate=
 			while read -r commit_fix; do
+				# first line in the file is the date
+				# get that and continue
+				[ -z "$cmtdate" ] && { cmtdate="$commit_fix"; continue; }
+
 				parse_missingfix \
+					"$cmtdate" \
 					"$commit_fix" \
 					"$patch" \
 					"$commitsfile" \
 					"$missing_file" \
-					"$mr_commitlog"
+					"$mr_commitlog" & mypid=$!
+				wait $mypid
 
-				[ $? -eq 0 ] || stat=1
+				[ $? -eq 0 ] || { stat=1; }
 
 			done < "$fixfile"
 		fi
+
 	done < "$commitsfile"
 
 	[ -f $fixfile ] && rm -f $fixfile
