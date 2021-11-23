@@ -333,7 +333,7 @@ seek_missing_fixes() {
 		"$missing_fixes" \
 		$b_verbose
 
-	([ $? -ne 0 ] && [ -s "$missing_fixes" ]) && echo -e \
+	grep -q 'WARNING:' "$missing_fixes" && echo -e \
 		"${WRN}There are missing fixes listed in $STA$missing_fixes$OFF"
 	return 0
 }
