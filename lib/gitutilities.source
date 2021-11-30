@@ -688,15 +688,16 @@ find_fixes () {
 	local short_hash=
 	local commit_date=
 
+	# cd to the remote repo directory
+	#
+	cd "$remdir"
+
 	# get the author date, which is what is displayed in git-log output
 	commit_info=$(git log --pretty="%h|%ad" -1 "$commit_id" 2>/dev/null)
 	[ $? -eq 0 ] || return 1
 	short_hash=$(echo "$commit_info" | awk -F "|"  ' { print $1 } ')
 	commit_date=$(echo "$commit_info" | awk -F "|"  ' { print $2 } ')
 
-	# cd to the remote repo directory
-	#
-	cd "$remdir"
 
 	# Make the commit date the first line in the tmpfil
 	#
@@ -878,7 +879,7 @@ check_fixes() {
 		# The fixfile will always have at least one line in it. The first line
 		# is always the date of the commit being tested for fixes.
 		#
-		if [ $(cat "$fixfile" | wc -l) -gt 1 ]; then
+		if [ -f "$fixfile" ] && [ $(cat "$fixfile" | wc -l) -gt 1 ]; then
 
 			patch_filename=$(find_filebynumber "$patch" "$indir")
 			extract_commitlog "$indir/$patch_filename" "$mr_commitlog"
