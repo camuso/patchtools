@@ -1232,12 +1232,12 @@ ui_trunc_string() {
 }
 
 ui_press_any() {
-	echo -n "Press any key to continue ... "
+	echo -en "${MNU}Press any key to continue ...$OFF "
 	read -n1
 }
 
 ui_press_any_ctlc() {
-	echo -n "Press any key to continue or Ctl-C to exit ..."
+	echo -en "${MNU}Press any key to continue or Ctl-C to exit ...$OFF "
 	read -n1
 	echo
 }
