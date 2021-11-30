@@ -368,6 +368,7 @@ $MNU c$OFF  Config Menu
     Most recent tag          :$STA $lasttag$OFF
     Current Head             :$STA $(get_current_head_trunc)$OFF
 $MNU b$OFF  Current git branch       :$STA $(git_getcurrentbranch)$OFF
+$MNU W$OFF  Working repo             :$STA $PWD$OFF
 $(show_patches)
 $(show_workdir)
 $MNU u$OFF  Upstream dir repo/branch :$STA $remotes$OFF
@@ -440,6 +441,8 @@ menu_parser() {
 	promptgetchar ""$MNU"Enter one of the above: "$OFF"" setting
 
 	case $setting in
+		W )	set_working_repo
+			;;
 		c )	config_parser
 			;;
 		o )	ui_cycle_state opmode $opmode_states

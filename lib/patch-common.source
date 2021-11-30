@@ -28,6 +28,7 @@ shopt -s extglob
 declare manual="$MYDIR/man/$(basename $0).txt"
 declare MYDATA=$(realpath ./.data)
 declare configfile=
+declare repolist="$HOME"/.config/patchreview/repolist
 
 #######################################
 # External Scripts
@@ -192,6 +193,31 @@ show_version() {
 
 show_seekfixes() {
 	$b_seekfixes && echo "ON" || echo "OFF"
+}
+
+set_working_repo() {
+	local instruct=$(
+cat <<EOF
+$INF
+You must create a $MNU$repolist$INF file
+containing a list of directories with repos you are using.
+For example...
+
+$ cat $repolist
+/mywork/rhel8/kernel
+/mywork/c9s/kernel
+/mywork/rhel9/kernel
+$OFF
+
+EOF
+)
+	[ -f "$repolist" ] || {
+		echo -e "$instruct"
+		ui_press_any
+		return 1
+	}
+
+
 }
 
 # set_remotedir - name the directory where the upstream remotes are
