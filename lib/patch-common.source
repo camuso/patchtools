@@ -231,7 +231,7 @@ EOF
 		echo -e "$MNU$((dndx+1)). $OFF${dary[dndx]}"
 	done
 
-	loop_range_q 1 ${#dary[@]} dnum
+	loop_range_q 1 ${#dary[@]} dnum || return 1
 	repod=${dary[dnum-1]}
 
 	[ -d "$repod" ] || {
