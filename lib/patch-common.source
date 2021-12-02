@@ -26,7 +26,7 @@ b_ui_int_first_getyn=false	# For lib/ui.source
 shopt -s extglob
 
 declare manual="$MYDIR/man/$(basename $0).txt"
-declare MYDATA=$(realpath ./.data)
+declare MYDATA=
 declare configfile=
 declare repolist="$HOME"/.config/patchreview/repolist
 
@@ -67,8 +67,8 @@ declare usvbp_commits
 
 declare patchcount=0
 declare commit_msg_file="commit-msg.txt"
-declare last_tag_file="$MYDATA/lasttag"
-declare branchlist="$MYDATA/branchlist"
+declare last_tag_file=
+declare branchlist=
 declare mismatch_file="mm.log"	# patchreview/develop will complete mmfile path
 declare mmfile			# complete name of mmfile set by patchreview/devlop
 declare valpatchlist=		# inited by call to patch-utils::create_patchlist
@@ -195,7 +195,16 @@ show_seekfixes() {
 	$b_seekfixes && echo "ON" || echo "OFF"
 }
 
+# set_working_repo - set the repo directory to work in
+#
+# Globals
+# 	repolist - list of repo directories
+#
 set_working_repo() {
+	local dndx
+	local dnum
+	local dary=()
+	local repod
 	local instruct=$(
 cat <<EOF
 $INF
@@ -217,7 +226,31 @@ EOF
 		return 1
 	}
 
+	dary=($(cat $repolist))
+	for ((dndx = 0; dndx < ${#dary[@]}; ++dndx)); do
+		echo -e "$MNU$((dndx+1)). $OFF${dary[dndx]}"
+	done
 
+	loop_range_q 1 ${#dary[@]} dnum
+	repod=${dary[dnum-1]}
+
+	[ -d "$repod" ] || {
+		echo -e "$WRN$repod is not a directory!$OFF"
+		ui_press_any
+		return 1
+	}
+
+	cd $(realpath "$repod")
+	[ -d .git ] || {
+		echo -e "$WRN$repod is not a git repo!$OFF"
+		ui_press_any
+		cd -
+		return 1
+	}
+
+	init_parms
+	git_get_lasttag lasttag $last_tag_file
+	return 0
 }
 
 # set_remotedir - name the directory where the upstream remotes are

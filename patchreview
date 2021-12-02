@@ -598,12 +598,18 @@ function menu_loop {
 ###########################################
 # Parameter Initialization
 ###########################################
+#
+# GLobals
+# 	MYDATA
+# 	last_tag_file
+# 	branchlist
+#
 init_parms() {
 	local confline
 	local lary
 	local cfgdif
-	local configfile="$MYDATA/patchreview.conf"
-	local cfgtemplate="$MYLIB/patchreview.conf"
+	local configfile=
+	local cfgtemplate=
 	local newcfgstr=$(
 cat <<EOF
 $INF
@@ -618,6 +624,14 @@ $OFF
 EOF
 )
 	b_color=true
+
+	# Initialize the paths for the current working directory
+	#
+	MYDATA=$(realpath ./.data)
+	configfile="$MYDATA/patchreview.conf"
+	cfgtemplate="$MYLIB/patchreview.conf"
+	branchlist="$MYDATA/branchlist"
+	last_tag_file="$MYDATA/lasttag"
 
 	# If the .data directory has not been created yet, do that and
 	# get its realpath.
@@ -662,13 +676,24 @@ EOF
 	# ################################################################
 
 	[ -n "$editor" ] || set_editor
-	[ -d "$indir" ]  || set_dir $indirstr "indir" indir
-	[ -d "$outdir" ] || {
+
+	[ -d "$indir" ] && {
+		indir=$(realpath $indir)
+		set_cfg_item "indir" $indir
+	} || set_dir $indirstr "indir" $indir
+
+	[ -d "$outdir" ] && {
+		outdir=$(realpath $outdir)
+		set_cfg_item "outdir" $outdir
+	} || {
 		outdir="$indir/tmp"
 		set_dir $outdirstr "outdir" outdir
 	}
+
 	[ -d "$remote_dir" ] || set_remotedir
 	([ -z "$remote_repo" ] || [ -z "$remote_branch" ]) && set_remote_seek
+
+	init_mr
 }
 
 # main_loop - this is the loop for the top layer of the script

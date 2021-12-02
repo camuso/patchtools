@@ -41,7 +41,7 @@ declare b_acked=false
 declare b_nacked=false
 declare mergelist_filter=
 declare mergelist_author=
-declare mergelist_file=$MYDATA/mergelist.log
+declare mergelist_file=
 declare gl_projid=24118165	# gitlab project ID
 
 declare -i mr_val=0	# valid mr
@@ -53,6 +53,11 @@ declare -a mr_errs=(
 "${WRN}Merge Request not found$OFF"
 "${WRN}No patches found for Merge Request$OFF"
 )
+
+# init_mr - initialize the environment for this
+init_mr() {
+	mergelist_file=$MYDATA/mergelist.log
+}
 
 # show_init - display the init menu option
 #
