@@ -20,9 +20,9 @@ declare ui_b_debug=false
 #
 # Text Attributes
 #
-unset BLD && declare BLD="\033[1m"
-unset UND && declare UND="\033[4m"
-unset OFF && declare OFF="\033[m"
+unset BLD && declare BLD='\e[1m'
+unset UND && declare UND='\e[4m'
+unset OFF && declare OFF='\e[m'
 #
 # Text color definitions
 # For color tables see:
