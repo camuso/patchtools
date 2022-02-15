@@ -680,7 +680,7 @@ EOF
 	[ -d "$indir" ] && {
 		indir=$(realpath $indir)
 		set_cfg_item "indir" $indir
-	} || set_dir $indirstr "indir" $indir
+	} || set_dir $indirstr "indir" indir
 
 	[ -d "$outdir" ] && {
 		outdir=$(realpath $outdir)
