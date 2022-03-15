@@ -3,10 +3,11 @@
 # commitcmp
 #
 
-declare MYDIR=$(dirname $(which $(basename $0)))
-declare MYLIB=$MYDIR/lib
+[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename $0)))
+[ "$MYLIB" ] || declare MYLIB=$MYDIR/lib
 
-source $MYLIB/ui.source
+[ "$ui_loaded" ]            || source $MYLIB/ui.source
+[ "$configmanager_loaded" ] || source $MYLIB/config-manager.source
 
 # Other exit codes
 declare -i EXIT_OK=0
@@ -62,6 +63,10 @@ declare dncmt=
 declare upbr=
 declare dnbr=
 declare subsys=
+declare remote_dir=
+declare remote_repo=
+declare remote_branch=
+
 
 declare usagestr=$(
 cat <<EOF
@@ -245,6 +250,166 @@ cmpstr() {
 	done
 }
 
+set_cfg_item() {
+	cfg_write_key $1 $2
+}
+
+get_cfg_item() {
+	cfg_read_key $1
+}
+
+set_colors() {
+	local ans
+	while :; do
+		ui_use_colors
+		background=$terminal_background
+		set_cfg_item background $terminal_background
+		echo -en "${INF}You chose "
+
+		case $terminal_background in
+			1) echo -e "${STA}light$INF background$OFF\n";;
+			2) echo -e "${STA}dark$INF background$OFF\n";;
+		esac
+
+		loop_yn_ro "Is that what you want? (y/n) : "
+		[ $? -eq 0 ] && return || continue
+	done
+}
+
+# set_remotedir - name the directory where the upstream remotes are
+#
+# GLOBALS
+# 	remote_dir
+#
+set_remotedir() {
+	local stat
+	local b_exists=false
+
+	echo -e "\n$INF Set the directory that contains the remote repo to" \
+		"search for missing fixes.$OFF"
+
+	if [ -n "$remote_dir" ]; then
+		echo -e "$INF Your current remote directory is: $STA$remote_dir"
+		prstr=$(echo "$INF Enter a new remote directory or press " \
+			"$qstr$INF to leave it unchanged : $OFF")
+		b_exists=true
+	else
+		prstr="$INF Enter a new remote directory : $OFF"
+		b_exists=false
+	fi
+
+	while :; do
+		ui_getnewdir "$prstr" remote_dir
+		stat=$?
+
+		if ($b_exists && [ $stat -eq 3 ]); then
+			return
+		else
+			if [ $stat -ne 3 ]; then
+				break
+			else
+				echo -e \
+				    "${WRN}You must provide an upstream directory.$OFF"
+			fi
+		fi
+	done
+
+	# get the full pathname of the remote directory.
+	# If there is no git repo in it, print the tutor to the screen
+	# and exit gracefully.
+	#
+	remote_dir=$(realpath $remote_dir)
+	[ -d $remote_dir/.git ] || {
+		echo -e "${WRN}No git repo detected in $MNU$remote_dir$OFF"
+		echo -e "${INF}This script will exit now."
+		exit_me 1
+	}
+
+	# Changing the remote directory means changing the remote
+	# origin/branch, too.
+	#
+	remote_repo=
+	remote_branch=
+	set_cfg_item "remote_repo" "$remote_repo"
+	set_cfg_item "remote_branch" "$remote_branch"
+	set_cfg_item "remote_dir" "$remote_dir"
+}
+
+# set_remote_seek() - set the remote origin and branch to seek
+#
+# Sets up the remote origin/branch global fields to use when seeking
+# missing fixes.
+#
+# GLOBALS:
+# 	remote_repo
+# 	remote_branch
+#
+set_remote_seek() {
+	local remotes=
+	local b_set=true
+	local remrepo_msg=$(
+cat <<EOF
+$INF
+ Set the upstream origin/branch in: $STA$remote_dir$INF
+ to search for any missing fixes.$OFF
+EOF
+)
+	[ -n "$remote_dir" ] || set_remotedir
+	echo -e "$remrepo_msg"
+
+	if ([ -n "$remote_repo" ] && [ -n "$remote_branch" ]); then
+		remotes="$remote_repo/$remote_branch"
+		echo -e "$INF Your current remote repo/branch is: $STA$remotes"
+		loop_yn "$MNU Do you want to change this? (y/n) : $OFF" b_set
+	fi
+
+	if $b_set; then
+		cd $remote_dir
+		select_remrepo remote_repo && select_rembranch "$remote_repo" remote_branch
+		cd - > /dev/null 2>&1
+		set_cfg_item "remote_repo" "$remote_repo"
+		set_cfg_item "remote_branch" "$remote_branch"
+	fi
+}
+
+init_env() {
+	b_color=true	# from lib/ui.source
+
+	local b_tf
+
+	MYDATA=$(realpath ./.data)
+	[ -d "$MYDATA" ] || mkdir -p $MYDATA
+
+	configfile="$MYDATA/cmpcommit.conf"
+	cfgtemplate="$MYLIB/cmpcommit.conf"
+	[ -f "$configfile" ] || cp $cfgtemplate $configfile
+
+	cfg_set_template "$cfgtemplate"
+	cfg_set_configfile "$configfile"
+	cfg_init
+
+	# If color hasn't already been set up, then query the user for terminal
+	# background color and init the color engine.
+	# Else just init the terminal_background variable from the config global.
+	#
+	if [ -z "$background" ] || (( background < 1 || background > 2 )); then
+		set_colors
+	else
+		terminal_background=$background
+		ui_set_colors
+	fi
+
+	if [ -d "$remote_dir" ]; then
+		echo -e "${INF}Current remote directory is: $STA$remote_dir$OFF"
+		loop_yn "{$INF}Keep it? ${MNU}y/n : $OFF" b_tf
+		$b_tf || set_remotedir
+	else
+		set_remotedir
+	fi
+
+	([ -z "$remote_repo" ] || [ -z "$remote_branch" ])
+}
+
 main() {
         # Trap for control-c
         trap control_c SIGINT
@@ -254,6 +419,8 @@ main() {
 
 	shift $optcount
 	subsys="$1"
+
+	init_env
 
 	ui_testdir "$outdir" outdir
 	echo
