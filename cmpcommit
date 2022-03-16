@@ -32,10 +32,10 @@ exitme() {
 		[ ${#exitmsgary[@]} -gt $exitval ] \
 			&& exitmsg="${exitmsgary[$exitval]}"
 
-		echo -e "$BLD$strarg$exitmsg$OFF"
+		echo -e "$WRN$strarg$exitmsg$OFF"
 
 		[ $exitval -ne 0 ] && echo -e \
-			"Type$BLD commitcmp -h$OFF for help."
+			"${INF}Type$MNU commitcmp -h$INF for help.$OFF"
 	fi
 
 	exit $exitval
@@ -46,89 +46,87 @@ exitme() {
 control_c()
 {
 	echo -en "
-Ctrl-c detected
-Cleaning up and exiting.
+	${WRN}Ctrl-c detected$INF
+Cleaning up and exiting.$OFF
 "
 	exitme $CTLC_EXIT
 }
 
-
 declare -i optcount=0
 declare uplog="upstream.log"
 declare dnlog="downstream.log"
-declare chlog="cherp.log"
+declare chlog="backport.log"
 declare outdir=
+declare updir=
 declare upcmt=
 declare dncmt=
 declare upbr=
 declare dnbr=
 declare subsys=
-declare remote_dir=
-declare remote_repo=
-declare remote_branch=
 
-
-declare usagestr=$(
+usage() {
+	local usagestr=$(
 cat <<EOF
+$MNU
+$(basename $0) -ud updir -uc upcmt -dc dncmt -o outdir [sybsys]
+$INF
+Create a list of commits to backport. Commits that have already been
+backported will have a leading # to effectively comment them out to
+processing scripts, like git-backport.
+This must be run in the downstream repo directory, e.g. the one for RHEL-9.
 
-$(basename $0) -uc upcmt -ub upbr -dc dncmt -db dnbr -o dir [sybsys]
-
-Create a cherp input file by doing the following.
-- If it doesn\'t already exist, creates file $uplog with the following
-  command
+- If it doesn\'t already exist, creates file $STA$uplog$INF with the following
+  command.$MNU
   $ gitnice -r -c -d upcmt > outdir/$uplog
-
-- If it doesn\'t already exist, creates file $dnlog with the following
-  command.
+$INF
+- If it doesn\'t already exist, creates file $STA$dnlog$INF with the following
+  command.$MNU
   $ extup -r dncmt > outdir/$dnlog
-
-- Compares the contents of $uplog and $dnlog and creates a cherp file
+$INF
+- Compares the contents of $STA$uplog$INF and $STA$dnlog$INF and creates a cherp file
   with all the upstream commits, but with the ones already backported
   marked with a leading hash #.
-  The output file will be called $chlog
-
-NOTE:
-Requires the use of scripts gitnice and extup to create the file
+  The output file will be called $STA$chlog$INF
+$MNU
+NOTE:$INF
+Requires the use of scripts ${STA}gitnice$INF and ${STA}extup$INF to create the file
 inputs for this script.
 
 Example:
   $(basename $0) \\\
 
-        -uc v4.18 -ub linus \\\
+        -ud /work/upstream/kernel \\\
 
-        -dc RHEL-8.0.0 -db rh8.3 \\\
+        -uc v4.18 \\\
+
+        -dc RHEL-8.0.0 \\\
 
         -o ../backport/8.3/ipmi/ \\\
 
         drivers/char/ipmi/
-
-Options:
-
-  -h        - this help text
-
-  -uc upcmt - Create upstream logfile starting at given upstream commit
-              to current upstream HEAD.
-              output file will be named $uplog
-
-  -dc dncmt - Create downstream logfile starting at given downstream
-              commit to current downstream HEAD.
-              Output file will be named $dnlog
-
-  -ub upbr  - Upstream branch containing the upstream commit.
-
-  -db dnbr  - Downstream branch containing the downstream commit.
-
-  -o dir    - Directory for ouput files.
-
-Arguments:
-
-  subsys - Optional subsystem for which to obtain the commits, e.g.
+$MNU$UND
+Options:$OFF
+$MNU
+  -h$INF        - this help text
+$MNU
+  -ud ${INF}updir - directory with the upstream repo
+$MNU
+  -uc ${INF}upcmt - starting upstream commit
+$MNU
+  -dc ${INF}dncmt - starting downstream commit
+$MNU
+  -o ${INF}outdir - Directory for ouput files.
+              Upstream file will be named $STA$uplog$INF
+	      Downstrearm file will be named $STA$dnlog$INF
+	      Backport file will be named $STA$chlog$INF
+$MNU$UND
+Arguments:$OFF
+$MNU
+  subsys$INF - Optional subsystem for which to obtain the commits, e.g.
            drivers/char/ipmi
 \0
 EOF
 )
-
-usage() {
 	echo -en "$usagestr"
 	exitme 0
 }
@@ -143,8 +141,6 @@ usage() {
 # 	optcount
 # 	upcmt
 # 	dncmt
-# 	upbr
-# 	dnbr
 # 	usagestr
 #
 parseops() {
@@ -155,26 +151,22 @@ parseops() {
 	    if [ ${arg:0:1} == '-' ]; then
 		opt="${arg:1}"
 		case "$opt" in
+		    "help" ) ;&
 		    h  ) usage
 		         let ++optcount
+		         ;;
+		    ud ) shift
+			 updir="$1"
+			 shift
+		         optcount=$((optcount + 2))
 		         ;;
 		    uc ) shift
 			 upcmt="$1"
 			 shift
 		         optcount=$((optcount + 2))
 		         ;;
-		    ub ) shift
-			 upbr="$1"
-			 shift
-		         optcount=$((optcount + 2))
-		         ;;
 		    dc ) shift
 			 dncmt="$1"
-			 shift
-		         optcount=$((optcount + 2))
-		         ;;
-		    db ) shift
-			 dnbr="$1"
 			 shift
 		         optcount=$((optcount + 2))
 		         ;;
@@ -276,102 +268,6 @@ set_colors() {
 	done
 }
 
-# set_remotedir - name the directory where the upstream remotes are
-#
-# GLOBALS
-# 	remote_dir
-#
-set_remotedir() {
-	local stat
-	local b_exists=false
-
-	echo -e "\n$INF Set the directory that contains the remote repo to" \
-		"search for missing fixes.$OFF"
-
-	if [ -n "$remote_dir" ]; then
-		echo -e "$INF Your current remote directory is: $STA$remote_dir"
-		prstr=$(echo "$INF Enter a new remote directory or press " \
-			"$qstr$INF to leave it unchanged : $OFF")
-		b_exists=true
-	else
-		prstr="$INF Enter a new remote directory : $OFF"
-		b_exists=false
-	fi
-
-	while :; do
-		ui_getnewdir "$prstr" remote_dir
-		stat=$?
-
-		if ($b_exists && [ $stat -eq 3 ]); then
-			return
-		else
-			if [ $stat -ne 3 ]; then
-				break
-			else
-				echo -e \
-				    "${WRN}You must provide an upstream directory.$OFF"
-			fi
-		fi
-	done
-
-	# get the full pathname of the remote directory.
-	# If there is no git repo in it, print the tutor to the screen
-	# and exit gracefully.
-	#
-	remote_dir=$(realpath $remote_dir)
-	[ -d $remote_dir/.git ] || {
-		echo -e "${WRN}No git repo detected in $MNU$remote_dir$OFF"
-		echo -e "${INF}This script will exit now."
-		exit_me 1
-	}
-
-	# Changing the remote directory means changing the remote
-	# origin/branch, too.
-	#
-	remote_repo=
-	remote_branch=
-	set_cfg_item "remote_repo" "$remote_repo"
-	set_cfg_item "remote_branch" "$remote_branch"
-	set_cfg_item "remote_dir" "$remote_dir"
-}
-
-# set_remote_seek() - set the remote origin and branch to seek
-#
-# Sets up the remote origin/branch global fields to use when seeking
-# missing fixes.
-#
-# GLOBALS:
-# 	remote_repo
-# 	remote_branch
-#
-set_remote_seek() {
-	local remotes=
-	local b_set=true
-	local remrepo_msg=$(
-cat <<EOF
-$INF
- Set the upstream origin/branch in: $STA$remote_dir$INF
- to search for any missing fixes.$OFF
-EOF
-)
-	[ -n "$remote_dir" ] || set_remotedir
-	echo -e "$remrepo_msg"
-
-	if ([ -n "$remote_repo" ] && [ -n "$remote_branch" ]); then
-		remotes="$remote_repo/$remote_branch"
-		echo -e "$INF Your current remote repo/branch is: $STA$remotes"
-		loop_yn "$MNU Do you want to change this? (y/n) : $OFF" b_set
-	fi
-
-	if $b_set; then
-		cd $remote_dir
-		select_remrepo remote_repo && select_rembranch "$remote_repo" remote_branch
-		cd - > /dev/null 2>&1
-		set_cfg_item "remote_repo" "$remote_repo"
-		set_cfg_item "remote_branch" "$remote_branch"
-	fi
-}
-
 init_env() {
 	b_color=true	# from lib/ui.source
 
@@ -388,6 +284,8 @@ init_env() {
 	cfg_set_configfile "$configfile"
 	cfg_init
 
+	background=$(get_cfg_item background)
+
 	# If color hasn't already been set up, then query the user for terminal
 	# background color and init the color engine.
 	# Else just init the terminal_background variable from the config global.
@@ -399,20 +297,52 @@ init_env() {
 		ui_set_colors
 	fi
 
-	if [ -d "$remote_dir" ]; then
-		echo -e "${INF}Current remote directory is: $STA$remote_dir$OFF"
-		loop_yn "{$INF}Keep it? ${MNU}y/n : $OFF" b_tf
-		$b_tf || set_remotedir
-	else
-		set_remotedir
-	fi
+	set_cfg_item background $background
+}
 
-	([ -z "$remote_repo" ] || [ -z "$remote_branch" ])
+check_log() {
+	log="$1"
+
+	[ -f $log ] && {
+		echo -e "$WRN$log exists.$OFF"
+		echo -e "${INF}It will be overwritten if you continue.$OFF"
+	} || {
+		echo -e "${INF}Create : $STA$log$OFF"
+	}
+}
+
+get_mainbranch() {
+	local line=
+	local pline=
+	local ary=()
+
+	while read line; do
+		[[ $line == *"remote = origin"* ]] && {
+			echo "$pline $line"
+			break
+		} || {
+			pline="$line"
+		}
+	done < .git/config
+
+	ui_strtok "$pline" '"' ary
+	echo "${ary[1]}"
 }
 
 main() {
+	local mainbranch
+
+	init_env
+
         # Trap for control-c
         trap control_c SIGINT
+
+	[ -f .git/config ] || {
+		echo -e "${WRN}Not a repo directory!"
+		echo -e "${INF}You must be in a repo directory."
+		exit 1
+	}
+	mainbranch=$(get_mainbranch)
 
 	parseops $@
 	[ $optcount -lt 10 ] && exitme $EXIT_INVARG
@@ -420,26 +350,18 @@ main() {
 	shift $optcount
 	subsys="$1"
 
-	init_env
-
 	ui_testdir "$outdir" outdir
 	echo
 
-	[ -f $outdir/$uplog ] && {
-		echo -e "$BLD$outdir/$uplog$OFF exists."
-		echo "It will be overwritten if you continue."
-	}
-	echo -e "Create upstream commit log  : $BLD$outdir/$uplog$OFF"
+	check_log "$outdir/$uplog"
+	check_log "$outdir/$dnlog"
+	check_log "$outdir/$chlog"
 
-	[ -f $outdir/$dnlog ] && {
-		echo -e "$BLD$outdir/$dnlog$OFF exists."
-		echo "It will be overwritten if you continue."
-	}
-	echo -e "Create downstream commit log: $BLD$outdir/$dnlog$OFF"
-	echo
-
-	printf "Upstream Branch: $BLD%-12s$OFF Downstream Branch: $BLD%-12s$OFF\n" $upbr $dnbr
-	printf "Upstream Commit: $BLD%-12s$OFF Downstream Commit: $BLD%-12s$OFF\n" $upcmt $dncmt
+	echo -e "${INF}Backport log      : $STA$chlog$OFF"
+	echo -e "${INF}Upstream repo     : $STA$updir origin/master $OFF"
+	echo -e "${INF}Upstream log      : $STA$uplog$OFF"
+	echo -e "${INF}Downstream branch : $STA$mainbranch"
+	echo -e "${INF}Downstream log    : $STA$dnlog$OFF"
 
 	echo
 	echo -n "Press any key to proceed or CTRL-C to exit..."
