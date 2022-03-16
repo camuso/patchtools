@@ -762,7 +762,7 @@ function ui_getnewdir {
 function ui_testdir {
 	local tstdir="$1"
 	local stat
-	local createstr="Want to create it now?"
+	local createstr="${INF}Want to create it now?$OFF"
 
 	while true; do
 
@@ -770,14 +770,14 @@ function ui_testdir {
 		stat=$?
 
 		if [ $stat -eq 0 ]; then
-			echo "$tstdir does not exist."
+			echo -e "$STA$tstdir$INF does not exist."
 			doyn "$createstr" "mkdir -p $tstdir"
 			eval $2="$tstdir"
 			return $stat
 		fi
 
 		if [ $stat -eq 1 ]; then
-			echo "$tstdir exists as a file. Try again."
+			echo -e "$STA$tstdir$INF exists as a file. Try again."
 			getuser "Gimme a valid directory: " tstdir
 			continue;
 		fi
