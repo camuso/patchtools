@@ -156,7 +156,7 @@ parseops() {
 		         let ++optcount
 		         ;;
 		    ud ) shift
-			 updir="$1"
+			 updir=$(realpath "$1")
 			 shift
 		         optcount=$((optcount + 2))
 		         ;;
@@ -171,7 +171,7 @@ parseops() {
 		         optcount=$((optcount + 2))
 		         ;;
 		    o  ) shift
-			 outdir="$1"
+			 outdir=$(realpath "$1")
 			 shift
 		         optcount=$((optcount + 2))
 		         ;;
@@ -303,11 +303,11 @@ init_env() {
 check_log() {
 	log="$1"
 
+	echo -e "${INF}Create : $STA$log$OFF"
+
 	[ -f $log ] && {
-		echo -e "$WRN$log exists.$OFF"
+		echo -en "$WRN$log exists.$OFF "
 		echo -e "${INF}It will be overwritten if you continue.$OFF"
-	} || {
-		echo -e "${INF}Create : $STA$log$OFF"
 	}
 }
 
@@ -318,7 +318,6 @@ get_mainbranch() {
 
 	while read line; do
 		[[ $line == *"remote = origin"* ]] && {
-			echo "$pline $line"
 			break
 		} || {
 			pline="$line"
@@ -326,7 +325,7 @@ get_mainbranch() {
 	done < .git/config
 
 	ui_strtok "$pline" '"' ary
-	echo "${ary[1]}"
+	echo ${ary[1]}
 }
 
 main() {
@@ -345,7 +344,7 @@ main() {
 	mainbranch=$(get_mainbranch)
 
 	parseops $@
-	[ $optcount -lt 10 ] && exitme $EXIT_INVARG
+	[ $optcount -lt 8 ] && exitme $EXIT_INVARG
 
 	shift $optcount
 	subsys="$1"
@@ -357,24 +356,29 @@ main() {
 	check_log "$outdir/$dnlog"
 	check_log "$outdir/$chlog"
 
-	echo -e "${INF}Backport log      : $STA$chlog$OFF"
 	echo -e "${INF}Upstream repo     : $STA$updir origin/master $OFF"
-	echo -e "${INF}Upstream log      : $STA$uplog$OFF"
-	echo -e "${INF}Downstream branch : $STA$mainbranch"
-	echo -e "${INF}Downstream log    : $STA$dnlog$OFF"
+	echo -e "${INF}Downstream branch : $STA$mainbranch$INF"
 
 	echo
 	echo -n "Press any key to proceed or CTRL-C to exit..."
 	read -n1
 
-	git checkout $upbr
+	echo -e $STA
+	cd $updir
+	pwd
+	echo -e "${STA}Creating $outdir/$uplog$INF"
 	gitnice -r -c -d "$upcmt..HEAD" $subsys 2>&1 | tee $outdir/$uplog
 	echo
-	git checkout $dnbr
-	echo "$dnbr checked out"
+
+	echo -e $STA
+	cd -
+	echo -e "${STA}Creating $outdir/$dnlog$INF"
 	extup -r "$dncmt..HEAD" "$subsys" 2>&1 | tee $outdir/$dnlog
 
+	echo
+	echo -e "${STA}Creating $outdir/$chlog$INF"
 	cmpstr
+	echo -en $OFF
 
 	exitme $EXIT_OK
 }
