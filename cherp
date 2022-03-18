@@ -5,7 +5,7 @@
 # Provide some automation for cherrypicking.
 #
 
-VERSION="2.0"
+VERSION="3.0"
 
 #######################################
 # Default file locations
@@ -22,8 +22,7 @@ VERSION="2.0"
 declare MYDIR=$(dirname $(which $(basename $0)))
 declare MYLIB=$MYDIR/lib
 declare MYMAN=$MYDIR/man
-declare MYDATA=.data
-declare MYPRJ=$MYDATA/cherp.prj
+declare MYDATA=$(realpath ./.data)
 declare MYHLP=$MYMAN/cherp.txt
 declare MYSHLVL=/dev/shm/gcpshlvl
 declare MYNAME=$(basename $0)
@@ -32,7 +31,7 @@ declare MYNAME=$(basename $0)
 # External Source Files
 #######################################
 source $MYLIB/ui.source
-source $MYLIB/project.source
+source $MYLIB/config-manager.source
 
 ########################################
 # Return and Control Codes
@@ -54,20 +53,7 @@ declare b_session_inited=false	# boolean to indicate session is inited
 declare b_cmdline=false		# boolean indicating a comman line call
 
 #########################################
-# Project Variable offsets into prj file
-#########################################
-declare prj_upcmtstartline	# current starting line in the commit file
-declare prj_dnorighead		# original git head of current session
-declare prj_lastuphash		# most recently applied upstream commit
-declare prj_workdir		# scratch directory for the session
-declare prj_upcommits		# file containing list of upstream commits
-declare prj_b_conflict		# last attempt generated a conflict
-
-declare prj_entries=0	# number of entries in the project data file
-declare boolindex=0	# start of boolean data items in project data file
-
-#########################################
-# Project Variables
+# Config Variables
 #########################################
 declare upcmtstartline		# Line in upcommitsfile to start cherrypick
 declare dnorighead		# original downstream head at new session
@@ -100,24 +86,31 @@ declare currentupcommit
 # The '#' indicates a comment, and the '+' indicates already committed.
 declare ignore_str="#+"
 
-########################################
-# Strings
-########################################
-str_herald="\n"$BLD$UND"cherp "$VERSION" - Automates git cherry-pick$OFF\n"
-str_noconflicts="Cherry-picked without conflicts from the following upstream commit."
-str_conflicts="Cherry-picked from the following upstream commit."
-str_cmtmsg="$str_conflicts"
-
-str_active_session="
-$OFF\0There is currently a session active.
-	$BLD$MYNAME --status$OFF for details on current session
-	$BLD$MYNAME --continue$OFF to continue the session
-	$BLD$MYNAME --new$OFF to start a new session
-"
-
 #########################################
 # Functions
 #########################################
+
+########################################
+# Strings
+########################################
+declare str_herald=
+declare str_noconflicts=
+declare str_conflicts=
+declare str_cmtmsg=
+declare str_active_session=
+
+init_global_strings() {
+str_herald="\n$MNU${UND}cherp $VERSION - Automates git cherry-pick$OFF\n"
+str_noconflicts="${INF}Cherry-picked without conflicts from the following upstream commit.$OFF"
+str_conflicts="${INF}Cherry-picked from the following upstream commit.$OFF"
+str_cmtmsg="$str_conflicts"
+str_active_session="
+${WRN}There is currently a session active.$MNU
+	$BLD$MYNAME --status$INF for details on current session$MNU
+	$BLD$MYNAME --continue$INF to continue the session$MNU
+	$BLD$MYNAME --new$INF to start a new session$OFF
+"
+}
 
 #===  FUNCTION  ================================================================
 #          NAME:  print_herald
@@ -168,17 +161,17 @@ function set_gitbranch {
 	local branchlist
 	local brmsg=$(
 cat <<EOF
-$BLD
+$INF
 The following commands will be issued when a new branch is checked out.
-$OFF
-	git am --abort            # Abort any pending git am ops
-	git checkout <selected>   # checkout the selected branch
+$MNU
+	git am --abort          $INF  # Abort any pending git am ops $MNU
+	git checkout <selected> $INF  # checkout the selected branch $OFF
 \0
 EOF
 )
 	echo
-	echo -e "Select the number of the branch you want to use or press $qstr"
-	echo -e "to leave the current selection highlighted below."
+	echo -e "${MNU}Select the number of the branch you want to use or press $qstr$INF"
+	echo -e "to leave the current selection highlighted below.$OFF"
 
 	git branch > $workdir/branchlist
 
@@ -194,7 +187,7 @@ EOF
 	[ $? -ne 0 ] && return 0
 
 	gitbranch="$(ui_readline $linenumber $workdir/branchlist | tr -d [\*" "])"
-	echo "git checkout "$gitbranch""
+	echo "${MNU}git checkout $STA$gitbranch$OFF"
 	git am --abort --quiet >/dev/null 2>&1
 	git checkout "$gitbranch"
 
@@ -217,110 +210,59 @@ EOF
 git_set_subjectprefix() {
 	local newpfx="$(git config format.subjectprefix)"
 
-	echo -e \
-"Just press $BLD\0ENTER$OFF to leave the current subject prefix unchanged."
-	getuser "New subject prefix: " newpfx
+	echo -e "$INF" \
+"Just press ${STA}ENTER$INF to leave the current subject prefix unchanged.$OFF"
+	getuser "${MNU}New subject prefix: $OFF" newpfx
 	[ "$newpfx" ] || return
 	git config format.subjectprefix "$newpfx"
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  exec_boolean
-#   DESCRIPTION:  Execute a command string and pass the boolean that was
-#   		  used to determine whether the command should be executed.
-#   		  The boolean will be given the value passed by the caller.
-#    PARAMETERS:  $1 - The boolean by name
-#    		  $2 - The boolean's new value
-#    		  $3 - The command line as a string.
-#       RETURNS:  the status of the executed command string.
-#===============================================================================
-function exec_boolean {
-	argc=$#
-	argv="$@"
-	local stat
-	local boolean=$1
-	local b_newval=$2
-	local cmdstr="$(echo "$@" | cut -d' ' -f$argc-)"
-	local offset=prj_${boolean}
-	# echo ${!offset}
-	$cmdstr
-	stat=$?
-	# echo "$cmdstr status: $stat"
-	if [ $stat -eq 0 ]; then
-		if [ $argc -eq 3 ]; then
-			$b_newval && boolean=true || boolean=false
+# set_dir - set a directory variable and save it in the config file
+#
+# Arguments
+#   $1 - string to be used in the prompt describing the directory
+#   $2 - the config file key for the directory variable name
+#   $3 - the current value of the directory variable. Will be updated
+#        if the user changes the directory name.
+#
+set_dir() {
+	local dirstr="$1"
+	local dircfgkey="$2"
+	local dir="${!3}"
+	local b_msgshown=false
+	local ndirmsg=$(
+cat <<EOF
+$INF
+This directory has not yet been named.
+You must provide a directory path for me to continue.
+If the path does not exist, I will offer to create it
+for you.
+$OFF
+EOF
+)
+	[ -n "$dir" ] && {
+		echo -e "${INF}Current $STA$dirstr$INF directory : $STA$dir$OFF"
+		echo -e "${INF}Type $qstr$INF to leave it as it is.$OFF"
+	}
+
+	# We can't accept a NULL directory name, so cycle until we get a name.
+	#
+	while :; do
+		ui_getnewdir "${INF}New $STA$dirstr$INF directory : $OFF" dir
+
+		if [ -n "$dir" ]; then
+			[ -d "$dir" ] || mkdir -p "$dir"
+			break
+		else
+			$b_msgshown || echo -e "$ndirmsg"
+			b_msgshown=true
 		fi
-		[ $argc -ge 2 ] && prj_set_item ${!offset} $boolean
-	else
-		echo "$cmdstr"
-		echo -e "\tDid not execute successfully"
-		echo
-	fi
-	return $stat
-}
-
-#===  FUNCTION  ================================================================
-#          NAME:  init_booleans
-#   DESCRIPTION:  Initialize the booleans for a new session
-#    PARAMETERS:  Global symbols:
-#    			ui_bools
-#    			boolindex
-#    	  CALLS:  prj_set_item
-#       RETURNS:  0
-#===============================================================================
-function init_booleans {
-	# echo -e "$UND\0init_booleans$OFF"
-
-	b_conflict=false
-
-	prj_set_item $prj_b_conflict $b_conflict
-}
-
-#===  FUNCTION  ================================================================
-#          NAME:  read_booleans
-#   DESCRIPTION:  Read the values of the program flow control booleans from the
-#   		  project file. If the value has not been initialized, then init
-#   		  to false.
-#    PARAMETERS:  Global symbols:
-#    			ui_bools
-#    			boolindex
-#    	  CALLS:  prj_get_emptyline
-#       RETURNS:  0
-#===============================================================================
-function read_booleans {
-	# echo -e "$UND\0read_booleans$OFF"
-
-	local index=$boolindex
-	local val
-	local emptyline="$(prj_get_emptyline)"
-
-	# echo "ui_bools: $ui_bools"
-	for bool in $ui_bools; do
-		val=$(prj_get_item $index)
-		eval $bool=$val
-		[ "${!bool}" == "$emptyline" ] && eval $bool=false
-		let index++
 	done
 
-	return 0
-}
-
-#===  FUNCTION  ================================================================
-#          NAME:  save_booleans
-#   DESCRIPTION:  Write the current values of the program flow booleans into
-#   		  the project file.
-#    PARAMETERS:  none
-#       GLOBALS:  ui_bools
-#    		  boolindex
-#       RETURNS:  0
-#===============================================================================
-function save_booleans {
-	local index=$boolindex
-	for bool in $ui_bools; do
-		prj_set_item $index ${!bool}
-		let index++
-	done
-	return 0
+	dir=$(realpath $dir)
+	set_cfg_item $dircfgkey "$dir"
+	echo -e "$INF$dirstr directory is $STA$dir$OFF\n"
+	eval $3=$dir
 }
 
 #===  FUNCTION  ================================================================
@@ -331,31 +273,11 @@ function save_booleans {
 #       RETURNS:  none
 #===============================================================================
 set_working_directory() {
-	local dirname="working"
-	local msgnodir=$(
-cat <<EOF
-You have not chosen a work directory, so we must exit.
-\0
-EOF
-)
-	local currentdir=$(
-cat <<EOF
-$OFF\0The current working directory is $BLD$workdir$OFF.
-Press $qstr at the prompt to use this directory
-EOF
-)
 	# echo -e "$UND\0set_working_directory$OFF"
 
-	echo -e "The working directory is used for scratch by this script."
+	echo -e "${INF}The working directory is used for scratch by this script.$OFF"
 	[ "$workdir" ] && echo -e "$currentdir"
-	prj_set_directory "working" $prj_workdir workdir
-	[ "$workdir" ] && return
-
-	# We got here because no valid working directory was set. Only thing
-	# we can do at this point is exit.
-	#
-	echo -e "$msgnodir"
-	exit 0
+	set_dir "working" "workdir" workdir
 }
 
 
@@ -365,19 +287,19 @@ EOF
 #                 be cherrypicked.
 #    PARAMETERS:  none
 #       GLOBALS:  upcommitsfile - file containing the commits to be cherrypicked
-#       	  prj_upcommits - offset into project file for upcommitsfile
 #       RETURNS:  status of call to ui_getfilespec()
 #===============================================================================
 function set_upcommitsfile {
 	local stat
 	local prstr=$(
 cat <<EOF
-
-Set the file containing the upstream commits to be cherry-picked
+$INF
+Set the file containing the upstream commits to be cherry-picked$OFF
 EOF
 )
 	local commitsfilemsg=$(
 cat <<EOF
+$INF
 You can create a file containing the upstream commits to be cherry-picked
 using the following command.
 
@@ -386,21 +308,22 @@ using the following command.
   Example:
 
   git log --oneline --reverse v4.12..HEAD -- drivers/usb/host > usb-commits.log
+$OFF
 \0
 EOF
 )
 	local exitmsg=$(
 cat <<EOF
-
-You pressed $qstr without providing a file containing the upstream commits
-to be cherry-picked, so we must exit.
+$INF
+You pressed $qstr$INF without providing a file containing the upstream commits
+to be cherry-picked, so we must exit.$OFF
 \0
 EOF
 )
 	local currentfile=$(
 cat <<EOF
-$OFF\0The current file is $BLD$upcommitsfile$OFF.
-Press $qstr at the prompt to use this file
+${INF}The current file is $STA$upcommitsfile$INF.
+Press $qstr$INF at the prompt to use this file.$OFF
 EOF
 )
 	# echo -e "$UND\0set_upcommitsfile$OFF"
@@ -411,7 +334,7 @@ EOF
 
 	if [ $stat -ne 0 ]; then
 		if [ "$upcommitsfile" ]; then
-			echo -e "Keeping: $BLD$upcommitsfile$OFF"
+			echo -e "${INF}Keeping: $STA$upcommitsfile$OFF"
 		else
 			echo -e "$exitmsg"
 			echo -e "$commitsfilemsg"
@@ -419,7 +342,8 @@ EOF
 		fi
 	fi
 
-	prj_set_item $prj_upcommits $upcommitsfile
+	upcommitsfile=$(realpath $upcommitsfile)
+	set_cfg_item "upcommitsfile" $upcommitsfile
 	return $stat
 }
 
@@ -437,19 +361,20 @@ set_dnappliedfile() {
 	local stat
 	local prstr=$(
 cat <<EOF
+$INF
 Enter a file to contain the map of upstream-to-downstream commits resulting
-from cherrypicks managed by this script
+from cherrypicks managed by this script.$OFF
 EOF
 )
 	local currentfile=$(
 cat <<EOF
-$OFF\0The current file is $BLD$dnappliedfile$OFF.
-Press $qstr at the prompt to use this file
+${INF}The current file is $STA$dnappliedfile$INF.
+Press $qstr$INF at the prompt to use this file
 EOF
 )
 	local defaultmsg=$(
 cat <<EOF
-Using the default file: $BLD$workdir/$dncommitsdefault$OFF
+${INF}Using the default file: $STA$workdir/$dncommitsdefault$OFF
 EOF
 )
 
@@ -469,7 +394,7 @@ EOF
 	fi
 
 	> $dnappliedfile
-	prj_set_item $prj_dncommits $dnappliedfile
+	set_cfg_item "dncommits" $dnappliedfile
 	return 0
 }
 
@@ -485,9 +410,10 @@ pr_nohash_msg () {
 	local hash="$1"
 	local nohash_msg=$(
 cat <<EOF
-  Cannott find $BLD$hash$OFF as a commit or valid line number in $BLD$upcommitsfile$OFF
-  Lines having a '$BLD\0#$OFF' as their first character are not listed or considered.
-  Try again or type '$BLD\0q$OFF' to return to main menu.
+$INF
+  Cannot find $STA$hash$INF as a commit or valid line number in $STA$upcommitsfile$INF
+  Lines having a '$STA\0#$INF' as their first character are not listed or considered.
+  Try again or type $qstr$INF to return to main menu.$OFF
 EOF
 )
 	echo -e "$nohash_msg"
@@ -533,7 +459,7 @@ lookup_hash() {
 #===============================================================================
 set_next_cherrypick() {
 
-	echo -e "$UND\0set_next_cherrypick$OFF"
+	# echo -e "$UND\0set_next_cherrypick$OFF"
 	$b_cmdline && init_cmdline_call
 
 	local counter=0
@@ -545,11 +471,10 @@ set_next_cherrypick() {
 	local numwid=${#linecount}
 	local cols=$((tcols - 2 - $numwid))
 	local selected
-	local q="$OFF\0'$BLD\0q$OFF\0'$BLD"
 
-	echo -e "\nContents of upstream commits file: $BLD$upcommitsfile$OFF"
-	echo -e "$BLD\0NOTE:$OFF Not showing lines starting with any of these chars:"\
-	        "$BLD$ignore_str$OFF\n"
+	echo -e "\n${INF}Contents of upstream commits file: $STA$upcommitsfile$OFF"
+	echo -e "$MNU\0NOTE:$INF Not showing lines starting with any of these chars:"\
+	        "$STA$ignore_str$OFF\n"
 
 	# Dump the contents of the upcommitsfile
 	#
@@ -557,7 +482,7 @@ set_next_cherrypick() {
 		let counter++
 		[ $(ui_strindex "$ignore_str" "${line:0:1}") -ge 0 ] && continue
 		line=$(printf "%b %${numwid}d %b%s" $BLD $((idx+1)) $OFF "$line")
-		echo "${line:0:cols}"
+		echo "$INF${line:0:cols}$OFF"
 		linary[$idx]=$counter
 		let idx++
 	done < $upcommitsfile
@@ -612,7 +537,7 @@ validate_last_upstream_hash() {
 #===============================================================================
 getlasttag() {
 	local _mypid_
-	echo -ne "$OFF\0Getting last git tag.."
+	echo -ne "$INF\0Getting last git tag..$OFF"
 	git describe --tags --abbrev=0 > $lasttagfile &
 	_mypid_=$!
 	ui_waitonproc $_mypid_ .1
@@ -635,8 +560,8 @@ getlasttag() {
 get_next_cherrypick() {
 	# local myname="get_next_cherrypick: "
 	# echo -e "\n$UND$myname$OFF start line: $upcmtstartline"
-	local noexiststr="$BLD\0Commits file: $OFF$upcommtsfile$BLD does not exist.$OFF"
-	local nofile="$BLD\0There is no commits file.$OFF"
+	local noexiststr="$WRN\0Commits file: $STA$upcommtsfile$WRN does not exist.$OFF"
+	local nofile="$WRN\0There is no commits file.$OFF"
 
 	if ! [[ -f $upcommitsfile ]]; then
 		#[ $upcommitsfile ] && echo -e "$noexiststr" || echo -e "$nofile"
@@ -656,17 +581,16 @@ get_next_cherrypick() {
 	done
 
 	if [ $idx -gt $count ]; then
-		echo -e "${currentupcommit:0:$tcols}"
-		echo -e "was the last upstream commit in file: $upcommitsfile"
+		echo -en "$STA${currentupcommit:0:$tcols}$OFF "
+		echo -e "${INF}was the last upstream commit in file: $STA$upcommitsfile$OFF"
 		return 1
 	fi
 
 	upcmtstartline=$idx
 	currentupcommit="$line"
 	currentuphash=$(echo $line | cut -d' ' -f1)
-	prj_set_item $prj_upcmtstartline $upcmtstartline
+	set_cfg_item "upcmtstartline" $upcmtstartline
 
-	# cat .data/cherp.prj
 	return 0
 }
 
@@ -703,6 +627,8 @@ get_current_cherrypick() {
 #       RETURNS:  none
 #===============================================================================
 show_next_cherrypick() {
+	# echo "\n${UND}show_next_cherrypick$OFF"
+
 	local linecount
 	local prstr
 	local statstr
@@ -710,21 +636,21 @@ show_next_cherrypick() {
 	local cols=$((tcols - menupad))
 	local eofstr=$(
 cat <<EOF
-$currentuphash was the last commit in file: $upcommitsfile
+$STA$currentuphash ${INF}was the last commit in file: $STA$upcommitsfile$OFF
 
 EOF
 )
-	$b_cmdline && leadstr="    " || leadstr=" c  "
-	$b_conflict && statstr="Current cherrypick conflict  :" \
-		    || statstr="Next commit to cherrypick    :"
+	$b_cmdline && leadstr="    " || leadstr="$MNU c$OFF  "
+	$b_conflict && statstr="Current conflict         :$OFF" \
+		    || statstr="Next commit              :$OFF"
 
 	get_current_cherrypick
-	[ $? -eq 0 ] && prstr="${currentupcommit:0:$cols}" || prstr="$eofstr"
+	[ $? -eq 0 ] && prstr="$STA${currentupcommit:0:$cols}$OFF" || prstr="$eofstr"
 
 	local show_next_cherrypick_str=$(
 cat <<EOF
 
-$leadstr$statstr $OFF$prstr$BLD
+$leadstr$statstr $prstr
 EOF
 )
 	[ "$currentuphash" == "" ] || echo -e "$show_next_cherrypick_str"
@@ -739,16 +665,19 @@ EOF
 #       RETURNS:  none
 #===============================================================================
 show_select_next_cherrypick() {
+	# echo -e "${UND}show_select_next_cherrypick$OFF"
+
 	local selcmt_str=$(
 cat <<EOF
 
- S  Select a different commit for next cherrypick$BLD
+$MNU S$INF  Select a different commit for next cherrypick$OFF
 EOF
 )
 	[[ -f $upcommitsfile ]] || return 1
 	echo -e "$selcmt_str"
 	return 0
 }
+
 #===  FUNCTION  ================================================================
 #          NAME:  show_most_recent_cherrypick
 #   DESCRIPTION:  Show the Last Upstream Commit Picked, if it is valid
@@ -756,21 +685,31 @@ EOF
 #       RETURNS:  none
 #===============================================================================
 show_most_recent_cherrypick() {
+	# echo -e "\n${UND}show_most_recent_cherrypick$OFF"
+
 	local cols=$((tcols - menupad))
 	local laststr=$(
 cat <<EOF
-
-    Most Recently Applied Commit : $OFF${lastuplog:0:$cols}$BLD
+$INF
+    Most Recently Applied Commit : $STA${lastuplog:0:$cols}$OFF
 EOF
 )
 	$lasthashvalid && echo -e "$laststr"
 }
 
+#===  FUNCTION  ================================================================
+#          NAME:  show_upsteam_commits_file
+#   DESCRIPTION:  Show the Upstream Commit File
+#    PARAMETERS:  none
+#       RETURNS:  none
+#===============================================================================
 show_upsteam_commits_file() {
+	# echo -e "${UND}show_upsteam_commits_file$OFF"
+
 	local cmtfilestr=$(
 cat <<EOF
-
-    File of upstream commits     : $OFF$upcommitsfile$BLD
+$INF
+    File of upstream commits     : $STA$upcommitsfile$OFF
 EOF
 )
 	[ "$upcommitsfile" ] || return
@@ -787,7 +726,7 @@ EOF
 #===============================================================================
 show_history() {
 	$b_cmdline && init_cmdline_call
-	git log --oneline $dnorighead..HEAD
+	echo -en "$INF$(git log --oneline $dnorighead..HEAD)$OFF"
 	$b_cmdline && exit 0
 	return 0
 }
@@ -827,9 +766,9 @@ $BLD\
 $(show_upsteam_commits_file)\
 $(show_most_recent_cherrypick)\
 $(show_next_cherrypick)
-    Current downstream branch    : $OFF$(get_gitbranch)$BLD
-    Current downstream head      : $OFF${lastbrcmt:0:cols}$BLD
-    Original downstream head     : $OFF${orighead:0:cols}
+$INF    Current downstream branch    : $STA$(get_gitbranch)
+$INF    Current downstream head      : $STA${lastbrcmt:0:cols}
+$INF    Original downstream head     : $STA${orighead:0:cols}$OFF
 \0
 EOF
 )
@@ -856,27 +795,27 @@ function show_settings {
 	local orighead=$(git log --oneline -n1 $dnorighead)
 	local settings=$(
 cat <<EOF
-$attr_bold
-    $UND\0Upstream Environment     $OFF$BLD
- u  File of Upstream Commits     : $OFF$upcommitsfile$BLD\
+$MNU
+    ${UND}Upstream Environment    $OFF
+$MNU u$OFF  File of Upstream Commits : $STA$upcommitsfile$OFF\
 $(show_most_recent_cherrypick)\
 $(show_next_cherrypick)
-
-    $UND\0Downstream Environment   $OFF$BLD
-    Most recent tag              : $OFF$lasttag$BLD
-    Original Head                : $OFF${orighead:0:cols}$BLD
-    Current Head                 : $OFF${lastbrcmt:0:cols}$BLD
- b  Current git branch           : $OFF$(get_gitbranch)$BLD
- p  Current subject prefix       : $OFF$subjectprefix$BLD
- w  Working directory            : $OFF$workdir$BLD
-
-    $UND\0Control                  $OFF$BLD
- N  Start a New Session
- P  Pop 'n' commits
- s  Show History
- r  Run cherp
- q  Quit this script
- h  Help
+$MNU
+    ${UND}Downstream Environment  $OFF
+    Most recent tag          : $STA$lasttag$OFF
+    Original Head            : $STA${orighead:0:cols}$OFF
+    Current Head             : $STA${lastbrcmt:0:cols}$OFF
+$MNU b $OFF Current git branch       : $STA$(get_gitbranch)$OFF
+$MNU p $OFF Current subject prefix   : $STA$subjectprefix$OFF
+$MNU w $OFF Working directory        : $STA$workdir$OFF
+$MNU
+    ${UND}Control                $OFF
+$MNU N $OFF Start a New Session
+$MNU P $OFF Pop 'n' commits
+$MNU s $OFF Show History
+$MNU r $OFF Run cherp
+$MNU q $OFF Quit this script
+$MNU h $OFF Help
 $OFF
 EOF
 )
@@ -897,7 +836,7 @@ function menu_parser {
 
 	validate_last_upstream_hash
 	show_settings
-	promptgetchar ""$attr_bold"Enter one of the above: "$attr_OFF"" setting
+	promptgetchar "${MNU}Enter one of the above: $OFF" setting
 
 	case $setting in
 
@@ -915,7 +854,7 @@ function menu_parser {
 			;;
 		s )	show_history
 			;;
-		P )     getuser "Pop how many commits: " pops
+		P )     getuser "${MNU}Pop how many commits: $OFF" pops
 			pop_commits $pops
 			;;
 		h )	less $MYHLP
@@ -1001,7 +940,7 @@ abort_cherp() {
 #       RETURNS:  none
 #===============================================================================
 reset_cherp() {
-	local cols=$((tcols - 16))
+	local cols=$((tcols - 12))
 	local orighead=$(git log --oneline -n1 $dnorighead)
 	local headmsg=$(
 cat <<EOF
@@ -1086,10 +1025,9 @@ run_single() {
 	echo -e "$UND\0run_single$OFF"
 	b_single=true
 
-	check_prj_file
 	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
-	prj_set_item $prj_dnorighead $dnorighead
-	prj_set_item $prj_lastuphash $currentuphash
+	set_cfg_item "dnorighead" $dnorighead
+	set_cfg_item "lastuphash" $currentuphash
 
 	cherrypick
 	stat=$?
@@ -1114,32 +1052,32 @@ cherrypick() {
 
 	local uphash=$currentuphash
 	local gitstat
-	local wcols=$((tcols - 14))
+	local wcols=$((tcols - 10))
 	local conflictmsg=$(
 cat <<EOF
 
-$UND$BLD\0You have conflicts to fix.$OFF
+$UND$WRN\0You have conflicts to fix.$OFF$INF
 
 After fixing the conflicts, you can reenter cherp with the following commands.
 
-$BLD\0cherp commit$OFF   : if you have fixed the conflicts and want the script to stage
+$MNU\0cherp commit$INF   : if you have fixed the conflicts and want the script to stage
                  the commit and create the commit log for you.
 
-$BLD\0cherp continue$OFF : if you have fixed the conflicts and made the commit externally
-                 and wish to continue with the next cherrypick.
+$MNU\0cherp continue$INF : if you have fixed the conflicts and made the commit externally
+                 and wish to continue with the next cherrypick.$OFF
 EOF
 )
 	local bogusmsg=$(
 cat <<EOF
-
-Upstream commit hash $BLD$uphash$OFF appears to be bogus.
-Make sure the hashes in $BLD$upcommitsfile$OFF are all valid.
+$WRN
+Upstream commit hash $STA$uphash$WRN appears to be bogus.$INF
+Make sure the hashes in $STA$upcommitsfile$INF are all valid.$OFF
 \0
 EOF
 )
 	commit=$(git log --oneline -n1 $uphash)
 	# echo "commit: $commit"
-	echo -e "Processing : $BLD${commit:0:$wcols}$OFF"
+	echo -e "${INF}Processing : $STA${commit:0:$wcols}$OFF"
 	$b_nit && git cherry-pick -n "$uphash" || git cherry-pick "$uphash"
 	gitstat=$?
 
@@ -1271,10 +1209,10 @@ pop_commits() {
 	local commits=$(git log --oneline $dnorighead..HEAD | wc -l)
 	local popmsg=$(
 cat <<EOF
-The number of pops you requested is greater than the number of commits that you
-have made in this session.$BLD
-Commits this session : $OFF$commits$BLD
-      Pops requested : $OFF$pops
+${WRN}The number of pops you requested is greater than the number of commits that you
+have made in this session.$INF
+Commits this session : $STA$commits$INF
+      Pops requested : $STA$pops$OFF
 
 EOF
 )
@@ -1291,108 +1229,38 @@ EOF
 	return 0
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  count_prj_items
-#   DESCRIPTION:  Count the items in the project file and find the index to the
-#                 booleans
-#    PARAMETERS:  none
-#       GLOBALS:  All the stick project variables and their indexes
-#                 prj_entries
-#                 boolindex
-#       RETURNS:  none
-#===============================================================================
-count_prj_items() {
-	# echo -e "$UND\0count_prj_items$OFF"
-
-	local boolcount=0
-	local b_found_first_bool=false
-	local index
-
-	# Init ui items
-	# -------------
-	# This loop enumerates and counts the items that will be stored in the
-	# project file. It also declares the boolean names whose values are stored
-	# in the project file and assigns values to them.
-	#
-	# Add new booleans to the end of the list.
-	# Add new non-boolean parameters to the top of the list.
-	#
-	for offset in \
-	prj_upcmtstartline \
-	prj_dnorighead \
-	prj_lastuphash \
-	prj_workdir \
-	prj_upcommits \
-	prj_b_conflict \
-	; do
-		# The prj_set_item() function uses 1-based line numbers for indexing
-		# into the project file. We inited the index variable to zero, so
-		# lets start the loop by incrementing the index variable.
-		#
-		let index++
-
-		# Assign the the value of the current loop counter (index) to the
-		# prj file index variable referenced by the offset parameter defined
-		# at the top of the for loop.
-		#
-		let $offset=$index
-
-		if [ "${offset:3:3}" == "_b_" ]; then
-
-			# The name of the boolean variable is the same as the project
-			# file index variable, but with the leading "prj_" removed.
-			#
-			boolname="$(echo ${offset} | cut -d'_' -f2-)"
-			declare $boolname
-
-			# Create a string that contains all the names of the program's
-			# booleans.
-			#
-			ui_bools=""$ui_bools" "$boolname" " # basically a strcat()
-
-			[ "${!boolname}" == " " ] && eval $boolname=false
-			let boolcount++
-			if ! $b_found_first_bool; then
-				boolindex=$index
-				b_found_first_bool=true
-			fi
-		fi
-	done
-
-	# Initialize the prj_entries with the number of ui parameters counted in the
-	# above for-loop and init the project file.
-	#
-	prj_entries=$index
+# set_cfg_item key value
+#
+# Writes the value to the key offset in the .conf file
+#
+set_cfg_item() {
+	cfg_write_key $1 $2
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  check_prj_file
-#   DESCRIPTION:  Check the project file status
-#                 If the size changed, then recreate the project file.
-#    PARAMETERS:  none
-#       GLOBALS:  MYDATA
-#                 MYPRJ
-#                 prj_entries
-#                 b_cmdline
-#       RETURNS:  status from call to prj_init_prjfile
-#===============================================================================
-check_prj_file() {
-	# echo -e "$UND\0check_prj_file$OFF"
+# get_cfg_item key
+#
+# Echoes the value at the key offset in the .conf file
+#
+get_cfg_item() {
+	cfg_read_key $1
+}
 
-	local stat
+set_colors() {
+	local ans
+	while :; do
+		ui_use_colors
+		background=$terminal_background
+		set_cfg_item background $terminal_background
+		echo -en "${INF}You chose "
 
-	count_prj_items
+		case $terminal_background in
+			1) echo -e "${STA}light$INF background$OFF\n";;
+			2) echo -e "${STA}dark$INF background$OFF\n";;
+		esac
 
-	[[ -d "$MYDATA" ]] || mkdir $MYDATA
-	[[ -f "$MYPRJ" ]] || touch $MYPRJ
-
-	# Disable blank checking when calling prj_init_prjfile
-	#
-	prj_init_prjfile "$MYPRJ" $prj_entries disable_blank_check
-	stat=$?
-	# echo "stat: $stat"
-
-	return $stat
+		loop_yn_ro "Is that what you want? (y/n) : "
+		[ $? -eq 0 ] && return || continue
+	done
 }
 
 #===  FUNCTION  ================================================================
@@ -1407,52 +1275,71 @@ check_prj_file() {
 save_session() {
 	# echo -e "$UND\0save_session$OFF"
 
-	[ -f "$MYPRJ" ] || return
-
-	save_booleans
-	prj_set_item $prj_upcmtstartline $upcmtstartline
-	prj_set_item $prj_dnorighead $dnorighead
-	prj_set_item $prj_lastuphash $lastuphash
-	prj_set_item $prj_workdir    $workdir
-	prj_set_item $prj_upcommits  $upcommitsfile
+	set_cfg_item "updir"          $updir
+	set_cfg_item "uprepo"         $uprepo
+	set_cfg_item "upbranch"       $upbranch
+	set_cfg_item "upcmtstartline" $upcmtstartline
+	set_cfg_item "dnorighead"     $dnorighead
+	set_cfg_item "lastuphash"     $lastuphash
+	set_cfg_item "workdir"        $workdir
+	set_cfg_item "upcommitsfile"  $upcommitsfile
 }
 
 #===  FUNCTION  ================================================================
 #          NAME:  read_session
-#   DESCRIPTION:  Read the variables stored in the project file
+#   DESCRIPTION:  Read the variables stored in the .conf file
 #                 Some project variables are updated elsewhere, and only need
 #                 to be retrieved at init time and saved at exit time.
 #    PARAMETERS:  none
 #       GLOBALS:  workdir
 #                 cmtmsgfile
 #                 upcommitsfile
-#                 prj_workdir
-#                 prj_upcommits
-#       RETURNS:  stat, the value returned by the call to check_prj_file
+#                 workdir
+#                 upcommits
+#       RETURNS:  1 if any of the important conf values are missing
+#                 0 otherwise
 #===============================================================================
 read_session() {
 	# echo -e "$UND\0read_session$OFF"
 
-	local stat
+	b_color=true
 
-	check_prj_file
-	stat=$?
-	# echo "check_prj_file stat: $stat"
-	[ $stat -eq 0 ] || return $stat
-	read_booleans
+	# Initialize the paths for the current working directory
+	#
+	configfile="$MYDATA/cherp.conf"
+	cfgtemplate="$MYLIB/cherp.conf"
 
-	upcmtstartline=$(prj_get_item $prj_upcmtstartline)
-	dnorighead=$(prj_get_item $prj_dnorighead)
-	lastuphash=$(prj_get_item $prj_lastuphash)
-	workdir=$(prj_get_item $prj_workdir)
-	upcommitsfile=$(prj_get_item $prj_upcommits)
+	# If the .data directory has not been created yet, do that.
+	[ -d "$MYDATA" ] || mkdir -p $MYDATA
+
+	# If the config file doens't exist, copy the default one
+	# from MYLIB.
+	[ -f "$configfile" ] || cp $cfgtemplate $configfile
+
+	# Initialize the config manager and get the global variables.
+	#
+	cfg_set_template "$cfgtemplate"
+	cfg_set_configfile "$configfile"
+	cfg_init
+
+	# If color hasn't already been set up, then query the user for terminal
+	# background color and init the color engine.
+	# Else just init the terminal_background variable from the config global.
+	#
+	if [ -z "$background" ] || (( background < 1 || background > 2 )); then
+		set_colors
+	else
+		terminal_background=$background
+		ui_set_colors
+	fi
+
+	init_global_strings
 
 	[ "$upcmtstartline" ] || return 1
-	[ "$dnorighead" ]     || return 1
-	[ "$workdir" ]        || return 1
-	[ "$upcommitsfile" ]  || return 1
-
-	return $stat
+        [ "$dnorighead" ]     || return 1
+        [ "$workdir" ]        || return 1
+        [ "$upcommitsfile" ]  || return 1
+	return 0
 }
 
 #===  FUNCTION  ===============================================================
@@ -1481,16 +1368,10 @@ init_cmdline_call() {
 	# echo -e "$UND\0init_cmdline_call$OFF"
 
 	local stat
-	local newstr="Please type $BLD$MYNAME new$OFF to start.\n"
+	local newstr="${INF}Please type $MNU$MYNAME new$INF to start.$OFF\n"
 
 	read_session
-	stat=$?
-
-	[ $? -eq $prj_inconsistant ] && {
-		echo -e "The project file is inconsistant.\n$newstr"
-		return 1
-	}
-
+	[ $? -eq 0 ] || { echo -e "$newstr"; exit 1; }
 	init_common
 }
 
@@ -1505,8 +1386,6 @@ init_session() {
 	# echo -e "$UND\0init_session$OFF"
 
 	read_session
-	# [ $? -eq 0 ] || { init_newsession && return; }
-
 	init_common
 	# $b_cmdline && exit_cherp $exit_good
 }
@@ -1519,16 +1398,15 @@ init_session() {
 #       RETURNS:  none
 #===============================================================================
 init_newsession() {
-	# echo -e "\n$UND\0init_newsession$OFF"
+	echo -e "\n$UND\0init_newsession$OFF"
 
 	read_session
-	init_booleans
 	set_working_directory
 	set_upcommitsfile
 	set_gitbranch
 
 	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
-	prj_set_item $prj_dnorighead $dnorighead
+	set_cfg_item dnorighead $dnorighead
 
 	b_new=true
 	init_common
@@ -1605,12 +1483,15 @@ check_command() {
 #
 trap ctrl_c SIGINT
 
+init_session
+
 # Determine if we're at the top of a git tree. If not, exit.
 #
 if ! [ -d .git ]; then
-	echo -e "The current directory... "$attr_bold" "$PWD""$attr_OFF""
-	echo -e "\t ...is not the top of a git tree."
-	echo "Please cd to the top of a git tree."
+	echo -3 "$WRN"
+	echo -e "The current directory... "$STA$PWD$WRN""
+	echo -e "\t ...is not the top of a git tree.$INF"
+	echo "Please cd to the top of a git tree.$OFF"
 	echo
 	exit 1
 fi
@@ -1739,7 +1620,6 @@ print_herald
 # Present the ui and get the parameters for the cherry-picks.
 #
 getlasttag
-init_session
 menu_loop
 
 echo
