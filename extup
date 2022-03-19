@@ -19,6 +19,7 @@ declare notupstream="---------"
 declare  invalidcmt="-badobj--"
 declare cmtline=
 declare scratchfile="/dev/mem/extup.tmp"
+declare nomerges=
 declare usagestr=$(
 cat <<EOF
 
@@ -44,6 +45,7 @@ Options
    r - reverse order
    b - do not show downstream branch commit
    h - this help text
+   n - no-merges
 \0
 EOF
 )
@@ -106,13 +108,16 @@ choose_commit() {
 	echo "$ary[$index]"
 }
 
-while getopts :p:rb OPTION; do
+while getopts :p:rbn OPTION; do
     case "$OPTION" in
 
 	r ) rev="--reverse"
 	    optcount=$((optcount+1))
 	    ;;
 	b ) show_b=false
+	    optcount=$((optcount+1))
+	    ;;
+	n ) nomerges="--no-merges"
 	    optcount=$((optcount+1))
 	    ;;
 	h ) exitme
@@ -128,7 +133,7 @@ pathspec="$2"
 
 # Create an array of hashes from the current (rhel) branch
 #
-blist=($(git log --oneline $rev --pretty=format:%h $commit_expr $pathspec))
+blist=($(git log $nomerges --oneline $rev --pretty=format:%h $commit_expr $pathspec))
 # echo -e "${blist[@]}"
 
 for ((i=0; i < ${#blist[@]}; ++i)); do
