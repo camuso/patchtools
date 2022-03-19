@@ -377,7 +377,6 @@ cat <<EOF
 ${INF}Using the default file: $STA$workdir/$dncommitsdefault$OFF
 EOF
 )
-
 	# echo -e "$UND\0set_dnappliedfile$OFF"
 
 	[ "$dnappliedfile" ] && prstr="$prstr.\n$currentfile"
@@ -481,8 +480,8 @@ set_next_cherrypick() {
 	while read line; do
 		let counter++
 		[ $(ui_strindex "$ignore_str" "${line:0:1}") -ge 0 ] && continue
-		line=$(printf "%b %${numwid}d %b%s" $BLD $((idx+1)) $OFF "$line")
-		echo "$INF${line:0:cols}$OFF"
+		line=$(printf "%s %${numwid}d %s%s%s" $MNU $((idx+1)) $OFF "$line")
+		echo -e "${line:0:cols}$OFF"
 		linary[$idx]=$counter
 		let idx++
 	done < $upcommitsfile
@@ -514,11 +513,11 @@ validate_last_upstream_hash() {
 	#
 	[[ -f $upcommitsfile ]] || lasthashvalid=false
 
-	# If there is no hash saved in the project file, then show nothing.
+	# If there is no hash saved in the config file, then show nothing.
 	#
 	[[ "$lastuphash" ]] || lasthashvalid=false
 
-	# If the commit stored in the project file is not in the commits file
+	# If the commit stored in the config file is not in the commits file
 	# then show nothing.
 	#
 	grep -m1 -n "$lastuphash" "$upcommitsfile" >/dev/null 2>&1
@@ -641,8 +640,8 @@ $STA$currentuphash ${INF}was the last commit in file: $STA$upcommitsfile$OFF
 EOF
 )
 	$b_cmdline && leadstr="    " || leadstr="$MNU c$OFF  "
-	$b_conflict && statstr="Current conflict         :$OFF" \
-		    || statstr="Next commit              :$OFF"
+	$b_conflict && statstr="${WRN}Current conflict         :$OFF" \
+		    || statstr="Next cherrypick          :$OFF"
 
 	get_current_cherrypick
 	[ $? -eq 0 ] && prstr="$STA${currentupcommit:0:$cols}$OFF" || prstr="$eofstr"
@@ -690,8 +689,8 @@ show_most_recent_cherrypick() {
 	local cols=$((tcols - menupad))
 	local laststr=$(
 cat <<EOF
-$INF
-    Most Recently Applied Commit : $STA${lastuplog:0:$cols}$OFF
+
+    Last Applied Commit      : $STA${lastuplog:0:$cols}$OFF
 EOF
 )
 	$lasthashvalid && echo -e "$laststr"
@@ -708,8 +707,8 @@ show_upsteam_commits_file() {
 
 	local cmtfilestr=$(
 cat <<EOF
-$INF
-    File of upstream commits     : $STA$upcommitsfile$OFF
+
+    File of upstream commits : $STA$upcommitsfile$OFF
 EOF
 )
 	[ "$upcommitsfile" ] || return
@@ -762,13 +761,12 @@ show_status() {
 
 	statstr=$(
 cat <<EOF
-$BLD\
-$(show_upsteam_commits_file)\
-$(show_most_recent_cherrypick)\
-$(show_next_cherrypick)
-$INF    Current downstream branch    : $STA$(get_gitbranch)
-$INF    Current downstream head      : $STA${lastbrcmt:0:cols}
-$INF    Original downstream head     : $STA${orighead:0:cols}$OFF
+$INF$(show_upsteam_commits_file)\
+$INF$(show_most_recent_cherrypick)\
+$INF$(show_next_cherrypick)
+$INF    Current downstream branch: $STA$(get_gitbranch)
+$INF    Current downstream head  : $STA${lastbrcmt:0:cols}
+$INF    Original downstream head : $STA${orighead:0:cols}$OFF
 \0
 EOF
 )
@@ -1283,6 +1281,7 @@ save_session() {
 	set_cfg_item "lastuphash"     $lastuphash
 	set_cfg_item "workdir"        $workdir
 	set_cfg_item "upcommitsfile"  $upcommitsfile
+	set_cfg_item "b_conflict"      $b_conflict
 }
 
 #===  FUNCTION  ================================================================
