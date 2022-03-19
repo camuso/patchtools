@@ -1,0 +1,64 @@
+#!/bin/bash
+#
+# str2cmt
+
+declare usagestr=$(
+cat <<EOF
+
+$(basename $0) [ -options ] outfile
+
+Description:
+  Enter commits one at a time and a nice oneline format with
+  dates will be appended to the outfile. The contents of the
+  outfile, if any, will be destroyed.
+
+Arguments:
+  outfile - the file into which the nice onelines will go
+
+Options:
+  -r - reverse the order of the contents of outfile when done
+
+\0
+EOF
+)
+
+declare outfile=
+declare b_rev=false
+
+usage() {
+	echo -en "$usagestr"
+	exit 1
+}
+
+main() {
+	for ((i = 0; i < $#; ++i)); do
+		case $1 in
+		"-h" )  usage
+			;;
+		"-r" )  b_rev=true
+			shift
+			;;
+		esac
+	done
+
+	outfile=$1
+	outfile=$(realpath $outfile)
+	> $outfile
+
+	while read -p"Next commit: " line; do
+		[ "$line" == "q" ] && break
+		gitnice -d -c -1 "$line" | tee -a $outfile
+		echo
+	done
+
+	if $b_rev; then
+		tac $outfile > /dev/shm/$outfile
+		cp -f /dev/shm/$outfile $outfile
+		rm -f /dev/shm/$outfile
+	fi
+}
+
+main $@
+
+exit 0
+
