@@ -101,8 +101,8 @@ declare str_active_session=
 
 init_global_strings() {
 str_herald="\n$MNU${UND}cherp $VERSION - Automates git cherry-pick$OFF\n"
-str_noconflicts="${INF}Cherry-picked without conflicts from the following upstream commit.$OFF"
-str_conflicts="${INF}Cherry-picked from the following upstream commit.$OFF"
+str_noconflicts="Cherry-picked without conflicts from the following upstream commit."
+str_conflicts="Cherry-picked from the following upstream commit."
 str_cmtmsg="$str_conflicts"
 str_active_session="
 ${WRN}There is currently a session active.$MNU
