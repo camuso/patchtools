@@ -63,36 +63,30 @@ declare dncmt=
 declare upbr=
 declare dnbr=
 declare subsys=
+declare searchstr=
 
 usage() {
 	local usagestr=$(
 cat <<EOF
 $MNU
-$(basename $0) -ud updir -uc upcmt -dc dncmt -o outdir [sybsys]
+$(basename $0) -ud updir -uc upcmt -dc dncmt -o outdir [-S] [sybsys]
 $INF
-Create a list of commits to backport. Commits that have already been
-backported will have a leading # to effectively comment them out to
-processing scripts, like git-backport.
+Uses scripts ${STA}gitnice$INF and ${STA}extup$INF to create a list of
+commits to backport. Commits that have already been backported will have
+a leading # to effectively comment them out to processing scripts, like
+git-backport.
 This must be run in the downstream repo directory, e.g. the one for RHEL-9.
 
-- If it doesn\'t already exist, creates file $STA$uplog$INF with the following
-  command.$MNU
-  $ gitnice -r -c -d upcmt > outdir/$uplog
-$INF
-- If it doesn\'t already exist, creates file $STA$dnlog$INF with the following
-  command.$MNU
-  $ extup -r dncmt > outdir/$dnlog
-$INF
-- Compares the contents of $STA$uplog$INF and $STA$dnlog$INF and creates a cherp file
-  with all the upstream commits, but with the ones already backported
-  marked with a leading hash #.
-  The output file will be called $STA$chlog$INF
+Creates the following files in the <outdir>.
+  $STA$uplog$INF   - contains the upstream commits since <upcmt>
+  $STA$dnlog$INF - contains the downstream commits since <dncmt>
+  $STA$chlog$INF   - contains the upstream commits that have not yeat been
+                   backported downstream.
+  Optionally, if a search string was provided with the$STA -S$INF option, another
+  $STA$chlog$INF file in the same directory but with the first field in the search
+  string prepended to its name.
 $MNU
-NOTE:$INF
-Requires the use of scripts ${STA}gitnice$INF and ${STA}extup$INF to create the file
-inputs for this script.
-
-Example:
+Example:$STA
   $(basename $0) \\\
 
         -ud /work/upstream/kernel \\\
@@ -103,24 +97,24 @@ Example:
 
         -o ../backport/8.3/ipmi/ \\\
 
+        -S "msg_handler" \\\
+
         drivers/char/ipmi/
-$MNU$UND
-Options:$OFF
 $MNU
-  -h$INF        - this help text
-$MNU
-  -ud ${INF}updir - directory with the upstream repo
-$MNU
-  -uc ${INF}upcmt - starting upstream commit
-$MNU
-  -dc ${INF}dncmt - starting downstream commit
-$MNU
-  -o ${INF}outdir - Directory for ouput files.
-              Upstream file will be named $STA$uplog$INF
-	      Downstrearm file will be named $STA$dnlog$INF
-	      Backport file will be named $STA$chlog$INF
-$MNU$UND
-Arguments:$OFF
+Creates $STA$uplog$INF, $STA$dnlog$INF, $STA$chlog$INF, and
+        ${STA}msg_handler-$chlog$INF in ${STA}drivers/char/ipmi/$MNU$UND
+Options:$OFF$MNU
+  -h$INF         - this help text$MNU
+  -ud ${INF}updir  - directory with the upstream repo$MNU
+  -uc ${INF}upcmt  - starting upstream commit$MNU
+  -dc ${INF}dncmt  - starting downstream commit$MNU
+  -S  ${INF}string - OPTIONAL: creates a second $STA$chlog$INF file with the
+               first field of the string prepended to its name.$MNU
+  -o  ${INF}outdir - Directory for ouput files.
+               Upstream file will be named $STA$uplog$INF
+               Downstrearm file will be named $STA$dnlog$INF
+               Backport file will be named $STA$chlog$INF
+$MNU${UND}Arguments:$OFF
 $MNU
   subsys$INF - Optional subsystem for which to obtain the commits, e.g.
            drivers/char/ipmi
@@ -142,6 +136,7 @@ EOF
 # 	upcmt
 # 	dncmt
 # 	usagestr
+# 	searchstr
 #
 parseops() {
 	local arg=
@@ -170,6 +165,11 @@ parseops() {
 			 shift
 		         optcount=$((optcount + 2))
 		         ;;
+		    S  ) shift
+			 searchstr="$1"
+			 shift
+			 optcount=$((optcount + 2))
+			 ;;
 		    o  ) shift
 			 outdir=$(realpath "$1")
 			 shift
@@ -183,7 +183,7 @@ parseops() {
 	done
 }
 
-# cmpstr() - compare strings
+# compare_strings() - compare strings
 #    Compare the commits from the upstream and downstream commit logs
 #    to identify those the ones that have already been backported.
 #    Output all commit lines to the cherp.log file, marking the ones
@@ -195,7 +195,7 @@ parseops() {
 #	dnlog - downstream commits file
 #	outdir - directory for all the commit log files
 #
-cmpstr() {
+compare_strings() {
 	local uppath="$outdir/$uplog"
 	local dnpath="$outdir/$dnlog"
 	local chpath="$outdir/$chlog"
@@ -219,7 +219,7 @@ cmpstr() {
 	rhstr=($(< $dnpath))
 	IFS="$savedifs"
 
-	# Zero the cherp log file.
+	# Zero the backport log file.
 	> $chpath
 
 	for ((j = 0; j < ${#upstr[@]}; ++j)); do
@@ -328,6 +328,24 @@ get_mainbranch() {
 	echo ${ary[1]}
 }
 
+seek_str() {
+	local prepend=$(echo "$searchstr" | cut -d' ' -f1)
+	local outfile="$outdir/$prepend-$chlog"
+	local commit
+
+	cd $updir
+	echo -e "\n${STA}Creating $outfile$INF"
+	> $outfile
+	while read line; do
+		[ "${line:0:1}" == "#" ] && continue
+		commit=$(echo "$line" | cut -d' ' -f1)
+		git show $commit | grep -q -m1 "$searchstr"
+		[ $? -eq 0 ] || continue
+		echo "$line" | tee -a $outfile
+	done < $outdir/$chlog
+	cd - > /dev/null 2>&1
+}
+
 main() {
 	local mainbranch
 
@@ -367,18 +385,20 @@ main() {
 	cd $updir
 	pwd
 	echo -e "${STA}Creating $outdir/$uplog$INF"
-	gitnice -r -c -d "$upcmt..HEAD" $subsys 2>&1 | tee $outdir/$uplog
+	gitnice -r -c -d --no-merges "$upcmt..HEAD" $subsys 2>&1 | tee $outdir/$uplog
 	echo
 
 	echo -e $STA
 	cd -
 	echo -e "${STA}Creating $outdir/$dnlog$INF"
-	extup -r "$dncmt..HEAD" "$subsys" 2>&1 | tee $outdir/$dnlog
+	extup -r -n "$dncmt..HEAD" "$subsys" 2>&1 | tee $outdir/$dnlog
 
 	echo
 	echo -e "${STA}Creating $outdir/$chlog$INF"
-	cmpstr
-	echo -en $OFF
+	compare_strings
+
+	[ -n "$searchstr" ] && seek_str
+	echo -e $OFF
 
 	exitme $EXIT_OK
 }
