@@ -61,6 +61,10 @@ declare lastuphash		# most recently applied upstream commit hash
 declare workdir			# scratch directory for the session
 declare upcommitsfile		# File of upstream commits to cherry-pick
 declare b_conflict		# last attempt generated a conflict
+declare updir			# directory with the upstream repo
+declare upurl			# the url of the upstream repo
+declare uprepo			# the name of the upstream repo
+declare upbranch		# the branch of the upstream repo
 
 #########################################
 # Global Variables
@@ -158,6 +162,7 @@ function set_gitbranch {
 	local index=1
 	local linenumber
 	local line
+	local outline
 	local branchlist
 	local brmsg=$(
 cat <<EOF
@@ -177,8 +182,8 @@ EOF
 
 	while read line; do
 		[ "${line:0:1}" = "*" ] && echo -ne $BLD
-		printf "%2d  $line\n" $index
-		echo -ne $OFF
+		outline=$(printf "%s %2d %s $line\n" $MNU $index $OFF)
+		echo -e "$outline"
 		let index++
 	done < $workdir/branchlist
 
@@ -187,7 +192,7 @@ EOF
 	[ $? -ne 0 ] && return 0
 
 	gitbranch="$(ui_readline $linenumber $workdir/branchlist | tr -d [\*" "])"
-	echo "${MNU}git checkout $STA$gitbranch$OFF"
+	echo -e "${MNU}git checkout $STA$gitbranch$OFF"
 	git am --abort --quiet >/dev/null 2>&1
 	git checkout "$gitbranch"
 
@@ -276,10 +281,139 @@ set_working_directory() {
 	# echo -e "$UND\0set_working_directory$OFF"
 
 	echo -e "${INF}The working directory is used for scratch by this script.$OFF"
-	[ "$workdir" ] && echo -e "$currentdir"
+	[ "$workdir" ] && echo -e "$STA$workdir$OFF"
 	set_dir "working" "workdir" workdir
 }
 
+#===  FUNCTION  ================================================================
+#          NAME:  set_upstream_directory
+#   DESCRIPTION:  Set the upstream directory having the upstream repo
+#    PARAMETERS:  none
+#       GLOBALS:  updir
+#                 upurl
+#       RETURNS:  none
+#===============================================================================
+set_upstream_directory() {
+	# echo -e "$UND\0set_upstream_directory$OFF"
+	local newdir=
+
+	echo -e "${INF}The upstream directory has the upstream repo.$OFF"
+	[ "$updir" ] && echo -e "${INF}Current upstream dir: $STA$updir$OFF"
+	set_dir "upstream" "updir" newdir
+
+	[ "$newdir" == "$updir" ] || { [ "$uprepo" ] && git remote rm "$uprepo"; }
+	updir=$newdir
+
+	cd $updir
+	select_remrepo uprepo
+	select_rembranch $uprepo upbranch
+	upurl=$(show_remote_url "$uprepo")
+
+	cd -
+	[ "$uprepo" == "origin" ] && uprepo="upstream"
+	set_cfg_item "uprepo"   "$uprepo"
+	set_cfg_item "upurl"    "$upurl"
+	set_cfg_item "upbranch" "$upbranch"
+	git remote add $uprepo $upurl
+	git fetch -p --all
+}
+
+show_remote_url() {
+	local reponame="$1"
+	local url
+	[ -z "$reponame" ] && return
+	url=$(grep -A1 "remote \"$reponame" .git/config | grep url | cut -d'=' -f2)
+	echo "$url"
+}
+
+show_remotes() {
+	local line
+	local toks=()
+	local gitcfgarray=()
+	local remoteurl=
+
+	gitcfgarray=$(grep -w '\[remote' .git/config)
+	while read line; do
+		ui_strtok "$line" '" ' toks
+		remote=$(echo ${toks[1]} | sed  's/]//')
+		remoteurl=$(show_remote_url "$remote")
+		echo -e "$remote"
+		echo -e "$remoteurl"
+		echo
+	done <<< "$gitcfgarray"
+}
+
+create_remote_array() {
+	local line
+	local toks=()
+	local remarray=()
+	local gitcfgarray=()
+
+	gitcfgarray=$(grep -w '\[remote' .git/config)
+	while read line; do
+		ui_strtok "$line" '" ' toks
+		remote=$(echo ${toks[1]} | sed  's/]//')
+		remarray+=($remote)
+	done <<< "$gitcfgarray"
+
+	eval $1="(${remarray[@]})"
+}
+
+select_remrepo() {
+	local cur="${!1}"
+	local remotes=()
+	local num_of_remotes
+	local stat
+
+	create_remote_array remotes
+	num_of_remotes=${#remotes[@]}
+
+	case $num_of_remotes in
+		0 ) echo -e "${WRN}No remotes could be detected in .git/config.$OFF"
+		    return 1
+		    ;;
+		1 ) cur=${remotes[0]}
+		    stat=0
+		    ;;
+		* ) select_from_array remotes "remote repos" cur
+		    stat=$?
+	esac
+
+	eval $1=$cur
+	return $stat
+}
+
+set_remote_url() {
+	local reponame="$1"
+	local url
+	[ -z "$reponame" ] && return
+	url=$(grep -A1 "remote \"$reponame" .git/config | grep url | cut -d'=' -f2)
+	echo "$url"
+}
+
+select_rembranch() {
+	local repo="$1"
+	local cur="${!2}"
+	local brstr=
+	local brancharray=()
+
+	# Get all the branches into one string
+	brstr=$(git branch -r | grep "$repo" | cut -d'/' -f2)
+
+	# Filter out lines with '-> in them, because they are not branches
+	while read s; do [[ $s == *"->"* ]] || brancharray+=($s); done <<< "$brstr"
+
+	if [ ${#brancharray[@]} -gt 1 ]; then
+		select_from_array brancharray "remote branches in $remote_repo" cur
+	else
+		cur=${brancharray[0]}
+		echo -e "$INF Only one branch in this repo: $STA$cur$OFF"
+		echo -e "$INF Nothing else to choose from.$OFF"
+	fi
+
+	eval $2=$cur
+	return 0
+}
 
 #===  FUNCTION  ================================================================
 #          NAME:  set_upcommitsfile
@@ -795,7 +929,7 @@ function show_settings {
 cat <<EOF
 $MNU
     ${UND}Upstream Environment    $OFF
-$MNU u$OFF  File of Upstream Commits : $STA$upcommitsfile$OFF\
+$MNU b$OFF  File of Backport Commits : $STA$upcommitsfile$OFF\
 $(show_most_recent_cherrypick)\
 $(show_next_cherrypick)
 $MNU
@@ -803,9 +937,11 @@ $MNU
     Most recent tag          : $STA$lasttag$OFF
     Original Head            : $STA${orighead:0:cols}$OFF
     Current Head             : $STA${lastbrcmt:0:cols}$OFF
-$MNU b $OFF Current git branch       : $STA$(get_gitbranch)$OFF
+$MNU B $OFF Current git branch       : $STA$(get_gitbranch)$OFF
 $MNU p $OFF Current subject prefix   : $STA$subjectprefix$OFF
+$MNU b $OFF Backport File            : $STA$upcommitsfile$OFF
 $MNU w $OFF Working directory        : $STA$workdir$OFF
+$MNU u $OFF Upstream directory       : $STA$updir$OFF
 $MNU
     ${UND}Control                $OFF
 $MNU N $OFF Start a New Session
@@ -838,13 +974,15 @@ function menu_parser {
 
 	case $setting in
 
-		b )	set_gitbranch
+		B )	set_gitbranch
 			;;
 		p )	git_set_subjectprefix
 			;;
 		w )	set_working_directory
 			;;
-		u )	set_upcommitsfile
+		b )	set_upcommitsfile
+			;;
+		u )     set_upstream_directory
 			;;
 		c )	set_next_cherrypick
 			;;
@@ -1336,8 +1474,9 @@ read_session() {
 
 	[ "$upcmtstartline" ] || return 1
         [ "$dnorighead" ]     || return 1
-        [ "$workdir" ]        || return 1
-        [ "$upcommitsfile" ]  || return 1
+        [ "$workdir" ]        || set_working_directory
+        [ "$upcommitsfile" ]  || set_upcommitsfile
+	[ "$updir" ]          || set_upstream_directory
 	return 0
 }
 
@@ -1402,7 +1541,9 @@ init_newsession() {
 	read_session
 	set_working_directory
 	set_upcommitsfile
+	set_upstream_directory
 	set_gitbranch
+	[ "$uprepo" ] || set_upstream_directory
 
 	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
 	set_cfg_item dnorighead $dnorighead
