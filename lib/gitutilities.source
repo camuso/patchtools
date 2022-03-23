@@ -408,6 +408,7 @@ function git_comment2commitsfile {
 	local savedIFS="$IFS"
 	local b_quiet=false
 	local opt
+	local remdir=
 
 	while [ -n "$1" ]; do
 		opt="$1"
@@ -416,6 +417,7 @@ function git_comment2commitsfile {
 			"-o" ) commitsfile="$2"; shift 2;;
 			"-h" ) hashsize=$2; shift 2;;
 			"-f" ) valfuzz=$2; shift 2;;
+			"-r" ) remdir="$2"; shift 2;;
 			"-q" ) b_quiet=true; shift 1;;
 		esac
 	done
@@ -507,11 +509,13 @@ function git_comment2commitsfile {
 				echo -e  "$BLD $index $OFF"
 				echo -e  "Please choose one of the following."
 
+				[ -n "$remdir" ] && cd "$remdir"
 				for ((cmtindex=0; cmtindex < ${#sorted[@]}; cmtindex++))
 				do
 					cmtstr=$(git log --oneline -n1 ${sorted[$cmtindex]})
 					printf "%d - $cmtstr\n" $((cmtindex +1))
 				done
+				[ -n "$remdir" ] && cd - > /dev/null 2>&1
 
 				loop_range 1 $cmtindex linenumber
 			else

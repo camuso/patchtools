@@ -1286,7 +1286,8 @@ format_upstream_patches() {
 	> "$us_commits"
 	echo
 
-	git_comment2commitsfile -i $indir -o "$us_commits" -f $patchvalfuzz $quiet
+	git_comment2commitsfile \
+		-r "$remote_dir" -i $indir -o "$us_commits" -f $patchvalfuzz $quiet
 	stat=$?
 	echo
 	[ $stat -eq 0 ] || {
