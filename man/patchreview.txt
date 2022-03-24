@@ -35,11 +35,16 @@ directory, however that directory must be in your executable path.
 For example:
 
 	$ cd $HOME
-	$ git clone https://gitlab.cee.redhat.com/tcamuso/patchtools mybin
+	$ git -c http.sslVerify=false \
+	  clone https://tosmith@gitlab.cee.redhat.com/tcamuso/patchtools.git \
+	  mybin
 	$ export PATH=$PATH:$HOME/mybin
 
+If you are contributing to the development of the script, send email
+to tcamuso@redhat.com for 'git push' access credentials.
+
 After the above sequence of commands, the user can invoke patchreview
-from the command line.
+from the command line in any directory.
 
 --------------------------------
 2. Preparing the Git Environment
@@ -49,13 +54,58 @@ The script must be run from the top of a linux git tree. If not, it will
 exit with an error message.
 
 Your repo directory should be configured with gitlab RHEL or CentOS tree
-as origin/main.
+as origin/main. Each RHEL/CentOS distro should have its own directory.
+Be sure to add your fork to that directory.
 
-The linus tree should be added as a remote, i.e:
-	$ git remote add linus \
-	  git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+For example.
 
-Add other remote branches as needed.
+	### Create the RHEL-8 repo
+	$ mkdir -p /work/rhel8
+	$ cd /work/rhel8
+	$ git clone git@gitlab.com:redhat/rhel/src/kernel/rhel-8.git \
+	     kernel
+	$ cd kernel
+	$ git remote add tcamuso git@gitlab.com:tcamuso/rhel-8.git
+	$ git fetch --all
+
+	### Create the centos-9 repo
+	$ mkdir -p /work/c9s
+	$ git clone \
+	  git@gitlab.com:redhat/centos-stream/src/kernel/centos-stream-9.git \
+	  kernel
+	$ cd kernel
+	$ git remote add tcamuso git@gitlab.com:tcamuso/centos-stream-9.git
+	$ git fetch --all
+
+The linus tree should be located in a different directory
+	$ mkdir -p /work/upstream
+	$ cd /work/upstream
+	$ git clone \
+	      git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git \
+	      kernel
+	$ cd kernel
+	$ git fetch --all
+
+Other upstream repos can be added to the upstream kernel tree as needed.
+For example...
+	$ cd /work/upstream/kernel
+	$ git remote add scsi \
+	  https://git.kernel.org/pub/scm/linux/kernel/git/jejb/scsi.git
+	$ git remote add net-next \
+	  https://git.kernel.org/pub/scm/linux/kernel/git/netdev/net-next.git
+	$ git fetch --all -p
+
+The directory tree created by the above operations would look like this.
+
+ work --+-- rhel8 ---- kernel    ## contains RHEL8 kernel and your fork
+        |
+        +-- c9s  ----- kernel    ## contains centos-9 kernel and your folrk
+        |
+        +-- upstream ---- kernel ## contains linus tree and any other trees
+                                 ## you added with 'git remote add'
+
+Run this program from one of the downstream directories, e.g.
+/work/rhel8/kernel.
 
 At this point, the git environment is ready to compare RHEL patches with
 their upstream counterparts.
@@ -77,7 +127,6 @@ script queries the user for the following items.
   vimdiff, emacs, and tkdiff are supported.
 
 Detailed descriptions of these items follow.
-
 
 Background color: is used to determine the correct color scheme.
 
@@ -183,7 +232,7 @@ _________________________________________________________________________
  p  Cycle Patch Compare Mode: Batch
  q  Quit and return to previous menu
 
-Enter one of the above: 
+Enter one of the above:
 _________________________________________________________________________
 Fig 2. Configuration Menu
 
