@@ -264,17 +264,22 @@ extract_subject() {
 # GLOBALS
 # 	valfuzz - commit validation fuzz level
 #
+# ARGUMENTS
 # $1 - commit hash from the submitted patch
 # $2 - subject line from the submitted patch
-# $3 - optional commit validation fuzz level
+#
+# OPTIONS
+#  -f - fuzz level, 0..3
+#  -u - upstream directory
 #
 # RETURNS
-# 	0 - if match is determined
-# 	1 - if not sufficiently matched
+# 	0   - if match is determined
+# 	1   - if not sufficiently matched
+#	128 - if invalid commit (from 'git log')
 #
 validate_commit() {
-	local commit="$1"
-	local rhsubj="$2"
+	local commit
+	local rhsubj
 	local valfuzz=1   # default fuzz level is case-insensitive
 	local ussubj=
 	local ussubary=()
@@ -286,11 +291,22 @@ validate_commit() {
 	local rhtoks
 	local rhindex
 	local b_nocase=false
+	local updir=
 
-	# If the caller passes a fuzz level, use that.
-	(( $3 )) && valfuzz=$3
+	# Parse the options
+	while [ "${1:0:1}" == "-" ]; do
+		opt="$1"
+		case $opt in
+			"-f" ) valfuzz="$2"; shift 2;;
+			"-u" ) updir="$2"; shift 2;;
+		esac
+	done
 
-	# check the fuzz level
+	# get the command line arguments
+	commit="$1"
+	rhsubj="$2"
+
+	# Get the fuzz level
 	# 0 - upstream and RHEL git log summaries must be identical
 	# 1 - case insensitive
 	# 2 - ignore commas
@@ -309,9 +325,11 @@ validate_commit() {
 
 	# Get the upstream commit subj line or return the error.
 	# Send error output to /dev/null
+	[ -n "$updir" ] && cd $updir
 	ussubj=$(git log --oneline -n1 $commit 2> /dev/null)
 	stat=$?
 	[ $stat -eq 0 ] || return $stat
+	[ -n "$updir" ] && cd - > /dev/null 2>&1
 
 	# strip the leading commit hash off the 'git log --oneline'
 	ussubj=$(echo $ussubj | cut -d' ' -f2-)
@@ -402,13 +420,14 @@ function git_comment2commitsfile {
 	local filecount
 	local subject
 	local commit
-	local stat
+	local stat=0
 	local banner=
-	local b_found_vcmt=false	# valid commit flag
+	local b_found_vcmt=false	# valid commit subject flag
 	local savedIFS="$IFS"
 	local b_quiet=false
 	local opt
 	local remdir=
+	local b_invcmt=false		# if git log status=128 cmt is invalid
 
 	while [ -n "$1" ]; do
 		opt="$1"
@@ -461,34 +480,49 @@ function git_comment2commitsfile {
 		egrep '(commit|cherry)' $srcfile \
 			| egrep "\b[0-9a-f]{$hashsize}\b" > $scratchfile
 
-		# See if there is a commit we can successfully validate to
-		# minimize user pain.
-		# If none of the commits can be validated, then gather what
-		# there are and present them to the user for selection.
-		# If there are no commits in the patchfile's commit log, then
+#cat $scratchfile
+		# See if there is a commit we can successfully validate as
+		# having a valid subject line to minimize user pain.
+		# We only need to find one.
+		# If git log returns an invalid commit status (128), then skip
+		# it and go to the next one in the RHEL commit log.
+		# If none of the commits has a valid subject line, then gather
+		# what there are and present them to the user for selection.
+		# If there are no valid commits in the RHEL commit log, then
 		# we won't be able to format an upstream commit corresponding
 		# to this patch.
 		#
 		cmtindex=0
 		while read line; do
+#echo "line: \"$line\""
+			b_found_vcmt=false
+			stat=0
 
 			# Skip over lines identifying reverted commits
 			# Use double brackets and NO quotes.
 			([[ $line == *revert* ]] || [[ $line == *Revert* ]]) && continue
 
 			commit=$(git_excisecommit "$line" "$hashsize")
-			validate_commit $commit "$subject" $valfuzz
+#echo "commit: $commit"
+			validate_commit -f $valfuzz -u $remdir $commit "$subject"
 			stat=$?
-			[ $stat -eq 0 ] && b_found_vcmt=true
+#set -x
+			# Return status of 128 means that the call to git log in
+			# validate_commit could not find the commit upstream.
+			# 0 means we found the commit, so we can break out of this loop.
+			# Anything else means that the user is going to have to sort
+			# it out, so put it in the commitarray to present to the screen.
+			case $stat in
+				128 )	continue;;
+				0   )	b_found_vcmt=true; break;;
+				*   )   b_found_vcmt=false; continue;;
+			esac
 
-			commitarray[$cmtindex]=$commit
-
-			# If we found one valid upstream commit, we're done
-			$b_found_vcmt && break
-
+			commitarray[$cmtindex]=$commit;
 			let cmtindex++
-		done < $scratchfile
 
+		done < $scratchfile
+#set +x
 		# If we didn't find a commit we could validate, then present
 		# whatever commits we did find to the user to select.
 		#
@@ -508,13 +542,14 @@ function git_comment2commitsfile {
 				echo -en "There is more than one commit mentioned in patch"
 				echo -e  "$BLD $index $OFF"
 				echo -e  "Please choose one of the following."
-
+# set -x
 				[ -n "$remdir" ] && cd "$remdir"
 				for ((cmtindex=0; cmtindex < ${#sorted[@]}; cmtindex++))
 				do
 					cmtstr=$(git log --oneline -n1 ${sorted[$cmtindex]})
 					printf "%d - $cmtstr\n" $((cmtindex +1))
 				done
+# set +x
 				[ -n "$remdir" ] && cd - > /dev/null 2>&1
 
 				loop_range 1 $cmtindex linenumber
