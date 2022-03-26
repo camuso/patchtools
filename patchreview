@@ -966,6 +966,7 @@ main() {
 		git_get_lasttag lasttag $last_tag_file
 		main_loop
 	else
+		[ "$1" == "man" ] && { less $manual; exit 0; }
 		b_cmdline=true
 		check_env
 		parse_cmdline $@
