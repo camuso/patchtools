@@ -1,5 +1,5 @@
 ===================
-Patchreview v10.3.2
+Patchreview v11.3
 ===================
 
 This menu-driven script allows the user to compare a set of patches
@@ -44,7 +44,7 @@ If you are contributing to the development of the script, send email
 to tcamuso@redhat.com for 'git push' access credentials.
 
 After the above sequence of commands, the user can invoke patchreview
-from the command line in any directory.
+from the command line in any directory that contains a valid git repo.
 
 --------------------------------
 2. Preparing the Git Environment
@@ -97,18 +97,29 @@ For example...
 
 The directory tree created by the above operations would look like this.
 
- work --+-- rhel8 ---- kernel    ## contains RHEL8 kernel and your fork
+ work --+-- rhel8 --- kernel     ## contains RHEL8 kernel and your fork
         |
-        +-- c9s  ----- kernel    ## contains centos-9 kernel and your folrk
+        +-- c9s  --- kernel      ## contains centos-9 kernel and your folrk
         |
-        +-- upstream ---- kernel ## contains linus tree and any other trees
+        +-- upstream --- kernel  ## contains linus tree and any other trees
                                  ## you added with 'git remote add'
 
 Run this program from one of the downstream directories, e.g.
 /work/rhel8/kernel.
 
-At this point, the git environment is ready to compare RHEL patches with
-their upstream counterparts.
+Create a file of the repo list in $HOME/.config/patchreview/repolist.
+This file is used by patchreview to navigate among the various repos.
+For example, within patchreview you can switch from the rhel8 repo to
+the c9s repo by pressing upper case 'W' at the main menu and selecting
+from the list presented. The list is from ~/.config/patchreview/repolist.
+
+$ cd $HOME
+$ mkdir -p .config/patchreview
+$ > .config/patchreview/repolist
+$ echo '/work/rhel8/kernel' >> .config/patchreview/repolist
+$ echo '/work/c9s/kernel' >> .config/patchreview/repolist
+
+At this point, the directory environment is ready.
 
 ---------------------------------------
 3. Runing the script for the First Time
@@ -169,35 +180,40 @@ state of the git tree.
 ---------------------------------
 _________________________________________________________________________
 
-    Environment: Merge Request Mode Version: 10.1.0
+    Environment: Merge Request Mode Version: 11.3.1
     -----------------------------------------------
  c  Config Menu
-    Most recent tag         : kernel-4.18.0-305.3.el8
-    Current Head            : 4a65f7024d21 [redhat] kernel-4.18.0-305.3.el8
- b  Current git branch      : main
- g  grep Merge List for     :
-    Merge Request           : 418 ACKED
+    Most recent tag          : kernel-5.14.0-74.el9
+    Current Head             : 88e53a048d49 Merge: Sched: Fix fork versus cgroup race
+ b  Current git branch       : main
+ W  Working repo             : /work/c9s/kernel
+ d  Patch directory          : /work/c9s/kernel/.patches has 37 patch files.
+ w  Work directory           : /tmp
+ u  Upstream dir repo/branch : /work/upstream/kernel : origin/master
+ g  grep Merge List for      :
 
     Main Controls
     ------------------
  M  Enter a specific Merge Request for review
  m  Show the list of Merge Requests and select one for review
+ v  View comments for a specific MR
  r  Refresh the list of Merge Requests and select one for review
  a  Ack, Nack and/or Comment on a Merge Request
+ i  Init to defaults
  q  Quit this script
- x  Toggle Discrete Operations display
+ x  Hide Discrete Operations Menu
 
     Discrete Operations
     -------------------
  i  Init to defaults
  h  help text
- F  Format commits into     : .patches/tmp
+ F  Format commits into      : /tmp
  S  Seek missing Fixes
  P  Compare Patches
- A  Apply patches           : apply mode is OFF
- B  Create a new branch at  : 4a65f7024d21 [redhat] kernel-4.18.0-305.3.el8
+ A  Apply patches            : apply mode is OFF
+ B  Create a new branch at   : 88e53a048d49 Merge: Sched: Fix fork versus cgroup race
+ G  Git reset to             : kernel-5.14.0-74.el9
  C  Clean the Patch and/or Work directories
- G  Git reset to            : kernel-4.18.0-305.3.el8
  N  Nuke the directories and reset head to most recent tag
  V  View the log files
 
@@ -395,7 +411,7 @@ These menus compare the patches in the Patch directory with those in
 the Work directory.
 
 -----------------------------------------------------------------
-5.1 The Interactively Compare patches with upstream commits menu
+5.1 Interactively Compare patches with upstream commits menu
 -----------------------------------------------------------------
 
 This menu is presented after the the patches have been compared in batch
@@ -440,33 +456,25 @@ If conflicts were discovered, you will be presented with the enumeration of
 each patch having conflicts and the total number of conflicts.
 _________________________________________________________________________
 
-Patches conflicting with upstream commits
+iPatches conflicting with upstream commits
 =========================================
-20
-46
-55
-64
-91
-108
-109
-110
-111
-112
-113
-114
-115
-116
-Total number of conflicts with upstream:  14
+33: /work/c9s/kernel/.patches/0033-Revert-mm-gup-small-refactoring-simplify-try_grab_pa.patch
+
+Total number of conflicts with upstream: 1
+
+     ******
+Patch 0033 is the last conflict in the set.
+     ******
 
 Interactively Compare patches with upstream commits
 -----------------------------------------------------------------
- Compare : ~/Maildir/work/cur/RHEL8-3-046-116-drm-dp-mst-Increase-ACT-retry.patch
-    With : ../cmp/0046-drm-dp_mst-Increase-ACT-retry-timeout-to-3s.patch
-Conflict : 1 of 14
+ Compare : /work/c9s/kernel/.patches/0033-Revert-mm-gup-small-refactoring-simplify-try_grab_pa.patch
+    With : /tmp/0033-Revert-mm-gup-small-refactoring-simplify-try_grab_pa.patch
+Conflict : 1 of 1
 
-	    Last Tag : kernel-4.18.0-228.el8
-	    RHEL dir : /home/tcamuso/Maildir/work/cur
-	Upstream dir : ../cmp
+	    Last Tag : kernel-4.18.0-375.el8
+	    RHEL dir : /work/c9s/kernel/.patches
+	Upstream dir : /tmp
 -----------------------------------------------------------------
 	c - run batch file comparison to find conflicts with upstream
 	m - only examine patches conflicting with upstream: true
@@ -476,8 +484,8 @@ Conflict : 1 of 14
 	p - replace current upstream patch with a different commit
 	x - spawns a secondary shell
 	q - quit and return to previous execution environment
-	or any other key moves forward to the next patch ... ^[[B
-2 files to edit
+
+	or any other key moves forward to the next patch ... 
 _________________________________________________________________________
 Fig. 6 Interactively Compare Patches menu when there are conflicts
 
