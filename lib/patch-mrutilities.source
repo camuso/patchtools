@@ -295,12 +295,14 @@ $STA$current_mr$INF (y/n)? $OFF"
 # 	$1 - outfile that will contain the list
 #
 call_lab_mr_list() {
+# set -x
 	local outfile="$1"
 	local specifier="$2"
 	local srtcmd="sort -t ! -k2 -h"
 	local labcmd="lab mr list $specifier"
 
 	$labcmd | $srtcmd > $outfile
+# set +x
 }
 
 # refresh_mergelist - refresh the file containing the list of merge requests
@@ -406,7 +408,7 @@ show_mrlist() {
 	local mr=
 	local mrnum=
 	local mrsub=
-
+# set -x
 	while read mr; do
 		[[ $mr == *$mergelist_filter* ]] || continue
 		mr=$(echo ${mr:1})
@@ -415,7 +417,7 @@ show_mrlist() {
 		mrarray+=("$mrnum")
 		echo -e " $MNU$mrnum$OFF $mrsub"
 	done < $mergelist_file
-
+# set +x
 	getuser "Enter a merge request number or $qstr$INF to exit: " current_mr
 
 }
