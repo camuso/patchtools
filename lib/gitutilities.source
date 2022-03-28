@@ -328,8 +328,9 @@ validate_commit() {
 	[ -n "$updir" ] && cd $updir
 	ussubj=$(git log --oneline -n1 $commit 2> /dev/null)
 	stat=$?
-	[ $stat -eq 0 ] || return $stat
 	[ -n "$updir" ] && cd - > /dev/null 2>&1
+
+	[ $stat -eq 0 ] || return $stat
 
 	# strip the leading commit hash off the 'git log --oneline'
 	ussubj=$(echo $ussubj | cut -d' ' -f2-)
@@ -373,13 +374,16 @@ validate_commit() {
 	[ $index -gt $rhtoks ] && return 1
 	rhtoks=$((rhtoks - index))
 	rhindex=$((index - 1))
-
+#set -x
 	# Now see if the arrays are the same from here out.
 	for ((index = 1; index < $rhtoks; ++index)); do
 #echo "rh tok: ${rhsubary[$rhindex + $index]}"
 #echo "us tok: ${ussubary[$udex]}"
+
 		[[ "${rhsubary[$rhindex + $index]}" == "${ussubary[$index]}" ]] || break
 	done
+#set +x
+#echo "index: $index  rhtoks: $rhtoks"
 
 	# Restore case sensitivity.
 	$b_nocase && shopt -u nocasematch
@@ -506,6 +510,7 @@ function git_comment2commitsfile {
 #echo "commit: $commit"
 			validate_commit -f $valfuzz -u $remdir $commit "$subject"
 			stat=$?
+#echo "stat: $stat"
 #set -x
 			# Return status of 128 means that the call to git log in
 			# validate_commit could not find the commit upstream.
