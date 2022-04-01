@@ -13,13 +13,14 @@ declare rev=""
 declare -i optcount=0
 declare -a alist		# alternate (upstream) branch list
 declare -a blist		# current branch list
-declare show_b=true
+declare show_b="-c"
 declare cmtdat=
 declare notupstream="---------"
 declare  invalidcmt="-badobj--"
 declare cmtline=
 declare scratchfile="/dev/mem/extup.tmp"
 declare nomerges=
+declare dates=true
 declare usagestr=$(
 cat <<EOF
 
@@ -46,6 +47,7 @@ Options
    b - do not show downstream branch commit
    h - this help text
    n - no-merges
+   m - no-dates
 \0
 EOF
 )
@@ -108,7 +110,7 @@ choose_commit() {
 	echo "$ary[$index]"
 }
 
-while getopts :p:rbn OPTION; do
+while getopts :p:rbnm OPTION; do
     case "$OPTION" in
 
 	r ) rev="--reverse"
@@ -118,6 +120,9 @@ while getopts :p:rbn OPTION; do
 	    optcount=$((optcount+1))
 	    ;;
 	n ) nomerges="--no-merges"
+	    optcount=$((optcount+1))
+	    ;;
+	m ) dates=
 	    optcount=$((optcount+1))
 	    ;;
 	h ) exitme
@@ -159,16 +164,16 @@ for ((i=0; i < ${#blist[@]}; ++i)); do
 
 		# get the pretty commit line with commit date for the hash
 		# extracted above.
-		astr=$(gitnice -c -1 ${alist[$i]} 2> /dev/null)
+		astr=$(gitnice $dates -1 ${alist[$i]} 2> /dev/null)
 
 		if [ $? -ne 0 ]; then
-			tmp="$(gitnice -c -1 ${blist[$i]} | cut -d' ' -f2-)"
+			tmp="$(gitnice $dates -1 ${blist[$i]} | cut -d' ' -f2-)"
 			echo -e " ##\n ## Commit ${alist[$i]:0:9} identified in"\
 			        "${blist[$i]} cannot be found in any branch."
 			astr="$notupstream $tmp"
 		fi
 	else
-		tmp="$(gitnice -c -1 ${blist[$i]} | cut -d' ' -f2-)"
+		tmp="$(gitnice $dates -1 ${blist[$i]} | cut -d' ' -f2-)"
 		astr="$notupstream $tmp"
 	fi
 
