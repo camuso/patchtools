@@ -505,113 +505,18 @@ get_merge_request() {
 	return 0
 }
 
-
-# get_mrcommits_git - create the global bpcommits file for the given MR
+# get_mrcommits_labmr
 #
 # Globals
 #      patchcount - number of patches in the patch series
 #      bp_commits - file that will contain the backported commits
 #
-get_mrcommits_git() {
-	local mr="$1"		# MR, the Merge Reqest
-	local mrbranch="$2"
-	local basecmt		# base commit of the MR
-	local mmbr		# "main" or "master" for origin
+get_mrcommits_labmr() {
+	mr=$1
 
-	# mmbr=$(git branch | grep master >& /dev/null && echo master || echo main)
-	mmbr=$(grep -B1 'remote = origin' .git/config | head -1 | cut -d'"' -f2)
-	lab mr checkout -b $mrbranch $mr 2> /dev/null
-	basecmt=$(lab mr show $mr | \
-		grep -m 1  "^Labels" | \
-		awk -F "Dependencies::" ' { print $2 }' | \
-		cut -d',' -f1 | xargs)
-
-	[ -n "$basecmt" ] && echo -e "\nbasecmt: $basecmt"
-
-	if [ -z "$basecmt" ] || [ "$basecmt" == "OK" ]; then
-		patchcount=$(lab mr show -p $mr | grep '^Author:' | wc -l)
-		# patchcount=$(mrpatcount.py $gl_projid $mr)
-	else
-		patchcount=$(git rev-list --count $basecmt..HEAD)
-	fi
-
+	patchcount=$(lab mr show -p $mr | grep '^commit ' | wc -l)
 	echo -e "\npatchcount: $patchcount"
-
-	git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
-	git checkout -q $mmbr 2> /dev/null
-	git branch -q -D $mrbranch 2> /dev/null
-}
-
-# get_mrcommits_cki - create the global bpcommits file for the given MR
-#
-# Globals
-#      patchcount - number of patches in the patch series
-#      bp_commits - file that will contain the backported commits
-#
-# Other ways to extract patchcount:
-#
-#   lab mr show -p 621 | grep '^Author:' | grep 'redhat\.com' | wc -l
-#
-get_mrcommits_cki() {
-	local mr="$1"	# MR, the Merge Reqest
-	local mrbranch="$2"
-	local basecmt	# base commit of the MR
-	local mmbr	# "main" or "master" for origin
-
-	# mmbr=$(git branch | grep master >& /dev/null && echo master || echo main)
-	mmbr=$(grep -B1 'remote = origin' .git/config | head -1 | cut -d'"' -f2)
-	patchcount=$(lab mr show --comments $mr \
-		| grep 'Total number of commits analyzed' \
-		| tail -1 \
-		| cut -d'*' -f3)
-
-	[ -z "$patchcount" ] && get_mrcommits_git $mr "$mrbranch"
-
-	lab mr checkout -b $mrbranch $mr 2> /dev/null
-	git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
-	git checkout -q -f $mmbr
-	git branch -q -D $mrbranch
-}
-
-# get_mrcommits_pat - create the global bpcommits file for the given MR
-#
-# Globals
-#      patchcount - number of patches in the patch series
-#      bp_commits - file that will contain the backported commits
-#
-get_mrcommits_pat() {
-	local mr="$1"
-	local mrbranch="$2"
-	local mmbr	# "main" or "master" for origin
-
-	mmbr=$(grep -B1 'remote = origin' .git/config | head -1 | cut -d'"' -f2)
-	patchcount=$(lab mr show -p $mr | grep '^Author:' | wc -l)
-
-	lab mr checkout -b $mrbranch $mr 2> /dev/null
-	git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
-	git checkout -q -f $mmbr
-	git branch -q -D $mrbranch
-}
-
-# get_mrcommits_pyapi - create the global bpcommits file for the given MR
-#
-# Globals
-#      patchcount - number of patches in the patch series
-#      bp_commits - file that will contain the backported commits
-#      gl_projid  - gitlab project ID
-#
-get_mrcommits_pyapi() {
-	local mr="$1"
-	local mrbranch="$2"
-	local mmbr	# "main" or "master" for origin
-
-	mmbr=$(grep -B1 'remote = origin' .git/config | head -1 | cut -d'"' -f2)
-	patchcount=$(mrpatcount.py $gl_projid $mr)
-
-	lab mr checkout -b $mrbranch $mr 2> /dev/null
-	git log --reverse -p HEAD~$patchcount.. | grep  -i ^commit | cut -d' ' -f2 > $bp_commits
-	git checkout -q -f $mmbr
-	git branch -q -D $mrbranch
+	lab mr show -p $mr | grep '^commit ' | cut -d ' ' -f2 > $bp_commits
 }
 
 # get_merge_request_patches - extract the patches from a merge request
@@ -718,7 +623,7 @@ get_merge_request_patches() {
 		fi
 	fi
 
-	get_mrcommits_git $mr "$brname" & mypid=$!
+	get_mrcommits_labmr $mr & mypid=$!
 	ui_waitonproc_tty $mypid .05 ""$INF"Getting patches from MR $STA$current_mr$OFF"
 
 	git_file2patchset $bp_commits $indir $b_verbose
