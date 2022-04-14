@@ -203,7 +203,7 @@ show_mrstatus() {
 # 	b_acked
 # 	b_nacked
 #
-query_acknack() {
+display_acknack_menu() {
 	$b_mrflag || return 1
 	local cmt=
 	local response
@@ -219,10 +219,14 @@ $MNU A$STA  ACK$OFF with comment
 $MNU n$WRN  NACK$OFF
 $MNU N$WRN  NACK$OFF with comment
 $MNU c$OFF  Comment only
+$MNU v$OFF  View description and comments for $STA$current_mr
 $MNU q$OFF  Skip this step$OFF
 \0
 EOF
 )
+	local donestr="\
+${INF}Merge Request: $STA$current_mr$INF has already been $actstr"
+
 	[ -z "$current_mr" ] && {
 		getuser "Enter a merge request number or $qstr$INF to exit: " current_mr
 		b_newmr=true
@@ -235,58 +239,70 @@ EOF
 		}
 	}
 
-	$b_reviewed && ( $b_acked || $b_nacked ) && {
-		$b_acked && actstr="${STA}ACKED$OFF" \
-			 || actstr="${WRN}NACKED$OFF"
-		local donestr="\
-${INF}Merge Request: $STA$current_mr$INF has already been $actstr"
-		echo -e "$donestr"
-		return
-	}
-
 	while :; do
 		echo -e "$acknackmenu"
 		promptgetchar ""$MNU"Enter one of the above: $OFF" response
-		[[ qnaNAc =~ $response ]] && break
+		[[ qnaNAcv =~ $response ]] && break
 	done
 
-	case "$response" in
-		q ) return 1
-		    ;;
-		A ) cmt="--with-comment --force-linebreak "
-		    ;&
-		a ) b_acked=true
-		    b_reviewed=true
-		    actstr=""$STA"ACK$OFF"
-		    ;;
-		N ) cmt="--with-comment --force-linebreak "
-		    ;&
-		n ) b_nacked=true
-		    b_reviewed=true
-		    actstr=""$WRN"NACK$OFF"
-		    ;;
-		c ) b_nacked=false
-		    b_acked=false
-		    b_reviewed=true
-		    lab mr note --force-linebreak $current_mr
-		    return 0
-		    ;;
-	esac
+	eval $1=$response
+}
 
+query_acknack() {
+	local choice
 	local querystring="\
 "$INF"Are you sure you want to $actstr Merge Request \
 $STA$current_mr$INF (y/n)? $OFF"
-	loop_yn "$querystring" b_yes
 
-	if $b_yes; then
-		$b_acked && lab mr approve $cmt $current_mr
-		$b_nacked && lab mr unapprove $cmt $current_mr
-	else
-		b_acked=false
-		b_nacked=false
-	fi
+	while :;do
 
-	return 0
+		display_acknack_menu choice
+
+		$b_reviewed && ( $b_acked || $b_nacked ) && {
+			$b_acked && actstr="${STA}ACKED$OFF" \
+				 || actstr="${WRN}NACKED$OFF"
+			echo -e "$donestr"
+			return
+		}
+
+		case "$choice" in
+			q ) return 1
+			    ;;
+			A ) cmt="--with-comment --force-linebreak "
+			    ;&
+			a ) b_acked=true
+			    b_reviewed=true
+			    actstr=""$STA"ACK$OFF"
+			    ;;
+			N ) cmt="--with-comment --force-linebreak "
+			    ;&
+			n ) b_nacked=true
+			    b_reviewed=true
+			    actstr=""$WRN"NACK$OFF"
+			    ;;
+			c ) b_nacked=false
+			    b_acked=false
+			    b_reviewed=true
+			    lab mr note --force-linebreak $current_mr
+			    return 0
+			    ;;
+			v ) view_comments
+			    continue
+			    ;;
+		esac
+
+		loop_yn "$querystring" b_yes
+
+		if $b_yes; then
+			$b_acked && lab mr approve $cmt $current_mr
+			$b_nacked && lab mr unapprove $cmt $current_mr
+		else
+			b_acked=false
+			b_nacked=false
+		fi
+
+		return 0
+	done
 }
 
 # call_lab_mr_list - worker function to create the mr list
