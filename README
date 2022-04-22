@@ -1,0 +1,52 @@
+List of tools in this directory
+-------------------------------
+Type the name of the tool and -h for more details.
+
+Menu-driven tools
+-----------------
+Some Menu-driven tools use a command line as well as a menu interface.
+To see command line help, type the name of the tool and --help.
+
+patchreview - thorough review of patches, from MR or any two directories.
+patbatcmpmgr - menu wrapper for patbatcmp
+cherp - uses git cherrypick to apply commits from upstream
+
+CLI-only tools
+--------------
+cmpcommit - creates a file of commits in gitbackport format
+config-manager - stores and retrieves config info for the tools
+extup - extracts upstream commit hashes from RHEL commits
+gitnice - git log oneline with 12-char hash and options for date and author
+patbatcmp - line-by-line compare patches in two directories
+patcmp - options vimdiff, tkdiff, and emacs for visual patch comparisons
+prep-usb-backport - cmpcommit specialized for usb
+renpat - renames patchfiles using their Subject: lines.
+str2cmt - create a pretty list from bare hashes
+
+Library scripts
+---------------
+These scripts provide functions and definitions common to most of the
+other scripts in this collection.
+
+lib/cherp.conf - config manager template for cherp script
+lib/cmpcommit.conf - config manager template for cmpcommit
+lib/config-manager.source - config manager functions
+lib/gitutilities.source - abstractions various git sequences
+lib/patch-common.source - functions common to patchreview and patchdevelop
+lib/patch-mrutilities.source - various mr and lab sequences
+lib/patch-utils.source - basic utilities for patchreview and patchdevelop
+lib/patchreview.conf - config manager template for patchreview
+lib/ui.source - user interface abstractions
+
+Manuals
+-------
+man/cherp.txt
+man/patchdevelop.txt
+man/patchreview.txt
+
+Deprecated
+----------
+lib/project.source - tool state manager
+mrpatcount.py - extracts number of patches from mr
+patchdevelop - patchreview, but without 'nuke directory' and git reset HEAD.
+
