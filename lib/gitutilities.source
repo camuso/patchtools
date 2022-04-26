@@ -357,15 +357,13 @@ validate_commit() {
 	# Case insensitive match, because people are not especially careful
 	$b_nocase && shopt -s nocasematch
 
-	# Find the first instance in the rhsubary of the second token in the
+	# Find the first instance in the rhsubary of the first token in the
 	# ussubary. If we can't find any, return 1.
-	# Start with the second token (index = 1), because the first one is
-	# subject to change by the RHEL submitter.
 	#
-#echo "ussubary[1]: |${ussubary[1]}|"
-	for ((index = 1; index < $rhtoks; ++index)); do
+#echo "ussubary[0]: |${ussubary[0]}|"
+	for ((index = 0; index < $rhtoks; ++index)); do
 #echo "rhsubary[i]: |${rhsubary[$index]}|[$index]"
-		[ "${rhsubary[$index]}" == "${ussubary[1]}" ] && break
+		[ "${rhsubary[$index]}" == "${ussubary[0]}" ] && break
 	done
 
 	# If we loop through the whole rhsubary without finding a match,
@@ -373,8 +371,8 @@ validate_commit() {
 	#
 	[ $index -gt $rhtoks ] && return 1
 	rhtoks=$((rhtoks - index))
-	rhindex=$((index - 1))
-#set -x
+	rhindex=$((index))
+
 	# Now see if the arrays are the same from here out.
 	for ((index = 1; index < $rhtoks; ++index)); do
 #echo "rh tok: ${rhsubary[$rhindex + $index]}"
@@ -382,7 +380,6 @@ validate_commit() {
 
 		[[ "${rhsubary[$rhindex + $index]}" == "${ussubary[$index]}" ]] || break
 	done
-#set +x
 #echo "index: $index  rhtoks: $rhtoks"
 
 	# Restore case sensitivity.
@@ -406,6 +403,7 @@ validate_commit() {
 # $4 - patch validation fuzz level (optional)
 #
 function git_comment2commitsfile {
+	# echo -e "${MNU}git_comment2commitsfile$OFF"
 	local srcdir=
 	local commitsfile=
 	local hashsize=40
@@ -459,6 +457,9 @@ function git_comment2commitsfile {
 	banner="$patchtotal Patches in $indir"
 	pad=$(ui_putnchar '=' ${#banner})
 	echo -e "$INF$banner\n$pad$OFF"
+
+# while read line; do  echo $line; done; <<< "$valpatchlist"
+# ui_press_any
 
 	for srcfile in $valpatchlist; do
 
