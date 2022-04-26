@@ -1,0 +1,55 @@
+#!/bin/bash
+#
+# missingfixes
+
+declare commit=
+declare tag=
+declare line=
+declare utag="v5.17"
+
+
+declare usagestr=$(
+cat <<EOF
+
+$(basename $0) 
+
+Description:
+
+Arguments:
+
+\0
+EOF
+)
+
+usage() {
+	echo -en "$usagestr"
+	exit 1
+}
+
+main() {
+	local utag=$1
+	local missingfile="$2"
+	local tag
+	local ltag
+
+	utag="${utag:1:4}"
+	utag="${utag//.}"
+# echo "utag: $utag"
+
+	while read line; do
+		echo $line | grep -q Missing || continue
+		commit=$(echo $line | cut -d' ' -f5)
+		tag=$(git tag --contains $commit | head -1)
+		ltag="${tag:1:4}"
+		ltag="${ltag//.}"
+# echo "ltag: $ltag"
+		[ $ltag -gt $utag ] && continue
+		echo -n "Missing fix from $tag : "
+		echo $line | cut -d' ' -f5-
+	done < $missingfile
+}
+
+main $@
+
+exit 0
+
