@@ -249,6 +249,7 @@ EOF
 	}
 
 	init_parms
+	missing_fixes="$outdir/missing_fixes"
 	git_get_lasttag lasttag $last_tag_file
 	return 0
 }
