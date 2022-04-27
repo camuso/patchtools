@@ -2,12 +2,6 @@
 #
 # missingfixes
 
-declare commit=
-declare tag=
-declare line=
-declare utag="v5.17"
-
-
 declare usagestr=$(
 cat <<EOF
 
@@ -15,7 +9,14 @@ $(basename $0)
 
 Description:
 
+  Parses the given missingfixes-file for fixes that were made before the
+  given upstream-tag.
+
 Arguments:
+  upstream-tag - upstream tag to check against.
+
+  missingfixes-file - a file containing the missingfixes output from the
+                      patchreview script
 
 \0
 EOF
@@ -26,24 +27,40 @@ usage() {
 	exit 1
 }
 
+strindex() {
+	local x="${1%%$2*}"
+	[[ $x = $1 ]] && echo -1 || echo ${#x}
+}
+
 main() {
 	local utag=$1
 	local missingfile="$2"
 	local tag
 	local ltag
+	local rc
+	local lrc
+	local index
 
-	utag="${utag:1:4}"
+	index=$(strindex "$utag" "-rc")
+	[ $index -ge 0 ] && rc=${utag:$index+3} || rc=10
+
+	[ "${utag:0:1}" == "v" ] && utag="${utag:1:4}" || utag="${utag:0:4}"
 	utag="${utag//.}"
-# echo "utag: $utag"
+
+# echo "utag: $utag rc: $rc"
 
 	while read line; do
 		echo $line | grep -q Missing || continue
+		lrc=0
 		commit=$(echo $line | cut -d' ' -f5)
 		tag=$(git tag --contains $commit | head -1)
+		index=$(strindex "$tag" "-rc")
+		[ $index -ge 0 ] && lrc=${tag:$index+3}
 		ltag="${tag:1:4}"
 		ltag="${ltag//.}"
-# echo "ltag: $ltag"
+# echo "ltag: $ltag lrc: $lrc"
 		[ $ltag -gt $utag ] && continue
+		[ $ltag -eq $utag ] && [ $lrc -gt $rc ] && continue
 		echo -n "Missing fix from $tag : "
 		echo $line | cut -d' ' -f5-
 	done < $missingfile
