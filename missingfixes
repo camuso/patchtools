@@ -41,6 +41,8 @@ main() {
 	local lrc
 	local index
 
+	[ ${#@} -eq 2 ] || usage
+
 	index=$(strindex "$utag" "-rc")
 	[ $index -ge 0 ] && rc=${utag:$index+3} || rc=10
 
