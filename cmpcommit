@@ -91,15 +91,18 @@ Example:$STA
 
         -ud /work/upstream/kernel \\\
 
-        -uc v4.18 \\\
+        -uc v5.14 \\\
 
-        -dc RHEL-8.0.0 \\\
+        -dc kernel-5.14.0-87.el9 \\\
 
-        -o ../backport/8.3/ipmi/ \\\
+	-ss drivers/hid/intel-ish-hid \\\
 
-        -S "msg_handler" \\\
+	-ss drivers/platform \\\
 
-        drivers/char/ipmi/
+        -o ../backport/9.1/ish/ \\\
+
+        -S "eclite" \\\
+
 $MNU
 Creates $STA$uplog$INF, $STA$dnlog$INF, $STA$chlog$INF, and
         ${STA}msg_handler-$chlog$INF in ${STA}drivers/char/ipmi/$MNU$UND
@@ -108,16 +111,13 @@ Options:$OFF$MNU
   -ud ${INF}updir  - directory with the upstream repo$MNU
   -uc ${INF}upcmt  - starting upstream commit$MNU
   -dc ${INF}dncmt  - starting downstream commit$MNU
+  -ss ${INF}sybsys - a subsystem, one -ss option for each subsystem.$MNU
   -S  ${INF}string - OPTIONAL: creates a second $STA$chlog$INF file with the
                first field of the string prepended to its name.$MNU
   -o  ${INF}outdir - Directory for ouput files.
                Upstream file will be named $STA$uplog$INF
                Downstrearm file will be named $STA$dnlog$INF
                Backport file will be named $STA$chlog$INF
-$MNU${UND}Arguments:$OFF
-$MNU
-  subsys$INF - Optional subsystem for which to obtain the commits, e.g.
-           drivers/char/ipmi
 \0
 EOF
 )
@@ -145,6 +145,7 @@ parseops() {
 	for arg in $@; do
 	    if [ ${arg:0:1} == '-' ]; then
 		opt="${arg:1}"
+
 		case "$opt" in
 		    "help" ) ;&
 		    h  ) usage
@@ -175,12 +176,19 @@ parseops() {
 			 shift
 		         optcount=$((optcount + 2))
 		         ;;
+		    ss ) shift
+			 subsys="$subsys $1 "
+			 shift
+			 optcount=$((optcount + 2))
+			 ;;
 		    *  ) echo "unrecognized option -$1"
 		         echo -e "$usagestr"
 		         exit 127
 		esac
+
 	    fi
 	done
+optcount=$((optcount + 2))
 }
 
 # compare_strings() - compare strings
@@ -362,10 +370,10 @@ main() {
 	mainbranch=$(get_mainbranch)
 
 	parseops $@
+
 	[ $optcount -lt 8 ] && exitme $EXIT_INVARG
 
 	shift $optcount
-	subsys="$1"
 
 	ui_testdir "$outdir" outdir
 	echo
@@ -376,6 +384,7 @@ main() {
 
 	echo -e "${INF}Upstream repo     : $STA$updir origin/master $OFF"
 	echo -e "${INF}Downstream branch : $STA$mainbranch$INF"
+	echo "${INF}subsys: $STA$subsys$OFF"
 
 	echo
 	echo -n "Press any key to proceed or CTRL-C to exit..."
@@ -385,7 +394,7 @@ main() {
 	cd $updir
 	pwd
 	echo -e "${STA}Creating $outdir/$uplog$INF"
-	gitnice -r -c -d --no-merges "$upcmt..HEAD" $subsys 2>&1 | tee $outdir/$uplog
+	gitnice -r -c -d --no-merges "$upcmt..HEAD" "$subsys" 2>&1 | tee $outdir/$uplog
 	echo
 
 	echo -e $STA
