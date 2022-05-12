@@ -13,21 +13,21 @@ declare rev=""
 declare -i optcount=0
 declare -a alist		# alternate (upstream) branch list
 declare -a blist		# current branch list
-declare show_b="-c"
+declare show_b=true
 declare cmtdat=
 declare notupstream="---------"
 declare  invalidcmt="-badobj--"
 declare cmtline=
 declare scratchfile="/dev/mem/extup.tmp"
 declare nomerges=
-declare dates=true
+declare dates="-c -d"
 declare usagestr=$(
 cat <<EOF
 
 $(basename $0) [OPTIONS] commit-expr path
 
 Example
-   $(basename $0) c68432e802b11..HEAD drivers/char/ipmi
+   $(basename $0) c68432e802b11..HEAD [drivers/char/ipmi]
 
 Description
 
@@ -134,11 +134,11 @@ shift $optcount
 commit_expr="$1"
 pathspec="$2"
 
-[ $# -eq 2 ] || exitme
+# [ $# -eq 2 ] || exitme
 
 # Create an array of hashes from the current (rhel) branch
 #
-blist=($(git log $nomerges --oneline $rev --pretty=format:%h $commit_expr "$pathspec"))
+blist=($(git log $nomerges --oneline $rev --pretty=format:%h $commit_expr $pathspec))
 # echo -e "${blist[@]}"
 
 for ((i=0; i < ${#blist[@]}; ++i)); do
