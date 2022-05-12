@@ -43,6 +43,7 @@ declare mergelist_filter=
 declare mergelist_author=
 declare mergelist_file=
 declare gl_projid=24118165	# gitlab project ID
+declare origin=			# the principal remote in a git repo
 
 declare -i mr_val=0	# valid mr
 declare -i mr_inv=1	# invalid mr
@@ -56,6 +57,12 @@ declare -a mr_errs=(
 
 # init_mr - initialize the environment for this
 init_mr() {
+
+	# Get the origin of this repo to use in 'lab mr' calls
+	origin="$(grep -m1 'remote' .git/config)"
+	origin="${origin:8}"
+	origin="${origin//[^[:alnum:]]}"
+
 	mergelist_file=$MYDATA/mergelist.log
 }
 
@@ -283,7 +290,7 @@ $STA$current_mr$INF (y/n)? $OFF"
 			c ) b_nacked=false
 			    b_acked=false
 			    b_reviewed=true
-			    lab mr note --force-linebreak $current_mr
+			    lab mr note $origin $current_mr --force-linebreak
 			    return 0
 			    ;;
 			v ) view_comments
@@ -294,8 +301,8 @@ $STA$current_mr$INF (y/n)? $OFF"
 		loop_yn "$querystring" b_yes
 
 		if $b_yes; then
-			$b_acked && lab mr approve $cmt $current_mr
-			$b_nacked && lab mr unapprove $cmt $current_mr
+			$b_acked && lab mr approve $origin $cmt $current_mr
+			$b_nacked && lab mr unapprove $origin $cmt $current_mr
 		else
 			b_acked=false
 			b_nacked=false
@@ -315,7 +322,7 @@ call_lab_mr_list() {
 	local outfile="$1"
 	local specifier="$2"
 	local srtcmd="sort -t ! -k2 -h"
-	local labcmd="lab mr list $specifier"
+	local labcmd="lab mr list $origin $specifier"
 
 	$labcmd | $srtcmd > $outfile
 # set +x
@@ -353,7 +360,7 @@ show_comments() {
 # 	current_mr
 #
 view_comments() {
-	[ -n "$current_mr" ] && { lab mr show --comments $current_mr; return; }
+	[ -n "$current_mr" ] && { lab mr show $origin $current_mr --comments; return; }
 	get_merge_request "comments"
 }
 
@@ -504,7 +511,7 @@ get_merge_request() {
 	while :; do
 		[ "$current_mr" == "q" ] && { current_mr=; return 1; }
 		if [ -n "$comments_only" ]; then
-			lab mr show --comments $current_mr;
+			lab mr show $origin $current_mr --comments;
 			stat=$?
 		else
 			get_merge_request_patches "$current_mr" "get_merge_request"
@@ -530,9 +537,9 @@ get_merge_request() {
 get_mrcommits_labmr() {
 	mr=$1
 
-	patchcount=$(lab mr show -p $mr | grep '^commit ' | wc -l)
+	patchcount=$(lab mr show $origin $mr -p | grep '^commit ' | wc -l)
 	echo -e "\npatchcount: $patchcount"
-	lab mr show -p $mr | grep '^commit ' | cut -d ' ' -f2 > $bp_commits
+	lab mr show $origin $mr -p | grep '^commit ' | cut -d ' ' -f2 > $bp_commits
 }
 
 # get_merge_request_patches - extract the patches from a merge request
@@ -592,7 +599,7 @@ get_merge_request_patches() {
 	> $missing_fixes
 	valpatchlist=
 
-	lab mr show --comments $mr > $mrcomments
+	lab mr show $origin $mr --comments > $mrcomments
 	stat=$?
 	[ $stat -eq 1 ] && return $mr_inv
 
