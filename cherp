@@ -90,24 +90,19 @@ declare currentupcommit
 # The '#' indicates a comment, and the '+' indicates already committed.
 declare ignore_str="#+"
 
-#########################################
-# Functions
-#########################################
-
 ########################################
-# Strings
+# Global Strings
 ########################################
 declare str_herald=
-declare str_noconflicts=
 declare str_conflicts=
 declare str_cmtmsg=
 declare str_active_session=
+declare str_bugzilla=
+declare str_upstream=
 
 init_global_strings() {
 str_herald="\n$MNU${UND}cherp $VERSION - Automates git cherry-pick$OFF\n"
-str_noconflicts="Cherry-picked without conflicts from the following upstream commit."
-str_conflicts="Cherry-picked from the following upstream commit."
-str_cmtmsg="$str_conflicts"
+str_conflicts="Conflicts:\n"
 str_active_session="
 ${WRN}There is currently a session active.$MNU
 	$BLD$MYNAME --status$INF for details on current session$MNU
@@ -115,6 +110,10 @@ ${WRN}There is currently a session active.$MNU
 	$BLD$MYNAME --new$INF to start a new session$OFF
 "
 }
+
+#########################################
+# Functions
+#########################################
 
 #===  FUNCTION  ================================================================
 #          NAME:  print_herald
@@ -941,12 +940,14 @@ $MNU B $OFF Current git branch       : $STA$(get_gitbranch)$OFF
 $MNU p $OFF Current subject prefix   : $STA$subjectprefix$OFF
 $MNU b $OFF Backport File            : $STA$upcommitsfile$OFF
 $MNU w $OFF Working directory        : $STA$workdir$OFF
-$MNU u $OFF Upstream directory       : $STA$updir$OFF
+$MNU U $OFF Upstream directory       : $STA$updir$OFF
+$MNU u $OFF Upstream status          : $STA$str_upstream$OFF
+$MNU z $OFF Bugzilla link            : $STA$str_bugzilla$OFF
 $MNU
     ${UND}Control                $OFF
 $MNU N $OFF Start a New Session
 $MNU P $OFF Pop 'n' commits
-$MNU s $OFF Show History
+$MNU H $OFF Show History
 $MNU r $OFF Run cherp
 $MNU q $OFF Quit this script
 $MNU h $OFF Help
@@ -982,13 +983,17 @@ function menu_parser {
 			;;
 		b )	set_upcommitsfile
 			;;
-		u )     set_upstream_directory
+		U )     set_upstream_directory
+			;;
+		u )     getuser "${MNU}Upstream status: $OFF" str_upstream
+			;;
+		z )	getuser "${MNU}Bugzilla link: $OFF" str_bugzilla
 			;;
 		c )	set_next_cherrypick
 			;;
 		N )	init_newsession
 			;;
-		s )	show_history
+		H )	show_history
 			;;
 		P )     getuser "${MNU}Pop how many commits: $OFF" pops
 			pop_commits $pops
@@ -1253,7 +1258,9 @@ EOF
 #    PARAMETERS:  none
 #       GLOBALS:  b_conflict
 #		  cmtmsgfile
-#		  str_cmtmsg
+#		  str_bugzilla
+#		  str_upstream
+#		  str_conflicts
 #       RETURNS:  none
 #===============================================================================
 stage_commit() {
@@ -1284,8 +1291,11 @@ stage_commit() {
 	description=$(echo -e $description)
 	echo "$description" >> $cmtmsgfile
 	echo -e "\n" >> $cmtmsgfile
-	echo -e "$str_cmtmsg" >> $cmtmsgfile
-	echo -e "\n" >> $cmtmsgfile
+	echo '```' >> $cmtmsgfile
+	[ -n "$str_bugzilla" ] && echo -e "Bugzilla: $str_bugzilla" >> $cmtmsgfile
+	[ -n "$str_upstream" ] && echo -e "Upstream status: $str_upstream" >> $cmtmsgfile
+	echo -e "\n"
+	$b_conflict && echo -e "$str_conflicts" >> $cmtmsgfile
 
 	# Append the original commit message.
 	#
