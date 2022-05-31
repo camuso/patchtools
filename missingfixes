@@ -2,6 +2,16 @@
 #
 # missingfixes
 
+[ "$MYDIR" ]     || declare MYDIR=$(dirname $(which $(basename $0)))
+[ "$MYLIB" ]     || declare MYLIB=$MYDIR/lib
+[ "$ui_loaded" ] || source $MYLIB/ui.source
+[ "$configmanager_loaded" ] || source $MYLIB/config-manager.source
+MYDATA=$(realpath ./.data)
+
+declare configfile="$MYDATA/patchreview.conf"
+declare remote_dir=
+declare outdir=
+declare missing_file=
 declare usagestr=$(
 cat <<EOF
 
@@ -11,6 +21,10 @@ Description:
 
   Parses the given missingfixes-file for fixes that were made before the
   given upstream-tag.
+
+  NOTE:
+       Must be executed in a git repo directory that has a
+       .data/patchreview.conf file.
 
 Arguments:
   upstream-tag - upstream tag to check against.
@@ -27,25 +41,87 @@ usage() {
 	exit 1
 }
 
-strindex() {
-	local x="${1%%$2*}"
-	[[ $x = $1 ]] && echo -1 || echo ${#x}
+check_repo() {
+	[ -d ./.git ] && return 0
+	echo -e "$STA$PWD$WRN is not a git repository.$OFF"
+	return 1
+}
+
+check_configfile() {
+	[ -f $configfile ] && return 0
+	echo -e "$STA$PWD$WRN does not have a $STA$configfile$WRN file."
+	echo -e "${INF}You must run patchreview before running this script.$OFF"
+	return 1
+}
+
+check_outdir() {
+	[ -d "$outdir" ] && return 0
+	echo -e "${WRN}There is no patchreview output directory."
+	echo -e "${INF}You must run patchreview before running this script.$OFF"
+	return 1
+}
+
+check_remote_dir() {
+	[ -d "$remote_dir" ] && return 0
+	echo -e "${WRN}There is no directory named for the upstream repo."
+	echo -e "${INF}You must run patchreview before running this script.$OFF"
+	return 1
+}
+
+check_missingfile() {
+	[ -f "$missing_file" ] && return 0
+	echo -e "${WRN}There is no $outdir/missing_fixes file."
+	echo -e "${INF}You must run patchreview before running this script.$OFF"
+}
+
+init() {
+	# Config manager stuff
+	check_configfile || usage
+	cfg_init_ready "$configfile"
+
+	terminal_background=$(cfg_read_key "background")
+	ui_set_colors
+
+	check_repo || usage
+
+	outdir=$(cfg_read_key "outdir")
+	outdir=$(realpath $outdir)
+	check_outdir || usage
+
+	remote_dir=$(cfg_read_key "remote_dir")
+	remote_dir=$(realpath $remote_dir)
+	check_remote_dir || usage
+
+	missing_file="$outdir/missing_fixes"
+	missing_file=$(realpath $missing_file)
+	check_missingfile || usage
 }
 
 main() {
 	local utag=$1
-	local missingfile="$2"
 	local tag
 	local ltag
 	local rc
 	local lrc
 	local index
+	local b_newupstream=false
 
 	[ ${#@} -eq 2 ] || usage
 
-	index=$(strindex "$utag" "-rc")
+	init
+	cd $remote_dir
+
+	# Assume that default rc for released upstream versions is rc-10. We
+	# need that, otherwise rc versions will be counted as higher than the
+	# released version.
+	# If there is an rc passed, extract it.
+	#
+	index=$(ui_strindex "$utag" "-rc")
 	[ $index -ge 0 ] && rc=${utag:$index+3} || rc=10
 
+	# If the user pased a leading v in the version number, remove it.
+	# Then remove the dot.
+	#
 	[ "${utag:0:1}" == "v" ] && utag="${utag:1:4}" || utag="${utag:0:4}"
 	utag="${utag//.}"
 
@@ -56,16 +132,26 @@ main() {
 		lrc=0
 		commit=$(echo $line | cut -d' ' -f5)
 		tag=$(git tag --contains $commit | head -1)
-		index=$(strindex "$tag" "-rc")
+
+		# If this commit is not encompassed by a tag, then it's too new
+		# to be considered, so just go to the next one.
+		#
+		[ -n "$tag" ] || continue
+
+		index=$(ui_strindex "$tag" "-rc")
 		[ $index -ge 0 ] && lrc=${tag:$index+3}
 		ltag="${tag:1:4}"
 		ltag="${ltag//.}"
-# echo "ltag: $ltag lrc: $lrc"
+# echo "tag: $tag ltag: $ltag lrc: $lrc"
 		[ $ltag -gt $utag ] && continue
 		[ $ltag -eq $utag ] && [ $lrc -gt $rc ] && continue
-		echo -n "Missing fix from $tag : "
-		echo $line | cut -d' ' -f5-
-	done < $missingfile
+		echo -en "${INF}Missing fix from $STA$tag$INF : "
+		echo -e $line$OFF | cut -d' ' -f5-
+	done < $missing_file
+
+	echo -en $OFF
+
+	cd -
 }
 
 main $@
