@@ -344,9 +344,17 @@ validate_commit() {
 	ussubary=( ${ussubary[@]} )
 	rhsubary=( ${rhsubary[@]} )
 
+	# Remove the word "Subject" in the rhsubary if it's there.
+	[ "${rhsubary[0]}" == "Subject" ] && rhsubary=( ${rhsubary[@]:1} )
+
 	# Get the number of elements in each array.
 	ustoks=${#ussubary[@]}
 	rhtoks=${#rhsubary[@]}
+
+	# If there are more tokens in the rhsubary, it's almost 100% certain
+	# the rh maintainer added stuff to the beginning of the summary line,
+	# so let's move beyond that.
+	[ $rhtoks -gt $ustoks ] && rhsubary=( ${rhsubary[@]:((rhtoks - ustoks))} )
 
 #echo -e "delimiters: \"$delimiters\""
 #echo "rhsubary: "${rhsubary[@]}""
