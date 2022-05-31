@@ -190,3 +190,14 @@ cfg_init() {
 	cfg_compare_configfiles || cfg_update_configfile
 	cfg_read_configfile
 }
+
+# cfg_init_ready - init for rw access only
+#
+# This function inits the config manager for a config file that
+# is ready for r/w access without a full init to compare with the
+# template and read every key.
+#
+cfg_init_ready() {
+	cfg_file="$1"
+	cfg_b_ready=true
+}
