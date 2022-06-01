@@ -105,10 +105,6 @@ main() {
 	local utag=$1
 	local tag
 	local ltag
-	local rc
-	local lrc
-	local index
-	local b_newupstream=false
 
 	[ ${#@} -eq 1 ] || usage
 
