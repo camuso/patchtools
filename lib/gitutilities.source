@@ -405,10 +405,12 @@ validate_commit() {
 # NOTE: The only files that will be parsed are those that have ".patch" at the
 #	end of their names.
 #
-# $1 - directory containing the backported patches
-# $2 - filename, including path, of the commits file.
-# $3 - number of chararcters in the hashes
-# $4 - patch validation fuzz level (optional)
+# Argumnent Options:
+# -i - srcdir REQUIRED directory containing the backported patches
+# -o - commitsfile REQUIRED path to file that will get the upstream commits
+# -h - hashsize OPTIONAL default is 40
+# -f - valfuzz OPTIONAL default is 1
+# -q - b_quiet OPTIONAL default is false
 #
 function git_comment2commitsfile {
 	# echo -e "${MNU}git_comment2commitsfile$OFF"
@@ -438,6 +440,8 @@ function git_comment2commitsfile {
 	local opt
 	local remdir=
 	local b_invcmt=false		# if git log status=128 cmt is invalid
+	local b_onecmt=true		# If only one commit found in comment
+	local lcount
 
 	while [ -n "$1" ]; do
 		opt="$1"
@@ -493,6 +497,8 @@ function git_comment2commitsfile {
 		egrep '(commit|cherry)' $srcfile \
 			| egrep "\b[0-9a-f]{$hashsize}\b" > $scratchfile
 
+		[ $(cat $scratchfile | wc -l) -eq 1 ] || b_onecmt=false
+
 #cat $scratchfile
 		# See if there is a commit we can successfully validate as
 		# having a valid subject line to minimize user pain.
@@ -517,8 +523,15 @@ function git_comment2commitsfile {
 
 			commit=$(git_excisecommit "$line" "$hashsize")
 #echo "commit: $commit"
-			validate_commit -f $valfuzz -u $remdir $commit "$subject"
-			stat=$?
+			if $b_onecmt; then
+				[ -n "$remdir" ] && cd "$remdir"
+				git log --oneline -n1 $commit > /dev/null 2>&1
+				stat=$?
+				[ -n "$remdir" ] && cd - > /dev/null 2>&1
+			else
+				validate_commit -f $valfuzz -u $remdir $commit "$subject"
+				stat=$?
+			fi
 #echo "stat: $stat"
 #set -x
 			# Return status of 128 means that the call to git log in
