@@ -425,7 +425,8 @@ function git_comment2commitsfile {
 	local patchlist=
 	local cmtindex=1
 	local linenumber=0
-	local commitarray
+	local rawcmtarray=()
+	local commitarray=()
 	local sorted
 	local _40digit=true
 	local valpatchlist
@@ -434,14 +435,9 @@ function git_comment2commitsfile {
 	local commit
 	local stat=0
 	local banner=
-	local b_found_vcmt=false	# valid commit subject flag
-	local savedIFS="$IFS"
 	local b_quiet=false
 	local opt
 	local remdir=
-	local b_invcmt=false		# if git log status=128 cmt is invalid
-	local b_onecmt=true		# If only one commit found in comment
-	local lcount
 
 	while [ -n "$1" ]; do
 		opt="$1"
@@ -483,112 +479,87 @@ function git_comment2commitsfile {
 			echo -n $srcfile
 		} || echo $srcfile
 
-		b_found_vcmt=false
 		subject=$(extract_subject $srcfile)
 
 		linenumber=0
 		commitarray=()
-		sorted=()
+		rawcmtarray=()
 
 		# The default number of digits for a commit hash is 40.
 		#
-		# Gather anything that looks like a commit into the scratchfile
+		# Gather anything that looks like a commit into the rawcmtarray.
+		# Skip over reverted commits and use sort -u to squeeze out
+		# duplicates
 		#
-		egrep '(commit|cherry)' $srcfile \
-			| egrep "\b[0-9a-f]{$hashsize}\b" > $scratchfile
+		rawcmtarray=($(egrep '(commit|cherry)' $srcfile \
+			| egrep -vi 'revert' \
+			| egrep -o "\b[0-9a-f]{$hashsize}\b" \
+			| sort -u))
 
-		[ $(cat $scratchfile | wc -l) -eq 1 ] || b_onecmt=false
-
-#cat $scratchfile
-		# See if there is a commit we can successfully validate as
-		# having a valid subject line to minimize user pain.
-		# We only need to find one.
-		# If git log returns an invalid commit status (128), then skip
-		# it and go to the next one in the RHEL commit log.
-		# If none of the commits has a valid subject line, then gather
-		# what there are and present them to the user for selection.
-		# If there are no valid commits in the RHEL commit log, then
-		# we won't be able to format an upstream commit corresponding
-		# to this patch.
-		#
 		cmtindex=0
-		while read line; do
-#echo "line: \"$line\""
-			b_found_vcmt=false
-			stat=0
-
-			# Skip over lines identifying reverted commits
-			# Use double brackets and NO quotes.
-			([[ $line == *revert* ]] || [[ $line == *Revert* ]]) && continue
-
-			commit=$(git_excisecommit "$line" "$hashsize")
+#set -x
+		for commit in "${rawcmtarray[@]}"; do
 #echo "commit: $commit"
-			if $b_onecmt; then
+			if [ ${#rawcmtarray[@]} -eq 1 ]; then
 				[ -n "$remdir" ] && cd "$remdir"
 				git log --oneline -n1 $commit > /dev/null 2>&1
 				stat=$?
 				[ -n "$remdir" ] && cd - > /dev/null 2>&1
+				break
 			else
+				# If there's more than one commit cited in the
+				# commit log, and more than one of them can be
+				# found upstream, minimize the user's pain by
+				# matching the subject line of the RHEL patch
+				# to the summary line of the upstream commit.
 				validate_commit -f $valfuzz -u $remdir $commit "$subject"
 				stat=$?
 			fi
-#echo "stat: $stat"
-#set -x
-			# Return status of 128 means that the call to git log in
-			# validate_commit could not find the commit upstream.
-			# 0 means we found the commit, so we can break out of this loop.
-			# Anything else means that the user is going to have to sort
-			# it out, so put it in the commitarray to present to the screen.
+
 			case $stat in
-				128 )	continue;;
-				0   )	b_found_vcmt=true; break;;
-				*   )   b_found_vcmt=false; continue;;
+				# commit not found upstream
+				128 ) continue
+				      ;;
+				# valid commit but subject doesn't match summary
+				# Create an array of these to present if we can't
+				# find a match for the summary.
+				1   ) commitarray[$cmtindex]=$commit
+				      let cmtindex++
+				      ;;
+				# commit found and subject matches summary
+				# We're done. No need to present a list to the
+				# user.
+				0   ) commitarray=( $commit )
+				      break
+				      ;;
 			esac
 
-			commitarray[$cmtindex]=$commit;
-			let cmtindex++
-
 		done < $scratchfile
-#set +x
-		# If we didn't find a commit we could validate, then present
-		# whatever commits we did find to the user to select.
-		#
-		$b_found_vcmt || {
-
-			# Sort the commit array using the -u unique switch to wring
-			# out duplicates.
-			#
-			IFS=$'\n' sorted=($(sort -u <<< "${commitarray[*]}"))
-			IFS="$savedIFS"	# restore IFS
-
-			# If we still have more than one valid commit at this point,
-			# present them to the user to determine which to use.
-			#
-			if [ ${#sorted[@]} -gt 1 ]; then
-
-				echo -en "There is more than one commit mentioned in patch"
-				echo -e  "$BLD $index $OFF"
-				echo -e  "Please choose one of the following."
-# set -x
-				[ -n "$remdir" ] && cd "$remdir"
-				for ((cmtindex=0; cmtindex < ${#sorted[@]}; cmtindex++))
-				do
-					cmtstr=$(git log --oneline -n1 ${sorted[$cmtindex]})
-					printf "%d - $cmtstr\n" $((cmtindex +1))
-				done
 # set +x
-				[ -n "$remdir" ] && cd - > /dev/null 2>&1
+		if [ ${#commitarray[@]} -gt 1 ]; then
 
-				loop_range 1 $cmtindex linenumber
-			else
-				linenumber=1
-			fi
+			echo -en "\n${INF}There is more than one commit mentioned in patch"
+			echo -e  "$STA $index $INF \n"
+			echo -e  "Please choose one of the following.\n"
+# set -x
+			[ -n "$remdir" ] && cd "$remdir"
 
-			cmtindex=$((linenumber - 1))
-			commit=${sorted[$cmtindex]}
-		}
+			for ((cmtindex=0; cmtindex < ${#commitarray[@]}; cmtindex++))
+			do
+				cmtstr=$(git log --oneline -n1 ${commitarray[$cmtindex]})
+				printf "${MNU}%d${INF} - $cmtstr$OFF\n" $((cmtindex +1))
+			done
 
-		rm -f $scratchfile
+			[ -n "$remdir" ] && cd - > /dev/null 2>&1
+			echo
+
+			loop_range 1 $cmtindex linenumber
+		else
+			linenumber=1
+		fi
+
+		cmtindex=$((linenumber - 1))
+		commit=${commitarray[$cmtindex]}
 
 		if [ -n "$commit" ]; then
 			echo "$commit $index/$filecount" >> $commitsfile
@@ -600,6 +571,7 @@ function git_comment2commitsfile {
 			printf "%040d $index/$filecount\n" 0 >> $commitsfile
 		fi
 		let index++
+#set +x
 	done
 	$b_quiet && echo
 	return 0
