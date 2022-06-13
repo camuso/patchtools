@@ -259,9 +259,6 @@ ${INF}Merge Request: $STA$current_mr$INF has already been $actstr"
 
 query_acknack() {
 	local choice
-	local querystring="\
-"$INF"Are you sure you want to $actstr Merge Request \
-$STA$current_mr$INF (y/n)? $OFF"
 
 	while :;do
 
@@ -299,6 +296,10 @@ $STA$current_mr$INF (y/n)? $OFF"
 			    continue
 			    ;;
 		esac
+
+	local querystring="\
+"$INF"Are you sure you want to $actstr$INF Merge Request \
+$STA$current_mr$INF (y/n)? $OFF"
 
 		loop_yn "$querystring" b_yes
 
