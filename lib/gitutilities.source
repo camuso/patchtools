@@ -505,7 +505,6 @@ function git_comment2commitsfile {
 				git log --oneline -n1 $commit > /dev/null 2>&1
 				stat=$?
 				[ -n "$remdir" ] && cd - > /dev/null 2>&1
-				break
 			else
 				# If there's more than one commit cited in the
 				# commit log, and more than one of them can be
