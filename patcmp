@@ -2,7 +2,7 @@
 #
 # compare submitted patches with upstream
 
-declare version="6.0"
+declare version="7.0"
 
 declare MYDATA=./.data
 declare MYDIR=$(dirname $(which $(basename $0)))
@@ -135,15 +135,19 @@ control_c()
 backup() {
 	local curidx=$1
 	local back=$2
-	local idx=$curidx
+	local bk_idx=$curidx
+	local bk_max
 
-	let idx--
+	$b_runmismatch && bk_max=$last_mismatch || bk_max=$maxindex
 
-	$back && let idx--
+# echo "curidx: $curidx previndex: $previndex  bk_max: $bk_max"
+	let bk_idx--
 
-	(($idx <= 0)) && idx=0
+	$back && ((previndex != bk_max)) && let bk_idx--
 
-	eval $3=$idx
+	(($bk_idx <= 0)) && bk_idx=0
+# echo "bk_idx: $bk_idx"
+	eval $3=$bk_idx
 }
 
 # backup_wrapper - wraps the backup routine with globals
@@ -157,7 +161,7 @@ backup() {
 #	mmindex -  the current mismatch index, if we are in mismatch mode
 #
 backup_wrapper() {
-	echo "backup_wrapper: index: $index patnum: $patnum"
+# echo "backup_wrapper: index: $index b_backup: $b_backup"
 
 	if $b_runmismatch; then
 		backup $mmindex $b_backup mmindex
@@ -165,6 +169,8 @@ backup_wrapper() {
 	else
 		backup $index $b_backup index
 	fi
+# echo "index: $index"
+# read
 }
 
 # get_patch_number
@@ -240,7 +246,7 @@ replace_commit() {
 	# tracks the most recently viewed, so we know we can backup to that
 	# if it was not the ultimate patch in the set.
 	#
-	([ $index -gt 0 ] && [ $previndex -lt $maxindex ]) && backup_wrapper
+	([ $index -gt 0 ] && [ $previndex -lt $last_mismatch ]) && backup_wrapper
 
 	patnum=$((index + 1))
 	# echo "index: $index patnum: $patnum"
@@ -591,8 +597,8 @@ while :; do
 		q )	break
 			;;
 		b )	echo
-			backup_wrapper
 			b_backup=true
+			backup_wrapper
 			;;
 		n )	get_patch_number
 			b_selected=true
