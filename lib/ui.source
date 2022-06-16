@@ -435,14 +435,14 @@ getch() {
 # Returns character in $1 followed by echo
 #
 getchar() {
-	local char
-	read -n1 char
+	local gc_char
+	read -n1 gc_char
 	echo
 
 	# In order to receive special characters, like '>', pass quotes
 	# to eval by escaping them on the command line.
 	#
-	[ $# -gt 0 ] && eval $1=\"$char\"
+	[ $# -gt 0 ] && eval $1=\"$gc_char\"
 }
 
 # promptgetchar()
