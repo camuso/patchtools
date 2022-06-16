@@ -7,7 +7,6 @@
 
 declare gitutilities_loaded=true
 declare scratchdir=/dev/shm
-declare scratchfile=$scratchdir/scratch
 
 [ "$ui_loaded" ]         || source $MYLIB/ui.source
 [ "$patchutils_loaded" ] || source $MYLIB/patch-utils.source
@@ -455,7 +454,6 @@ function git_comment2commitsfile {
 	[ -f $commitsfile ] || return $ui_err_invfile
 
 	> $commitsfile
-	> $scratchfile
 
 	patchlist=$(ls $srcdir/*.patch | sort -V)
 	patchtotal=$(wc -w <<< "$patchlist")
@@ -533,7 +531,7 @@ function git_comment2commitsfile {
 				      ;;
 			esac
 
-		done < $scratchfile
+		done
 # set +x
 		if [ ${#commitarray[@]} -gt 1 ]; then
 
