@@ -39,6 +39,7 @@ declare mismatch_file
 declare -i first_mismatch=0
 declare -i last_mismatch=0
 declare -i previndex
+declare -i bupnum
 declare -i mmindex
 declare -i currentmm
 declare -i mismatch_count
@@ -212,7 +213,7 @@ get_patch_number() {
 		fi
 
 		index=$((patnum - 1))
-		echo "index: $index patnum: $patnum"
+# echo "index: $index patnum: $patnum"
 		break
 	done
 }
@@ -281,6 +282,22 @@ say_nomismatch() {
 	echo -e " ********************************************* $OFF"
 }
 
+# show_mismatch() - display the mismatched patches to the screen
+#
+# Globals:
+# 	mismatch_array
+# 	mlfiles
+#
+show_mismatch() {
+	local seqno	# sequence number of patch
+
+	echo -e "\n${MNU}Patches conflicting with upstream commits$INF"
+	echo -e       "=========================================$OFF"
+	for seqno in ${mismatch_array[@]}; do
+		echo -e "$MNU$((seqno + 1)): $STA${mlfiles[seqno]}$OFF"
+	done
+}
+
 # init_mismatch()
 #
 # Globals:
@@ -289,6 +306,7 @@ say_nomismatch() {
 # 	first_mismatch
 # 	last_mismatch
 # 	mmindex
+# 	mlfiles
 #	index
 #
 init_mismatch() {
@@ -319,13 +337,7 @@ init_mismatch() {
 		let mmindex++
 	done < $mismatch_file
 
-	if [ ${#mismatch_array[@]} -gt 0 ]; then
-		echo -e "${MNU}Patches conflicting with upstream commits$INF"
-		echo -e       "=========================================$OFF"
-		for seqno in ${mismatch_array[@]}; do
-			echo -e "$MNU$((seqno + 1)): $STA${mlfiles[seqno]}$OFF"
-		done
-	fi
+	[ ${#mismatch_array[@]} -gt 0 ] && show_mismatch
 
 	mismatch_count=$mmindex
 
@@ -514,6 +526,9 @@ echo
 
 [ -f "$mismatch_file" ] && init_mismatch || b_runmismatch=false
 $b_runmismatch && index=$first_mismatch || index=0
+previndex=$index
+bupnum=$((index+1))
+
 # echo "Starting with patch: $((index + 1))"
 
 # If the lasttag file does not exist, then go create it with a
@@ -522,7 +537,8 @@ $b_runmismatch && index=$first_mismatch || index=0
 [ -f /dev/shm/lasttag ] && b_rmlasttag=true || getlasttag
 lasttag=$(cat /dev/shm/lasttag)
 
-previndex=0
+
+declare anystr="\t${MNU}    Any other key displays the diff for patch "
 
 #############################################
 # Main program Loop
@@ -541,20 +557,6 @@ while :; do
 		echo -e "${INF}Starting with patch number:$STA $((index + 1))$OFF\n"
 	fi
 
-	if [ $index -ge $maxindex ]; then
-		echo -e "\n$INF     ******"
-		printf "Patch$STA %04d$INF is the last patch in the set.\n" \
-			$((maxindex + 1))
-		echo -e   "     ******$OFF"
-	fi
-
-	if $b_runmismatch && [ $index -eq $last_mismatch ]; then
-		echo -e "\n$INF     ******"
-		printf "Patch$STA %04d${INF} is the last$WRN conflict$INF in the set.\n" \
-			$((last_mismatch + 1))
-		echo -e   "     ******$OFF"
-	fi
-
 	if ($b_runmismatch && [ $index -gt 0 ] && [ $index -lt $maxindex ]); then
 		ui_inarray $index mismatch_array[@]
 		[ $? -eq 0 ] && index=${mismatch_array[$mmindex]} \
@@ -563,40 +565,63 @@ while :; do
 
 	echo -e "\n${MNU}Interactively Compare patches with upstream commits"
 	echo -e   "${INF}-----------------------------------------------------------------"
-	echo -en "$OFF"
+	echo -e "${INF}Next Patch $STA$((index + 1))$INF of $STA$((maxindex + 1))$OFF"
+
+	if [ $index -ge $maxindex ]; then
+		echo -e "${INF}*******************************************"
+		printf        "Patch$STA %04d$INF is the last patch in the series.\n" \
+			$((maxindex + 1))
+		echo -e   "*******************************************$OFF"
+	fi
+
 	echo -e "$INF Compare :$STA $mldir/$(basename ${mlfiles[$index]})"
 	echo -e "$INF    With :$STA $usdir/$(basename ${usfiles[$index]})$OFF"
-	if ! $b_nomismatch; then
-	echo -e "${WRN}Conflict :$STA $((mmindex+1)) ${WRN}of$STA $mismatch_count$OFF"
-	fi
-	echo
 
+	if $b_runmismatch; then
+	  echo -e "${WRN}Conflict$INF :$STA $((mmindex+1)) ${INF}of$STA $mismatch_count$OFF"
+	  if [ $index -eq $last_mismatch ]; then
+	    echo -e  "${INF}**********************************************"
+	    printf "Patch$STA %04d${INF} is the last$WRN conflict$INF in the series.\n" \
+		    $((last_mismatch + 1))
+	    echo -en "**********************************************$OFF"
+	  fi
+	fi
+
+	echo
 	echo -en "$MNU"
 	echo -e  "\t    Last Tag :$STA $lasttag$MNU"
 	echo -e  "\t    RHEL dir :$STA $mldir$MNU"
 	echo -e  "\tUpstream dir :$STA $usdir$INF"
 	echo -e "-----------------------------------------------------------------"
-	echo -e  "\t${MNU}c$OFF - run batch file comparison to find conflicts with upstream$OFF"
 
-	if ! $b_nomismatch; then
+	if $b_runmismatch; then
+	echo -e  "\t${MNU}c$OFF - show conflicting patches"
 	echo -e  "\t${MNU}m$OFF - only examine patches conflicting with upstream:$STA $b_runmismatch"
 	echo -e  "\t${MNU}s$OFF - show contents of conflicts log"
+	if [ $mmindex -gt 0 ]; then
+	echo -e  "\t${MNU}b$OFF - backup to patch $STA$bupnum$OFF of $STA$((maxindex + 1))"
+	echo -e  "\t${MNU}r$OFF - re-display patch $STA$((previndex+1))$INF of $STA$((maxindex+1))$OFF"
+	fi
+	elif [ $index -gt 1 ]; then
+	echo -e  "\t${MNU}b$OFF - backup to patch $STA$((index-1))$OFF of $STA$((maxindex+1))"
+	echo -e  "\t${MNU}r$OFF - re-display patch $STA$index$INF of $STA$((maxindex+1))$OFF"
 	fi
 
-	echo -e  "\t${MNU}b$OFF - back to the previous patch"
 	echo -e  "\t${MNU}n$OFF - prompt for a number for a specific patch"
-	echo -e	 "\t${MNU}p$OFF - replace current upstream patch with a different commit"
-	echo -e  "\t${MNU}x$OFF - spawns a secondary shell"
+	echo -e  "\t${MNU}p$OFF - replace current upstream patch with a different commit"
+	echo -e  "\t${MNU}C$OFF - run batch file comparison to find conflicts with upstream$OFF"
+
 	echo -e  "\t${MNU}q$OFF - quit and return to previous execution environment"
 	$b_zstr && echo -e  "\t${MNU}z$OFF - "$zstr""
-	echo -en "\n\t${INF}or any other key moves forward to the next patch ... "$OFF""
-	read -n1 answer
+	echo -e  "$anystr$STA$((index + 1))$MNU of $STA$((maxindex + 1))$MNU.$OFF"
+	promptgetchar "\n\t${MNU}Your choice : $OFF" answer
 	echo
 
 	case $answer in
 		q )	break
 			;;
-		b )	echo
+		b )	[ $mmindex -gt 0 ] || continue
+			echo
 			b_backup=true
 			backup_wrapper
 			;;
@@ -605,9 +630,12 @@ while :; do
 			;;
 		p )	replace_commit
 			;;
-		x )	ui_sh_spawn
-			echo
-			continue
+		r )	if $b_runmismatch && [ $mmindex -gt 0 ]; then
+				index=$previndex
+				bupnum=$((${mismatch_array[index-1]} + 1))
+			elif [ $index -gt 0 ]; then
+				index=$previndex
+			fi
 			;;
 		z )	$b_zstr && exit $code_special_action
 			;;
@@ -636,11 +664,15 @@ while :; do
 			fi
 			;;
 
-		c )	patbatcmpmgr -R $mldir -U $usdir -o $usdir/mm.log
+		C )	patbatcmpmgr -R $mldir -U $usdir -o $usdir/mm.log
 			mismatch_file=$usdir/mm.log
 			b_runmismatch=true
 			init_mismatch
 			echo
+			continue
+			;;
+
+		c )	[ ${#mismatch_array[@]} -gt 0 ] && show_mismatch
 			continue
 			;;
 
@@ -671,16 +703,20 @@ while :; do
 				let mmindex++
 		fi
 
+		[ $mmindex -gt 1 ] && bupnum=$((${mismatch_array[mmindex-2]} + 1))
+
 		# Set the index into the commit log files to the element
 		# indexed by mmindex in the mismatch_array
 		#
 		index=${mismatch_array[$mmindex]}
 		# echo "Forward mmindex: $mmindex index: $index"
 	else
+		bupnum=$((index))
 		[ $index -lt $maxindex ] && let index++
 		# echo "Forward index: $index maxindex: $maxindex"
 	fi
-
+#echo "mismatch_array: ${mismatch_array[@]}"
+#echo "mmindex: $mmindex  bupnum: $bupnum"
 	echo
 done
 echo
