@@ -238,19 +238,19 @@ show_config_menu() {
 	local config_menu=$(
 cat <<EOF
 $MNU
-      $UND\0Configuration       $OFF
-  $MNU o$OFF  Operating mode           :$STA $(show_opmode)
-  $MNU c$OFF  See comments first       :$STA $(show_mrcomments)
-  $MNU s$OFF  Automatically Seek Fixes :$STA $(show_seekfixes)
-  $(show_patches)
-  $(show_workdir)
-  $MNU r$OFF  Remote Repo/Branch       :$STA $remote_repo/$remote_branch$OFF
-      Remote URL               :$STA$(show_remote_url "$remote_repo")$OFF
-  $MNU e$OFF  Diff Editor              :$STA $editor
-  $MNU f$OFF  Patch Validation fuzz    :$STA $(show_patchvalfuzz)
-  $MNU p$OFF  Cycle Patch Compare Mode :$STA $(show_cmpmode)$OFF
-  $MNU v$OFF  Toggle verbose mode      : $(show_verbose)
-  $MNU q$OFF  Quit and return to previous menu
+       $UND\0Configuration       $OFF
+   $MNU o$OFF  Operating mode           :$STA $(show_opmode)
+   $MNU c$OFF  See comments first       :$STA $(show_mrcomments)
+   $MNU s$OFF  Automatically Seek Fixes :$STA $(show_seekfixes)
+   $(show_patches)
+   $(show_workdir)
+   $MNU r$OFF  Remote Repo/Branch       :$STA $remote_repo/$remote_branch$OFF
+       Remote URL               :$STA$(show_remote_url "$remote_repo")$OFF
+   $MNU e$OFF  Diff Editor              :$STA $editor
+   $MNU f$OFF  Patch Validation fuzz    :$STA $(show_patchvalfuzz)
+   $MNU p$OFF  Cycle Patch Compare Mode :$STA $(show_cmpmode)$OFF
+   $MNU v$OFF  Toggle verbose mode      : $(show_verbose)
+   $MNU q$OFF  Quit and return to previous menu
 \0
 EOF
 )
@@ -276,7 +276,7 @@ config_parser() {
 		get_booleans
 		init_loopvars
 		show_config_menu
-		promptgetchar ""$MNU"Enter one of the above: "$OFF"" opt
+		promptgetchar "$MNU    Enter one of the above: "$OFF"" opt
 
 		case $opt in
 		o )	change_opmode
