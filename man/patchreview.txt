@@ -1,5 +1,5 @@
 ===================
-Patchreview v11.3
+Patchreview v11.6
 ===================
 
 This menu-driven script allows the user to compare a set of patches
@@ -235,20 +235,22 @@ c * Invokes the config menu. These are preferences that will be preserved
     between invocations of patchreview.
 _________________________________________________________________________
 
-    Configuration
-    ------------------
- o  Operating mode          : Merge Request Mode
- c  See comments first      : OFF
- d  Patch directory         : .patches has 2 patch files
- w  Work directory          : .patches/tmp
- s  Remote Repo/Branch      : linus/master
-    Remote URL              : git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
- e  Diff Editor             : vimdiff
- f  Patch Validation fuzz   : 3 - case insensitive and ignore all punctuation
- p  Cycle Patch Compare Mode: Batch
- q  Quit and return to previous menu
+       Configuration
+       ------------------
+    o  Operating mode           : Merge Request Mode
+    c  See comments first       : ON
+    s  Automatically Seek Fixes : ON
+    d  Patch directory          : /work/c9s/kernel/.patches has 41 patch files.
+    w  Work directory           : /work/c9s/kernel/.patches/tmp
+    r  Remote Repo/Branch       : origin/master
+       Remote URL               : git@gitlab.com:redhat/centos-stream/src/kernel/centos-stream-9.git
+    e  Diff Editor              : vimdiff
+    f  Patch Validation fuzz    : 3 - case insensitive and ignore all punctuation
+    p  Cycle Patch Compare Mode : Batch
+    v  Toggle verbose mode      : verbose is ON
+    q  Quit and return to previous menu
 
-Enter one of the above:
+    Enter one of the above:
 _________________________________________________________________________
 Fig 2. Configuration Menu
 
@@ -456,36 +458,36 @@ If conflicts were discovered, you will be presented with the enumeration of
 each patch having conflicts and the total number of conflicts.
 _________________________________________________________________________
 
-iPatches conflicting with upstream commits
 =========================================
-33: /work/c9s/kernel/.patches/0033-Revert-mm-gup-small-refactoring-simplify-try_grab_pa.patch
+Patches conflicting with upstream commits
+=========================================
+Conflict number, Patch number, Conflicting Patch file
+1.  6: /work/c9s/kernel/.patches/0006-redhat-configs-enable-CONFIG_MLXREG_LC.patch
+2. 15: /work/c9s/kernel/.patches/0015-platform-chrome-Split-trace-include-file.patch
+3. 19: /work/c9s/kernel/.patches/0019-platform-chrome-cros_ec_typec-Get-mux-state-inside-c.patch
+4. 24: /work/c9s/kernel/.patches/0024-redhat-configs-enable-ChromeOS-privacy-screen.patch
+5. 27: /work/c9s/kernel/.patches/0027-drm-privacy_screen-Add-drvdata-in-drm_privacy_screen.patch
 
-Total number of conflicts with upstream: 1
-
-     ******
-Patch 0033 is the last conflict in the set.
-     ******
+Total number of conflicts with upstream: 5
 
 Interactively Compare patches with upstream commits
 -----------------------------------------------------------------
- Compare : /work/c9s/kernel/.patches/0033-Revert-mm-gup-small-refactoring-simplify-try_grab_pa.patch
-    With : /tmp/0033-Revert-mm-gup-small-refactoring-simplify-try_grab_pa.patch
-Conflict : 1 of 1
-
-	    Last Tag : kernel-4.18.0-375.el8
-	    RHEL dir : /work/c9s/kernel/.patches
-	Upstream dir : /tmp
+Next Patch 6 of 41
+ Compare : /work/c9s/kernel/.patches/0006-redhat-configs-enable-CONFIG_MLXREG_LC.patch
+    With : /work/c9s/kernel/.patches/tmp/0006-nocommit.patch
+Conflict : 1 of 5
 -----------------------------------------------------------------
-	c - run batch file comparison to find conflicts with upstream
+	c - show conflicting patches
 	m - only examine patches conflicting with upstream: true
 	s - show contents of conflicts log
-	b - back to the previous patch
+	p - use a different upstream commit for Patch 6
 	n - prompt for a number for a specific patch
-	p - replace current upstream patch with a different commit
-	x - spawns a secondary shell
+	e - show environment, directories, last tag, etc.
+	C - run batch file comparison to find conflicts with upstream
 	q - quit and return to previous execution environment
+	    Any other key displays the diff for patch 6 of 41.
 
-	or any other key moves forward to the next patch ... 
+	Your choice :
 _________________________________________________________________________
 Fig. 6 Interactively Compare Patches menu when there are conflicts
 
@@ -502,12 +504,10 @@ where you will see the conflict count bumped to "2 of 14".
 Only conflicting patches will be presented, unless you press 'n' to view
 a specific patch outside of the conflicted ones.
 
-c - invokes the batch comparison script to generate a list of files that
-    are sufficiently different to warrant human inspection. When this
-    key is pressed, the Batch Comparison menu is presented.
+c - Option only appears if there are conflicts in the patches.
+    Pressing this option displays the list of conflicting patches.
 
-m - Option only appears if conflicting patches were detected by the batch
-    comparison script.
+m - Option only appears if there are conflicts.
     This opton is set to true by default after running a batch
     comparison. When true, only the conflicting patches will be
     diffed by the editor. When this option is true, all patches are
@@ -515,25 +515,40 @@ m - Option only appears if conflicting patches were detected by the batch
     You can view non-conflicting patches by pressing 'n' to provide the
     patch number.
 
-s - Option only appears if a list of incongruent patch pairs was
-    generated by the batch comparison script.
-    When the associated key is pressed, a list of numbers of the patch
-    pairs that were incongruent is printed to the screen.
+s - Option only appears if thare are conflicts.
+    Displays a list of numbers of the conflicting patch pairs. The
+    verbocity of the batch comparison script deterimines how much
+    of the conflict information is displayed.
+    See menu option "C" below.
 
-b - Steps back to the previously examined patch.
+p - Prompts for a different upstream commit hash for the most recently
+    viewed patch diff.
 
-n - Prompts for a patch number to examine. This can be any patch pair
-    in the set.
+r - Only displayed after you've viewed the first patch diff.
+    Allows you to re-display the patch diff you just viewed, the number
+    of which is displayed.
 
-p - Prompts for a different commit hash for the most recently examined
-    patch.
+b - Only displayed after you've viewed the second patch diff.
+    Steps back to the patch previous to the one you just viewed, as
+    shown by the displayed number.
+    When option "m" above is "true", then it will backup to the
+    previous conflicting patch.
 
-x - Spawns a secondary cell. Press control-d or type "exit" to return.
+n - Prompts for a patch number to examine. This can be any patch number
+    in the series.
+
+e - Displays the current environment variables, directories, last tag, etc.
+
+C - invokes the batch comparison script to generate a list of files that
+    are sufficiently different to warrant human inspection. When this
+    key is pressed, the Batch Comparison menu is presented.
 
 q - Quits and returns to the caller.
 
 Any other key advances the patch counter to present the next RHEL/upstream
-pair of patches to examine.
+pair of patches to examine as shown by the patch number. In conflict mode,
+this will be the next conflicting patch in the series. See "m" and "c"
+above.
 
 _________________________________________________________________________
 
