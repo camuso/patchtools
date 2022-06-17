@@ -180,43 +180,38 @@ backup_wrapper() {
 # globals:
 # 	index
 #	mmindex
-#	b_runmismatch
 #
 get_patch_number() {
-	local retval
 	local patnum
-	local stat
-	local saved_mmindex=$mmindex
-	local saved_index=$index
-	local b_limitvio=false
-	local minstr="$MNU < ${STA}1$INF, setting patch number to$STA 1$OFF\n"
-	local maxstr="$MNU > $STA$mlcount$INF, setting patch number to $STA$mlcount$OFF\n"
+	local errstr="$INF Enter a different patch number or $qstr$INF to quit."
 
 	echo -e "$INF""Type $qstr$INF to quit and pick up where you left off $OFF"
 
 	while :; do
 		getuser "Patch number: " patnum
-		[ "$patnum" == "q" ] && break
+		[ "$patnum" == "q" ] && return 1
 
 		if ! [[ $patnum =~ ^-?[0-9]+$ ]]; then
-			echo -e "$STA$patnum ${WRN}is not a valid number.$OFF"
+			echo -e "$WRN$patnum is not a valid number.$OFF"
+			echo -e "$errstr"
 			continue
 		fi
 
 		if [ $patnum -lt 1 ]; then
-			echo -e "\n$BLD$patnum$minstr"
-			patnum=1
+			echo -e "\n$WRN$patnum < 1$errstr"
+			continue
 		fi
 
 		if [ $patnum -gt $mlcount ]; then
-			echo -e "\n$STA$patnum$maxstr"
-			patnum=$mlcount
+			echo -e "\n$WRN$patnum > $mlcount$errstr"
+			continue
 		fi
 
 		index=$((patnum - 1))
 # echo "index: $index patnum: $patnum"
 		break
 	done
+	return 0
 }
 
 # replace_commit
@@ -677,7 +672,7 @@ while :; do
 			backup_wrapper
 			;;
 		n )	get_patch_number
-			b_selected=true
+			[ $? -eq 0 ] && b_selected=true || continue
 			;;
 		p )	replace_commit
 			;;
