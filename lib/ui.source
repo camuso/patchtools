@@ -207,6 +207,31 @@ ui_putnchar() {
 	done
 }
 
+# ui_padfield - pad a string with a given character to fill a field
+#
+#  $1 - str
+#  $2 - pad character
+#  $3 - field width
+#
+#  Example:
+#  	paddedstr=$(ui_padfield "foo" "." 6
+#  	echo $paddedstr
+#  	...foo
+#
+ui_padfield() {
+	local str="$1"
+	local padch="$2"
+	local fldw=$3
+	local padn
+	local padstr
+
+	[ ${#str} -ge $fldw ] && echo -n "$str" && return
+	padn=$((fldw - ${#str}))
+	padstr=$(ui_putnchar "$padch" $padn)
+	echo -n "$padstr$str"
+	return
+}
+
 # ui_clrline - clear the current line and optionally move cursor up one
 #
 # $1 - if not empty, moves the cursor up one line.
