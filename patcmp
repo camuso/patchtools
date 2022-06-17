@@ -2,7 +2,7 @@
 #
 # compare submitted patches with upstream
 
-declare version="7.0"
+declare version="7.1"
 
 declare MYDATA=./.data
 declare MYDIR=$(dirname $(which $(basename $0)))
@@ -31,6 +31,7 @@ declare -i mlcount	# count of patch files downloaded from mail
 declare -i uscount	# count of patch files in upstream directory
 declare -i index=0	# running 0-based index of the current patch
 declare -i maxindex	# highest attainable index (mlcount - 1)
+declare -i tmpidx
 declare valpatchlist
 
 declare b_runmismatch=false
@@ -229,10 +230,15 @@ get_patch_number() {
 #
 replace_commit() {
 	local patnum
-	local commit
+	local commit=0
 	local patcnt
 	local pfx
-	local stat
+	local stat=0
+	local retstr=$(
+cat <<EOF
+${MNU}Enter $qstr$MNU to return to previous menu without changing anything.$OFF"
+EOF
+)
 
 	b_backup=false
 
@@ -257,10 +263,38 @@ replace_commit() {
 	[ -f "$uscommits" ] || \
 		ui_getfilespec "File containing the upstream commits: " uscommits
 
-	echo "removing: index: $index patch: ${usfiles[$index]}"
-	rm -vf ${usfiles[$index]}
-	getuser "New commit ID: " commit
-	echo "replacing patch: $patnum with commit: $commit"
+	echo -e "$retstr"
+
+	while :; do
+		getuser "New commit ID: " commit
+
+		if [ "$commit" == "q" ]; then
+			echo -e "${INF}Nothing was changed.$OFF"
+			return
+		fi
+
+		if [ -n "$commit" ]; then
+			git log --oneline -n1 $commit > /dev/null 2>&1
+			stat=$?
+		else
+			echo -e "${WRN}No commit entered."
+			echo -e "$retstr"
+			continue
+		fi
+
+		if [ $stat -ne 0 ]; then
+			echo -e "$WRN$commit$INF is an invalid commit."
+			echo -e "$retstr"
+			continue
+		fi
+
+		stat=0
+		break
+	done
+
+# echo -e "${INF}removing: index: $STA$index$INF patch: $STA${usfiles[$index]}$OFF"
+	rm -f ${usfiles[$index]}
+	echo -e "${INF}replacing upstream commit for: $STA$patnum$INF with commit: $STA$commit$OFF"
 	ui_replaceline $patnum "$commit $patnum/$patcnt" "$uscommits"
 	git format-patch --no-renames -1 -k --start-number $patnum $commit -o $usdir
 	stat=$?
@@ -290,11 +324,20 @@ say_nomismatch() {
 #
 show_mismatch() {
 	local seqno	# sequence number of patch
+	local confnum=1
+	local numfiles=${#mlfiles[@]}
+	local fldwidth=${#numfiles}
+	local padded
+	local dispnum
 
 	echo -e "\n${MNU}Patches conflicting with upstream commits$INF"
 	echo -e       "=========================================$OFF"
+	echo -e "${INF}Conflict number, Patch number, Conflicting Patch file$OFF"
 	for seqno in ${mismatch_array[@]}; do
-		echo -e "$MNU$((seqno + 1)): $STA${mlfiles[seqno]}$OFF"
+		dispnum=$((seqno + 1))
+		padded=$(ui_padfield "$dispnum" " " $fldwidth)
+		echo -e "$MNU$confnum. $padded: $STA${mlfiles[seqno]}$OFF"
+		let ++confnum
 	done
 }
 
@@ -372,6 +415,15 @@ getlasttag() {
 
 	echo
 	b_rmlasttag=true
+}
+
+show_env() {
+	echo
+	echo -en "$MNU"
+	echo -e  "\t    Last Tag :$STA $lasttag$MNU"
+	echo -e  "\t    RHEL dir :$STA $mldir$MNU"
+	echo -e  "\tUpstream dir :$STA $usdir$INF"
+	echo
 }
 
 vim_cmd() {
@@ -537,7 +589,6 @@ bupnum=$((index+1))
 [ -f /dev/shm/lasttag ] && b_rmlasttag=true || getlasttag
 lasttag=$(cat /dev/shm/lasttag)
 
-
 declare anystr="\t${MNU}    Any other key displays the diff for patch "
 
 #############################################
@@ -565,11 +616,11 @@ while :; do
 
 	echo -e "\n${MNU}Interactively Compare patches with upstream commits"
 	echo -e   "${INF}-----------------------------------------------------------------"
-	echo -e "${INF}Next Patch $STA$((index + 1))$INF of $STA$((maxindex + 1))$OFF"
+	echo -e "${MNU}Next Patch $STA$((index + 1))$INF of $STA$((maxindex + 1))$OFF"
 
 	if [ $index -ge $maxindex ]; then
 		echo -e "${INF}*******************************************"
-		printf        "Patch$STA %04d$INF is the last patch in the series.\n" \
+		printf        "Patch$STA %d$INF is the last patch in the series.\n" \
 			$((maxindex + 1))
 		echo -e   "*******************************************$OFF"
 	fi
@@ -581,34 +632,33 @@ while :; do
 	  echo -e "${WRN}Conflict$INF :$STA $((mmindex+1)) ${INF}of$STA $mismatch_count$OFF"
 	  if [ $index -eq $last_mismatch ]; then
 	    echo -e  "${INF}**********************************************"
-	    printf "Patch$STA %04d${INF} is the last$WRN conflict$INF in the series.\n" \
+	    printf "Patch$STA %d${INF} is the last$WRN conflict$INF in the series.\n" \
 		    $((last_mismatch + 1))
-	    echo -en "**********************************************$OFF"
+	    echo -e "**********************************************$OFF"
 	  fi
 	fi
 
-	echo
-	echo -en "$MNU"
-	echo -e  "\t    Last Tag :$STA $lasttag$MNU"
-	echo -e  "\t    RHEL dir :$STA $mldir$MNU"
-	echo -e  "\tUpstream dir :$STA $usdir$INF"
-	echo -e "-----------------------------------------------------------------"
+	echo -e "${INF}-----------------------------------------------------------------$OFF"
 
 	if $b_runmismatch; then
 	echo -e  "\t${MNU}c$OFF - show conflicting patches"
 	echo -e  "\t${MNU}m$OFF - only examine patches conflicting with upstream:$STA $b_runmismatch"
 	echo -e  "\t${MNU}s$OFF - show contents of conflicts log"
-	if [ $mmindex -gt 0 ]; then
-	echo -e  "\t${MNU}b$OFF - backup to patch $STA$bupnum$OFF of $STA$((maxindex + 1))"
-	echo -e  "\t${MNU}r$OFF - re-display patch $STA$((previndex+1))$INF of $STA$((maxindex+1))$OFF"
-	fi
-	elif [ $index -gt 1 ]; then
-	echo -e  "\t${MNU}b$OFF - backup to patch $STA$((index-1))$OFF of $STA$((maxindex+1))"
-	echo -e  "\t${MNU}r$OFF - re-display patch $STA$index$INF of $STA$((maxindex+1))$OFF"
+	echo -e  "\t${MNU}p$OFF - use a different upstream commit for$STA Patch $((previndex+1))$OFF"
+	[ $mmindex -gt 0 ] && \
+	echo -e  "\t${MNU}r$OFF - re-display$STA Patch $((previndex+1))$OFF"
+	[ $mmindex -gt 1 ] && \
+	echo -e  "\t${MNU}b$OFF - backup to$STA Patch $bupnum$OFF"
+	else
+	echo -e  "\t${MNU}p$OFF - use a different upstream commit for$STA Patch $index$OFF"
+	[ $index -gt 0 ] && \
+	echo -e  "\t${MNU}r$OFF - re-display$STA Patch $index$OFF"
+	[ $index -gt 1 ] && \
+	echo -e  "\t${MNU}b$OFF - backup to$STA Patch $((index-1))$OFF"
 	fi
 
-	echo -e  "\t${MNU}n$OFF - prompt for a number for a specific patch"
-	echo -e  "\t${MNU}p$OFF - replace current upstream patch with a different commit"
+	echo -e  "\t${MNU}n$OFF - prompt for a number for a specific patch$OFF"
+	echo -e  "\t${MNU}e$OFF - show environment, directories, last tag, etc.$OFF"
 	echo -e  "\t${MNU}C$OFF - run batch file comparison to find conflicts with upstream$OFF"
 
 	echo -e  "\t${MNU}q$OFF - quit and return to previous execution environment"
@@ -620,7 +670,8 @@ while :; do
 	case $answer in
 		q )	break
 			;;
-		b )	[ $mmindex -gt 0 ] || continue
+		b )	$b_runmismatch && tmpidx=$mmindex || tmpidx=$index
+			[ $tmpidx -gt 1 ] || continue
 			echo
 			b_backup=true
 			backup_wrapper
@@ -662,6 +713,10 @@ while :; do
 				echo
 				continue;
 			fi
+			;;
+
+		e )	show_env
+			continue
 			;;
 
 		C )	patbatcmpmgr -R $mldir -U $usdir -o $usdir/mm.log
