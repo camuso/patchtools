@@ -119,7 +119,9 @@ main() {
 		commit=$(echo $line | cut -d' ' -f5)
 		tag=$(git tag --contains $commit | head -1)
 		[ -n "$tag" ] || continue
+		[ "${tag:0:1}" == "v" ] || continue
 
+		tag="${foo:0:5}"
 		ltag=$(extract_number $tag)
 		[ $ltag -gt $utag ] && continue
 
