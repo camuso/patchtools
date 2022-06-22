@@ -215,29 +215,26 @@ show_mrstatus() {
 display_acknack_menu() {
 	$b_mrflag || return 1
 	local cmt=
-	local response
+	local _dak_response
 	local b_yes=false
-	local actstr=
 	local b_newmr=false
 	local acknackmenu=$(
 cat <<EOF
 
-$MNU For MR $STA$current_mr$MNU, you want to ...
-$MNU a$STA  ACK$OFF
-$MNU A$STA  ACK$OFF with comment
-$MNU n$WRN  NACK$OFF
-$MNU N$WRN  NACK$OFF with comment
-$MNU c$OFF  Comment only
-$MNU v$OFF  View description and comments for $STA$current_mr
-$MNU q$OFF  Skip this step$OFF
+   $MNU For MR $STA$current_mr$MNU, you want to ...
+   $MNU a$STA  ACK$OFF
+   $MNU A$STA  ACK$OFF with comment
+   $MNU n$WRN  NACK$OFF
+   $MNU N$WRN  NACK$OFF with comment
+   $MNU c$OFF  Comment only
+   $MNU v$OFF  View description and comments for $STA$current_mr
+   $MNU q$OFF  Quit and return to main menu$OFF
 \0
 EOF
 )
-	local donestr="\
-${INF}Merge Request: $STA$current_mr$INF has already been $actstr"
 
 	[ -z "$current_mr" ] && {
-		getuser "Enter a merge request number or $qstr$INF to exit: " current_mr
+		getuser "   Enter a merge request number or $qstr$INF to exit: " current_mr
 		b_newmr=true
 		b_reviewed=false
 		b_acked=false
@@ -250,37 +247,42 @@ ${INF}Merge Request: $STA$current_mr$INF has already been $actstr"
 
 	while :; do
 		echo -e "$acknackmenu"
-		promptgetchar ""$MNU"Enter one of the above: $OFF" response
-		[[ qnaNAcv =~ $response ]] && break
+		promptgetchar "$MNU   Enter one of the above: $OFF" _dak_response
+		[[ qnaNAcv =~ $_dak_response ]] && break
 	done
 
-	eval $1=$response
+	eval $1=$_dak_response
 }
 
 query_acknack() {
 	local choice
+	local actstr=
+	local wcomment=
 
 	while :;do
+		actstr=
+		wcomment=
 
 		display_acknack_menu choice
 
 		$b_reviewed && ( $b_acked || $b_nacked ) && {
 			$b_acked && actstr="${STA}ACKED$OFF" \
 				 || actstr="${WRN}NACKED$OFF"
-			echo -e "$donestr"
-			return
+			echo -e "$INF   Merge Request: $STA$current_mr$INF has already been $actstr"
 		}
 
 		case "$choice" in
-			q ) return 1
+			q ) return 0
 			    ;;
 			A ) cmt="--with-comment --force-linebreak "
+			    wcomment="$INF with comments"
 			    ;&
 			a ) b_acked=true
 			    b_reviewed=true
 			    actstr=""$STA"ACK$OFF"
 			    ;;
 			N ) cmt="--with-comment --force-linebreak "
+			    wcomment="$INF with comments"
 			    ;&
 			n ) b_nacked=true
 			    b_reviewed=true
@@ -289,8 +291,9 @@ query_acknack() {
 			c ) b_nacked=false
 			    b_acked=false
 			    b_reviewed=true
+			    echo -e "$INF   Comment on $STA$current_mr$INF ...$OFF"
 			    lab mr note $origin $current_mr --force-linebreak
-			    return 0
+			    continue
 			    ;;
 			v ) view_comments
 			    continue
@@ -298,8 +301,8 @@ query_acknack() {
 		esac
 
 	local querystring="\
-"$INF"Are you sure you want to $actstr$INF Merge Request \
-$STA$current_mr$INF (y/n)? $OFF"
+$INF   Are you sure you want to $actstr$INF Merge Request \
+$STA$current_mr$wcomment$MNU (y/n)? $OFF"
 
 		loop_yn "$querystring" b_yes
 
@@ -311,8 +314,10 @@ $STA$current_mr$INF (y/n)? $OFF"
 			b_nacked=false
 		fi
 
-		return 0
+		continue
 	done
+
+	return 0
 }
 
 # call_lab_mr_list - worker function to create the mr list
@@ -363,8 +368,13 @@ show_comments() {
 # 	current_mr
 #
 view_comments() {
-	[ -n "$current_mr" ] && { lab mr show $origin $current_mr --comments; return; }
-	get_merge_request "comments"
+	if [ -n "$current_mr" ]; then
+		echo -e "$INF   View comments for $STA$current_mr$INF ...$OFF"
+		lab mr show $origin $current_mr --comments
+	else
+		get_merge_request "comments"
+	fi
+	return $?
 }
 
 # get_mrlist_specifier - which mr list specifier does the user want
@@ -514,10 +524,11 @@ get_merge_request() {
 	while :; do
 		[ "$current_mr" == "q" ] && { current_mr=; return 1; }
 		if [ -n "$comments_only" ]; then
+			echo -e "$INF   View comments for $STA$current_mr$INF ...$OFF"
 			lab mr show $origin $current_mr --comments;
 			stat=$?
 		else
-			get_merge_request_patches "$current_mr" "get_merge_request"
+			get_merge_request_patches "$current_mr"
 			stat=$?
 		fi
 		[ $stat -eq 0 ] && break
