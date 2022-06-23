@@ -1504,7 +1504,7 @@ exec_patcmp() {
 	else
 		patbatcmpmgr -x -P $valpatchlist -R $indir -U $outdir -o $mmfile
 	fi
-	patcmp $quiet -b $tb -m $mmfile $indir $outdir $editor "$us_commits"
+	patcmp $quiet -b $tb -m $mmfile -u $remote_dir $indir $outdir $editor "$us_commits"
 	return $?
 }
 
