@@ -46,6 +46,7 @@ declare -i last_mismatch=0	# number of last mismatched patch in series
 declare -i previndex		# index of the last viewed patch, can be mm
 declare -i bupnum		# number of the patch before the most recent seen
 declare -i mmindex		# index into the mismatch array
+declare -i prevmmindex		# previous index into the missmatch array (loop)
 declare -i maxmmindex		# highest mismatch index
 declare -i mismatch_count	# cardinal number of mismatches (maxmmindex + 1)
 declare -a mismatch_array	# array of patch numbers in the series that
@@ -229,11 +230,12 @@ get_patch_number() {
 # Globals
 #	index	     - the current index
 #	previndex    - index of the most recently viewed patch pair.
-#	uscommits    - passed as parameter 4 from caller
+#	uscommits    - passed to the script as parameter 4 from caller
 #	upstream_dir - location of upstream repo, optionally passed by caller
 #
 replace_commit() {
 	local patnum
+	local locindex
 	local commit=0
 	local patcnt
 	local pfx
@@ -243,9 +245,9 @@ cat <<EOF
 ${MNU}Enter $qstr$MNU to return to previous menu without changing anything.$OFF"
 EOF
 )
-	index=$previndex
-	patnum=$((index + 1))
-echo "index: $index patnum: $patnum  last_mismatch: $last_mismatch"
+	locindex=$previndex
+	patnum=$((locindex + 1))
+# echo "locindex: $locindex patnum: $patnum  last_mismatch: $last_mismatch"
 
 	pfx=$(printf "%04d" $patnum)
 
@@ -261,7 +263,7 @@ echo "index: $index patnum: $patnum  last_mismatch: $last_mismatch"
 
 		if [ "$commit" == "q" ]; then
 			echo -e "${INF}Nothing was changed.$OFF"
-			[ -n "$upstream_dir" ] && cd -
+			[ -n "$upstream_dir" ] && cd - > /dev/null 2>&1
 			return 1
 		fi
 
@@ -283,8 +285,8 @@ echo "index: $index patnum: $patnum  last_mismatch: $last_mismatch"
 		break
 	done
 
-# echo -e "${INF}removing: index: $STA$index$INF patch: $STA${usfiles[$index]}$OFF"
-	rm -f ${usfiles[$index]}
+# echo -e "${INF}removing: locindex: $STA$locindex$INF patch: $STA${usfiles[$locindex]}$OFF"
+	rm -f ${usfiles[$locindex]}
 	echo -e "${INF}Replacing upstream commit for $STA$patnum$INF with commit: $STA$commit$OFF"
 	ui_replaceline $patnum "$commit $patnum/$patcnt" "$uscommits"
 	git format-patch --no-renames -1 -k --start-number $patnum $commit -o $usdir
@@ -296,8 +298,8 @@ echo "index: $index patnum: $patnum  last_mismatch: $last_mismatch"
 	#
 	[ $stat -ne 0 ] && echo -e "\ninvalid commit: $commit\n" > $usdir/$pfx-inv.patch
 
-	usfiles[$index]=$(ls $usdir/$pfx-*.patch)
-	[ -n "$upstream_dir" ] && cd -
+	usfiles[$locindex]=$(ls $usdir/$pfx-*.patch)
+	[ -n "$upstream_dir" ] && cd - > /dev/null 2>&1
 	return 0
 }
 
@@ -488,11 +490,6 @@ while getopts z:m:b:u:hq OPTION; do
     esac
 done
 
-# Herald
-#
-echo -e "\n${MNU}patcmp $STA$version$INF - Compare submitted patches with upstream$OFF"
-# echo -e "\tType '$BLD\0h$OFF' for help\n"
-
 # Shift past the options and see if we still have the right number of
 # arguments.
 #
@@ -505,6 +502,12 @@ mldir=$1
 usdir=$2
 editor=$3
 uscommits=$4
+
+##############################
+# Herald
+#############################
+echo -e "\n${MNU}patcmp $STA$version$INF - Compare submitted patches with upstream$OFF"
+# echo -e "\tType '$BLD\0h$OFF' for help\n"
 
 patlist=$(ls -1 "$1"/*.patch | sort -V)
 uscount=$(ls -1 "$usdir"/*.patch | wc -l)
@@ -542,8 +545,9 @@ case "$editor" in
 esac
 
 echo
-echo -e "${INF}Patches in $STA$mldir$INF will be compared with patches in$STA $usdir$OFF"
-echo -e "${INF}Editor of choice is$STA $editor$OFF"
+echo -e "${INF}Local patches in $STA$mldir$INF will be compared with"
+echo -e        "upstream commits in $STA$usdir$OFF"
+echo -e "${INF}Diff editor of choice is $STA$editor$OFF"
 
 echo -e "\n${INF}Building the index of patch files$OFF"
 echo -e   "${INF}=================================$OFF"
@@ -576,7 +580,6 @@ echo
 [ -f "$mismatch_file" ] && init_mismatch || b_runmismatch=false
 $b_runmismatch && index=$first_mismatch || index=0
 previndex=$index
-bupnum=$((index+1))
 
 # echo "Starting with patch: $((index + 1))"
 
@@ -611,23 +614,28 @@ while :; do
 			     || index=${mismatch_array[0]}
 	fi
 
-	echo -e "\n${MNU}Interactively Compare patches with upstream commits"
-	echo -e   "${INF}-----------------------------------------------------------------"
+	echo -e "\n${MNU}$STA$editor$MNU will diff local patches with upstream commits"
+	echo -e   "${INF}--------------------------------------------------------------------"
+
+	if $b_seen; then
+	echo -en "${MNU}Seen Patch $STA$((previndex + 1))$INF of $STA$((maxindex + 1))$INF "
+	echo -e  "The most recent patch viewed in $STA$editor$OFF"
+	fi
 	echo -e "${MNU}Next Patch $STA$((index + 1))$INF of $STA$((maxindex + 1))$OFF"
 
-	if [ $index -ge $maxindex ]; then
+	if [ $index -ge $maxindex ] && $b_lastseen; then
 		echo -e "${INF}*******************************************"
 		printf        "Patch$STA %d$INF is the last patch in the series.\n" \
 			$((maxindex + 1))
 		echo -e   "*******************************************$OFF"
 	fi
 
-	echo -e "$INF Compare :$STA $mldir/$(basename ${mlfiles[$index]})"
-	echo -e "$INF    With :$STA $usdir/$(basename ${usfiles[$index]})$OFF"
+	echo -e "${INF}Diff Local:$STA $mldir/$(basename ${mlfiles[$index]})"
+	echo -e "${INF}v Upstream:$STA $usdir/$(basename ${usfiles[$index]})$OFF"
 
 	if $b_runmismatch; then
 	  echo -e "${WRN}Conflict$INF :$STA $((mmindex+1)) ${INF}of$STA $mismatch_count$OFF"
-	  if [ $index -eq $last_mismatch ]; then
+	  if [ $index -eq $last_mismatch ] && $b_lastseen; then
 	    echo -e  "${INF}**********************************************"
 	    printf "Patch$STA %d${INF} is the last$WRN conflict$INF in the series.\n" \
 		    $((last_mismatch + 1))
@@ -635,33 +643,37 @@ while :; do
 	  fi
 	fi
 
-	echo -e "${INF}-----------------------------------------------------------------$OFF"
+	echo -e "${INF}--------------------------------------------------------------------$OFF"
 
-	if $b_runmismatch; then
-	[ $mmindex -ge $maxmmindex ] && tmpidx=$maxmmindex || tmpidx=$previndex
-	echo -e  "\t${MNU}c$OFF - show conflicting patches"
-	echo -e  "\t${MNU}m$OFF - only examine patches conflicting with upstream:$STA $b_runmismatch"
-	echo -e  "\t${MNU}s$OFF - show contents of conflicts log"
-	echo -e  "\t${MNU}p$OFF - use a different upstream commit for$STA Patch $((previndex+1))$OFF"
-#	echo -e  "\t${MNU}p$OFF - use a different upstream commit for$STA Patch $((tmpidx + 1))$OFF"
+	if $b_runmismatch; then	# mismatch case
+
+	([ $mmindex -ge $maxmmindex ] && $b_lastseen) \
+		&& tmpidx=$((mismatch_array[maxmmindex] + 1)) || tmpidx=$((previndex + 1))
+	$b_seen && \
+	echo -e  "\t${MNU}p$OFF - use a different upstream commit for$STA Patch $tmpidx$OFF"
 	[ $mmindex -gt 0 ] && $b_seen && \
-	echo -e  "\t${MNU}r$OFF - re-display$STA Patch $((previndex+1))$OFF"
-#	echo -e  "\t${MNU}r$OFF - re-display$STA Patch $((tmpidx + 1))$OFF"
+	echo -e  "\t${MNU}r$OFF - re-display$STA Patch $tmpidx$OFF"
 	[ $mmindex -gt 1 ] && \
 	echo -e  "\t${MNU}b$OFF - backup to$STA Patch $bupnum$OFF"
-	else
-	([ $index -ge $maxindex ] && $b_lastseen ) && tmpidx=$((index+1)) || tmpidx=$index
+
+	else	# no mismatch case
+
+	([ $index -ge $maxindex ] && $b_lastseen) && tmpidx=$((index+1)) || tmpidx=$index
+	$b_seen && \
 	echo -e  "\t${MNU}p$OFF - use a different upstream commit for$STA Patch $tmpidx$OFF"
 	[ $index -gt 0 ] && $b_seen && \
 	echo -e  "\t${MNU}r$OFF - re-display$STA Patch $tmpidx$OFF"
 	[ $index -gt 1 ] && \
 	echo -e  "\t${MNU}b$OFF - backup to$STA Patch $bupnum$OFF"
+
 	fi
 
 	echo -e  "\t${MNU}n$OFF - prompt for a number for a specific patch$OFF"
+	echo -e  "\t${MNU}c$OFF - show conflicting patches"
+	echo -e  "\t${MNU}m$OFF - only examine patches conflicting with upstream:$STA $b_runmismatch"
+	echo -e  "\t${MNU}s$OFF - show contents of conflicts log"
 	echo -e  "\t${MNU}e$OFF - show environment, directories, last tag, etc.$OFF"
 	echo -e  "\t${MNU}C$OFF - run batch file comparison to find conflicts with upstream$OFF"
-
 	echo -e  "\t${MNU}q$OFF - quit and return to previous execution environment"
 	$b_zstr && echo -e  "\t${MNU}z$OFF - "$zstr""
 	echo -e  "$anystr$STA$((index + 1))$MNU of $STA$((maxindex + 1))$MNU.$OFF"
@@ -681,10 +693,10 @@ while :; do
 			;;
 		p )	replace_commit
 			[ $? -eq 0 ] || continue
-			;;
+			;&
 		r )	if $b_runmismatch && [ $mmindex -gt 0 ]; then
 				index=$previndex
-				bupnum=$((${mismatch_array[index-1]} + 1))
+				mmindex=$prevmmindex
 			elif [ $index -gt 0 ]; then
 				$b_lastseen && index=$maxindex || index=$previndex
 			fi
@@ -737,10 +749,12 @@ while :; do
 
 	b_seen=true
 	previndex=$index
+	prevmmindex=$mmindex
 
 	if $b_runmismatch; then
 
-		[ $index -ge $maxmmindex ] && b_lastseen=true || b_lastseen=false
+		[ $mmindex -ge $maxmmindex ] && b_lastseen=true || b_lastseen=false
+		[ $mmindex -ge 1 ] && bupnum=$((mismatch_array[mmindex-1] + 1))
 
 		# If the user selected a specific patch, then find the next
 		# highest patch number in the mismatch_array.
@@ -759,9 +773,6 @@ while :; do
 				let mmindex++
 		fi
 
-		[ $mmindex -gt 1 ] && bupnum=$((${mismatch_array[mmindex-2]} + 1))
-		[ $mmindex -eq 2 ] && bupnum=$((${mismatch_array[mmindex-1]} + 1))
-
 		# Set the index into the commit log files to the element
 		# indexed by mmindex in the mismatch_array
 		#
@@ -775,14 +786,13 @@ while :; do
 # echo "Forward index: $index maxindex: $maxindex"
 	fi
 
-if $b_runmismatch; then
-	echo "mismatch_array: ${mismatch_array[@]}"
-	echo "mmindex: $mmindex  bupnum: $bupnum"
-	echo
-else
-	echo "index: $index  bupnum: $bupnum"
-fi
+# if $b_runmismatch; then
+# 	echo "mismatch_array: ${mismatch_array[@]}"
+# 	echo "mmindex: $mmindex  bupnum: $bupnum"
+# 	echo
+# else
+# 	echo "index: $index  bupnum: $bupnum"
+# fi
 
 done
-echo
 exit $code_ok
