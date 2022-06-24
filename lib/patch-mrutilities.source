@@ -551,9 +551,9 @@ get_merge_request() {
 get_mrcommits_labmr() {
 	mr=$1
 
-	patchcount=$(lab mr show $origin $mr -p | grep '^commit ' | wc -l)
-	echo -e "\npatchcount: $patchcount"
 	lab mr show $origin $mr -p --reverse | grep '^commit ' | cut -d ' ' -f2 > $bp_commits
+	patchcount=$(cat $bp_commits | wc -l)
+	echo -e "\npatchcount: $patchcount"
 }
 
 # get_merge_request_patches - extract the patches from a merge request
