@@ -196,6 +196,20 @@ show_seekfixes() {
 	$b_seekfixes && echo "ON" || echo "OFF"
 }
 
+show_missing_fixes() {
+	[ -s "$missing_fixes" ] || return
+	echo -e "$MNU f$OFF  Show missing fixes"
+}
+
+print_missing_fixes() {
+	if [ -s "$missing_fixes" ]; then
+		echo -e $INF
+		missingfixes -a
+		echo -e $OFF
+		ui_press_any
+	fi
+}
+
 # set_working_repo - set the repo directory to work in
 #
 # Globals

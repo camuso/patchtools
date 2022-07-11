@@ -198,9 +198,11 @@ show_mrstatus() {
 
 	echo -e "\n    Merge Request            : $STA$current_mr $ackstr"
 
-	[ -s $missing_fixes ] && \
-	grep -q 'WARNING:' "$missing_fixes" && echo -e \
+	[ -s $missing_fixes ] && {
+		grep -q 'WARNING:' "$missing_fixes" && echo -e \
 		"   $WRN There are missing fixes listed in $STA$missing_fixes$OFF"
+		show_missing_fixes
+	}
 }
 
 # query_acknack - ask the user if they want to respond to the MR

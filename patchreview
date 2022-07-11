@@ -471,7 +471,7 @@ menu_parser() {
 			;;
 		e )	set_editor
 			;;
-		f )	set_patchvalfuzz
+		f )	print_missing_fixes
 			;;
 		x )	ui_cycle_state menumode $menumode_states
 			set_cfg_item "menumode" $menumode
