@@ -264,14 +264,15 @@ ui_clearline() {
 ui_waitonproc () {
     local __pid__=$1;
     local __time__=1
+    local __stat__
 
     [ $# -eq 2 ] && __time__=$2
     while kill -0 $__pid__ > /dev/null 2>&1; do
         echo -n '.';
         sleep $__time__;
     done
-    wait $__pid__
-    return $?
+    wait $__pid__ || __stat__=$?
+    return $__stat__
 }
 
 # ui_waitonproc_tty
@@ -294,6 +295,7 @@ ui_waitonproc_tty () {
     local tmo="$2"
     local txt="$3"
     local tcnt=1
+    local stat
 
     [ -z "$txt" ] || echo -e "$txt"
     while kill -0 $pid > /dev/null 2>&1; do
@@ -309,8 +311,8 @@ ui_waitonproc_tty () {
     # Leave the TTY as it was before we were called.
     #
     ui_clearline
-    wait $pid
-    return $?
+    wait $pid || stat=$?
+    return $stat
 }
 
 # ui_sh_backout
