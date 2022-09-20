@@ -546,14 +546,33 @@ get_merge_request() {
 
 # get_mrcommits_labmr
 #
+# Arguments
+# 	$1 - the MR
+# 	$2 - baseline commit from which to extract the commits from this MR
+#
 # Globals
+#      origin - the baseline commit of the main branch
 #      patchcount - number of patches in the patch series
 #      bp_commits - file that will contain the backported commits
 #
 get_mrcommits_labmr() {
-	mr=$1
+	local mr=$1
+	local bascmt=$2
+	local lcnt
+	local tfil=/dev/shm/tempcommitsfile
 
-	lab mr show $origin $mr -p --reverse | grep '^commit ' | cut -d ' ' -f2 > $bp_commits
+	lab mr show $mr -p --reverse | grep '^commit ' | cut -d ' ' -f2 > $bp_commits
+
+	# If there is a base commit for a dependency, then it won't be the
+	# same as the origin commit, so remove its patches from the commits
+	# file.
+	[ "$bascmt" == "$origin" ] || {
+		lcnt=$(grep -n $bascmt $bp_commits | cut -d':' -f1)
+		head -$((lcnt - 1)) $bp_commits > $tfil
+		mv -f $tfil $bp_commits
+		rm -f $tfil
+	}
+
 	patchcount=$(cat $bp_commits | wc -l)
 	echo -e "\npatchcount: $patchcount"
 }
@@ -568,6 +587,7 @@ get_mrcommits_labmr() {
 #	1 - if user does not want to get the patches
 #
 # Globals:
+#       USER - username, global to the login session
 #	b_mrflag
 # 	b_rename_infiles
 #	b_fmt_upstream
@@ -592,11 +612,8 @@ get_merge_request_patches() {
 	local patches=$(ls $indir/*.patch 2>/dev/null)
 	local mrcomments=/dev/shm/mrcomments.log
 	local ackcount=
-	local brname=
-	local stridx
-	local idx=0
-
-	current_mr=$mr
+	local bascmt=
+	local basmr=
 
 	b_mrflag=true
 	b_reviewed=false
@@ -615,23 +632,18 @@ get_merge_request_patches() {
 	> $missing_fixes
 	valpatchlist=
 
-	lab mr show $origin $mr --comments > $mrcomments
+	lab mr show $origin $mr --comments > $mrcomments & mypid=$!
+	ui_waitonproc_tty $mypid .05 ""$INF"Getting comments from MR $STA$current_mr$OFF"
 	stat=$?
 	[ $stat -eq 1 ] && return $mr_inv
 
-	# create a unique branchname based on the 'Branches" in the comment
+	# If there's a dependency, find the base commit for it.
 	#
-	brname="$(grep 'Branches:' "$mrcomments" | cut -d' ' -f2)"
-	stridx=$(ui_strindex "$brname" "->")
-	[ $stridx -eq -1 ] && stridx=${#brname}
-	brname="reviewing-${brname:0:$stridx}"
-
-	# If there's already a branch with that name, change it.
-	#
-	while git branch | grep "$brname"; do
-		let ++idx
-		brname="$brname-$idx"
-	done
+	if basmr=$(grep -i -A3 'Depends tags:' $mrcomments); then
+		bascmt=$(echo "$basmr" | tail -1 | cut -d'|' -f5)
+	else
+		bascmt=$origin
+	fi
 
 	ackcount=$(grep '^Approved By' $mrcomments | cut -d':' -f2- | wc -w)
 	less $mrcomments
@@ -662,7 +674,7 @@ get_merge_request_patches() {
 		fi
 	fi
 
-	get_mrcommits_labmr $mr & mypid=$!
+	get_mrcommits_labmr $mr $bascmt & mypid=$!
 	ui_waitonproc_tty $mypid .05 ""$INF"Getting patches from MR $STA$current_mr$OFF"
 
 	git_file2patchset $bp_commits $indir $b_verbose
