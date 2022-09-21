@@ -264,7 +264,7 @@ ui_clearline() {
 ui_waitonproc () {
     local __pid__=$1;
     local __time__=1
-    local __stat__
+    local __stat__=0
 
     [ $# -eq 2 ] && __time__=$2
     while kill -0 $__pid__ > /dev/null 2>&1; do
@@ -295,7 +295,7 @@ ui_waitonproc_tty () {
     local tmo="$2"
     local txt="$3"
     local tcnt=1
-    local stat
+    local stat=0
 
     [ -z "$txt" ] || echo -e "$txt"
     while kill -0 $pid > /dev/null 2>&1; do
