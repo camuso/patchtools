@@ -567,10 +567,12 @@ get_mrcommits_labmr() {
 	# same as the origin commit, so remove its patches from the commits
 	# file.
 	[ "$bascmt" == "$origin" ] || {
-		lcnt=$(grep -n $bascmt $bp_commits | cut -d':' -f1)
-		head -$((lcnt - 1)) $bp_commits > $tfil
-		mv -f $tfil $bp_commits
-		rm -f $tfil
+		lcnt=$(grep -n -m1 $bascmt $bp_commits | cut -d':' -f1)
+		[ -n "$lcnt" ] && {
+			head -$((lcnt - 1)) $bp_commits > $tfil
+			mv -f $tfil $bp_commits
+			rm -f $tfil
+		}
 	}
 
 	patchcount=$(cat $bp_commits | wc -l)
@@ -614,6 +616,7 @@ get_merge_request_patches() {
 	local ackcount=
 	local bascmt=
 	local basmr=
+	local basary=()
 
 	b_mrflag=true
 	b_reviewed=false
@@ -640,7 +643,12 @@ get_merge_request_patches() {
 	# If there's a dependency, find the base commit for it.
 	#
 	if basmr=$(grep -i -A3 'Depends tags:' $mrcomments); then
-		bascmt=$(echo "$basmr" | tail -1 | cut -d'|' -f5)
+		basmr=$(echo "$basmr" | tail -1)
+		ui_strtok "$basmr" "|: " basary
+		bascmt=${basary[6]}
+		echo -e "${INF}Dependency detected:$INF MR${STA}"\
+			 "$(echo -en ${basary[1]} | cut -d'!' -f2)"\
+		         "${INF}commit $STA${basary[6]}$OFF"
 	else
 		bascmt=$origin
 	fi
