@@ -64,6 +64,7 @@ declare upbr=
 declare dnbr=
 declare subsys=
 declare searchstr=
+declare ssfile=
 
 usage() {
 	local usagestr=$(
@@ -137,6 +138,8 @@ EOF
 # 	dncmt
 # 	usagestr
 # 	searchstr
+# 	subsys
+# 	ssfile
 #
 parseops() {
 	local arg=
@@ -178,6 +181,11 @@ parseops() {
 		         ;;
 		    ss ) shift
 			 subsys="$subsys $1 "
+			 shift
+			 optcount=$((optcount + 2))
+			 ;;
+		    f  ) shift
+			 ssfile="$ssfile $1"
 			 shift
 			 optcount=$((optcount + 2))
 			 ;;
@@ -384,7 +392,8 @@ main() {
 
 	echo -e "${INF}Upstream repo     : $STA$updir origin/master $OFF"
 	echo -e "${INF}Downstream branch : $STA$mainbranch$INF"
-	echo "${INF}subsys: $STA$subsys$OFF"
+	[ -n "$subsys" ] && echo -e "${INF}subsys: $STA$subsys$OFF"
+	[ -n "$ssfile" ] && echo -e "${INF}ssfile: $STA$ssfile$OFF"
 
 	echo
 	echo -n "Press any key to proceed or CTRL-C to exit..."
@@ -394,7 +403,7 @@ main() {
 	cd $updir
 	pwd
 	echo -e "${STA}Creating $outdir/$uplog$INF"
-	gitnice -r -c -d --no-merges "$upcmt..HEAD" "$subsys" 2>&1 | tee $outdir/$uplog
+	gitnice -r -c -d --no-merges "$upcmt..HEAD" "$subsys" "$ssfile" 2>&1 | tee $outdir/$uplog
 	echo
 
 	echo -e $STA
