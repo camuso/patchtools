@@ -43,11 +43,12 @@ Description
 
 Options
 
+   u - upstream directory
    r - reverse order
    b - do not show downstream branch commit
-   h - this help text
    n - no-merges
    m - no-dates
+   h - this help text
 \0
 EOF
 )
@@ -110,31 +111,44 @@ choose_commit() {
 	echo "$ary[$index]"
 }
 
-while getopts :p:rbnm OPTION; do
-    case "$OPTION" in
+parseargs() {
+	local arg=
+	local opt=
 
-	r ) rev="--reverse"
-	    optcount=$((optcount+1))
-	    ;;
-	b ) show_b=false
-	    optcount=$((optcount+1))
-	    ;;
-	n ) nomerges="--no-merges"
-	    optcount=$((optcount+1))
-	    ;;
-	m ) dates=
-	    optcount=$((optcount+1))
-	    ;;
-	h ) exitme
-	    ;;
-    esac
-done
+	for arg in $@; do
+	    if [ ${arg:0:1} == '-' ]; then
+		opt="${arg:1}"
+		case "$opt" in
+			u ) 	updir="$2"
+				shift 2
+				let optcount+=2
+				;;
+			r ) 	rev="--reverse"
+				shift
+				let ++optcount
+				;;
+			b ) 	show_b=false
+				shift
+				let ++optcount
+				;;
+			n ) 	nomerges="--no-merges"
+				shift
+				let ++optcount
+				;;
+			m ) 	dates=
+				let ++optcount
+				shift
+				;;
+			h ) 	exitme
+		esac
+	    fi
+	done
+}
 
+parseargs $@
 shift $optcount
 commit_expr="$1"
 pathspec="$2"
-
-# [ $# -eq 2 ] || exitme
 
 # Create an array of hashes from the current (rhel) branch
 #
@@ -155,9 +169,11 @@ for ((i=0; i < ${#blist[@]}; ++i)); do
 	# cmtline="$(echo "$cmtline" | tr -dc '[:alnum:]')"
 	# [ $(echo "$cmtline" | wc -l) -gt 1 ] && cmtline=$(choose_commit "$cmtline")
 
-	# extract the commit has from the line
+	# extract the commit hash from the line
 	alist[$i]=$(echo "$cmtline" | egrep -o "\b[0-9a-f]{40}\b")
 	stat=$?
+
+	[ -d "$updir" ] && cd $updir 2>&1 > /dev/null
 
 	# if the commit has a valid format, then ...
 	if [ $stat -eq 0 ]; then
@@ -184,5 +200,8 @@ for ((i=0; i < ${#blist[@]}; ++i)); do
 	else
 		echo " $astr "
 	fi
+
+	[ -d "$updir" ] && cd - 2>&1 > /dev/null
+
 done
 

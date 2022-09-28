@@ -14,12 +14,16 @@ declare -i EXIT_OK=0
 declare -i EXIT_INVARG=1
 declare -i EXIT_INVFIL=2
 declare -i EXIT_INVDIR=3
+declare -i EXIT_DISFIL=4	# directory name is a file
+declare -i EXIT_NOOUTD=5	# directory name is empty
 
 declare -a exitmsgary=(
 ""
 "Invalid number of arguments."
 " is an invalid filename."
 " is an invalid directory name."
+" is a file, not a directory."
+"You did not provide an output directory path:$MNU -o <outdir>$OFF"
 )
 
 exitme() {
@@ -96,9 +100,11 @@ Example:$STA
 
         -dc kernel-5.14.0-87.el9 \\\
 
-	-ss drivers/hid/intel-ish-hid \\\
+        -ss drivers/hid/intel-ish-hid \\\
 
-	-ss drivers/platform \\\
+        -ss drivers/platform \\\
+
+        -f [optional] discrete filename, -f for each file \\\
 
         -o ../backport/9.1/ish/ \\\
 
@@ -124,6 +130,22 @@ EOF
 )
 	echo -en "$usagestr"
 	exitme 0
+}
+
+chkdir() {
+	local stat=0
+
+	ui_chkdir "$1"
+	stat=$?
+
+	case $stat in
+		1 ) exitme $EXIT_NOOUTD
+		    ;;
+		2 ) exitme $EXIT_DISFIL "$1"
+		    ;;
+		3 ) ;&
+		4 ) exitme $EXIT_INVDIR "$1"
+	esac
 }
 
 # parseops() - parse the input options
@@ -152,33 +174,34 @@ parseops() {
 		case "$opt" in
 		    "help" ) ;&
 		    h  ) usage
-		         let ++optcount
-		         ;;
+			 let ++optcount
+			 ;;
 		    ud ) shift
 			 updir=$(realpath "$1")
 			 shift
 		         optcount=$((optcount + 2))
-		         ;;
+			 ;;
 		    uc ) shift
 			 upcmt="$1"
 			 shift
-		         optcount=$((optcount + 2))
-		         ;;
+			 optcount=$((optcount + 2))
+			 ;;
 		    dc ) shift
 			 dncmt="$1"
 			 shift
-		         optcount=$((optcount + 2))
-		         ;;
+			 optcount=$((optcount + 2))
+			 ;;
 		    S  ) shift
 			 searchstr="$1"
 			 shift
 			 optcount=$((optcount + 2))
 			 ;;
 		    o  ) shift
+			 chkdir "$1"
 			 outdir=$(realpath "$1")
 			 shift
-		         optcount=$((optcount + 2))
-		         ;;
+			 optcount=$((optcount + 2))
+			 ;;
 		    ss ) shift
 			 subsys="$subsys $1 "
 			 shift
@@ -190,8 +213,8 @@ parseops() {
 			 optcount=$((optcount + 2))
 			 ;;
 		    *  ) echo "unrecognized option -$1"
-		         echo -e "$usagestr"
-		         exit 127
+			 echo -e "$usagestr"
+			 exit 127
 		esac
 
 	    fi
@@ -379,11 +402,12 @@ main() {
 
 	parseops $@
 
+	[ -n "$outdir" ] || exitme $EXIT_NOOUTD
 	[ $optcount -lt 8 ] && exitme $EXIT_INVARG
 
 	shift $optcount
+echo "outdir: $outdir"
 
-	ui_testdir "$outdir" outdir
 	echo
 
 	check_log "$outdir/$uplog"
@@ -403,13 +427,14 @@ main() {
 	cd $updir
 	pwd
 	echo -e "${STA}Creating $outdir/$uplog$INF"
+
 	gitnice -r -c -d --no-merges "$upcmt..HEAD" "$subsys" "$ssfile" 2>&1 | tee $outdir/$uplog
 	echo
 
 	echo -e $STA
 	cd -
 	echo -e "${STA}Creating $outdir/$dnlog$INF"
-	extup -r -n "$dncmt..HEAD" "$subsys" 2>&1 | tee $outdir/$dnlog
+	extup -r -n -u $updir "$dncmt..HEAD" "$subsys" 2>&1 | tee $outdir/$dnlog
 
 	echo
 	echo -e "${STA}Creating $outdir/$chlog$INF"
