@@ -295,10 +295,10 @@ set_remotedir() {
 		ui_getnewdir "$prstr" remote_dir
 		stat=$?
 
-		if ($b_exists && [ $stat -eq 3 ]); then
+		if ($b_exists && [ $stat -eq 4 ]); then
 			return
 		else
-			if [ $stat -ne 3 ]; then
+			if [ $stat -ne 4 ]; then
 				break
 			else
 				echo -e \

@@ -688,16 +688,16 @@ function ui_getfilespec {
 # where string is a string representation of a directory
 # returns
 #	0 if the string exists as a valid directory
-#	1 if directory does not exist
-#	2 if the string exists as a file
-#	3 if the string is "q" for "quit trying"
-#	4 if the string was empty
+#	1 if the string was empty
+#	2 if string exists as a file
+#	3 if the string is neither a file nor a directory
+#	4 if the string is "q" for "quit trying"
 #
 function ui_chkdir {
-	[ "$1" ]      || return 4
-	[ "$1" = "q" ] && return 3
-	[ -d "$1" ]   && return 2
-	[ -f "$1" ]   && return 1
+	[ "$1" = "q" ] && return 4
+	[ "$1" ]       || return 1
+	[ -f "$1" ]    && return 2
+	[ -d "$1" ]    || return 3
 	return 0
 }
 
@@ -715,14 +715,15 @@ ui_verifydir() {
 	stat=$?
 
 	case $stat in
-		0 )	echo "$MNU\"$dir\"$WRN does not exist.$OFF"
+		4 )	;&
+		1 )	;&
+		3 )	echo "$MNU\"$dir\"$WRN does not exist.$OFF"
 			return 1
 			;;
-		1 )	echo -e "$MNU\"$dir\"$WRN already exists as a file.$OFF"
+		2 )	echo -e "$MNU\"$dir\"$WRN already exists as a file.$OFF"
 			return 1
-			;;
-		2 ) 	return 0
 	esac
+	return 0
 }
 
 # ui_getnewdir prompt name
@@ -737,9 +738,9 @@ ui_verifydir() {
 # use that directory, warning that all its contents may be altered.
 #
 # Returns:
-# 	0 - newly created directory
-# 	2 - valid existing directory
-# 	3 - user quitting
+# 	0 - valid existing directory
+# 	3 - newly created directory
+# 	4 - user quitting
 #
 function ui_getnewdir {
 	local prompt="$1"
@@ -754,20 +755,17 @@ function ui_getnewdir {
 		getuser "$prompt" newdir
 
 		ui_chkdir "$newdir"
-		local stat=$?
+		stat=$?
 
 		case $stat in
-		1 )	echo -e "$exists"
-			;;
-		2   ) 	eval $2="$newdir"	# valid existing directory
+		0 ) 	eval $2="$newdir"	# valid existing directory
 			return $stat
 			;;
-		3 )	# echo "ui_getnewdir: newdir: $newdir"
-			return $stat	# user wants to quit trying
+		1 )	echo -e "${WRN}Nothing entered. $msgretry"
 			;;
-		4 )	echo -e "${WRN}Nothing entered. $msgretry"
+		2 )	echo -e "$exists"
 			;;
-		0 )	echo -e "$STA$newdir $noexist"
+		3 )	echo -e "$STA$newdir $noexist"
 			getyn "Want to create "$newdir" now?" ans
 			if $ans; then
 				mkdir -p "$newdir"
@@ -782,6 +780,8 @@ function ui_getnewdir {
 			eval $2="$newdir"
 			return $stat
 			;;
+		4 )	# echo "ui_getnewdir: newdir: $newdir"
+			return $stat	# user wants to quit trying
 		esac
 	done
 }
