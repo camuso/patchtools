@@ -99,6 +99,8 @@ declare str_cmtmsg=
 declare str_active_session=
 declare str_bugzilla=
 declare str_upstream=
+declare str_brew=
+declare str_test=
 
 init_global_strings() {
 str_herald="\n$MNU${UND}cherp $VERSION - Automates git cherry-pick$OFF\n"
@@ -908,6 +910,59 @@ EOF
 	$b_internal || exit 0
 }
 
+show_options() {
+	local options=$(
+cat <<EOF
+$MNU
+        ${UND}Options          $OFF
+    $MNU u $OFF Upstream status          : $STA$str_upstream$OFF
+    $MNU z $OFF Bugzilla link            : $STA$str_bugzilla$OFF
+    $MNU b $OFF Brew or build info       : $STA$str_brew$OFF
+    $MNU t $OFF Test information         : $STA$str_test$OFF
+    $MNU p $OFF Current subject prefix   : $STA$subjectprefix$OFF
+    $MNU q $OFF Quit to main menu
+\0
+EOF
+)
+	echo -e "$options"
+}
+
+get_options() {
+	local opt=
+
+	show_options
+	promptgetchar "${MNU}    Enter one of the above: $OFF" opt
+
+	case $opt in
+		z )	getuser "${MNU}Bugzilla link: $OFF" str_bugzilla
+			set_cfg_item "str_bugzilla"  $str_bugzilla
+			;;
+		u )     getuser "${MNU}Upstream status: $OFF" str_upstream
+			set_cfg_item "str_upstream"  $str_upstream
+			;;
+		b )	getuser "${MNU}Brew or build info: $OFF" str_brew
+			set_cfg_item "str_brew"      $str_brew
+			;;
+		t )	getuser "${MNU}Testing info: $OFF" str_test
+			set_cfg_item "str_test"      $str_test
+			;;
+		p )	git_set_subjectprefix
+			;;
+		q )	return 1
+	esac
+
+	return 0
+}
+
+options_loop() {
+	while :; do
+		get_options
+		[ $? -eq 0 ] || return
+	done
+}
+
+
+
 #===  FUNCTION  ===============================================================
 #          NAME:  show_settings
 #   DESCRIPTION:  show the current settings and present the menu options
@@ -937,12 +992,10 @@ $MNU
     Original Head            : $STA${orighead:0:cols}$OFF
     Current Head             : $STA${lastbrcmt:0:cols}$OFF
 $MNU B $OFF Current git branch       : $STA$(get_gitbranch)$OFF
-$MNU p $OFF Current subject prefix   : $STA$subjectprefix$OFF
 $MNU b $OFF Backport File            : $STA$upcommitsfile$OFF
 $MNU w $OFF Working directory        : $STA$workdir$OFF
-$MNU U $OFF Upstream directory       : $STA$updir$OFF
-$MNU u $OFF Upstream status          : $STA$str_upstream$OFF
-$MNU z $OFF Bugzilla link            : $STA$str_bugzilla$OFF
+$MNU u $OFF Upstream directory       : $STA$updir$OFF
+$MNU O $OFF Options menu
 $MNU
     ${UND}Control                $OFF
 $MNU N $OFF Start a New Session
@@ -977,17 +1030,11 @@ function menu_parser {
 
 		B )	set_gitbranch
 			;;
-		p )	git_set_subjectprefix
-			;;
 		w )	set_working_directory
 			;;
 		b )	set_upcommitsfile
 			;;
 		U )     set_upstream_directory
-			;;
-		u )     getuser "${MNU}Upstream status: $OFF" str_upstream
-			;;
-		z )	getuser "${MNU}Bugzilla link: $OFF" str_bugzilla
 			;;
 		c )	set_next_cherrypick
 			;;
@@ -1005,6 +1052,7 @@ function menu_parser {
 		r )	run_me
 			# return $rc_run
 			;;
+		O )	options_loop
 	esac
 	return $rc_continue
 }
@@ -1294,7 +1342,8 @@ stage_commit() {
 	echo '```' >> $cmtmsgfile
 	[ -n "$str_bugzilla" ] && echo -e "Bugzilla: $str_bugzilla" >> $cmtmsgfile
 	[ -n "$str_upstream" ] && echo -e "Upstream status: $str_upstream" >> $cmtmsgfile
-	echo -e "\n"
+	echo -e "\n" >> $cmtmsgfile
+
 	$b_conflict && echo -e "$str_conflicts" >> $cmtmsgfile
 
 	# Append the original commit message.
@@ -1429,7 +1478,11 @@ save_session() {
 	set_cfg_item "lastuphash"     $lastuphash
 	set_cfg_item "workdir"        $workdir
 	set_cfg_item "upcommitsfile"  $upcommitsfile
-	set_cfg_item "b_conflict"      $b_conflict
+	set_cfg_item "b_conflict"     $b_conflict
+	set_cfg_item "str_bugzilla"   $str_bugzilla
+	set_cfg_item "str_upstream"   $str_upstream
+	set_cfg_item "str_brew"       $str_brew
+	set_cfg_item "str_test"       $str_test
 }
 
 #===  FUNCTION  ================================================================
