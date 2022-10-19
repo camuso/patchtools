@@ -315,8 +315,8 @@ init_env() {
 	MYDATA=$(realpath ./.data)
 	[ -d "$MYDATA" ] || mkdir -p $MYDATA
 
-	configfile="$MYDATA/cmpcommit.conf"
-	cfgtemplate="$MYLIB/cmpcommit.conf"
+	configfile="$MYDATA/mkbackportlog.conf"
+	cfgtemplate="$MYLIB/mkbackportlog.conf"
 	[ -f "$configfile" ] || cp $cfgtemplate $configfile
 
 	cfg_set_template "$cfgtemplate"
@@ -434,7 +434,7 @@ echo "outdir: $outdir"
 	echo -e $STA
 	cd -
 	echo -e "${STA}Creating $outdir/$dnlog$INF"
-	extup -r -n -u $updir "$dncmt..HEAD" "$subsys" 2>&1 | tee $outdir/$dnlog
+	extup -r -n -u $updir "$dncmt..HEAD" "$subsys $ssfile" 2>&1 | tee $outdir/$dnlog
 
 	echo
 	echo -e "${STA}Creating $outdir/$chlog$INF"
