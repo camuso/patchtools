@@ -43,7 +43,7 @@ declare outdir=
 declare upcmt=
 declare updir=
 
-declare MYDIR=$(dirname $(which $(basename $0)))
+declare MYDIR=$(dirname $(which $(basename "$0")))
 declare MYLIB=$MYDIR/lib
 
 source $MYLIB/ui.source
@@ -72,7 +72,7 @@ declare -a exitmsgary=(
 declare usagestr=$(
 cat <<EOF
 
-$(basename $0) -uc upcmt -ub updir outdir
+$(basename "$0") -uc upcmt -ub updir outdir
   Creates a file of usb commits for backporting.
 
 Argument:
@@ -85,7 +85,7 @@ Options:
   -ud updir   - Directory containing the uptream repo.
 
 Example:
-  $(basename $0) \\\
+  $(basename "$0") \\\
 
         -uc 'v5.7..v5.8' \\\
 
@@ -115,7 +115,7 @@ exitme() {
 		echo -e "$BLD$strarg$exitmsg$OFF"
 
 		[ $exitval -ne 0 ] && echo -e \
-			"Type$BLD $(basename $0) -h$OFF for help."
+			"Type$BLD $(basename "$0") -h$OFF for help."
 	fi
 
 	exit $exitval

@@ -3,7 +3,7 @@
 #
 # Text Attributes
 #
-declare MYDIR=$(dirname $(which $(basename $0)))
+declare MYDIR=$(dirname $(which $(basename "$0")))
 declare MYLIB=$MYDIR/lib
 
 source $MYLIB/ui.source
@@ -24,10 +24,10 @@ declare dates="-c -d"
 declare usagestr=$(
 cat <<EOF
 
-$(basename $0) [OPTIONS] commit-expr path
+$(basename "$0") [OPTIONS] commit-expr path
 
 Example
-   $(basename $0) c68432e802b11..HEAD [drivers/char/ipmi]
+   $(basename "$0") c68432e802b11..HEAD [drivers/char/ipmi]
 
 Description
 

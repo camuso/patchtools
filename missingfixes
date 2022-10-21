@@ -2,7 +2,7 @@
 #
 # missingfixes
 
-[ "$MYDIR" ]     || declare MYDIR=$(dirname $(which $(basename $0)))
+[ "$MYDIR" ]     || declare MYDIR=$(dirname $(which $(basename "$0")))
 [ "$MYLIB" ]     || declare MYLIB=$MYDIR/lib
 [ "$ui_loaded" ] || source $MYLIB/ui.source
 [ "$configmanager_loaded" ] || source $MYLIB/config-manager.source
@@ -15,7 +15,7 @@ declare missing_file=
 declare usagestr=$(
 cat <<EOF
 
-$(basename $0) [-a] | [upstream-tag]
+$(basename "$0") [-a] | [upstream-tag]
 
 Description:
 

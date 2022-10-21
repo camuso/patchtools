@@ -40,26 +40,24 @@
 # Where MYDIR is the directory in which this script and its companions
 # are located.
 
-declare MYDIR=$(dirname $(which $(basename $0)))
-declare MYLIB=$MYDIR/lib
+declare MYDIR="$(dirname "$(which "$(basename "$0")")")"
+declare MYLIB="$MYDIR"/lib
 
 #######################################
 # External Source Files
 #######################################
-source $MYLIB/ui.source
-source $MYLIB/gitutilities.source
-source $MYLIB/patch-common.source
-source $MYLIB/patch-utils.source
-source $MYLIB/patch-mrutilities.source
-source $MYLIB/config-manager.source
+source "$MYLIB"/ui.source
+source "$MYLIB"/gitutilities.source
+source "$MYLIB"/patch-common.source
+source "$MYLIB"/patch-utils.source
+source "$MYLIB"/patch-mrutilities.source
+source "$MYLIB"/config-manager.source
 
 #########################################
 # Functions
 #########################################
 
 function init_booleans {
-	b_prologue=false
-
 	# Only these two booleans are inited to true at the
 	# beginning of every invocation of the script.
 	#
@@ -86,7 +84,7 @@ function get_booleans {
 	b_mrcomments \
 	b_seekfixes
 	do
-		eval $bool=$(get_cfg_item $bool)
+		eval $bool="$(get_cfg_item $bool)"
 		ui_digit2bool $bool
 	done
 }
@@ -108,9 +106,8 @@ function set_booleans {
 	b_seekfixes
 	do
 		set_cfg_item $bool ${!bool}
-		let index++
+		((++index))
 	done
-	b_prologue=false
 	return 0
 }
 
@@ -124,13 +121,13 @@ function clean_dir {
 
 clean_indir() {
 	# remove everything in the indir, except any subdirs
-	find $indir -maxdepth 1 -not -type d -exec rm -vf '{}' \;
+	find "$indir" -maxdepth 1 -not -type d -exec rm -vf '{}' \;
 	patchcount=0
 }
 
 clean_outdir() {
 	find "$outdir" -maxdepth 1 -not -type d -exec rm -vf '{}' \;
-	rm -vf $outdir/$mismatch_file
+	rm -vf "$outdir"/"$mismatch_file"
 }
 
 clean_directories() {
@@ -148,8 +145,7 @@ cat <<EOF
 EOF
 )
 	echo -e "$cleanstr"
-	loop_range_q 1 3 answer
-	[ $? -ne 0 ] && return
+	loop_range_q 1 3 answer && return
 
 	case $answer in
 		1 ) clean_indir
@@ -175,7 +171,7 @@ EOF
 reset_to_lasttag() {
 	local newlasttag
 	local head=$(git log --oneline -n1)
-	git_get_lasttag newlasttag $last_tag_file
+	git_get_lasttag newlasttag "$last_tag_file"
 	local errstr=$(
 cat <<EOF
 
@@ -194,7 +190,7 @@ EOF
 	[ "$newlasttag" =  "$lasttag" ] || { echo -e "$errstr"; return; }
 
 	echo -e "$BLD\0Resetting git head to$OFF $lasttag."
-	git reset --hard $lasttag
+	git reset --hard "$lasttag"
 	b_allapplied=false
 }
 
@@ -276,13 +272,13 @@ config_parser() {
 		get_booleans
 		init_loopvars
 		show_config_menu
-		promptgetchar "$MNU    Enter one of the above: "$OFF"" opt
+		promptgetchar "$MNU    Enter one of the above: $OFF" opt
 
 		case $opt in
 		o )	change_opmode
 			;;
 		c )	ui_toggle b_mrcomments
-			set_cfg_item "b_mrcomments" $b_mrcomments
+			set_cfg_item "b_mrcomments" "$b_mrcomments"
 			;;
 		d )	set_dir "$indirstr" "indir" indir
 			;;
@@ -294,14 +290,14 @@ config_parser() {
 			;;
 		f )	set_patchvalfuzz
 			;;
-		p )	ui_cycle_state cmpmode $cmpmode_states
-			set_cfg_item "cmpmode" $cmpmode
+		p )	ui_cycle_state cmpmode "$cmpmode_states"
+			set_cfg_item "cmpmode" "$cmpmode"
 			;;
 		v )	ui_toggle b_verbose
-			set_cfg_item "b_verbose" $b_verbose
+			set_cfg_item "b_verbose" "$b_verbose"
 			;;
 		s )	ui_toggle b_seekfixes
-			set_cfg_item "b_seekfixes" $b_seekfixes
+			set_cfg_item "b_seekfixes" "$b_seekfixes"
 			;;
 		q ) 	return
 			;;
@@ -389,7 +385,7 @@ $OFF
 EOF
 )
 	echo -e "$mr_menu"
-	[ $menumode -eq $menumode_ext ] && show_extops
+	[ "$menumode" -eq "$menumode_ext" ] && show_extops
 }
 
 # show_email_menu - display the email opmode of the main menu
@@ -403,6 +399,7 @@ EOF
 show_email_menu() {
 	local opt
 	local remotes="$remote_dir : $remote_repo/$remote_branch"
+	local setting=
 	local email_menu=$(
 cat <<EOF
 $MNU
@@ -432,38 +429,36 @@ $OFF
 EOF
 )
 	echo -e "$email_menu"
-	[ $menumode -eq $menumode_ext ]  && show_extops
+	[ "$menumode" -eq $menumode_ext ]  && show_extops
 }
 
 menu_parser() {
 	get_filecount
 	if $b_mrflag; then show_mr_menu; else show_email_menu; fi
-	promptgetchar ""$MNU"Enter one of the above: "$OFF"" setting
+	promptgetchar "${MNU}Enter one of the above: $OFF" setting
 
-	case $setting in
+	case "$setting" in
 		W )	set_working_repo
 			;;
 		c )	config_parser
 			;;
 		o )	ui_cycle_state opmode $opmode_states
-			set_cfg_item "opmode" $opmode
-			if [ $opmode -eq $opmode_mr ]; then b_mrflag=true; else b_mrflag=false; fi
+			set_cfg_item "opmode" "$opmode"
+			if [ "$opmode" -eq $opmode_mr ]; then b_mrflag=true; else b_mrflag=false; fi
 			;;
 		g )	grep_mrlist && return $rc_run
 			;;
 		a )	$b_mrflag && query_acknack
 			;;
-		m )	$b_mrflag && select_merge_request
-			[ $? -eq 0 ] && return $rc_run
+		m )	$b_mrflag && select_merge_request && return $rc_run
 			;;
-		M )	$b_mrflag && get_merge_request
-			[ $? -eq 0 ] && return $rc_run
+		M )	$b_mrflag && get_merge_request && return $rc_run
 			;;
 		u )	set_remotedir
 			set_remote_seek
 			;;
-		b )	git_setbranch $branchlist
-			git_get_lasttag lasttag $last_tag_file
+		b )	git_setbranch "$branchlist"
+			git_get_lasttag lasttag "$last_tag_file"
 			;;
 		d )	set_dir "$indirstr" "indir" indir
 			;;
@@ -474,7 +469,7 @@ menu_parser() {
 		f )	print_missing_fixes
 			;;
 		x )	ui_cycle_state menumode $menumode_states
-			set_cfg_item "menumode" $menumode
+			set_cfg_item "menumode" "$menumode"
 			;;
 		R )	$b_mrflag || renpatfiles
 			;;
@@ -490,14 +485,14 @@ menu_parser() {
 		1 )	$b_mrflag || { ui_cycle_state cmpmode $cmpmode_states;
 				       set_cfg_item "cmpmode" $cmpmode; }
 			;;
-		2 )	$b_mrflag || { ui_cycle_state applymode $applymode_states;
-			               set_cfg_item "applymode" $applymode; }
+		2 )	$b_mrflag || { ui_cycle_state applymode "$applymode_states";
+			               set_cfg_item "applymode" "$applymode"; }
 			;;
-		3 )	$b_mrflag || { ui_cycle_state applyfailmode $applyfailmode_states;
-			               set_cfg_item "applyfailmode" $applyfailmode; }
+		3 )	$b_mrflag || { ui_cycle_state applyfailmode "$applyfailmode_states";
+			               set_cfg_item "applyfailmode" "$applyfailmode"; }
 			;;
 		4 )	$b_mrflag || { ui_toggle b_seekfixes;
-				       set_cfg_item "b_seekfixes" $b_seekfixes; }
+				       set_cfg_item "b_seekfixes" "$b_seekfixes"; }
 			;;
 		5 )	! $b_mrflag && $b_selpat && select_patch
 			;;
@@ -506,7 +501,7 @@ menu_parser() {
 		N )	nuke
 			;;
 		G )	reset_to_lasttag
-			rm -f $usvbp_commits
+			rm -f "$usvbp_commits"
 			;;
 		B )	create_branch
 			;;
@@ -517,14 +512,13 @@ menu_parser() {
 		q )	exit_me 0
 			;;
 		r )	if $b_mrflag; then
-				refresh_mergelist
-				[ $? -eq 0 ] && return $rc_run
+				refresh_mergelist && return $rc_run
 			else
 				set_booleans
 				return $rc_run
 			fi
 			;;
-		h )	less $manual
+		h )	less "$manual"
 			;;
 		v )     view_comments
 			;;
@@ -565,7 +559,7 @@ init_loopvars() {
 	remote_dir=$(get_cfg_item remote_dir)
 	mergelist_filter=$(get_cfg_item mergelist_filter)
 	opmode=$(get_cfg_item opmode)
-	[ $opmode -eq $opmode_mr ] && b_mrflag=true
+	[ "$opmode" -eq $opmode_mr ] && b_mrflag=true
 	init_files
 }
 
@@ -606,23 +600,9 @@ function menu_loop {
 #
 init_parms() {
 	local confline
-	local lary
-	local cfgdif
 	local configfile=
 	local cfgtemplate=
-	local newcfgstr=$(
-cat <<EOF
-$INF
-There was no$STA $MYDATA/patchreview.conf$INF file, so a new one has been created.
 
-We will need to know:
-1. The $STA$indirstr$INF directory to contain the patches for review
-2. The $STA$outdirstr$INF directory to contain output from this script
-3. Your choice of$STA diff editor$INF
-4. The upstream repo/branch to reference 'Seek missing Fixes'.
-$OFF
-EOF
-)
 	b_color=true
 
 	# Initialize the paths for the current working directory
@@ -635,12 +615,12 @@ EOF
 
 	# If the .data directory has not been created yet, do that and
 	# get its realpath.
-	[ -d "$MYDATA" ] || mkdir -p $MYDATA
+	[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
 
 	# If the config file doens't exist, copy the default one
 	# from MYLIB.
 	#
-	[ -f "$configfile" ] || cp $cfgtemplate $configfile
+	[ -f "$configfile" ] || cp "$cfgtemplate" "$configfile"
 
 	# Initialize the config manager and get the global variables.
 	#
@@ -677,21 +657,23 @@ EOF
 
 	[ -n "$editor" ] || set_editor
 
-	[ -d "$indir" ] && {
-		indir=$(realpath $indir)
-		set_cfg_item "indir" $indir
-	} || set_dir $indirstr "indir" indir
+	if [ -d "$indir" ]; then
+		indir=$(realpath "$indir")
+		set_cfg_item "indir" "$indir"
+	else
+		set_dir $indirstr "indir" indir
+	fi
 
-	[ -d "$outdir" ] && {
-		outdir=$(realpath $outdir)
-		set_cfg_item "outdir" $outdir
-	} || {
+	if [ -d "$outdir" ]; then
+		outdir=$(realpath "$outdir")
+		set_cfg_item "outdir" "$outdir"
+	else
 		outdir="$indir/tmp"
 		set_dir $outdirstr "outdir" outdir
-	}
+	fi
 
 	[ -d "$remote_dir" ] || set_remotedir
-	([ -z "$remote_repo" ] || [ -z "$remote_branch" ]) && set_remote_seek
+	if [ -z "$remote_repo" ] || [ -z "$remote_branch" ]; then set_remote_seek; fi
 
 	init_mr
 }
@@ -711,12 +693,11 @@ main_loop() {
 
 	while true; do
 		menu_loop
-		menu_stat=$?
+		# menu_stat=$?
 		# echo "menu_loop_stat: $menu_stat"
 
 		if ! $b_mrflag && $b_rename_infiles; then
-			exec_boolean "b_rename_infiles" false "renpatfiles"
-			[ $? -ne 0 ] && continue
+			exec_boolean "b_rename_infiles" false "renpatfiles" && continue
 		fi
 
 		if $b_mrflag; then
@@ -725,16 +706,14 @@ main_loop() {
 			$b_fmt_upstream && format_upstream_patches
 		fi
 
-		if [ $applymode -ne $applymode_off ]; then
-			exec_apply_patches
-			[ $? -ne 0 ] && continue
+		if [ "$applymode" -ne $applymode_off ]; then
+			exec_apply_patches && continue
 		fi
 
 		$b_seekfixes && seek_missing_fixes
 
-		if [ $cmpmode -ne $cmpmode_off ]; then
-			compare_patches
-			[ $? -ne 0 ] && continue
+		if [ "$cmpmode" -ne $cmpmode_off ]; then
+			compare_patches && continue
 			$b_mrflag && query_acknack
 		fi
 	done
@@ -756,7 +735,6 @@ cmd_getmr() {
 cmd_mr() {
 	local cmdline=
 	local stat
-	local cmdary
 	local index
 	local regex='^[0-9]+$'
 
@@ -769,9 +747,12 @@ cmd_mr() {
 
 	[ -n "$current_mr" ] || cmd_getmr
 
-	if ([ -z "$cmdline" ] || [[ $cmdline == *"run"* ]]); then
-		get_merge_request_patches $current_mr && \
-		format_upstream_patches || exit_me 0
+	if [ -z "$cmdline" ] || [[ $cmdline == *"run"* ]]; then
+		if get_merge_request_patches "$current_mr"; then
+			format_upstream_patches
+		else
+			exit_me 0
+		fi
 		seek_missing_fixes
 		compare_patches
 		query_acknack
@@ -791,8 +772,6 @@ cmd_check_fixes() {
 }
 
 cmd_show_verbose() {
-	local current_verbose_state
-	local next_verbose_state
 
 	if $b_verbose; then
 		curr="${STA}ON$OFF"
@@ -809,7 +788,7 @@ cmd_show_status() {
 	local statscreen=$(
 cat <<EOF
 
-  $MNU${UND}Current $(basename $0) status$INF
+  $MNU${UND}Current $(basename "$0") status$INF
   editor    : $STA$editor$INF
   branch    : $STA$(git_getcurrentbranch)$INF
   patch     : $STA$indir$INF
@@ -827,22 +806,21 @@ check_labstatus() {
 	local labmsg=$(
 cat <<EOF
 $WRN
-  You Must install the lab ustility.$INF
+  You must install the lab ustility.$INF
   Please see: $STA
     https://docs.google.com/document/d/1PLPBqrnV-m4hr8Jos_7dhYGYqtMdiuCZZC72t2ljyEA/edit
 $OFF
 EOF
 )
-	which lab > /dev/null 2>&1
-	if [ $? -ne 0 ]; then
+	which lab > /dev/null 2>&1 || {
 		echo -e "$labmsg"
 		exit 1
-	fi
+	}
 }
 
 check_env() {
 	check_labstatus
-	! $(git_checkrepo) && git_invrepomsg && exit 1
+	git_checkrepo || { git_invrepomsg && exit 1; }
 	init_parms
 	init_files
 }
@@ -854,10 +832,10 @@ parse_cmdline() {
 	local cmdlineops=$(
 cat <<EOF
 
-  $MNU$UND$(basename $0) command line interface$OFF$MNU
+  $MNU$UND$(basename "$0") command line interface$OFF$MNU
 
               $STA${UND}Environment$OFF$MNU
-  version  $INF : show $(basename $0) version$MNU
+  version  $INF : show $(basename "$0") version$MNU
   help     $INF : command line help (this text)$MNU
   man      $INF : full patchreview manual$MNU
 
@@ -895,7 +873,7 @@ EOF
 	while (( $# > 0 )) ;do
 		key="$1"
 		case $key in
-			"mr" )		shift; cmd_mr $@
+			"mr" )		shift; cmd_mr "$@"
 					;;
 			"seek" ) 	cmd_check_fixes
 					;;
@@ -910,8 +888,8 @@ EOF
 					;;
 			"editor" )	set_editor
 					;;
-			"branch" )	! $(git_checkrepo) && git_invrepomsg && exit 1
-					git_setbranch $branchlist
+			"branch" )	! git_checkrepo && git_invrepomsg && exit 1
+					git_setbranch "$branchlist"
 					;;
 			"upstream" )	set_remotedir
 					set_remote_seek
@@ -919,10 +897,10 @@ EOF
 			"remote" )	;&
 			"remotes" )	set_remote_seek
 					;;
-			"work" )	! $(git_checkrepo) && git_invrepomsg && exit 1
+			"work" )	! git_checkrepo && git_invrepomsg && exit 1
 					set_dir "$outdirstr" "outdir" outdir
 					;;
-			"patch" )	! $(git_checkrepo) && git_invrepomsg && exit 1
+			"patch" )	! git_checkrepo && git_invrepomsg && exit 1
 					set_dir "$indirstr" "indir" indir
 					;;
 			"-V" )		;&
@@ -944,7 +922,7 @@ EOF
 			"-help" ) 	;&
 			"--help" )	echo -e "$cmdlineops"
 					;;
-			"man" )		less $manual
+			"man" )		less "$manual"
 					;;
 			* ) echo -e "$STA$key ${WRN}is an invalid argument!$OFF\n"
 			    exit 1
@@ -961,15 +939,13 @@ main() {
 	local argc=$#
 
 	if [ $argc -eq 0 ]; then
-		b_cmdline=false
 		check_env
-		git_get_lasttag lasttag $last_tag_file
+		git_get_lasttag lasttag "$last_tag_file"
 		main_loop
 	else
-		[ "$1" == "man" ] && { less $manual; exit 0; }
-		b_cmdline=true
+		[ "$1" == "man" ] && { less "$manual"; exit 0; }
 		check_env
-		parse_cmdline $@
+		parse_cmdline "$@"
 	fi
 
 	exit 0
@@ -978,5 +954,5 @@ main() {
 # Call main.
 # Exit when done.
 #
-main $@
+main "$@"
 exit_me 0

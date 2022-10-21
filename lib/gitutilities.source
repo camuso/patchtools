@@ -82,7 +82,7 @@ function git_file2patchset {
 	local index=1
 	local pfx=""
 	local pad=
-	local remotes=()
+	local remotearray=()
 	local outline
 	local banner=\
 ""$INF"\
@@ -123,7 +123,7 @@ $STA$destdir$OFF"
 				# If we could not format the patch, then create an empty
 				# patch with the bad patch number in it.
 				#
-				create_remote_array remotes
+				create_remote_array remotearray
 				echo "Commit $commit" > $destdir/"$pfx-notfound.patch"
 				echo "$notfound" >> $destdir/"$pfx-notfound.patch"
 				echo >> $destdir/"$pfx-notfound.patch"
@@ -980,21 +980,21 @@ create_remote_array() {
 
 select_remrepo() {
 	local cur="${!1}"
-	local remotes=()
+	local remotearray=()
 	local num_of_remotes
 	local stat
 
-	create_remote_array remotes
-	num_of_remotes=${#remotes[@]}
+	create_remote_array remotearray
+	num_of_remotes=${#remotearray[@]}
 
 	case $num_of_remotes in
 		0 ) echo -e "${WRN}No remotes could be detected in .git/config.$OFF"
 		    return 1
 		    ;;
-		1 ) cur=${remotes[0]}
+		1 ) cur=${remotearray[0]}
 		    stat=0
 		    ;;
-		* ) select_from_array remotes "remote repos" cur
+		* ) select_from_array remotearray "remote repos" cur
 		    stat=$?
 	esac
 

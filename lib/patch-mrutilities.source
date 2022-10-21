@@ -10,7 +10,7 @@
 
 # Get the directory defaults if they don't already exist
 #
-[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename $0)))
+[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename "$0")))
 [ "$MYLIB" ] || declare MYLIB=$(cd $(dirname ${BASH_SOURCE[0]}); pwd)
 
 [ "$ui_loaded" ] || source $MYLIB/ui.source

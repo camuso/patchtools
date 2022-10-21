@@ -3,7 +3,7 @@
 # commitcmp
 #
 
-[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename $0)))
+[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename "$0")))
 [ "$MYLIB" ] || declare MYLIB=$MYDIR/lib
 
 [ "$ui_loaded" ]            || source $MYLIB/ui.source
@@ -74,7 +74,7 @@ usage() {
 	local usagestr=$(
 cat <<EOF
 $MNU
-$(basename $0) -ud updir -uc upcmt -dc dncmt -o outdir [-S] [sybsys]
+$(basename "$0") -ud updir -uc upcmt -dc dncmt -o outdir [-S] [sybsys]
 $INF
 Uses scripts ${STA}gitnice$INF and ${STA}extup$INF to create a list of
 commits to backport. Commits that have already been backported will have
@@ -92,7 +92,7 @@ Creates the following files in the <outdir>.
   string prepended to its name.
 $MNU
 Example:$STA
-  $(basename $0) \\\
+  $(basename "$0") \\\
 
         -ud /work/upstream/kernel \\\
 
