@@ -5,7 +5,7 @@
 declare usagestr=$(
 cat <<EOF
 
-$(basename $0) [ -options ] outfile
+$(basename "$0") [ -options ] outfile
 
 Description:
   Enter commits one at a time and a nice oneline format with

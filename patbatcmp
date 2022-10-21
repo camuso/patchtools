@@ -6,9 +6,9 @@
 usagestr=$(
 cat <<EOF
 
-$(basename $0) Version 1.0
+$(basename "$0") Version 1.0
 
-usage: $(basename $0) [option] dirA dirB
+usage: $(basename "$0") [option] dirA dirB
 
 Options:
   -h  - Print this help screen

@@ -2,7 +2,7 @@
 #
 # config-manager
 
-[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename $0)))
+[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename "$0")))
 [ "$MYLIB" ] || declare MYLIB=$MYDIR/lib
 source $MYLIB/ui.source
 
@@ -15,7 +15,7 @@ declare value=
 declare usagestr=$(
 cat <<EOF
 
-$(basename $0) -f config-file -<r|w> key [new value] [-dark | -light]]
+$(basename "$0") -f config-file -<r|w> key [new value] [-dark | -light]]
 
 Description:
 	Simple configuration file manager. The configuration file simply
@@ -34,7 +34,7 @@ Arguments:
 			 alias config-manager='config-manager -dark'
 
 EXample:
-	$(basename $0) -f myconfig -w somekey newval -b 2
+	$(basename "$0") -f myconfig -w somekey newval -b 2
 
 \0
 EOF

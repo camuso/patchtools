@@ -9,7 +9,7 @@ version="11.8.2"
 
 # Get the directory defaults if they don't already exist
 #
-[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename $0)))
+[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename "$0")))
 [ "$MYLIB" ] || declare MYLIB=$MYDIR/lib
 
 [ "$ui_loaded" ]            || source $MYLIB/ui.source
@@ -25,7 +25,7 @@ b_ui_int_first_getyn=false	# For lib/ui.source
 #
 shopt -s extglob
 
-declare manual="$MYDIR/man/$(basename $0).txt"
+declare manual="$MYDIR/man/$(basename "$0").txt"
 declare MYDATA=
 declare configfile=
 declare repolist="$HOME"/.config/patchreview/repolist

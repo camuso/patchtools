@@ -22,7 +22,7 @@ trap control_c SIGINT
 #
 shopt -s extglob
 
-declare MYDIR=$(dirname $(which $(basename $0)))
+declare MYDIR=$(dirname $(which $(basename "$0")))
 declare MYLIB=$MYDIR/lib
 declare MYDATA=./.data
 LIB="$MYLIB"
@@ -85,7 +85,7 @@ declare usdirstr="Upstream patches"
 declare usagestr=$(
 cat <<EOF
 
-$(basename $0) [-h [-R | -P]  -U -X -o <file>]
+$(basename "$0") [-h [-R | -P]  -U -X -o <file>]
 
   Version $version
 

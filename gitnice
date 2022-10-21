@@ -25,7 +25,7 @@ declare gitold
 declare usagestr=$(
 cat <<EOF
 
-$(basename $0) [options] [commitexpr]
+$(basename "$0") [options] [commitexpr]
 
   Displays commits in --oneline format, with options as detailed below.
   With no options and no arguments, the most recent commit is displayed

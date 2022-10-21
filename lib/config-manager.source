@@ -5,7 +5,7 @@
 # The configfile must be declared and defined globally and externally.
 #
 
-[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename $0)))
+[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename "$0")))
 [ "$MYLIB" ] || declare MYLIB=$MYDIR/lib
 [ "$ui_loaded" ] || source $MYLIB/ui.source
 

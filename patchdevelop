@@ -40,7 +40,7 @@
 # Where MYDIR is the directory in which this script and its companions
 # are located.
 #
-declare MYDIR=$(dirname $(which $(basename $0)))
+declare MYDIR=$(dirname $(which $(basename "$0")))
 declare MYLIB=$MYDIR/lib
 
 #######################################
