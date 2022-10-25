@@ -685,14 +685,14 @@ init_parms() {
 #
 main_loop() {
 
-	local stat
+	local stat=0
 
 	##############################################
 	# Main Program Loop
 	##############################################
 
 	while true; do
-		menu_loop
+		[ $stat -ne $rc_run ] && menu_loop
 		# menu_stat=$?
 		# echo "menu_loop_stat: $menu_stat"
 
@@ -713,8 +713,9 @@ main_loop() {
 		$b_seekfixes && seek_missing_fixes
 
 		if [ "$cmpmode" -ne $cmpmode_off ]; then
-			compare_patches && continue
+			compare_patches || continue
 			$b_mrflag && query_acknack
+			stat=$?
 		fi
 	done
 }

@@ -230,6 +230,8 @@ cat <<EOF
    $MNU N$WRN  NACK$OFF with comment
    $MNU c$OFF  Comment only
    $MNU v$OFF  View description and comments for $STA$current_mr
+   $MNU M$OFF  Review another Merge Request
+   $MNU m$OFF  Display a list of Merge Requests
    $MNU q$OFF  Quit and return to main menu$OFF
 \0
 EOF
@@ -250,7 +252,7 @@ EOF
 	while :; do
 		echo -e "$acknackmenu"
 		promptgetchar "$MNU   Enter one of the above: $OFF" _dak_response
-		[[ qnaNAcv =~ $_dak_response ]] && break
+		[[ qnaNAcvMm =~ $_dak_response ]] && break
 	done
 
 	eval $1=$_dak_response
@@ -299,6 +301,10 @@ query_acknack() {
 			    ;;
 			v ) view_comments
 			    continue
+			    ;;
+			M ) get_merge_request && return $rc_run || continue
+			    ;;
+			m ) select_merge_request && return $rc_run || continue
 			    ;;
 		esac
 
