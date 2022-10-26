@@ -19,32 +19,28 @@ VERSION="3.0"
 # Where MYDIR is the directory in which this script and its companions
 # are located.
 #
-declare MYDIR=$(dirname $(which $(basename "$0")))
-declare MYLIB=$MYDIR/lib
-declare MYMAN=$MYDIR/man
-declare MYDATA=$(realpath ./.data)
-declare MYHLP=$MYMAN/cherp.txt
-declare MYSHLVL=/dev/shm/gcpshlvl
-declare MYNAME=$(basename "$0")
+declare MYDIR="$(dirname "$(which "$(basename "$0")")")"
+declare MYLIB="$MYDIR"/lib
+declare MYMAN="$MYDIR"/man
+declare MYDATA="$(realpath ./.data)"
+declare MYHLP="$MYMAN"/cherp.txt
+declare MYNAME="$(basename "$0")"
 
 #######################################
 # External Source Files
 #######################################
-source $MYLIB/ui.source
-source $MYLIB/config-manager.source
+source "$MYLIB"/ui.source
+source "$MYLIB"/config-manager.source
 
 ########################################
 # Return and Control Codes
 ########################################
 declare rc_continue=0	# Continue for another pass
-declare rc_run=1	# Run cherp
 
 declare exit_good=0	# Normal exit
-declare exit_abort=1	# Abort cherrypick and exit
 declare exit_conflict=2	# Exit with a conflict
 declare exit_reset=3	# Exit after resetting the world
 declare exit_bogus=4	# Exit because of bogus commit
-declare exit_init=5	# The project has not been initialized
 declare exit_pending=6	# There are changes pending, so action can't complete
 declare exit_nothing=7	# There is nothing to do
 declare exit_bad=10	# Exiting from command line call with bad status
@@ -71,7 +67,6 @@ declare upbranch		# the branch of the upstream repo
 #########################################
 declare -i menupad=36
 declare cmtmsgfile=/dev/shm/gcpcmtmsgfile
-declare str_cmtmsg
 declare lasthashvalid=false
 declare lasttagfile="/dev/shm/gcplasttag"
 
@@ -81,7 +76,6 @@ declare b_single=false		# only perform single cherrypick
 declare b_nit=false		# selective cherrypick
 
 declare gitbranch
-declare ui_bools=""
 
 declare currentuphash
 declare currentupcommit
@@ -95,8 +89,6 @@ declare ignore_str="#+"
 ########################################
 declare str_herald=
 declare str_conflicts=
-declare str_cmtmsg=
-declare str_active_session=
 declare str_bugzilla=
 declare str_upstream=
 declare str_brew=
@@ -105,12 +97,6 @@ declare str_test=
 init_global_strings() {
 str_herald="\n$MNU${UND}cherp $VERSION - Automates git cherry-pick$OFF\n"
 str_conflicts="Conflicts:\n"
-str_active_session="
-${WRN}There is currently a session active.$MNU
-	$BLD$MYNAME --status$INF for details on current session$MNU
-	$BLD$MYNAME --continue$INF to continue the session$MNU
-	$BLD$MYNAME --new$INF to start a new session$OFF
-"
 }
 
 #########################################
@@ -136,7 +122,7 @@ function print_herald {
 function exit_cherp {
 	# echo -e "$UND\0exit_cherp $1$OFF"
 	$b_session_inited && save_session
-	exit $1
+	exit "$1"
 }
 
 #===  FUNCTION  ================================================================
@@ -146,7 +132,7 @@ function exit_cherp {
 #       RETURNS:  None
 #===============================================================================
 function get_gitbranch {
-	echo $(git branch | egrep \* | cut -d' ' -f2)
+	git branch | grep '\*' | cut -d' ' -f2
 }
 
 #===  FUNCTION  ================================================================
@@ -164,43 +150,32 @@ function set_gitbranch {
 	local linenumber
 	local line
 	local outline
-	local branchlist
-	local brmsg=$(
-cat <<EOF
-$INF
-The following commands will be issued when a new branch is checked out.
-$MNU
-	git am --abort          $INF  # Abort any pending git am ops $MNU
-	git checkout <selected> $INF  # checkout the selected branch $OFF
-\0
-EOF
-)
+	local hilite=
+	local branchlistfile="$workdir"/branchlist
+
 	echo
 	echo -e "${MNU}Select the number of the branch you want to use or press $qstr$INF"
 	echo -e "to leave the current selection highlighted below.$OFF"
 
-	git branch > $workdir/branchlist
+	git branch > "$branchlistfile"
 
-	while read line; do
-		[ "${line:0:1}" = "*" ] && echo -ne $BLD
-		outline=$(printf "%s %2d %s $line\n" $MNU $index $OFF)
+	while read -r line; do
+		[ "${line:0:1}" = "*" ] && hilite="$MNU" || hilite="$INF"
+		outline=$(printf "%s %2d %s $line\n" "$hilite" $index "$OFF")
 		echo -e "$outline"
-		let index++
-	done < $workdir/branchlist
+		((++index))
+	done < "$branchlistfile"
 
 	# echo -e "$brmsg"
-	loop_range_q 1 $((index - 1)) linenumber
-	[ $? -ne 0 ] && return 0
+	loop_range_q 1 $((index - 1)) linenumber || return 0
 
-	gitbranch="$(ui_readline $linenumber $workdir/branchlist | tr -d [\*" "])"
+	gitbranch="$(ui_readline "$linenumber" "$branchlistfile" | tr -d [\*" "])"
 	echo -e "${MNU}git checkout $STA$gitbranch$OFF"
 	git am --abort --quiet >/dev/null 2>&1
-	git checkout "$gitbranch"
-
-	if [ $? -ne 0 ]; then
-		$b_cmdline && exit_cherp $exit_pending
+	git checkout "$gitbranch" || {
+		$b_cmdline && exit_cherp $exit_pending;
 		return 1
-	fi
+	}
 
 	git log --oneline -1
 	getlasttag
@@ -265,10 +240,10 @@ EOF
 		fi
 	done
 
-	dir=$(realpath $dir)
-	set_cfg_item $dircfgkey "$dir"
+	dir=$(realpath "$dir")
+	set_cfg_item "$dircfgkey" "$dir"
 	echo -e "$INF$dirstr directory is $STA$dir$OFF\n"
-	eval $3=$dir
+	eval "$3"="$dir"
 }
 
 #===  FUNCTION  ================================================================
@@ -303,20 +278,21 @@ set_upstream_directory() {
 	set_dir "upstream" "updir" newdir
 
 	[ "$newdir" == "$updir" ] || { [ "$uprepo" ] && git remote rm "$uprepo"; }
-	updir=$newdir
+	updir="$newdir"
 
-	cd $updir
+	cd "$updir" || { echo -e "${WRN}Unable to ${MNU}cd $updir$OFF"; return 1; }
 	select_remrepo uprepo
-	select_rembranch $uprepo upbranch
+	select_rembranch "$uprepo" upbranch
 	upurl=$(show_remote_url "$uprepo")
 
-	cd -
+	cd - || { echo -e "${WRN}Unable to ${MNU}cd -$OFF"; return 1; }
 	[ "$uprepo" == "origin" ] && uprepo="upstream"
 	set_cfg_item "uprepo"   "$uprepo"
 	set_cfg_item "upurl"    "$upurl"
 	set_cfg_item "upbranch" "$upbranch"
-	git remote add $uprepo $upurl
+	git remote add "$uprepo" "$upurl"
 	git fetch -p --all
+	return 0
 }
 
 show_remote_url() {
@@ -332,32 +308,34 @@ show_remotes() {
 	local toks=()
 	local gitcfgarray=()
 	local remoteurl=
+	local remote=
 
-	gitcfgarray=$(grep -w '\[remote' .git/config)
-	while read line; do
+	gitcfgarray=("$(grep -w '\[remote' .git/config)")
+	while read -r line; do
 		ui_strtok "$line" '" ' toks
-		remote=$(echo ${toks[1]} | sed  's/]//')
+		remote="${toks[1]}"
+		remote="${remote//]/}"
 		remoteurl=$(show_remote_url "$remote")
 		echo -e "$remote"
 		echo -e "$remoteurl"
 		echo
-	done <<< "$gitcfgarray"
+	done <<< "${gitcfgarray[@]}"
 }
 
 create_remote_array() {
+	local -n remarray=$1
 	local line
+	local remote=
 	local toks=()
-	local remarray=()
 	local gitcfgarray=()
 
-	gitcfgarray=$(grep -w '\[remote' .git/config)
-	while read line; do
+	gitcfgarray=("$(grep -w '\[remote' .git/config)")
+	while read -r line; do
 		ui_strtok "$line" '" ' toks
-		remote=$(echo ${toks[1]} | sed  's/]//')
-		remarray+=($remote)
-	done <<< "$gitcfgarray"
-
-	eval $1="(${remarray[@]})"
+		remote="${toks[1]}"
+		remote="${remote//]/}"
+		remarray+=("$remote")
+	done <<< "${gitcfgarray[@]}"
 }
 
 select_remrepo() {
@@ -373,14 +351,14 @@ select_remrepo() {
 		0 ) echo -e "${WRN}No remotes could be detected in .git/config.$OFF"
 		    return 1
 		    ;;
-		1 ) cur=${remotes[0]}
+		1 ) cur="${remotes[0]}"
 		    stat=0
 		    ;;
 		* ) select_from_array remotes "remote repos" cur
 		    stat=$?
 	esac
 
-	eval $1=$cur
+	eval "$1"="$cur"
 	return $stat
 }
 
@@ -402,17 +380,17 @@ select_rembranch() {
 	brstr=$(git branch -r | grep "$repo" | cut -d'/' -f2)
 
 	# Filter out lines with '-> in them, because they are not branches
-	while read s; do [[ $s == *"->"* ]] || brancharray+=($s); done <<< "$brstr"
+	while read -r s; do [[ $s == *"->"* ]] || brancharray+=("$s"); done <<< "$brstr"
 
 	if [ ${#brancharray[@]} -gt 1 ]; then
-		select_from_array brancharray "remote branches in $remote_repo" cur
+		select_from_array brancharray "remote branches in $repo" cur
 	else
 		cur=${brancharray[0]}
 		echo -e "$INF Only one branch in this repo: $STA$cur$OFF"
 		echo -e "$INF Nothing else to choose from.$OFF"
 	fi
 
-	eval $2=$cur
+	eval "$2"="$cur"
 	return 0
 }
 
@@ -477,59 +455,9 @@ EOF
 		fi
 	fi
 
-	upcommitsfile=$(realpath $upcommitsfile)
-	set_cfg_item "upcommitsfile" $upcommitsfile
+	upcommitsfile="$(realpath "$upcommitsfile")"
+	set_cfg_item "upcommitsfile" "$upcommitsfile"
 	return $stat
-}
-
-#===  FUNCTION  ================================================================
-#          NAME:  set_dnappliedfile
-#   DESCRIPTION:  Sets the name of the file that will contain the new commits
-#                 resulting from those that were cherry-picked.
-#    PARAMETERS:  none
-#	GLOBALS:  dnappliedfile - file containing the new commits resulting from
-#	                          those that were cherry-picked
-#	          b_use_dscmtlog - boolean set true if the filename is not ""
-#       RETURNS:  1 if no dnappliedfile, else 0
-#===============================================================================
-set_dnappliedfile() {
-	local stat
-	local prstr=$(
-cat <<EOF
-$INF
-Enter a file to contain the map of upstream-to-downstream commits resulting
-from cherrypicks managed by this script.$OFF
-EOF
-)
-	local currentfile=$(
-cat <<EOF
-${INF}The current file is $STA$dnappliedfile$INF.
-Press $qstr$INF at the prompt to use this file
-EOF
-)
-	local defaultmsg=$(
-cat <<EOF
-${INF}Using the default file: $STA$workdir/$dncommitsdefault$OFF
-EOF
-)
-	# echo -e "$UND\0set_dnappliedfile$OFF"
-
-	[ "$dnappliedfile" ] && prstr="$prstr.\n$currentfile"
-	ui_getfilespec "$prstr : " dnappliedfile
-	stat=$?
-
-	if [ $stat -ne 0 ]; then
-		if [ "$dnappliedfile" ]; then
-			echo -e "Keeping: $BLD$dnappliedfile$OFF"
-		else
-			dnappliedfile=$workdir/$dncommitsdefault
-			echo -e "$defaultmsg"
-		fi
-	fi
-
-	> $dnappliedfile
-	set_cfg_item "dncommits" $dnappliedfile
-	return 0
 }
 
 #===  FUNCTION  ================================================================
@@ -565,16 +493,16 @@ EOF
 lookup_hash() {
 	local hash=$1
 	local counter
-	local linecount=$(cat $upcommitsfile | wc -l)
+	local linecount=$(wc -l "$upcommitsfile")
 	local line
 
-	[[ -f $upcommitsfile ]] || return 1
+	[[ -f "$upcommitsfile" ]] || return 1
 
-	counter=$(grep -m1 -n ^$hash "$upcommitsfile" | cut -d':' -f1)
+	counter=$(grep -m1 -n "^$hash" "$upcommitsfile" | cut -d':' -f1)
 
 	[ -z "$counter" ] && return 1
 
-	eval $2=$counter
+	eval "$2"="$counter"
 	return 0
 }
 
@@ -601,9 +529,9 @@ set_next_cherrypick() {
 	local linary
 	local idx=0
 	local stat
-	local linecount=$(cat $upcommitsfile | wc -l)
+	local linecount=$(iwc -l "$upcommitsfile")
 	local numwid=${#linecount}
-	local cols=$((tcols - 2 - $numwid))
+	local cols=$((tcols - 2 - numwid))
 	local selected
 
 	echo -e "\n${INF}Contents of upstream commits file: $STA$upcommitsfile$OFF"
@@ -612,21 +540,21 @@ set_next_cherrypick() {
 
 	# Dump the contents of the upcommitsfile
 	#
-	while read line; do
-		let counter++
-		[ $(ui_strindex "$ignore_str" "${line:0:1}") -ge 0 ] && continue
-		line=$(printf "%s %${numwid}d %s%s%s" $MNU $((idx+1)) $OFF "$line")
+	while read -r line; do
+		((++counter))
+		[ "$(ui_strindex "$ignore_str" "${line:0:1}")" -ge 0 ] && continue
+		line=$(printf "%s %${numwid}d %s%s%s" "$MNU" $((idx+1)) "$OFF" "$line")
 		echo -e "${line:0:cols}$OFF"
 		linary[$idx]=$counter
-		let idx++
-	done < $upcommitsfile
+		((++idx))
+	done < "$upcommitsfile"
 
 	echo
-	loop_range_q 1 $idx selected
+	loop_range_q 1 "$idx" selected
 	[ "$selected" = "q" ] || upcmtstartline=${linary[$((selected - 1))]}
-	currentupcommit="$(ui_readline $upcmtstartline $upcommitsfile)"
+	currentupcommit="$(ui_readline "$upcmtstartline" "$upcommitsfile")"
 	# echo "currentupcommit: $currentupcommit"
-	currentuphash=$(echo $currentupcommit | cut -d' ' -f1)
+	currentuphash=$(echo "$currentupcommit" | cut -d' ' -f1)
 	$b_cmdline && exit_cherp $exit_good
 }
 
@@ -655,10 +583,9 @@ validate_last_upstream_hash() {
 	# If the commit stored in the config file is not in the commits file
 	# then show nothing.
 	#
-	grep -m1 -n "$lastuphash" "$upcommitsfile" >/dev/null 2>&1
-	[ $? -eq 0 ] || lasthashvalid=false
+	grep -m1 -n "$lastuphash" "$upcommitsfile" >/dev/null 2>&1 || lasthashvalid=false
 
-	$lasthashvalid && lastuplog=$(git log -n1 --oneline $lastuphash)
+	$lasthashvalid && lastuplog=$(git log -n1 --oneline "$lastuphash")
 	$lasthashvalid && return 0 || return 1
 }
 
@@ -672,11 +599,10 @@ validate_last_upstream_hash() {
 getlasttag() {
 	local _mypid_
 	echo -ne "$INF\0Getting last git tag..$OFF"
-	git describe --tags --abbrev=0 > $lasttagfile &
+	git describe --tags --abbrev=0 > "$lasttagfile" &
 	_mypid_=$!
 	ui_waitonproc $_mypid_ .1
 	echo
-	rmlasttag=true
 }
 
 #===  FUNCTION  ================================================================
@@ -694,27 +620,22 @@ getlasttag() {
 get_next_cherrypick() {
 	# local myname="get_next_cherrypick: "
 	# echo -e "\n$UND$myname$OFF start line: $upcmtstartline"
-	local noexiststr="$WRN\0Commits file: $STA$upcommtsfile$WRN does not exist.$OFF"
-	local nofile="$WRN\0There is no commits file.$OFF"
 
-	if ! [[ -f $upcommitsfile ]]; then
-		#[ $upcommitsfile ] && echo -e "$noexiststr" || echo -e "$nofile"
-		return 1
-	fi
+	[[ -f "$upcommitsfile" ]] || return 1
 
 	local idx
 	local line
-	local count=$(cat $upcommitsfile | wc -l)
+	local count=$(wc -l "$upcommitsfile")
 
 	# Find the first line that does NOT begin with one of the characters in the
 	# string of characters indicating the line is to be ignored.
 	#
 	for ((idx=(upcmtstartline + 1); idx <= count; ++idx)); do
-		line="$(ui_readline $idx $upcommitsfile)"
-		[ $(ui_strindex "$ignore_str" "${line:0:1}") -ge 0 ] || break
+		line="$(ui_readline "$idx" "$upcommitsfile")"
+		[ "$(ui_strindex "$ignore_str" "${line:0:1}")" -ge 0 ] || break
 	done
 
-	if [ $idx -gt $count ]; then
+	if [ "$idx" -gt "$count" ]; then
 		echo -en "$STA${currentupcommit:0:$tcols}$OFF "
 		echo -e "${INF}was the last upstream commit in file: $STA$upcommitsfile$OFF"
 		return 1
@@ -722,8 +643,8 @@ get_next_cherrypick() {
 
 	upcmtstartline=$idx
 	currentupcommit="$line"
-	currentuphash=$(echo $line | cut -d' ' -f1)
-	set_cfg_item "upcmtstartline" $upcmtstartline
+	currentuphash=$(echo "$line" | cut -d' ' -f1)
+	set_cfg_item "upcmtstartline" "$upcmtstartline"
 
 	return 0
 }
@@ -746,7 +667,7 @@ get_current_cherrypick() {
 	# local myname="get_current_cherrypick:"
 	# echo -e "$OFF\n$UND$myname upcmtstartline: $upcmtstartline$OFF"
 
-	let upcmtstartline--
+	((--upcmtstartline))
 	# echo "$myname startline: $upcmtstartline"
 	get_next_cherrypick
 	return $?
@@ -778,8 +699,8 @@ EOF
 	$b_conflict && statstr="${WRN}Current conflict         :$OFF" \
 		    || statstr="Next cherrypick          :$OFF"
 
-	get_current_cherrypick
-	[ $? -eq 0 ] && prstr="$STA${currentupcommit:0:$cols}$OFF" || prstr="$eofstr"
+	get_current_cherrypick	&& prstr="$STA${currentupcommit:0:$cols}$OFF" \
+				|| prstr="$eofstr"
 
 	local show_next_cherrypick_str=$(
 cat <<EOF
@@ -860,7 +781,7 @@ EOF
 #===============================================================================
 show_history() {
 	$b_cmdline && init_cmdline_call
-	echo -en "$INF$(git log --oneline $dnorighead..HEAD)$OFF"
+	echo -en "$INF$(git log --oneline "$dnorighead"..HEAD)$OFF"
 	$b_cmdline && exit 0
 	return 0
 }
@@ -892,7 +813,7 @@ show_status() {
 	# [ -f lasttagfile ] || git describe --tags --abbrev=0 > $lasttagfile
 	# lasttag=$(cat $lasttagfile)
 	lastbrcmt=$(git log -n1 --oneline)
-	orighead=$(git log --oneline -n1 $dnorighead)
+	orighead=$(git log --oneline -n1 "$dnorighead")
 
 	statstr=$(
 cat <<EOF
@@ -935,16 +856,16 @@ get_options() {
 
 	case $opt in
 		z )	getuser "${MNU}Bugzilla link: $OFF" str_bugzilla
-			set_cfg_item "str_bugzilla"  $str_bugzilla
+			set_cfg_item "str_bugzilla"  "$str_bugzilla"
 			;;
 		u )     getuser "${MNU}Upstream status: $OFF" str_upstream
-			set_cfg_item "str_upstream"  $str_upstream
+			set_cfg_item "str_upstream"  "$str_upstream"
 			;;
 		b )	getuser "${MNU}Brew or build info: $OFF" str_brew
-			set_cfg_item "str_brew"      $str_brew
+			set_cfg_item "str_brew"      "$str_brew"
 			;;
 		t )	getuser "${MNU}Testing info: $OFF" str_test
-			set_cfg_item "str_test"      $str_test
+			set_cfg_item "str_test"      "$str_test"
 			;;
 		p )	git_set_subjectprefix
 			;;
@@ -956,8 +877,7 @@ get_options() {
 
 options_loop() {
 	while :; do
-		get_options
-		[ $? -eq 0 ] || return
+		get_options || return
 	done
 }
 
@@ -978,7 +898,7 @@ function show_settings {
 	local subjectprefix="$(git config format.subjectprefix)"
 	local lasttag=$(cat $lasttagfile)
 	local lastbrcmt=$(git log -n1 --oneline)
-	local orighead=$(git log --oneline -n1 $dnorighead)
+	local orighead=$(git log --oneline -n1 "$dnorighead")
 	local settings=$(
 cat <<EOF
 $MNU
@@ -1021,6 +941,7 @@ function menu_parser {
 	# echo -e "$UND\0menu_parser$OFF"
 
 	local pops
+	local setting=
 
 	validate_last_upstream_hash
 	show_settings
@@ -1043,14 +964,13 @@ function menu_parser {
 		H )	show_history
 			;;
 		P )     getuser "${MNU}Pop how many commits: $OFF" pops
-			pop_commits $pops
+			pop_commits "$pops"
 			;;
-		h )	less $MYHLP
+		h )	less "$MYHLP"
 			;;
 		q )	exit_cherp $exit_good
 			;;
 		r )	run_me
-			# return $rc_run
 			;;
 		O )	options_loop
 	esac
@@ -1076,7 +996,6 @@ function menu_loop {
 		menu_parser
 		stat=$?
 		# echo "menu_parser_stat: $stat"
-		# [ $stat -eq $rc_run ] && break
 	done
 	return $stat
 }
@@ -1095,12 +1014,12 @@ edit_commit() {
 		# Display the git log message and inquire if it needs more
 		# editing.
 		#
-		git log -n1 > $cmtmsgfile
-		cat $cmtmsgfile
+		git log -n1 > "$cmtmsgfile"
+		cat "$cmtmsgfile"
 		echo
 		getyn "Edit this commit message?" yup
 
-		$yup && git commit --amend || break
+		if $yup; then git commit --amend else break; fi
 	done
 }
 
@@ -1130,14 +1049,8 @@ abort_cherp() {
 #===============================================================================
 reset_cherp() {
 	local cols=$((tcols - 12))
-	local orighead=$(git log --oneline -n1 $dnorighead)
-	local headmsg=$(
-cat <<EOF
-The git head is being reset to the original head of the branch when you started
-this session.
-Resetting to: ${orighead:0:cols}
-EOF
-)
+	local orighead=$(git log --oneline -n1 "$dnorighead")
+
 	init_cmdline_call
 	git cherry-pick --abort 2>/dev/null
 	git reset --hard $dnorighead
@@ -1325,7 +1238,8 @@ stage_commit() {
 	#	The user of this script as author of the patch
 	#	The current date
 	#	Descriptor line, with leading whitespace trimmed
-	#	Standard commit message (str_cmtmsg in this file)
+	#	Bugzilla and brew if available
+	#	Upstream status if available
 	#	Original commit message from cherry-picked commit
 	#	Signed-off-by: line
 	#
