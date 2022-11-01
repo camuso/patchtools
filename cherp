@@ -71,7 +71,6 @@ declare lasthashvalid=false
 declare lasttagfile="/dev/shm/gcplasttag"
 
 declare b_new=false		# new session
-declare b_continue=false	# continue session
 declare b_single=false		# only perform single cherrypick
 declare b_nit=false		# selective cherrypick
 
@@ -1053,7 +1052,7 @@ reset_cherp() {
 
 	init_cmdline_call
 	git cherry-pick --abort 2>/dev/null
-	git reset --hard $dnorighead
+	git reset --hard "$dnorighead"
 	b_conflict=false
 	upcmtstartline=0
 	get_next_cherrypick
@@ -1084,7 +1083,6 @@ EOF
 	init_cmdline_call
 	git cherry-pick --continue
 	b_conflict=false
-	b_continue=false
 	get_next_cherrypick
 	run_me
 }
@@ -1105,7 +1103,6 @@ run_commit() {
 
 	init_cmdline_call
 	b_conflict=true
-	b_continue=false
 	currentuphash=$lastuphash
 	stage_commit
 
@@ -1128,8 +1125,8 @@ run_single() {
 	b_single=true
 
 	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
-	set_cfg_item "dnorighead" $dnorighead
-	set_cfg_item "lastuphash" $currentuphash
+	set_cfg_item "dnorighead" "$dnorighead"
+	set_cfg_item "lastuphash" "$currentuphash"
 
 	cherrypick
 	stat=$?
@@ -1177,10 +1174,16 @@ Make sure the hashes in $STA$upcommitsfile$INF are all valid.$OFF
 \0
 EOF
 )
-	commit=$(git log --oneline -n1 $uphash)
+	commit=$(git log --oneline -n1 "$uphash")
 	# echo "commit: $commit"
 	echo -e "${INF}Processing : $STA${commit:0:$wcols}$OFF"
-	$b_nit && git cherry-pick -n "$uphash" || git cherry-pick "$uphash"
+
+	if $b_nit; then
+		git cherry-pick -n "$uphash"
+	else
+		git cherry-pick "$uphash"
+	fi
+
 	gitstat=$?
 
 	# If cherry-pick returns with 128, the commit was invalid or
@@ -1230,7 +1233,7 @@ stage_commit() {
 	local uphash=$currentuphash
 	local commit
 
-	commit=$(git log --oneline -n1 $uphash)
+	commit=$(git log --oneline -n1 "$uphash")
 	# echo -e "Committing: $BLD${commit:0:$wcols}$OFF"
 	git commit -aC "$uphash"
 
@@ -1243,32 +1246,30 @@ stage_commit() {
 	#	Original commit message from cherry-picked commit
 	#	Signed-off-by: line
 	#
-	echo -e "\n" > $cmtmsgfile
+	echo -e "\n" > "$cmtmsgfile"
 	description=$(git log -n1 "$uphash" | head -5 | tail -1)
 
 	# Trim leading whitespace from description line and append
 	# it to the commit message. Also append the standard commit
 	# message.
 	#
-	description=$(echo -e $description)
-	echo "$description" >> $cmtmsgfile
-	echo -e "\n" >> $cmtmsgfile
-	echo '```' >> $cmtmsgfile
-	[ -n "$str_bugzilla" ] && echo -e "Bugzilla: $str_bugzilla" >> $cmtmsgfile
-	[ -n "$str_upstream" ] && echo -e "Upstream status: $str_upstream" >> $cmtmsgfile
-	echo -e "\n" >> $cmtmsgfile
+	description=$(echo -e "$description")
+	echo -e "$description\n\n"'```'"\n" >> "$cmtmsgfile"
+	[ -n "$str_bugzilla" ] && echo -e "Bugzilla: $str_bugzilla" >> "$cmtmsgfile"
+	[ -n "$str_upstream" ] && echo -e "Upstream status: $str_upstream" >> "$cmtmsgfile"
+	echo -e "\n" >> "$cmtmsgfile"
 
-	$b_conflict && echo -e "$str_conflicts" >> $cmtmsgfile
+	$b_conflict && echo -e "$str_conflicts" >> "$cmtmsgfile"
 
 	# Append the original commit message.
 	#
-	git log -n1 "$uphash" >> $cmtmsgfile
+	git log -n1 "$uphash" >> "$cmtmsgfile"
 
 	# Amend the commit messsage with you as author, using the
 	# commit message file we built in the previous few lines,
 	# and a Signed-off-by: ("-s") line.
 	#
-	git commit -s --amend --reset-author --file=$cmtmsgfile
+	git commit -s --amend --reset-author --file="$cmtmsgfile"
 
 	# If there are conflicts, give the user the option to edit
 	# the commit log.
@@ -1291,12 +1292,12 @@ pop_upcmtstartline() {
 	local stat
 
 	while ((pops > 0 && upcmtstartline > 0)); do
-		let upcmtstartline--
-		line="$(ui_readline $upcmtstartline $upcommitsfile)"
+		((--upcmtstartline))
+		line="$(ui_readline $upcmtstartline "$upcommitsfile")"
 		stat=$?
 		[ $stat -ne 0 ] && return $stat
 		[ "${line:0:1}" = "#" ] && continue
-		let pops--
+		((--pops))
 	done
 
 	return $stat
@@ -1315,7 +1316,7 @@ pop_commits() {
 	$b_cmdline && init_cmdline_call
 
 	local pops=$1
-	local commits=$(git log --oneline $dnorighead..HEAD | wc -l)
+	local commits=$(git log --oneline "$dnorighead"..HEAD | wc -l)
 	local popmsg=$(
 cat <<EOF
 ${WRN}The number of pops you requested is greater than the number of commits that you
@@ -1332,8 +1333,8 @@ EOF
 		return 1
 	}
 
-	pop_upcmtstartline $pops
-	git reset --hard HEAD~$pops
+	pop_upcmtstartline "$pops"
+	git reset --hard HEAD~"$pops"
 	$b_cmdline && exit_cherp $exit_good
 	return 0
 }
@@ -1343,7 +1344,7 @@ EOF
 # Writes the value to the key offset in the .conf file
 #
 set_cfg_item() {
-	cfg_write_key $1 $2
+	cfg_write_key "$1" "$2"
 }
 
 # get_cfg_item key
@@ -1351,7 +1352,7 @@ set_cfg_item() {
 # Echoes the value at the key offset in the .conf file
 #
 get_cfg_item() {
-	cfg_read_key $1
+	cfg_read_key "$1"
 }
 
 set_colors() {
@@ -1367,8 +1368,11 @@ set_colors() {
 			2) echo -e "${STA}dark$INF background$OFF\n";;
 		esac
 
-		loop_yn_ro "Is that what you want? (y/n) : "
-		[ $? -eq 0 ] && return || continue
+		if loop_yn_ro "Is that what you want? (y/n) : "; then
+			return
+		else
+			continue
+		fi
 	done
 }
 
@@ -1384,19 +1388,19 @@ set_colors() {
 save_session() {
 	# echo -e "$UND\0save_session$OFF"
 
-	set_cfg_item "updir"          $updir
-	set_cfg_item "uprepo"         $uprepo
-	set_cfg_item "upbranch"       $upbranch
-	set_cfg_item "upcmtstartline" $upcmtstartline
-	set_cfg_item "dnorighead"     $dnorighead
-	set_cfg_item "lastuphash"     $lastuphash
-	set_cfg_item "workdir"        $workdir
-	set_cfg_item "upcommitsfile"  $upcommitsfile
+	set_cfg_item "updir"          "$updir"
+	set_cfg_item "uprepo"         "$uprepo"
+	set_cfg_item "upbranch"       "$upbranch"
+	set_cfg_item "upcmtstartline" "$upcmtstartline"
+	set_cfg_item "dnorighead"     "$dnorighead"
+	set_cfg_item "lastuphash"     "$lastuphash"
+	set_cfg_item "workdir"        "$workdir"
+	set_cfg_item "upcommitsfile"  "$upcommitsfile"
 	set_cfg_item "b_conflict"     $b_conflict
-	set_cfg_item "str_bugzilla"   $str_bugzilla
-	set_cfg_item "str_upstream"   $str_upstream
-	set_cfg_item "str_brew"       $str_brew
-	set_cfg_item "str_test"       $str_test
+	set_cfg_item "str_bugzilla"   "$str_bugzilla"
+	set_cfg_item "str_upstream"   "$str_upstream"
+	set_cfg_item "str_brew"       "$str_brew"
+	set_cfg_item "str_test"       "$str_test"
 }
 
 #===  FUNCTION  ================================================================
@@ -1424,11 +1428,11 @@ read_session() {
 	cfgtemplate="$MYLIB/cherp.conf"
 
 	# If the .data directory has not been created yet, do that.
-	[ -d "$MYDATA" ] || mkdir -p $MYDATA
+	[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
 
 	# If the config file doens't exist, copy the default one
 	# from MYLIB.
-	[ -f "$configfile" ] || cp $cfgtemplate $configfile
+	[ -f "$configfile" ] || cp "$cfgtemplate" "$configfile"
 
 	# Initialize the config manager and get the global variables.
 	#
@@ -1485,8 +1489,7 @@ init_cmdline_call() {
 	local stat
 	local newstr="${INF}Please type $MNU$MYNAME new$INF to start.$OFF\n"
 
-	read_session
-	[ $? -eq 0 ] || { echo -e "$newstr"; exit 1; }
+	read_session || { echo -e "$newstr"; exit 1; }
 	init_common
 }
 
@@ -1523,7 +1526,7 @@ init_newsession() {
 	[ "$uprepo" ] || set_upstream_directory
 
 	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
-	set_cfg_item dnorighead $dnorighead
+	set_cfg_item dnorighead "$dnorighead"
 
 	b_new=true
 	init_common
@@ -1550,7 +1553,6 @@ run_me() {
 		echo -e "$BLD\0There is an unresolved conflict" \
 			"cherrypicking: $OFF$currentuphash"
 		show_status
-		[ $1 ] && exit_cherp $exit_conflict
 		ui_press_any
 		return
 	fi
@@ -1569,7 +1571,8 @@ run_me() {
 	done
 
 	save_session
-	$b_cmdline && exit_cherp $exit_good || menu_loop
+
+	if $b_cmdline; then exit_cherp $exit_good; else menu_loop; fi
 }
 
 # run if user hits control-c
@@ -1584,11 +1587,11 @@ check_command() {
 	local cmd="$1"
 	local lead="--"
 
-	[ "${#cmd}" -eq 2 ] && eval $2="$cmd" && return 0
-	[ "${cmd:0:2}" = "$lead" ] && eval $2="$cmd" && return 0
+	[ "${#cmd}" -eq 2 ] && eval "$2"="$cmd" && return 0
+	[ "${cmd:0:2}" = "$lead" ] && eval "$2"="$cmd" && return 0
 
 	[ "${cmd:0:1}" = "-" ] && cmd="-$cmd" || cmd="--$cmd"
-	eval $2="$cmd"
+	eval "$2"="$cmd"
 	return 1
 }
 
@@ -1606,7 +1609,7 @@ init_session
 #
 if ! [ -d .git ]; then
 	echo -3 "$WRN"
-	echo -e "The current directory... "$STA$PWD$WRN""
+	echo -e "The current directory... $STA$PWD$WRN"
 	echo -e "\t ...is not the top of a git tree.$INF"
 	echo "Please cd to the top of a git tree.$OFF"
 	echo
@@ -1648,8 +1651,7 @@ if [ $# -eq 0 ]; then
 else
 	b_cmdline=true
 
-	check_command "$1" checked_cmd
-	[ $? -eq 0 ] || shift
+	check_command "$1" checked_cmd || shift
 
 	# [ $# -gt 1 ] && checked_cmd="$checked_cmd ${@:2:$#}"
 
@@ -1674,7 +1676,7 @@ else
 			run_continue
 			;;
 		-h | "--help" 	)
-			less $MYHLP
+			less "$MYHLP"
 			exit 0
 			;;
 		"--history" )
@@ -1693,7 +1695,7 @@ else
 			;;
 		"--pop" )
 			pops=$2
-			pop_commits $pops
+			pop_commits "$pops"
 			;;
 		# "--reset" )
 		#	reset_cherp
