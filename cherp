@@ -624,7 +624,7 @@ get_next_cherrypick() {
 
 	local idx
 	local line
-	local count=$(wc -l "$upcommitsfile")
+	local count=$(cat "$upcommitsfile" | wc -l)
 
 	# Find the first line that does NOT begin with one of the characters in the
 	# string of characters indicating the line is to be ignored.
@@ -892,7 +892,6 @@ options_loop() {
 #===============================================================================
 function show_settings {
 	# echo -e "$UND\0show_settings$OFF"
-
 	local cols=$((tcols - menupad))
 	local subjectprefix="$(git config format.subjectprefix)"
 	local lasttag=$(cat $lasttagfile)
@@ -1454,9 +1453,9 @@ read_session() {
 	init_global_strings
 
 	[ "$upcmtstartline" ] || return 1
-        [ "$dnorighead" ]     || return 1
-        [ "$workdir" ]        || set_working_directory
-        [ "$upcommitsfile" ]  || set_upcommitsfile
+	[ "$dnorighead" ]     || dnorighead="HEAD"
+	[ "$workdir" ]        || set_working_directory
+	[ "$upcommitsfile" ]  || set_upcommitsfile
 	[ "$updir" ]          || set_upstream_directory
 	return 0
 }
@@ -1470,7 +1469,7 @@ read_session() {
 init_common() {
 	# echo -e "$UND\0init_common$OFF"
 
-	$b_new	&& upcmtstartline=1
+	$b_new && upcmtstartline=1
 	[ -f "$upcommitsfile" ] && get_current_cherrypick
 
 	b_session_inited=true
