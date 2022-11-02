@@ -3,25 +3,25 @@
 #
 # Text Attributes
 #
-declare MYDIR=$(dirname $(which $(basename "$0")))
+declare MYDIR=
+MYDIR="$(dirname "$(which "$(basename "$0")")")"
 declare MYLIB=$MYDIR/lib
 
-source $MYLIB/ui.source
+source "$MYLIB"/ui.source
 
-declare stat
+declare -i stat
 declare rev=""
 declare -i optcount=0
 declare -a alist		# alternate (upstream) branch list
 declare -a blist		# current branch list
 declare show_b=true
-declare cmtdat=
 declare notupstream="---------"
-declare  invalidcmt="-badobj--"
 declare cmtline=
-declare scratchfile="/dev/mem/extup.tmp"
 declare nomerges=
 declare dates="-c -d"
-declare usagestr=$(
+declare usagestr=
+
+usagestr=$(
 cat <<EOF
 
 $(basename "$0") [OPTIONS] commit-expr path
@@ -67,14 +67,14 @@ exitme() {
 # $3 - the value to be returned
 #
 loop_range() {
-	local min=$1
-	local max=$2
-	local number
+	local -i min=$1
+	local -i max=$2
+	local -i number
 	local cmd
 	local pstr=\
 "$OFF\0Please enter a number between $BLD$min$OFF and $BLD$max$OFF: "
 
-	[ $max -lt 10 ] && cmd=promptgetchar || cmd=getuser
+	[ "$max" -lt 10 ] && cmd=promptgetchar || cmd=getuser
 	# echo "cmd: $cmd"
 
 	while true; do
@@ -83,7 +83,7 @@ loop_range() {
 		if [[ $number =~ ^-?[0-9]+$ ]]  && \
 		   [[ $number -ge $min ]]       && \
 		   [[ $number -le $max ]]; then
-			eval $3=$number
+			eval "$3"="$number"
 			echo
 			return 0
 		fi
@@ -99,44 +99,44 @@ choose_commit() {
 	echo "There is more than one commit in the git log"
 	list=$(sort -u <<< "$list")
 
-	while read line; do
+	while read -r line; do
 		ary[$index]="$line"
-		let ++index
-		printf "%d: %s\n" $index "$line"
+		((++index))
+		printf "%d: %s\n" "$index" "$line"
 	done <<< "$list"
 
-	loop_range 1 $index index
+	loop_range 1 "$index" index
 
-	let --index
-	echo "$ary[$index]"
+	((--index))
+	echo "${ary[$index]}"
 }
 
 parseargs() {
 	local arg=
 	local opt=
 
-	for arg in $@; do
-	    if [ ${arg:0:1} == '-' ]; then
+	for arg in "$@"; do
+	    if [ "${arg:0:1}" == '-' ]; then
 		opt="${arg:1}"
 		case "$opt" in
 			u ) 	updir="$2"
 				shift 2
-				let optcount+=2
+				((optcount+=2))
 				;;
 			r ) 	rev="--reverse"
 				shift
-				let ++optcount
+				((++optcount))
 				;;
 			b ) 	show_b=false
 				shift
-				let ++optcount
+				((++optcount))
 				;;
 			n ) 	nomerges="--no-merges"
 				shift
-				let ++optcount
+				((++optcount))
 				;;
 			m ) 	dates=
-				let ++optcount
+				((++optcount))
 				shift
 				;;
 			h ) 	exitme
@@ -145,63 +145,63 @@ parseargs() {
 	done
 }
 
-parseargs $@
-shift $optcount
+parseargs "$@"
+shift "$optcount"
 commit_expr="$1"
 pathspec="$2"
 
 # Create an array of hashes from the current (rhel) branch
 #
-blist=($(git log $nomerges --oneline $rev --pretty=format:%h $commit_expr $pathspec))
+blist=($(git log $nomerges --oneline $rev --pretty=format:%h "$commit_expr" "$pathspec"))
 # echo -e "${blist[@]}"
 
 for ((i=0; i < ${#blist[@]}; ++i)); do
 
 	# skip over the downstream (RHEL) commit header
-	log=$(git log -1 ${blist[$i]} | tail -n +2)
+	log=$(git log -1 "${blist[$i]}" | tail -n +2)
 
 	# trim all the leading spaces
 	log="$(echo "$log" | sed -e 's/^ *//g')"
 
 	# extract the first commit line we encounter
-	cmtline=$(echo "$log" | egrep -m1 '^commit')
+	cmtline=$(echo "$log" | grep -E -m1 '^commit')
 
 	# cmtline="$(echo "$cmtline" | tr -dc '[:alnum:]')"
 	# [ $(echo "$cmtline" | wc -l) -gt 1 ] && cmtline=$(choose_commit "$cmtline")
 
 	# extract the commit hash from the line
-	alist[$i]=$(echo "$cmtline" | egrep -o "\b[0-9a-f]{40}\b")
+	alist[$i]=$(echo "$cmtline" | grep -E -o "\b[0-9a-f]{40}\b")
 	stat=$?
 
-	[ -d "$updir" ] && cd $updir 2>&1 > /dev/null
+	[ -d "$updir" ] && { cd "$updir" > /dev/null 2>&1 || exit; }
 
 	# if the commit has a valid format, then ...
 	if [ $stat -eq 0 ]; then
 
 		# get the pretty commit line with commit date for the hash
 		# extracted above.
-		astr=$(gitnice $dates -1 ${alist[$i]} 2> /dev/null)
+		astr=$(gitnice "$dates" -1 "${alist[$i]}" 2> /dev/null)
+		stat=$?
 
-		if [ $? -ne 0 ]; then
-			tmp="$(gitnice $dates -1 ${blist[$i]} | cut -d' ' -f2-)"
+		if [ $stat -ne 0 ]; then
+			tmp="$(gitnice "$dates" -1 "${blist[$i]}" | cut -d' ' -f2-)"
 			echo -e " ##\n ## Commit ${alist[$i]:0:9} identified in"\
 			        "${blist[$i]} cannot be found in any branch."
 			astr="$notupstream $tmp"
 		fi
 	else
-		tmp="$(gitnice $dates -1 ${blist[$i]} | cut -d' ' -f2-)"
+		tmp="$(gitnice "$dates" -1 "${blist[$i]}" | cut -d' ' -f2-)"
 		astr="$notupstream $tmp"
 	fi
 
 	if $show_b; then
-		uc=$(echo $astr | cut -d' ' -f1)	# upstream cmt hash
-		as=$(echo $astr | cut -d' ' -f2-)	# upstream cmt date & desc
+		uc=$(echo "$astr" | cut -d' ' -f1)	# upstream cmt hash
+		as=$(echo "$astr" | cut -d' ' -f2-)	# upstream cmt date & desc
 		printf "%-9.9s %-9.9s %s\n" "${blist[$i]}" "$uc" "$as"
 	else
 		echo " $astr "
 	fi
 
-	[ -d "$updir" ] && cd - 2>&1 > /dev/null
-
+	[ -d "$updir" ] && { cd - > /dev/null 2>&1 || exit; }
 done
 
