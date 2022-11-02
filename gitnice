@@ -3,7 +3,10 @@
 # gitnice
 #
 
-declare -i optcount=0
+declare arg=
+declare opt=
+declare numregex='^[0-9]+$'
+declare -i number=1
 declare cmtauth=
 declare cmtdate=
 declare autdate=
@@ -24,6 +27,7 @@ gver=$(git --version | cut -d' ' -f3)
 gmaj=$(echo "$gver" | cut -d'.' -f1)
 gmin=$(echo "$gver" | cut -d'.' -f2)
 [ "$gmaj" -lt 2 ] && [ "$gmin" -lt 8 ] && gitold=true || gitold=false
+
 
 usagestr=$(
 cat <<EOF
@@ -59,44 +63,43 @@ usage() {
 #
 # [ -t 1 ] && b_format=true || b_format=false
 
-# leading colon in options list tells the option parser to parse errors
-# silently, allowing the user to address parsing errors.
-# The hyphen tells the parser to ignore double-dash -- options passed
-# to git as well as the double-dash command line separator.
-#
-while getopts :acds:rwh- OPTION; do
-    case "$OPTION" in
+for arg in "$@"; do
+	if [ "${arg:0:1}" == '-' ]; then
+		opt="${arg:1}"
 
-	s ) $gitold && continue
-	    authwid="%<($OPTARG,mtrunc)"
-	    ((optcount++))
-	    ;;
-	c ) $b_format && cmtdate="%C(bold green)%cd " || autdate="%cd "
-	    ((optcount++))
-	    ;;
-	d ) $b_format && autdate="%C(bold green)%ad " || autdate="%ad "
-	    ((optcount))
-	    ;;
-	a ) $b_format && cmtauth="%C(bold yellow)%ae " || cmtauth="%ae "
-	    ((optcount++))
-	    ;;
-	r ) reverse="--reverse"
-	    ((optcount++))
-	    ;;
-	w ) hashsiz="H"
-	    ((optcount++))
-	    ;;
-	- ) break
-	    ;;
-	h ) ;&
-	* ) echo "Option: $OPTION"
-	    usage 0
-    esac
+		if [[ $opt =~ $numregex ]]; then
+			number=$opt;
+			shift
+			continue
+		fi
+
+		case "$opt" in
+		s ) $gitold && continue
+			shift
+			authwid="%<($arg,mtrunc)"
+			shift
+			;;
+		c ) $b_format && cmtdate="%C(bold green)%cd " || autdate="%cd "
+			shift
+			;;
+		d ) $b_format && autdate="%C(bold green)%ad " || autdate="%ad "
+			shift
+			;;
+		a ) $b_format && cmtauth="%C(bold yellow)%ae " || cmtauth="%ae "
+			shift
+			;;
+		r ) reverse="--reverse"
+			shift
+			;;
+		w ) hashsiz="H"
+			shift
+			;;
+		* ) echo "Option: $OPTION"
+			usage 0
+		esac
+	fi
 done
 
-shift "$optcount"
-cmdline=("$@")
-# echo "cmdline: \""$cmdline"\""
 $gitold && hashwid=
 [ "$cmtauth" ] || authwid=""
 
@@ -105,10 +108,6 @@ $b_format && \
 || \
 	fmtstr="$hashwid%$hashsiz $cmtdate$autdate$authwid$cmtauth %s"
 
-if [ "${cmdline[@]}" ]; then
-	git log $reverse --date=short --pretty=format:"$fmtstr" "${cmdline[@]}"
-else
-	git log $reverse --date=short --pretty=format:"$fmtstr" -1
-fi
+git log $reverse --date=short --pretty=format:"$fmtstr" -"$number"
 
 exit $?
