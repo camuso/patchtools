@@ -4,7 +4,6 @@
 #
 
 declare -i optcount=0
-declare number="-n 1"
 declare cmtauth=
 declare cmtdate=
 declare autdate=
@@ -12,17 +11,21 @@ declare reverse=
 declare hashwid="%<(8)"
 declare authwid=""
 declare fmtstr=""
-declare cmtexpr="-1"
 declare b_format=true
 declare hashsiz="h"
+declare usagestr=
 
-declare gver=$(git --version | cut -d' ' -f3)
-declare -i gmaj=$(echo $gver | cut -d'.' -f1)
-declare -i gmin=$(echo $gver | cut -d'.' -f2)
-declare gitold
-[ $gmaj -lt 2 ] && [ $gmin -lt 8 ] && gitold=true || gitold=false
+declare gitold=
+declare gver=
+declare -i gmaj=
+declare -i gmin=
 
-declare usagestr=$(
+gver=$(git --version | cut -d' ' -f3)
+gmaj=$(echo "$gver" | cut -d'.' -f1)
+gmin=$(echo "$gver" | cut -d'.' -f2)
+[ "$gmaj" -lt 2 ] && [ "$gmin" -lt 8 ] && gitold=true || gitold=false
+
+usagestr=$(
 cat <<EOF
 
 $(basename "$0") [options] [commitexpr]
@@ -48,7 +51,7 @@ EOF
 
 usage() {
 	echo -e "$usagestr"
-	exit $1
+	exit "$1"
 }
 
 # If output is to terminal, then do the special formatting.
@@ -66,32 +69,33 @@ while getopts :acds:rwh- OPTION; do
 
 	s ) $gitold && continue
 	    authwid="%<($OPTARG,mtrunc)"
-	    let optcount++
+	    ((optcount++))
 	    ;;
 	c ) $b_format && cmtdate="%C(bold green)%cd " || autdate="%cd "
-	    let optcount++
+	    ((optcount++))
 	    ;;
 	d ) $b_format && autdate="%C(bold green)%ad " || autdate="%ad "
-	    let optcount++
+	    ((optcount))
 	    ;;
 	a ) $b_format && cmtauth="%C(bold yellow)%ae " || cmtauth="%ae "
-	    let optcount++
+	    ((optcount++))
 	    ;;
 	r ) reverse="--reverse"
-	    let optcount++
+	    ((optcount++))
 	    ;;
 	w ) hashsiz="H"
-	    let optcount++
-	    ;;
-	h ) echo "Option: $OPTION"
-	    usage 0
+	    ((optcount++))
 	    ;;
 	- ) break
+	    ;;
+	h ) ;&
+	* ) echo "Option: $OPTION"
+	    usage 0
     esac
 done
 
-shift $optcount
-cmdline=($@)
+shift "$optcount"
+cmdline=("$@")
 # echo "cmdline: \""$cmdline"\""
 $gitold && hashwid=
 [ "$cmtauth" ] || authwid=""
@@ -101,7 +105,7 @@ $b_format && \
 || \
 	fmtstr="$hashwid%$hashsiz $cmtdate$autdate$authwid$cmtauth %s"
 
-if [ "$cmdline" ]; then
+if [ "${cmdline[@]}" ]; then
 	git log $reverse --date=short --pretty=format:"$fmtstr" "${cmdline[@]}"
 else
 	git log $reverse --date=short --pretty=format:"$fmtstr" -1

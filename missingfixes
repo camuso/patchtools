@@ -2,17 +2,20 @@
 #
 # missingfixes
 
-[ "$MYDIR" ]     || declare MYDIR=$(dirname $(which $(basename "$0")))
-[ "$MYLIB" ]     || declare MYLIB=$MYDIR/lib
-[ "$ui_loaded" ] || source $MYLIB/ui.source
-[ "$configmanager_loaded" ] || source $MYLIB/config-manager.source
-MYDATA=$(realpath ./.data)
+declare MYDIR=
+MYDIR="$(dirname "$(which "$(basename "$0")")")"
+declare MYLIB="$MYDIR"/lib
+[ "$ui_loaded" ] || source "$MYLIB"/ui.source
+[ "$configmanager_loaded" ] || source "$MYLIB"/config-manager.source
+MYDATA="$(realpath ./.data)"
 
 declare configfile="$MYDATA/patchreview.conf"
 declare remote_dir=
 declare outdir=
 declare missing_file=
-declare usagestr=$(
+declare usagestr=
+
+usagestr=$(
 cat <<EOF
 
 $(basename "$0") [-a] | [upstream-tag]
@@ -48,7 +51,7 @@ check_repo() {
 }
 
 check_configfile() {
-	[ -f $configfile ] && return 0
+	[ -f "$configfile" ] && return 0
 	echo -e "$STA$PWD$WRN does not have a $STA$configfile$WRN file."
 	echo -e "${INF}You must run patchreview before running this script.$OFF"
 	return 1
@@ -85,29 +88,29 @@ init() {
 	check_repo || usage
 
 	outdir=$(cfg_read_key "outdir")
-	outdir=$(realpath $outdir)
+	outdir=$(realpath "$outdir")
 	check_outdir || usage
 
-	remote_dir=$(cfg_read_key "remote_dir")
-	remote_dir=$(realpath $remote_dir)
+	remote_dir="$(cfg_read_key "remote_dir")"
+	remote_dir="$(realpath "$remote_dir")"
 	check_remote_dir || usage
 
 	missing_file="$outdir/missing_fixes"
-	missing_file=$(realpath $missing_file)
+	missing_file="$(realpath "$missing_file")"
 	check_missingfile || usage
 }
 
 extract_number() {
 	str="$1"
-	str=$(echo $str | sed 's/[^0-9]*//g')
-	echo ${str:0:3}
+	str=$(echo "$str" | sed 's/[^0-9]*//g')
+	echo "${str:0:3}"
 }
 
 show_all() {
-	while read line; do
-		echo $line | grep -q Missing || continue
-		echo $line | cut -d' ' -f5-
-	done < $missing_file
+	while read -r line; do
+		echo "$line" | grep -q Missing || continue
+		echo "$line" | cut -d' ' -f5-
+	done < "$missing_file"
 
 	exit 0
 }
@@ -116,14 +119,13 @@ commit_in_tag() {
 	local commit="$1"
 	local tag="$2"
 
-	git rev-list $tag | grep -m1 $(git rev-parse $commit) > /dev/null 2>&1
+	git rev-list "$tag" | grep -m1 "$(git rev-parse "$commit")" > /dev/null 2>&1
 	return $?
 }
 
 main() {
-	local utag=$1
+	local utag="$1"
 	local mypid
-	local findmsg="${INF}Checking $STA "
 
 	[ ${#@} -ge 1 ] || usage
 
@@ -131,35 +133,35 @@ main() {
 
 	[ "$1" == "-a" ] && show_all
 
-	cd $remote_dir
-
-	git tag | grep -q -x $utag
-	[ $? -eq 0 ] || {
-		echo -e "${WRN}Tag $utag is not in this upstream kernel branch.$OFF"
-		cd - > /dev/null 2>&1
+	cd "$remote_dir" || {
+		echo -e "$WRN$remote_dir does not seem to exist"
 		exit 1
 	}
 
-	while read line; do
-		echo $line | grep -q Missing || continue
-		commit=$(echo $line | cut -d' ' -f5)
+	git tag | grep -q -x "$utag" || {
+		echo -e "${WRN}Tag $utag is not in this upstream kernel branch.$OFF"
+		cd - > /dev/null 2>&1 || exit 1
+		exit 1
+	}
 
-		commit_in_tag $commit $utag &
+	while read -r line; do
+		echo "$line" | grep -q Missing || continue
+		commit=$(echo "$line" | cut -d' ' -f5)
+
+		commit_in_tag "$commit" "$utag" &
 		mypid=$!
-		ui_waitonproc_tty $mypid .05 # "$findmsg$commit$OFF"
-
-		[ $? -eq 0 ] || continue
+		ui_waitonproc_tty $mypid .05 || continue
 
 		echo -en "${INF}Missing fix from $STA$utag$INF : "
-		echo -e $line$OFF | cut -d' ' -f5-
-	done < $missing_file
+		echo -e "$line$OFF" | cut -d' ' -f5-
+	done < "$missing_file"
 
-	echo -en $OFF
+	echo -en "$OFF"
 
-	cd - > /dev/null 2>&1
+	cd - > /dev/null 2>&1 || exit 1
 }
 
-main $@
+main "$@"
 
 exit 0
 
