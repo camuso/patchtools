@@ -19,12 +19,15 @@ VERSION="3.0"
 # Where MYDIR is the directory in which this script and its companions
 # are located.
 #
-declare MYDIR="$(dirname "$(which "$(basename "$0")")")"
+declare MYDIR
+MYDIR="$(dirname "$(which "$(basename "$0")")")"
 declare MYLIB="$MYDIR"/lib
 declare MYMAN="$MYDIR"/man
-declare MYDATA="$(realpath ./.data)"
+declare MYDATA
+MYDATA="$(realpath ./.data)"
 declare MYHLP="$MYMAN"/cherp.txt
-declare MYNAME="$(basename "$0")"
+declare MYNAME
+MYNAME="$(basename "$0")"
 
 #######################################
 # External Source Files
@@ -188,7 +191,8 @@ function set_gitbranch {
 #       RETURNS:  none
 #===============================================================================
 git_set_subjectprefix() {
-	local newpfx="$(git config format.subjectprefix)"
+	local newpfx
+	newpfx="$(git config format.subjectprefix)"
 
 	echo -e "$INF" \
 "Just press ${STA}ENTER$INF to leave the current subject prefix unchanged.$OFF"
@@ -210,7 +214,9 @@ set_dir() {
 	local dircfgkey="$2"
 	local dir="${!3}"
 	local b_msgshown=false
-	local ndirmsg=$(
+	local ndirmsg
+
+	ndirmsg=$(
 cat <<EOF
 $INF
 This directory has not yet been named.
@@ -403,13 +409,18 @@ select_rembranch() {
 #===============================================================================
 function set_upcommitsfile {
 	local stat
-	local prstr=$(
+	local prstr
+	local commitsfilemsg
+	local exitmsg
+	local currentfile
+
+	prstr=$(
 cat <<EOF
 $INF
 Set the file containing the upstream commits to be cherry-picked$OFF
 EOF
 )
-	local commitsfilemsg=$(
+	commitsfilemsg=$(
 cat <<EOF
 $INF
 You can create a file containing the upstream commits to be cherry-picked
@@ -424,7 +435,7 @@ $OFF
 \0
 EOF
 )
-	local exitmsg=$(
+	exitmsg=$(
 cat <<EOF
 $INF
 You pressed $qstr$INF without providing a file containing the upstream commits
@@ -432,7 +443,7 @@ to be cherry-picked, so we must exit.$OFF
 \0
 EOF
 )
-	local currentfile=$(
+	currentfile=$(
 cat <<EOF
 ${INF}The current file is $STA$upcommitsfile$INF.
 Press $qstr$INF at the prompt to use this file.$OFF
@@ -469,7 +480,9 @@ EOF
 #===============================================================================
 pr_nohash_msg () {
 	local hash="$1"
-	local nohash_msg=$(
+	local nohash_msg
+
+	nohash_msg=$(
 cat <<EOF
 $INF
   Cannot find $STA$hash$INF as a commit or valid line number in $STA$upcommitsfile$INF
@@ -492,7 +505,6 @@ EOF
 lookup_hash() {
 	local hash=$1
 	local counter
-	local linecount=$(wc -l "$upcommitsfile")
 	local line
 
 	[[ -f "$upcommitsfile" ]] || return 1
@@ -528,11 +540,12 @@ set_next_cherrypick() {
 	local linary
 	local idx=0
 	local stat
-	local linecount=$(iwc -l "$upcommitsfile")
+	local linecount
 	local numwid=${#linecount}
 	local cols=$((tcols - 2 - numwid))
 	local selected
 
+	linecount=$(iwc -l "$upcommitsfile")
 	echo -e "\n${INF}Contents of upstream commits file: $STA$upcommitsfile$OFF"
 	echo -e "$MNU\0NOTE:$INF Not showing lines starting with any of these chars:"\
 	        "$STA$ignore_str$OFF\n"
@@ -624,7 +637,9 @@ get_next_cherrypick() {
 
 	local idx
 	local line
-	local count=$(cat "$upcommitsfile" | wc -l)
+	local count
+
+	count=$(wc -l "$upcommitsfile" | cut -d' ' -f1)
 
 	# Find the first line that does NOT begin with one of the characters in the
 	# string of characters indicating the line is to be ignored.
@@ -688,7 +703,10 @@ show_next_cherrypick() {
 	local statstr
 	local leadstr
 	local cols=$((tcols - menupad))
-	local eofstr=$(
+	local show_next_cherrypick_str
+	local eofstr
+
+	eofstr=$(
 cat <<EOF
 $STA$currentuphash ${INF}was the last commit in file: $STA$upcommitsfile$OFF
 
@@ -701,7 +719,8 @@ EOF
 	get_current_cherrypick	&& prstr="$STA${currentupcommit:0:$cols}$OFF" \
 				|| prstr="$eofstr"
 
-	local show_next_cherrypick_str=$(
+
+	show_next_cherrypick_str=$(
 cat <<EOF
 
 $leadstr$statstr $prstr
@@ -721,7 +740,9 @@ EOF
 show_select_next_cherrypick() {
 	# echo -e "${UND}show_select_next_cherrypick$OFF"
 
-	local selcmt_str=$(
+	local selcmt_str
+
+	selcmt_str=$(
 cat <<EOF
 
 $MNU S$INF  Select a different commit for next cherrypick$OFF
@@ -742,7 +763,9 @@ show_most_recent_cherrypick() {
 	# echo -e "\n${UND}show_most_recent_cherrypick$OFF"
 
 	local cols=$((tcols - menupad))
-	local laststr=$(
+	local laststr
+
+	laststr=$(
 cat <<EOF
 
     Last Applied Commit      : $STA${lastuplog:0:$cols}$OFF
@@ -760,7 +783,9 @@ EOF
 show_upsteam_commits_file() {
 	# echo -e "${UND}show_upsteam_commits_file$OFF"
 
-	local cmtfilestr=$(
+	local cmtfilestr
+
+	cmtfilestr=$(
 cat <<EOF
 
     File of upstream commits : $STA$upcommitsfile$OFF
@@ -798,13 +823,14 @@ show_status() {
 	# echo -e "$UND\0show_status$OFF"
 
 	local cols=$((tcols - menupad))
-	local subjectprefix="$(git config format.subjectprefix)"
+	local subjectprefix
 	local lasttag
 	local lastbrcmt
 	local orighead
 	local statstr
 	local b_internal
 
+	subjectprefix="$(git config format.subjectprefix)"
 	[ "$1" ] && b_internal=true || b_internal=false
 
 	$b_internal || init_cmdline_call
@@ -831,7 +857,9 @@ EOF
 }
 
 show_options() {
-	local options=$(
+	local options
+
+	options=$(
 cat <<EOF
 $MNU
         ${UND}Options          $OFF
@@ -893,11 +921,17 @@ options_loop() {
 function show_settings {
 	# echo -e "$UND\0show_settings$OFF"
 	local cols=$((tcols - menupad))
-	local subjectprefix="$(git config format.subjectprefix)"
-	local lasttag=$(cat $lasttagfile)
-	local lastbrcmt=$(git log -n1 --oneline)
-	local orighead=$(git log --oneline -n1 "$dnorighead")
-	local settings=$(
+	local subjectprefix
+	local lasttag
+	local lastbrcmt
+	local orighead
+	local settings
+
+	subjectprefix="$(git config format.subjectprefix)"
+	lasttag=$(cat $lasttagfile)
+	lastbrcmt=$(git log -n1 --oneline)
+	orighead=$(git log --oneline -n1 "$dnorighead")
+	settings=$(
 cat <<EOF
 $MNU
     ${UND}Upstream Environment    $OFF
@@ -1047,8 +1081,9 @@ abort_cherp() {
 #===============================================================================
 reset_cherp() {
 	local cols=$((tcols - 12))
-	local orighead=$(git log --oneline -n1 "$dnorighead")
+	local orighead
 
+	orighead=$(git log --oneline -n1 "$dnorighead")
 	init_cmdline_call
 	git cherry-pick --abort 2>/dev/null
 	git reset --hard "$dnorighead"
@@ -1069,14 +1104,17 @@ reset_cherp() {
 run_continue() {
 	# echo -e "$UND\0run_continue$OFF"
 
-	local statstr=$(
+	local statstr
+	local gitstat
+
+	statstr=$(
 cat <<EOF
 You have made changes that must be committed before using "cherp continue".
 You can use "cherp commit" if you want cherp to make these commits for you.
 EOF
 )
 
-	local gitstat=$(git status --porcelain)
+	gitstat=$(git status --porcelain)
 	[ "$gitstat" ] && { echo -e "$statstr"; git status; exit $exit_pending; }
 
 	init_cmdline_call
@@ -1097,7 +1135,9 @@ EOF
 run_commit() {
 	# echo -e "$UND\0run_commit$OFF"
 
-	local gitstat=$(git status --porcelain)
+	local gitstat
+
+	gitstat=$(git status --porcelain)
 	[ "$gitstat" ] || { git status && exit $exit_nothing; }
 
 	init_cmdline_call
@@ -1151,7 +1191,10 @@ cherrypick() {
 	local uphash=$currentuphash
 	local gitstat
 	local wcols=$((tcols - 10))
-	local conflictmsg=$(
+	local conflictmsg
+	local bogusmsg
+
+	conflictmsg=$(
 cat <<EOF
 
 $UND$WRN\0You have conflicts to fix.$OFF$INF
@@ -1165,7 +1208,7 @@ $MNU\0cherp continue$INF : if you have fixed the conflicts and made the commit e
                  and wish to continue with the next cherrypick.$OFF
 EOF
 )
-	local bogusmsg=$(
+	bogusmsg=$(
 cat <<EOF
 $WRN
 Upstream commit hash $STA$uphash$WRN appears to be bogus.$INF
@@ -1286,7 +1329,7 @@ stage_commit() {
 #       RETURNS:  status from call to ui_readline
 #===============================================================================
 pop_upcmtstartline() {
-	local pops=$1
+	local -i pops=$1
 	local line
 	local stat
 
@@ -1314,9 +1357,12 @@ pop_upcmtstartline() {
 pop_commits() {
 	$b_cmdline && init_cmdline_call
 
-	local pops=$1
-	local commits=$(git log --oneline "$dnorighead"..HEAD | wc -l)
-	local popmsg=$(
+	local -i pops=$1
+	local commits
+	local popmsg
+
+	commits=$(git log --oneline "$dnorighead"..HEAD | wc -l)
+	popmsg=$(
 cat <<EOF
 ${WRN}The number of pops you requested is greater than the number of commits that you
 have made in this session.$INF
@@ -1620,7 +1666,8 @@ fi
 ###########################################
 
 declare checked_cmd
-declare infostr="Type \"$(basename "$0") -h\" for more info."
+declare infostr
+infostr="Type \"$(basename "$0") -h\" for more info."
 declare invoptstr="\nInvalid option.\n$infostr"
 declare needcmtstr="\nMust supply commit hash with -p | pick\n$infostr"
 declare shortopts="sp:h"
