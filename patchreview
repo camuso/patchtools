@@ -40,7 +40,8 @@
 # Where MYDIR is the directory in which this script and its companions
 # are located.
 
-declare MYDIR="$(dirname "$(which "$(basename "$0")")")"
+declare MYDIR
+MYDIR="$(dirname "$(which "$(basename "$0")")")"
 declare MYLIB="$MYDIR"/lib
 
 #######################################
@@ -132,7 +133,9 @@ clean_outdir() {
 
 clean_directories() {
 	local answer
-	local cleanstr=$(
+	local cleanstr
+
+	cleanstr=$(
 cat <<EOF
 
     $BLD$UND\0Clean Directory$OFF
@@ -170,9 +173,11 @@ EOF
 #
 reset_to_lasttag() {
 	local newlasttag
-	local head=$(git log --oneline -n1)
+	local errstr
+
 	git_get_lasttag newlasttag "$last_tag_file"
-	local errstr=$(
+
+	errstr=$(
 cat <<EOF
 
 $WRN\0Warning
@@ -231,7 +236,9 @@ nuke() {
 # 	editor
 #
 show_config_menu() {
-	local config_menu=$(
+	local config_menu
+
+	config_menu=$(
 cat <<EOF
 $MNU
        $UND\0Configuration       $OFF
@@ -320,7 +327,9 @@ config_parser() {
 #
 show_extops() {
 	local opt
-	local extops=$(
+	local extops
+
+	extops=$(
 cat <<EOF
 $MNU\
     $UND\0Discrete Operations $OFF \
@@ -356,7 +365,9 @@ EOF
 show_mr_menu() {
 	local opt
 	local remotes="$remote_dir : $remote_repo/$remote_branch"
-	local mr_menu=$(
+	local mr_menu
+
+	mr_menu=$(
 cat <<EOF
 $MNU
     $UND\0Environment:$STA $(show_opmode)$MNU Version: $STA$version$OFF
@@ -400,7 +411,9 @@ show_email_menu() {
 	local opt
 	local remotes="$remote_dir : $remote_repo/$remote_branch"
 	local setting=
-	local email_menu=$(
+	local email_menu
+
+	email_menu=$(
 cat <<EOF
 $MNU
     $UND\0Environment:$STA $(show_opmode)$MNU Version: $STA$version$OFF
@@ -786,7 +799,9 @@ cmd_show_verbose() {
 }
 
 cmd_show_status() {
-	local statscreen=$(
+	local statscreen
+
+	statscreen=$(
 cat <<EOF
 
   $MNU${UND}Current $(basename "$0") status$INF
@@ -804,7 +819,9 @@ EOF
 }
 
 check_labstatus() {
-	local labmsg=$(
+	local labmsg
+
+	labmsg=$(
 cat <<EOF
 $WRN
   You must install the lab ustility.$INF
@@ -830,7 +847,9 @@ check_env() {
 #
 parse_cmdline() {
 	local argc=$#
-	local cmdlineops=$(
+	local cmdlineops
+
+	cmdlineops=$(
 cat <<EOF
 
   $MNU$UND$(basename "$0") command line interface$OFF$MNU
