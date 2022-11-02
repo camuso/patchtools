@@ -2,17 +2,19 @@
 #
 # config-manager
 
-[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename "$0")))
+declare MYDIR
+MYDIR="$(dirname "$(which "$(basename "$0")")")"
 [ "$MYLIB" ] || declare MYLIB=$MYDIR/lib
-source $MYLIB/ui.source
+source "$MYLIB"/ui.source
 
 declare b_readop=false
 declare b_writeop=false
 declare configfile=
 declare key=
 declare value=
+declare usagestr=
 
-declare usagestr=$(
+usagestr=$(
 cat <<EOF
 
 $(basename "$0") -f config-file -<r|w> key [new value] [-dark | -light]]
@@ -69,7 +71,7 @@ exit_err() {
 
 	echo -e "\n$WRN${ui_err_msg[$err]} $INF: $STA$val$OFF"
 	usage
-	exit $err
+	exit "$err"
 }
 
 set_color() {
@@ -85,15 +87,15 @@ set_write() {
 
 	# [ $# -eq 2 ] || err_exit $ui_err_invargc "$twoargs"
 	# [ ${value:0:1} == "-" ] && err_exit $err_invopt "$twoargs"
-	[ ${value:0:1} == "-" ] && value=
-	$b_read && err_exit $err_invoper "Cannot write when read was requested."
+	[ "${value:0:1}" == "-" ] && value=
+	$b_readop && err_exit $err_invoper "Cannot write when read was requested."
 }
 
 set_read() {
 	key="$1"
 
 	[ $# -eq 1 ] || err_exit $ui_err_invargc "-r requires key name"
-	$b_write && err_exit $err_invoper "Cannot read when write was requested."
+	$b_writeop && err_exit $err_invoper "Cannot read when write was requested."
 }
 
 parse_cmd() {
@@ -108,38 +110,41 @@ parse_cmd() {
 			"-r" ) b_readop=true; key=$2; shift 2;;
 			"-w" ) b_writeop=true; key=$2; value="$3"; shift 3;;
 			"-h" ) usage; exit $aok;;
-			"-b" ) set_color $2; shift 2;;
+			"-b" ) set_color "$2"; shift 2;;
 			"-dark" ) set_color $tb_dark; shift 1;;
 			"-light" ) set_color $tb_lite; shift 1;;
 			* ) b_err=true; erropt="$1"; shift;;
 		esac
 	done
 
-	$b_err && exit_err $err_invopt $erropt
-	[ -f "$configfile" ] || exit_err $ui_err_invfile $configfile
-	grep -w -q $key $configfile
-	[ $? -eq 0 ] || exit_err $err_nokey $key
+	$b_err && exit_err $err_invopt "$erropt"
+	[ -f "$configfile" ] || exit_err $ui_err_invfile "$configfile"
+	grep -w -q "$key" "$configfile" || exit_err $err_nokey "$key"
 }
 
 read_key() {
-	local keyline=$(grep -w $key $configfile)
+	local keyline
 	local ary
+	keyline=$(grep -w "$key" "$configfile")
 	ui_strtok "$keyline" "= " ary
-	echo ${ary[1]}
+	echo "${ary[1]}"
 }
 
 write_key() {
 
-	local line=$(grep -n "$key" "$configfile")
-	local linenumber=$(echo "$line" | cut -d":" -f1)
+	local line
+	local -i linenumber
+
+	line=$(grep -n "$key" "$configfile")
+	linenumber=$(echo "$line" | cut -d":" -f1)
 
 	line=$(echo "$line" | cut -d":" -f2- | cut -d"=" -f1)
 	line="$line""= $value"
-	ui_replaceline_raw $linenumber "$line" "$configfile"
+	ui_replaceline_raw "$linenumber" "$line" "$configfile"
 }
 
 main() {
-	parse_cmd $@
+	parse_cmd "$@"
 	($b_readop && $b_writeop) && exit_err $err_invoper "only one of -r or -w allowed."
 	$b_readop && read_key
 	$b_writeop && write_key
@@ -149,7 +154,7 @@ main() {
 #
 trap control_c SIGINT
 
-main $@
+main "$@"
 
 exit 0
 
