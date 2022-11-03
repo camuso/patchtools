@@ -50,10 +50,10 @@ unset BWHT && declare BWHT='\e[1;97m'
 
 unset BWOR && declare BWOR='\e[1;37;41m'
 
-declare terminal_background=0
-declare tb_lite=1
-declare tb_dark=2
-declare b_color=
+declare -i terminal_background=0
+declare -i tb_lite=1
+declare -i tb_dark=2
+declare -i b_color=
 
 # Terminal magic
 #
