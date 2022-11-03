@@ -6,7 +6,7 @@
 declare arg=
 declare opt=
 declare numregex='^[0-9]+$'
-declare -i number=1
+declare number=
 declare cmtauth=
 declare cmtdate=
 declare autdate=
@@ -17,7 +17,6 @@ declare fmtstr=""
 declare b_format=true
 declare hashsiz="h"
 declare usagestr=
-declare optstr=
 
 declare gitold=
 declare gver=
@@ -70,9 +69,9 @@ usage() {
 test_help() {
 	local opt="$1"
 
-	shopt -s nocasematch
-	[[ $opt =~ (h|help) ]] && { usage; exit 0; }
-	shopt -u nocasematch
+	# shopt -s nocasematch
+	[[ $opt =~ (h|help) ]] && usage 0
+	# shopt -u nocasematch
 }
 
 for arg in "$@"; do
@@ -108,9 +107,6 @@ for arg in "$@"; do
 			;;
 		w ) hashsiz="H"
 			shift
-			;;
-		* ) optstr="$optstr $1"
-			shift
 		esac
 	fi
 done
@@ -123,6 +119,11 @@ $b_format && \
 || \
 	fmtstr="$hashwid%$hashsiz $cmtdate$autdate$authwid$cmtauth %s"
 
-git log $reverse --date=short --pretty=format:"$fmtstr" -"$number"
+[ -n "$number" ] && number="-""$number"
+if [ -z "$*" ] && [ -z "$number" ]; then
+	number="-1"
+fi
+
+git log --date=short --pretty=format:"$fmtstr" $reverse $number "$@"
 
 exit $?
