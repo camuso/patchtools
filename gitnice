@@ -17,6 +17,7 @@ declare fmtstr=""
 declare b_format=true
 declare hashsiz="h"
 declare usagestr=
+declare optstr=
 
 declare gitold=
 declare gver=
@@ -49,6 +50,9 @@ $(basename "$0") [options] [commitexpr]
   -r        - show in reverse order (oldest first)
   -w        - show full 40-char hash. Default is "--short"
   -h        - this help text
+
+  Additionally, except for formatting options, any valid git log option can
+  also be entered.
 \0
 EOF
 )
@@ -63,7 +67,18 @@ usage() {
 #
 # [ -t 1 ] && b_format=true || b_format=false
 
+test_help() {
+	local opt="$1"
+
+	shopt -s nocasematch
+	[[ $opt =~ (h|help) ]] && { usage; exit 0; }
+	shopt -u nocasematch
+}
+
 for arg in "$@"; do
+
+	test_help "$1"
+
 	if [ "${arg:0:1}" == '-' ]; then
 		opt="${arg:1}"
 
@@ -94,8 +109,8 @@ for arg in "$@"; do
 		w ) hashsiz="H"
 			shift
 			;;
-		* ) echo "Option: $OPTION"
-			usage 0
+		* ) optstr="$optstr $1"
+			shift
 		esac
 	fi
 done
