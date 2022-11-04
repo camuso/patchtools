@@ -58,8 +58,9 @@ EOF
 #
 declare -i lint			# line total
 declare -i mod			# modulus divisor
-declare -i tcols=$(tput cols)   # number of columns in the terminal
-declare CL1="\e["$tcols"D"	# column 1 of the current line
+declare -i tcols=		# number of columns in the terminal
+tcols=$(tput cols)
+declare CL1="\e[${tcols}D"	# column 1 of the current line
 declare CCR="\e[K"    		# clear line and carriage return
 declare UP1="\e[1A"		# move cursor up one line
 
@@ -76,7 +77,6 @@ declare verbose=false	# print whether or not files are congruent
 declare vverbose=false	# print each line compared
 declare verbosity=0	# level of verbose-ness
 declare -i optcnt=0	# count the options
-declare -i lincnt=0	# line counter
 declare b_stdout=true	# indicates output is going to /dev/stdout
 declare eofA=false	# found the end of file A
 declare eofB=false	# found the end of file B
@@ -87,18 +87,11 @@ declare b_external=false
 # list of files in each directory
 #
 declare valpatchlist
-declare flistA
-declare flistB
 
 # count of the files in each directory
 #
 declare -i fcountA
 declare -i fcountB
-
-# File descriptors
-#
-declare fdA
-declare fdB
 
 # Arrays to for lists of files
 #
@@ -113,13 +106,35 @@ declare -i lcB
 
 #####################################################################
 #
+# testbash - bash version must be 4 or higher to use this script
+#
+testbash() {
+	local verstr
+	local warnstr
+
+	warnstr=$(
+cat <<EOF
+$WRN
+GNU bash version less than 4.0!$MNU
+You must be using GNU bash 4.0 or higher.$OFF
+\0
+EOF
+)
+	verstr=$(bash --version | grep -m1 -o '[0-9].*')
+	((${verstr:0:1} >= 4)) && return
+	echo -e "$warnstr"
+	exit 1
+}
+
+#####################################################################
+#
 # press_any()
 #
 # Press any key to continue
 #
 press_any() {
 	echo -en "\nPress any key to continue ... "
-	read -n1
+	read -r -n1
 }
 
 #####################################################################
@@ -151,43 +166,48 @@ Both directories must have the same number of .patch files.
 	usage
 }
 
+#####################################################################
+# START OF EXECUTION
+#####################################################################
+
+# First make sure we're using bash 4.0 or higher
+testbash
+
 while getopts xhdpsvVo:P: OPTION; do
     case "$OPTION" in
 
 	h ) usage
 	    ;;
 	d ) nodiffst=true	# exclude the diffstat if true
-	    let optcnt++
+	    ((optcnt++))
 	    ;;
 	p ) nopaths=true	# exclude the paths when true
-	    let optcnt++
+	    ((optcnt++))
 	    ;;
-	P ) valpatchlist=($OPTARG)
+	P ) valpatchlist=("$OPTARG")
 	    b_valpatchlist=true
-	    let optcnt++
-	    let optcnt++
+	    ((optcnt += 2))
 	    ;;
 	s ) strict=true		# only compare lines starting with + or -
-	    let optcnt++
+	    ((optcnt++))
 	    ;;
 	v ) verbose=true	# print whether or not files are congruent
 	    vverbose=false
 	    verbosity=1
-	    let optcnt++
+	    ((optcnt++))
 	    ;;
 	V ) vverbose=true	# verbose, and print lines being compared
 	    verbose=true
 	    verbosity=2
-	    let optcnt++
+	    ((optcnt++))
 	    ;;
 	o ) ofile="$OPTARG"	# get the output file
-	    > $ofile		# zero the output file
+	    : > "$ofile"	# zero the output file
 	    b_stdout=false	# notify that output is going to text file
-	    let optcnt++
-	    let optcnt++
+	    ((optcnt += 2))
 	    ;;
 	x ) b_external=true
-	    let optcnt++
+	    ((optcnt++))
 	    ;;
 	* ) echo "unrecognized option "
 	    echo -e "$usagestr"
@@ -213,8 +233,12 @@ dirB="$2"
 
 # get the list of files in each directory
 #
-$b_valpatchlist && faryA=(${valpatchlist[@]}) || faryA=($(ls -1 $dirA/*.patch))
-faryB=($(ls -1 $dirB/*.patch))
+if $b_valpatchlist; then
+	faryA=("${valpatchlist[@]}")
+else
+	mapfile -t faryA <<< "$(ls -1 "$dirA"/*.patch)"
+fi
+mapfile faryB <<< "$(ls -1 "$dirB"/*.patch)"
 
 # get the count of the files in each directory
 #
@@ -223,30 +247,30 @@ fcountB=${#faryB[@]}
 
 # Be sure that both directories have the same number of patch files.
 #
-[ $fcountA -eq $fcountB ] || fcount_err
+((fcountA == fcountB)) || fcount_err
 
 
 fecho() {
-	echo "$1" >> $ofile
+	echo "$1" >> "$ofile"
 }
 
 fprintf() {
 	format="$1"
 	shift
-	printf "$format" "$@" >> $ofile
+	printf "$format" "$@" >> "$ofile"
 }
 
 
 pr_header() {
 	fecho "================================================================"
-	fprintf "%d A: %s\n" $(($index+1)) "${faryA[$index]}"
-	fprintf "%d B: %s\n" $(($index+1)) "${faryB[$index]}"
+	fprintf "%d A: %s\n" $((index+1)) "${faryA[$index]}"
+	fprintf "%d B: %s\n" $((index+1)) "${faryB[$index]}"
 	fecho "----------------------------------------------------------------"
 }
 
 pr_start() {
-	fprintf "%d A: comparing from line: %5d\n" $(($index+1)) $lcA
-	fprintf "%d B: comparing from line: %5d\n" $(($index+1)) $lcB
+	fprintf "%d A: comparing from line: %5d\n" $((index+1)) "$lcA"
+	fprintf "%d B: comparing from line: %5d\n" $((index+1)) "$lcB"
 	$strict && fecho "Only comparing lines beginning with + or -"
 	fecho
 }
@@ -254,15 +278,15 @@ pr_start() {
 get_firstline() {
 	local eocl='--- '
 	local len=${#eocl}
-	while read line; do let ++lcA; [ "${line:0:len}" == "$eocl" ] && break; done <&5
-	$nopaths && let ++lcA || let --lcA
-	while read line; do let ++lcB; [ "${line:0:len}" == "$eocl" ] && break; done <&6
-	$nopaths && let ++lcB || let --lcB
+	while read -r line; do ((++lcA)); [ "${line:0:len}" == "$eocl" ] && break; done <&5
+	if $nopaths; then ((++lcA)); else ((--lcA)); fi
+	while read -r line; do ((++lcB)); [ "${line:0:len}" == "$eocl" ] && break; done <&6
+	if $nopaths; then ((++lcB)); else ((--lcB)); fi
 }
 
 is_patch() {
 	local file=$1
-	grep -m1 -q 'diff --git' $file
+	grep -m1 -q 'diff --git' "$file"
 	return $?
 }
 
@@ -281,7 +305,7 @@ $b_stdout || fprintf "verbose level: %d\n" $verbosity
 #
 echo # start with a blank crlf
 
-for ((index = 0; index < $fcountA; ++index)); do
+for ((index = 0; index < fcountA; ++index)); do
 
 	# echo "${faryA[$index]}" >> $tlog
 
@@ -301,20 +325,20 @@ for ((index = 0; index < $fcountA; ++index)); do
 
 	# Print the name of the patch file being processed.
 	#
-	fname=$(basename ${faryA[$index]})
-	[ ${#fname} -gt $tcols ] && fname=${fname:$tcols}
+	fname="$(basename "${faryA[$index]}")"
+	[ ${#fname} -gt "$tcols" ] && fname=${fname:$tcols}
 	[ "$ofile" == "/dev/stdout" ] || echo "$fname"
 
-	$(is_patch "${faryA[$index]}") || {
+	is_patch "${faryA[$index]}" || {
 		equiv=false
 		b_done=true
 		fecho "PATCH: $((index+1)): ${faryA[$index]}"
 	}
 
-	$(is_patch "${faryB[$index]}") || {
+	is_patch "${faryB[$index]}" || {
 		equiv=false
 		b_done=true
-		$eqiv && fecho "PATCH: $((index+1)): ${faryA[$index]}"
+		$equiv && fecho "PATCH: $((index+1)): ${faryA[$index]}"
 	}
 
 	# Open file descriptors based on the filenames in each array
@@ -354,8 +378,8 @@ for ((index = 0; index < $fcountA; ++index)); do
 
 		# Increment the line counters.
 		#
-		$eofA || let ++lcA
-		$eofB || let ++lcB
+		$eofA || ((++lcA))
+		$eofB || ((++lcB))
 
 		# read returns non-zero after reading the last line.
 		# If we find the EOF of either file, we are processing the
@@ -390,13 +414,13 @@ for ((index = 0; index < $fcountA; ++index)); do
 		if $strict; then
 			firstchA="${lineA:0:1}"
 			firstchB="${lineB:0:1}"
-			([ "$firstchA" == "+" ] || [ "$firstchA" == "-" ]  ||
-			 [ "$firstchB" == "+" ] || [ "$firstchB" == "-" ]) || continue
+			[ "$firstchA" == "+" ] || [ "$firstchA" == "-" ] ||
+			[ "$firstchB" == "+" ] || [ "$firstchB" == "-" ] || continue
 		fi
 
 		if $vverbose; then
-			fprintf "%5d A: %s\n" $lcA "$lineA"
-			fprintf "%5d B: %s\n" $lcB "$lineB"
+			fprintf "%5d A: %s\n" "$lcA" "$lineA"
+			fprintf "%5d B: %s\n" "$lcB" "$lineB"
 			fecho
 		fi
 
@@ -405,8 +429,9 @@ for ((index = 0; index < $fcountA; ++index)); do
 		#
 		if [ "$lineA" != "$lineB" ]; then
 
-			([ "${lineA:0:2}" == "--" ] || [ "${lineB:0:2}" == "--" ]) \
-				&& continue
+			if [ "${lineA:0:2}" == "--" ] || [ "${lineB:0:2}" == "--" ]; then
+				continue
+			fi
 
 			equiv=false
 			fecho "PATCH: $((index+1)): ${faryA[$index]}"
@@ -426,11 +451,13 @@ for ((index = 0; index < $fcountA; ++index)); do
 	echo -en "$CL1"
 	echo -en "$CCR"
 
-	# How to do a if-then-if-then-else-fi-fi on one line ;)
-	#
-	$verbose && { $equiv \
-		&& fprintf "PATCH: %d: == No conflicts detected ==\n" $((index+1)) \
-		|| fprintf "PATCH: %d: != There are conflicts !=\n" $((index+1)); }
+	if $verbose; then
+		if $equiv; then
+			fprintf "PATCH: %d: == No conflicts detected ==\n" $((index+1))
+		else
+			fprintf "PATCH: %d: != There are conflicts !=\n" $((index+1))
+		fi
+	fi
 
 	$vverbose && fecho
 
