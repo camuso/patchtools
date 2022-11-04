@@ -234,11 +234,11 @@ dirB="$2"
 # get the list of files in each directory
 #
 if $b_valpatchlist; then
-	faryA=("${valpatchlist[@]}")
+	faryA=(${valpatchlist[@]})
 else
 	mapfile -t faryA <<< "$(ls -1 "$dirA"/*.patch)"
 fi
-mapfile faryB <<< "$(ls -1 "$dirB"/*.patch)"
+mapfile -t faryB <<< "$(ls -1 "$dirB"/*.patch)"
 
 # get the count of the files in each directory
 #
