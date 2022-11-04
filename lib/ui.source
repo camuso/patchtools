@@ -53,7 +53,7 @@ unset BWOR && declare BWOR='\e[1;37;41m'
 declare -i terminal_background=0
 declare -i tb_lite=1
 declare -i tb_dark=2
-declare -i b_color=
+declare b_color=
 
 # Terminal magic
 #
@@ -150,6 +150,7 @@ ui_set_colors() {
 	esac
 
 	qstr="'$STA\0q$OFF\0'"
+
 	return 0
 }
 
