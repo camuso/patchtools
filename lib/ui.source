@@ -76,7 +76,8 @@ declare -i ui_err_invlinec=4
 declare -i ui_err_nofiles=5
 declare -i ui_err_notdigit=6
 declare -i ui_err_missing_arg=7
-declare -i ui_err_boundary=$ui_err_missing_arg
+declare -i ui_err_bashver=8
+declare -i ui_err_boundary=$ui_err_bashver
 
 declare -a ui_err_msg=(
 ""
@@ -87,6 +88,7 @@ declare -a ui_err_msg=(
 "No files found"
 "not a didgit"
 "missing argument"
+""
 )
 
 # Contlol-C exit code
@@ -99,6 +101,26 @@ declare ui_tempfile="/dev/shm/ui_temp_file"
 #########################
 # Shell Routines
 #########################
+
+# ui_testbash - bash version must be 4 or higher to use this script
+#
+ui_testbash() {
+	local verstr
+	local warnstr
+
+	warnstr=$(
+cat <<EOF
+$WRN
+GNU bash version less than 4.0!$MNU
+You must be using GNU bash 4.0 or higher.$OFF
+\0
+EOF
+)
+	verstr=$(bash --version | grep -m1 -o '[0-9].*')
+	((${verstr:0:1} >= 4)) && return
+	echo -e "$warnstr"
+	exit $ui_err_bashver
+}
 
 # ui_popterm
 #  pop up a default user terminal an optionally execute a command in it.
