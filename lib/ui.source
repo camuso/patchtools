@@ -457,7 +457,7 @@ function doyn {
 	[ $# -eq 4 ] && eval $4=$response
 }
 
-function getuser {
+getuser() {
 	local promptstring="$1"
 	local var=
 
@@ -708,7 +708,7 @@ function ui_getfilespec {
 #	3 if the string is neither a file nor a directory
 #	4 if the string is "q" for "quit trying"
 #
-function ui_chkdir {
+ui_chkdir() {
 	[ "$1" = "q" ] && return 4
 	[ "$1" ]       || return 1
 	[ -f "$1" ]    && return 2
@@ -757,7 +757,7 @@ ui_verifydir() {
 # 	3 - newly created directory
 # 	4 - user quitting
 #
-function ui_getnewdir {
+ui_getnewdir() {
 	local prompt="$1"
 	local newdir
 	local stat
@@ -801,7 +801,7 @@ function ui_getnewdir {
 	done
 }
 
-function ui_testdir {
+ui_testdir() {
 	local tstdir="$1"
 	local stat
 	local createstr="${INF}Want to create it now?$OFF"
@@ -829,27 +829,6 @@ function ui_testdir {
 			return $stat
 		fi
 	done
-}
-
-# ui_getdirspec - extract directory name from a path to a file.
-#
-# NOTE: Must be a filename including a path to a file.
-#
-# Use command substitution for this function, i.e.
-# 	dirspec=$(getdirspec arg)
-#
-# $1 - filename including directory path
-#
-function ui_getdirspec() {
-	local str="$1"
-	local isdir=$(echo "$str" | grep "/")
-	if [ "$isdir" != "" ]; then
-		local rts=$(echo "$str" | rev)
-		local ds=$(echo "${rts#*/}" | rev)
-	else
-		ds="./"
-	fi
-	echo "$ds"
 }
 
 # ui_remove_spaces - remove spaces from filenames in the current directory
