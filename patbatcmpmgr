@@ -205,9 +205,8 @@ get_booleans() {
 	b_nopaths \
 	b_strict
 	do
-		eval $bool=$(prj_get_item $index)
+		cfg_get_item "$bool" bool
 		ui_digit2bool $bool
-		let index++
 	done
 }
 
@@ -222,8 +221,7 @@ set_booleans() {
 	b_nopaths \
 	b_strict
 	do
-		prj_set_item $index ${!bool}
-		let index++
+		cfg_set_item "$bool" "$bool"
 	done
 	return 0
 }
@@ -279,6 +277,16 @@ EOF
 	echo -e "$settingstr"
 }
 
+set_dir() {
+	local dtyp="$1"
+	local itnam="$2"
+	local -n dir="$2"
+
+	ui_getnewdir "New $MNU$dtyp$INF directory:$OFF " dir
+	cfg_set_item "$itnam" "$dir"
+}
+
+
 menu_parser() {
 	local setting
 
@@ -288,34 +296,31 @@ menu_parser() {
 	promptgetchar ""$BLD"Enter one of the above: "$OFF"" setting
 
 	case $setting in
-		R )	cfg_write_key rhdir 
-			prj_set_directory "$rhdirstr" $prj_rhdir rhdir quiet
+		R )	setdir "$rhdirstr" rhdir
 			;;
-		U )	prj_set_directory "$usdirstr" $prj_usdir usdir quiet
+		U )	setdir "$usdirstr" usdir
 			;;
 		o )	getuser "Output file: " ofile
-			prj_set_item $prj_ofile $ofile
+			cfg_set_item "ofile" "$ofile"
 			;;
 		p )	ui_toggle b_nopaths
 			;;
 		s )	ui_toggle b_strict
 			;;
 		v )	ui_cycle_state verbosemode 3
-			prj_set_item $prj_verbosemode $verbosemode
+			cfg_set_item "verbosemode" "$verbosemode"
 			;;
 		r )	set_booleans
 			return $rc_run
 			;;
-		e )	[ "$ofile" != "/dev/stdout" ] && less $ofile
+		e )	[ "$ofile" != "/dev/stdout" ] && less "$ofile"
 			;;
 		i )	init_booleans
 			get_booleans
 			verbosemode=$vmode_off
-			prj_set_item $prj_verbosemode $verbosemode
+			cfg_set_item "verbosemode" $verbosemode
 			;;
 		h )	usage | less
-			;;
-		x )	ui_sh_spawn
 			;;
 		q )	set_booleans
 			$rmlasttag && rm -f /dev/shm/lasttag
@@ -478,12 +483,8 @@ main() {
 
 		cfg_get_item "rhdir" rhdir
 		cfg_get_item "usdir" usdir
-
-		$b_extern_rhdir && check_dir $prj_rhdir "$rhdirstr" rhdir
-		check_dir $prj_usdir "$usdirstr" usdir
-
-		ofile="$(prj_get_item $prj_ofile)" 
-		verbosemode=$(prj_get_item $prj_verbosemode)
+		cfg_get_item "ofile" ofile
+		cfg_get_item "verbosemode" verbosemode
 
 		while true; do
 
