@@ -22,16 +22,18 @@ trap control_c SIGINT
 #
 shopt -s extglob
 
-declare MYDIR=$(dirname $(which $(basename "$0")))
-declare MYLIB=$MYDIR/lib
-declare MYDATA=./.data
+declare MYDIR=
+MYDIR="$(dirname "$(which "$(basename "$0")")")"
+declare MYLIB="$MYDIR"/lib
+declare MYDATA="./.data"
 LIB="$MYLIB"
 
 #######################################
 # External Source Files
 #######################################
-source $LIB/ui.source
-source $LIB/project.source
+source "$LIB"/ui.source
+source "$LIB"/project.source
+source "$LIB"/config-manager.source
 
 #######################################
 # Global variables
@@ -82,7 +84,8 @@ declare rmlasttag=false
 
 declare rhdirstr="RHEL patches"
 declare usdirstr="Upstream patches"
-declare usagestr=$(
+declare usagestr=
+usagestr=$(
 cat <<EOF
 
 $(basename "$0") [-h [-R | -P]  -U -X -o <file>]
@@ -179,7 +182,6 @@ declare rc_run=1	# Run comparison
 #######################################
 # Functions
 #######################################
-
 
 usage() {
 	$b_exec_exit || echo -e "$usagestr"
@@ -286,7 +288,8 @@ menu_parser() {
 	promptgetchar ""$BLD"Enter one of the above: "$OFF"" setting
 
 	case $setting in
-		R )	prj_set_directory "$rhdirstr" $prj_rhdir rhdir quiet
+		R )	cfg_write_key rhdir 
+			prj_set_directory "$rhdirstr" $prj_rhdir rhdir quiet
 			;;
 		U )	prj_set_directory "$usdirstr" $prj_usdir usdir quiet
 			;;
@@ -370,145 +373,154 @@ exit_invdir() {
 	exit 1
 }
 
-#############################
-# Start of Script Execution
-#############################
+parse_opts() {
+	[ -e /dev/shm/lasttag ] || getlasttag
+	lasttag=$(cat /dev/shm/lasttag)
 
-[ -e /dev/shm/lasttag ] || getlasttag
-lasttag=$(cat /dev/shm/lasttag)
+	# Parse the options, if any
+	#
+	while getopts hXR:U:o:P: OPTION; do
+	    case "$OPTION" in
 
-# Parse the options, if any
-#
-while getopts hXR:U:o:P: OPTION; do
-    case "$OPTION" in
-
-	h ) usage | less
-	    ;;
-	R ) rhdir=$OPTARG
-	    b_extern_rhdir=true
-	    ;;
-    	P ) valpatchlist="$OPTARG"
-	    b_valpatchlist=true
-	    ;;
-	U ) usdir=$OPTARG
-	    b_extern_usdir=true
-	    ;;
-	o ) pfile=$OPTARG
-	    ;;
-	X ) b_exec_exit=true
-	    ;;
-	* ) echo "unrecognized option"
-	    usage 127
-    esac
-done
+		h ) usage | less
+		    ;;
+		R ) rhdir=$OPTARG
+		    b_extern_rhdir=true
+		    ;;
+		P ) valpatchlist="$OPTARG"
+		    b_valpatchlist=true
+		    ;;
+		U ) usdir=$OPTARG
+		    b_extern_usdir=true
+		    ;;
+		o ) pfile=$OPTARG
+		    ;;
+		X ) b_exec_exit=true
+		    ;;
+		* ) echo "unrecognized option"
+		    usage 127
+	    esac
+	done
+}
 
 ###########################################
 # Parameter Initialization
 ###########################################
 
-# This loop enumerates and counts the items in the project file.
-# Add new booleans to the end of the list.
-# Add new non-boolean parameters to the top of the list.
-#
-for offset in \
-prj_verbosemode \
-prj_rhdir \
-prj_usdir \
-prj_ofile \
-prj_b_nodiffst \
-prj_b_nopaths \
-prj_b_strict
-do
-	let index++
-	let $offset=$index
-	if [ "${offset:3:3}" == "_b_" ]; then
-		let boolcount++
-		if ! $b_found_first_bool; then
-			boolindex=$index
-			b_found_first_bool=true
+old_init() {
+	# This loop enumerates and counts the items in the project file.
+	# Add new booleans to the end of the list.
+	# Add new non-boolean parameters to the top of the list.
+	#
+	for offset in \
+	prj_verbosemode \
+	prj_rhdir \
+	prj_usdir \
+	prj_ofile \
+	prj_b_nodiffst \
+	prj_b_nopaths \
+	prj_b_strict
+	do
+		let index++
+		let $offset=$index
+		if [ "${offset:3:3}" == "_b_" ]; then
+			let boolcount++
+			if ! $b_found_first_bool; then
+				boolindex=$index
+				b_found_first_bool=true
+			fi
 		fi
+	done
+
+	prj_entries=$index
+	[ -d "$prj_dir" ] || mkdir $prj_dir
+	[ -f "$prj_file" ] || touch $prj_file
+
+	prj_init_prjfile $prj_file $prj_entries
+	stat=$?
+
+	# If the above call to prj_init_prjfile returns nonzero, it means that a
+	# new project file has been created and its values must be initialized.
+	#
+	if [ $stat -ne 0 ]; then
+		[ -d "$rhdir" ] && prj_set_item $prj_rhdir $rhdir \
+				|| prj_set_directory "$rhdirstr" $prj_rhdir rhdir quiet
+
+		[ -d "$usdir" ] && prj_set_item $prj_usdir $usdir \
+				|| prj_set_directory "$usdirstr" $prj_usdir usdir quiet
+		init_booleans
+		verbosemode=$vmode_off
+		prj_set_item $prj_verbosemode $verbosemode
 	fi
-done
 
-prj_entries=$index
-[ -d "$prj_dir" ] || mkdir $prj_dir
-[ -f "$prj_file" ] || touch $prj_file
+	$b_extern_rhdir && prj_set_item $prj_rhdir $rhdir
+	$b_extern_usdir && prj_set_item $prj_usdir $usdir
 
-prj_init_prjfile $prj_file $prj_entries
-stat=$?
-
-# If the above call to prj_init_prjfile returns nonzero, it means that a
-# new project file has been created and its values must be initialized.
-#
-if [ $stat -ne 0 ]; then
-	[ -d "$rhdir" ] && prj_set_item $prj_rhdir $rhdir \
-			|| prj_set_directory "$rhdirstr" $prj_rhdir rhdir quiet
-
-	[ -d "$usdir" ] && prj_set_item $prj_usdir $usdir \
-			|| prj_set_directory "$usdirstr" $prj_usdir usdir quiet
-	init_booleans
-	verbosemode=$vmode_off
-	prj_set_item $prj_verbosemode $verbosemode
-fi
-
-$b_extern_rhdir && prj_set_item $prj_rhdir $rhdir
-$b_extern_usdir && prj_set_item $prj_usdir $usdir
-
-# If the caller passed a desired output file name (pfile), then use that
-# Else, if the ofile saved in the project file is an empty string,
-# use the default /dev/stdout
-#
-[ "$pfile" ] && ofile="$pfile" || ofile="$(prj_get_item $prj_ofile)"
-[ "$ofile" ] || ofile="/dev/stdout"
-prj_set_item $prj_ofile $ofile
+	# If the caller passed a desired output file name (pfile), then use that
+	# Else, if the ofile saved in the project file is an empty string,
+	# use the default /dev/stdout
+	#
+	[ "$pfile" ] && ofile="$pfile" || ofile="$(prj_get_item $prj_ofile)"
+	[ "$ofile" ] || ofile="/dev/stdout"
+	prj_set_item $prj_ofile $ofile
+}
 
 ##############################################
 # Main Program Loop
 ##############################################
 
-while true; do
-	declare optstr=""
-
-	get_booleans
-
-	$b_extern_rhdir && check_dir $prj_rhdir "$rhdirstr" rhdir
-	check_dir $prj_usdir "$usdirstr" usdir
-
-	ofile="$(prj_get_item $prj_ofile)"
-	verbosemode=$(prj_get_item $prj_verbosemode)
+main() {
+	parse_opts
+	cfg_start "$MYLIB"/patbatcmpmgr.conf "$MYDATA"/patbatcmpmgr.conf
 
 	while true; do
+		declare optstr=""
 
-		# Don't bother with the menu if we just want to execute
-		# and exit. See -X option.
+		cfg_get_item "rhdir" rhdir
+		cfg_get_item "usdir" usdir
+
+		$b_extern_rhdir && check_dir $prj_rhdir "$rhdirstr" rhdir
+		check_dir $prj_usdir "$usdirstr" usdir
+
+		ofile="$(prj_get_item $prj_ofile)" 
+		verbosemode=$(prj_get_item $prj_verbosemode)
+
+		while true; do
+
+			# Don't bother with the menu if we just want to execute
+			# and exit. See -X option.
+			#
+			$b_exec_exit && break
+
+			menu_parser
+			[ $? -eq $rc_run ] && break
+		done
+
+		$b_nopaths  && optstr="$optstr""-p "
+		$b_strict   && optstr="$optstr""-s "
+
+		case $verbosemode in
+		    "$vmode_on"   ) optstr="$optstr""-v ";;
+		    "$vmode_very" ) optstr="$optstr""-V ";;
+		esac
+
+		if $b_valpatchlist; then
+			# echo -e "patbatcmp $optstr -o $ofile -P \"$valpatchlist\" $usdir"
+			patbatcmp -x "$optstr" -o "$ofile" -P "$valpatchlist" "$rhdir" "$usdir"
+		else
+			echo "patbatcmp $optstr -o $ofile $rhdir $usdir"
+			patbatcmp -x "$optstr" -o "$ofile" "$rhdir" "$usdir"
+		fi
+
+		# Only one pass if all we want is to execute and exit.
+		# See -X option.
 		#
-		$b_exec_exit && break
-
-		menu_parser
-		[ $? -eq $rc_run ] && break
+		if $b_exec_exit; then
+			$rmlasttag && rm -f /dev/shm/lasttag
+			exit 0
+		fi
 	done
+}
 
-	$b_nopaths  && optstr="$optstr""-p "
-	$b_strict   && optstr="$optstr""-s "
+main "$@"
 
-	case $verbosemode in
-	    $vmode_on   ) optstr="$optstr""-v ";;
-	    $vmode_very ) optstr="$optstr""-V ";;
-	esac
-
-	if $b_valpatchlist; then
-		# echo -e "patbatcmp $optstr -o $ofile -P \"$valpatchlist\" $usdir"
-		patbatcmp -x $optstr -o $ofile -P "$valpatchlist" $rhdir $usdir
-	else
-		echo "patbatcmp $optstr -o $ofile $rhdir $usdir"
-		patbatcmp -x $optstr -o $ofile $rhdir $usdir
-	fi
-
-	# Only one pass if all we want is to execute and exit.
-	# See -X option.
-	#
-	if $b_exec_exit; then
-		$rmlasttag && rm -f /dev/shm/lasttag
-		exit 0
-	fi
-done
