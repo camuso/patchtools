@@ -15,6 +15,8 @@ declare -i cfg_err_nokey=1
 declare -i cfg_err_invopt=2
 declare -i cfg_err_invoper=3
 declare -i cfg_err_notready=4
+declare -i cfg_err_invdir=5
+declare -i cfg_err_invtemplate=6
 declare cfg_file=
 declare cfg_template=
 declare cfg_b_ready=false
@@ -54,6 +56,24 @@ EOF
 	echo -e "$helpmsg"
 }
 
+cfg_err_msg=(
+	""
+	"Key not found"
+	"Invalid option"
+	"Invalid operation"
+	"Config files missing: need config template and config file"
+	"Invalid directory"
+	"Invalid template file"
+)
+
+cfg_show_err() {
+	local err=$1
+	local val="$2"
+
+	echo -e "\n$WRN${cfg_err_msg[$err]} $INF: $STA$val$OFF"
+	return $err
+}
+
 cfg_set_configfile() {
 	cfg_file="$1"
 	[ -f $cfg_template ] && cfg_b_ready=true
@@ -65,23 +85,30 @@ cfg_get_configfile() {
 
 cfg_set_template() {
 	cfg_template="$1"
-	[ -f $cfg_file ] && cfg_b_ready=true
+	[ -f "$cfg_file" ] && cfg_b_ready=true
 }
 
-cfg_err_msg=(
-	""
-	"Key not found"
-	"Invalid option"
-	"Invalid operation"
-	"Config files missing: need config template and config file"
-)
+cfg_start() {
+	cfg_template="$1"
+	cfg_file="$2"
+	local cfgdir
 
-cfg_show_err() {
-	local err=$1
-	local val="$2"
+	cfgdir=$(dirname "$cfg_file")
 
-	echo -e "\n$WRN${cfg_err_msg[$err]} $INF: $STA$val$OFF"
-	return $err
+	[ -f "$cfg_template" ] || cfg_show_err "$cfg_err_invtemplate" "$cfg_template"
+	[ -d "$cfgdir"   ]     || cfg_show_err "$cfg_err_invdir" "$cfgdir"
+
+	cfg_set_template "$cfg_template"
+
+	[ -f "$cfg_file" ] || {
+		cp "$cfg_template" "$cfg_file" || {
+			echo -e "${WRN}Cannot copy $MNU$cfg_template$WRN to $MNU$cfg_file!$OFF"
+			exit 1
+		}
+	}
+
+	cfg_b_ready=true
+	cfg_init
 }
 
 cfg_test_ready() {
@@ -94,17 +121,26 @@ cfg_test_ready() {
 cfg_read_key() {
 	local key="$1"
 	local keyline=
-	local ary
+	local value
 
 	$cfg_test_ready || return $cfg_err_notready
 
-	keyline=$(grep -w $key $cfg_file)
-	[ $? -eq 0 ] || {
+	keyline=$(grep -w $key $cfg_file) || {
 		cfg_show_err $cfg_err_nokey $key
 		return $cfg_err_nokey
 	}
-	ui_strtok "$keyline" "= " ary
-	echo ${ary[1]}
+
+	index=$(ui_strindex "$keyline" "=")
+	value="${keyline:index+1}"
+	value="${value##*( )}"
+	echo "$value"
+}
+
+cfg_get_item() {
+	local key="$1"
+	local -n item="$2"
+
+	item=$(cfg_read_key "$key")
 }
 
 cfg_write_key() {
@@ -115,8 +151,7 @@ cfg_write_key() {
 
 	$cfg_test_ready || return $cfg_err_notready
 
-	keyline=$(grep -nw "$key" "$cfg_file")
-	[ $? -eq 0 ] || {
+	keyline=$(grep -nw "$key" "$cfg_file") || {
 		cfg_show_err $cfg_err_nokey $key
 		return $cfg_err_nokey
 	}
@@ -124,6 +159,13 @@ cfg_write_key() {
 	keyline=$(echo "$keyline" | cut -d":" -f2- | cut -d"=" -f1)
 	keyline="$keyline""= $value"
 	ui_replaceline_raw $linenumber "$keyline" "$cfg_file"
+}
+
+cfg_set_item() {
+	local key="$1"
+	local item="$2"
+
+	cfg_write_key "$key" "$item"
 }
 
 cfg_compare_configfiles() {
