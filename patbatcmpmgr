@@ -3,7 +3,7 @@
 # patbatcmpmgr
 #
 
-declare version="v2.0"
+declare version="v3.0"
 
 # run if user hits control-c
 #
@@ -44,8 +44,8 @@ declare -i boolcount=0
 declare -i boolindex=0
 
 declare b_found_first_bool=false
-declare b_nopaths
-declare b_strict
+declare b_nopaths=true
+declare b_strict=true
 declare b_exec_exit=false
 declare b_extern_rhdir=false
 declare b_extern_usdir=false
@@ -55,21 +55,8 @@ declare -i vmode_off=0
 declare -i vmode_on=1
 declare -i vmode_very=2
 
-# Project file offsets
-#
-declare -i prj_verbosemode
-declare -i prj_rhdir
-declare -i prj_usdir
-declare -i prj_ofile
-declare -i prj_b_nodiffst
-declare -i prj_b_nopaths
-declare -i prj_b_strict
-
 declare valpatchlist=
 declare b_valpatchlist=false
-
-declare prj_dir="$MYDATA"
-declare prj_file="$prj_dir/patbatcmpmgr.prj"
 
 declare rhdir		# directory containing RHEL patch files
 declare usdir		# directory containing upstream patch files
@@ -78,6 +65,7 @@ declare pfile=		# passed output file takes precedence over the
 			# : output file stored in the project file
 declare -i rhfcount=0
 declare -i usfcount=0
+declare -i background=
 
 declare lasttag=
 declare rmlasttag=false
@@ -111,6 +99,7 @@ $(basename "$0") [-h [-R | -P]  -U -X -o <file>]
               This is to circumvent counting/comparing the prologue file.
   -o ofile  - optional conflicts file. Default is /dev/stdout
   -X        - execute saved options and exit without presenting the menu
+  -b background color  - 1 for light background, 2 for dark background
 
   The rhdir (or valid patch list) and usdir must have the same number of
   patch files.
@@ -163,11 +152,11 @@ $(basename "$0") [-h [-R | -P]  -U -X -o <file>]
                     are congruent. Printing of a given patch pair stops at
                     the first mismatched line in the files.
 
+  b - choose light or dark background
   r - run the comparison
   e - less the conflicts file. Only visible if the output is not /dev/stdout
   i - init controls and output file to defaults
   h - less this help text
-  x - spawn a shell
   q - quit and return to previous execution environment
 \0
 EOF
@@ -183,15 +172,20 @@ declare rc_run=1	# Run comparison
 # Functions
 #######################################
 
+exitme() {
+	cfg_update_configfile
+	exit 0
+}
+
 usage() {
 	$b_exec_exit || echo -e "$usagestr"
 	exit $1
 }
 
 init_booleans() {
-	prj_set_item $prj_b_nodiffst true
-	prj_set_item $prj_b_nopaths true
-	prj_set_item $prj_b_strict true
+	cfg_set_item "b_nodiffst" true
+	cfg_set_item "b_nopaths" true
+	cfg_set_item "b_strict" true
 }
 
 # get_booleans
@@ -202,10 +196,11 @@ init_booleans() {
 get_booleans() {
 	index=$boolindex
 	for bool in \
+	b_nodiffst \
 	b_nopaths \
 	b_strict
 	do
-		cfg_get_item "$bool" bool
+		cfg_get_item "$bool" "$bool"
 		ui_digit2bool $bool
 	done
 }
@@ -218,10 +213,11 @@ get_booleans() {
 set_booleans() {
 	index=$boolindex
 	for bool in \
+	b_nodiffst \
 	b_nopaths \
 	b_strict
 	do
-		cfg_set_item "$bool" "$bool"
+		cfg_set_item "$bool" "${!bool}"
 	done
 	return 0
 }
@@ -239,38 +235,45 @@ show_verbosemode() {
 show_read_ofile() {
 	read_ofile_str=$(
 cat <<EOF
-
-  e  examine conflicts file (less $OFF"$ofile"$BLD)
+$MNU
+  e$INF  examine conflicts file (less $STA$ofile$OFF)
 EOF
 )
 	[ "$ofile" != "/dev/stdout" ] && echo -e "$read_ofile_str"
 }
 
+show_dir() {
+	local dir="$1"
+	local count="$2"
+
+	[ -n "$dir" ] && echo -e "$STA$dir$INF has $STA$count$INF patch files"
+}
+
 show_settings() {
 	settingstr=$(
 cat <<EOF
-$BLD
-     $UND\0Batch Comparison of RHEL Patches with Upstream - $version$OFF$BLD
+$MNU
+     $UND\0Batch Comparison of RHEL Patches with Upstream - $STA$version$OFF$MNU
 
-     $UND\0Environment       $OFF$BLD
-     Most Recent Tag            : $OFF$lasttag$BLD
-  R  $rhdirstr directory     : $OFF$rhdir$BLD has $OFF$rhfcount$BLD patch files
-  U  $usdirstr directory : $OFF$usdir$BLD has$OFF $usfcount$BLD patch files
-  o  Output file.               : $OFF$ofile$BLD
+     $UND\0Environment       $OFF
+$INF     Most Recent Tag            : $STA$lasttag$MNU
+  R$INF  $rhdirstr directory     : $(show_dir "$rhdir" "$rhfcount")$MNU
+  U$INF  $usdirstr directory : $(show_dir "$usdir" "$usfcount")$MNU
+  o$INF  Output file.               : $STA$ofile$MNU
 
-     $UND\0Lines to exclude  $OFF$BLD
-  p  file paths                 : $OFF$b_nopaths$BLD
-  s  without leading + or -     : $OFF$b_strict$BLD
+     $UND\0Lines to exclude  $OFF$MNU
+  p$INF  file paths                 : $STA$b_nopaths$MNU
+  s$INF  without leading + or -     : $STA$b_strict$MNU
 
-     $UND\0Output Parameters $OFF$BLD
-  v  Verbose mode               : $OFF$(show_verbosemode $verbosemode)$BLD
+     $UND\0Output Parameters $OFF$MNU
+  v$INF  Verbose mode               : $STA$(show_verbosemode $verbosemode)$MNU
 
-     $UND\0Control           $OFF$BLD
-  r  run the comparison $(show_read_ofile)
-  i  init to defaults
-  h  print the help (uses less command)
-  x  spawn a shell
-  q  quit and return to previous execution environment
+     $UND\0Control           $OFF$MNU
+  r$INF  run the comparison $STA$(show_read_ofile)$MNU
+  i$INF  init to defaults$MNU
+  h$INF  print the help (uses less command)$MNU
+  b$INF  Set background color$MNU
+  q$INF  quit and return to previous execution environment
 $OFF
 EOF
 )
@@ -290,39 +293,42 @@ set_dir() {
 menu_parser() {
 	local setting
 
-	# rhfcount=$(ls -1 $rhdir/*.patch | wc -l)
-	usfcount=$(ls -1 $usdir/*.patch | wc -l)
+	[ -n "$rhdir" ] && rhfcount=$(ls -1 $rhdir/*.patch | wc -l)
+	[ -n "$usdir" ] && usfcount=$(ls -1 $usdir/*.patch | wc -l)
 	show_settings
-	promptgetchar ""$BLD"Enter one of the above: "$OFF"" setting
+	promptgetchar "${MNU}Enter one of the above: $OFF" setting
 
 	case $setting in
-		R )	setdir "$rhdirstr" rhdir
+		R )	set_dir "$rhdirstr" rhdir
 			;;
-		U )	setdir "$usdirstr" usdir
+		U )	set_dir "$usdirstr" usdir
 			;;
 		o )	getuser "Output file: " ofile
 			cfg_set_item "ofile" "$ofile"
 			;;
 		p )	ui_toggle b_nopaths
+			cfg_set_item "b_nopaths" "$b_nopaths"
 			;;
 		s )	ui_toggle b_strict
+			cfg_set_item "b_strict" "$b_strict"
 			;;
 		v )	ui_cycle_state verbosemode 3
 			cfg_set_item "verbosemode" "$verbosemode"
 			;;
-		r )	set_booleans
-			return $rc_run
+		r )	return $rc_run
 			;;
 		e )	[ "$ofile" != "/dev/stdout" ] && less "$ofile"
 			;;
 		i )	init_booleans
-			get_booleans
 			verbosemode=$vmode_off
 			cfg_set_item "verbosemode" $verbosemode
 			;;
+		b )	ui_use_colors
+			cfg_set_item "background" "$terminal_background"
+			;;
 		h )	usage | less
 			;;
-		q )	set_booleans
+		q )	exitme
 			$rmlasttag && rm -f /dev/shm/lasttag
 			exit 0
 			;;
@@ -384,7 +390,7 @@ parse_opts() {
 
 	# Parse the options, if any
 	#
-	while getopts hXR:U:o:P: OPTION; do
+	while getopts hXR:U:o:P:b: OPTION; do
 	    case "$OPTION" in
 
 		h ) usage | less
@@ -402,6 +408,9 @@ parse_opts() {
 		    ;;
 		X ) b_exec_exit=true
 		    ;;
+		b ) background="$OPTION"
+		    ui_do_colors "$background"
+		    ;;
 		* ) echo "unrecognized option"
 		    usage 127
 	    esac
@@ -412,62 +421,19 @@ parse_opts() {
 # Parameter Initialization
 ###########################################
 
-old_init() {
-	# This loop enumerates and counts the items in the project file.
-	# Add new booleans to the end of the list.
-	# Add new non-boolean parameters to the top of the list.
-	#
-	for offset in \
-	prj_verbosemode \
-	prj_rhdir \
-	prj_usdir \
-	prj_ofile \
-	prj_b_nodiffst \
-	prj_b_nopaths \
-	prj_b_strict
-	do
-		let index++
-		let $offset=$index
-		if [ "${offset:3:3}" == "_b_" ]; then
-			let boolcount++
-			if ! $b_found_first_bool; then
-				boolindex=$index
-				b_found_first_bool=true
-			fi
-		fi
-	done
-
-	prj_entries=$index
-	[ -d "$prj_dir" ] || mkdir $prj_dir
-	[ -f "$prj_file" ] || touch $prj_file
-
-	prj_init_prjfile $prj_file $prj_entries
-	stat=$?
-
-	# If the above call to prj_init_prjfile returns nonzero, it means that a
-	# new project file has been created and its values must be initialized.
-	#
-	if [ $stat -ne 0 ]; then
-		[ -d "$rhdir" ] && prj_set_item $prj_rhdir $rhdir \
-				|| prj_set_directory "$rhdirstr" $prj_rhdir rhdir quiet
-
-		[ -d "$usdir" ] && prj_set_item $prj_usdir $usdir \
-				|| prj_set_directory "$usdirstr" $prj_usdir usdir quiet
-		init_booleans
-		verbosemode=$vmode_off
-		prj_set_item $prj_verbosemode $verbosemode
-	fi
-
-	$b_extern_rhdir && prj_set_item $prj_rhdir $rhdir
-	$b_extern_usdir && prj_set_item $prj_usdir $usdir
+init() {
+	cfg_start "$MYLIB"/patbatcmpmgr.conf "$MYDATA"/patbatcmpmgr.conf
+	[ -n "$background" ] && ui_do_colors "$background"
+	parse_opts "$@"
 
 	# If the caller passed a desired output file name (pfile), then use that
 	# Else, if the ofile saved in the project file is an empty string,
 	# use the default /dev/stdout
 	#
-	[ "$pfile" ] && ofile="$pfile" || ofile="$(prj_get_item $prj_ofile)"
+	[ -n "$pfile" ] && ofile="$pfile"
 	[ "$ofile" ] || ofile="/dev/stdout"
-	prj_set_item $prj_ofile $ofile
+
+	cfg_update_configfile
 }
 
 ##############################################
@@ -475,42 +441,30 @@ old_init() {
 ##############################################
 
 main() {
-	parse_opts
-	cfg_start "$MYLIB"/patbatcmpmgr.conf "$MYDATA"/patbatcmpmgr.conf
+	init "$@"
 
 	while true; do
 		declare optstr=""
 
-		cfg_get_item "rhdir" rhdir
-		cfg_get_item "usdir" usdir
-		cfg_get_item "ofile" ofile
-		cfg_get_item "verbosemode" verbosemode
-
-		while true; do
-
-			# Don't bother with the menu if we just want to execute
-			# and exit. See -X option.
-			#
-			$b_exec_exit && break
-
+		while ! $b_exec_exit; do
 			menu_parser
 			[ $? -eq $rc_run ] && break
 		done
 
-		$b_nopaths  && optstr="$optstr""-p "
-		$b_strict   && optstr="$optstr""-s "
+		$b_nopaths  && optstr="$optstr -p "
+		$b_strict   && optstr="$optstr -s "
 
 		case $verbosemode in
-		    "$vmode_on"   ) optstr="$optstr""-v ";;
-		    "$vmode_very" ) optstr="$optstr""-V ";;
+		    "$vmode_on"   ) optstr="$optstr -v ";;
+		    "$vmode_very" ) optstr="$optstr -V ";;
 		esac
 
 		if $b_valpatchlist; then
 			# echo -e "patbatcmp $optstr -o $ofile -P \"$valpatchlist\" $usdir"
-			patbatcmp -x "$optstr" -o "$ofile" -P "$valpatchlist" "$rhdir" "$usdir"
+			patbatcmp -x $optstr -o "$ofile" -P "$valpatchlist" "$rhdir" "$usdir"
 		else
-			echo "patbatcmp $optstr -o $ofile $rhdir $usdir"
-			patbatcmp -x "$optstr" -o "$ofile" "$rhdir" "$usdir"
+			echo "patbatcmp $optstr -x -o $ofile $rhdir $usdir"
+			patbatcmp $optstr -x -o $ofile $rhdir $usdir
 		fi
 
 		# Only one pass if all we want is to execute and exit.
@@ -518,9 +472,12 @@ main() {
 		#
 		if $b_exec_exit; then
 			$rmlasttag && rm -f /dev/shm/lasttag
-			exit 0
+			exitme
 		fi
+
+		cfg_read_configfile
 	done
+	exitme
 }
 
 main "$@"
