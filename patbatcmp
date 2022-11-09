@@ -222,7 +222,7 @@ $verbose || verbosity=0
 
 # Shift past the options
 #
-for ((i = 0; i < optcnt; ++i)); do shift; done
+shift "$optcnt"
 
 # Be sure we have at exactly two parameters at this point
 #
