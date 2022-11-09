@@ -1458,11 +1458,10 @@ check_mismatch_file() {
 	[ -f $mmfile ] || return 1
 
 	num=$(tac $mmfile | while read line; do
-		echo "$line" | grep '^PATCH:' > /dev/null
-		if [ $? -eq 0 ]; then
+		echo "$line" | grep -q '^PATCH:' && {
 			echo "$line" | cut -d':' -f2;
 			break
-		fi
+		}
 	done)
 	[ $num -eq $infilecount ] && return 0 || return 1
 }
@@ -1509,16 +1508,21 @@ exec_patcmp() {
 	# as the infilecount, then go make the mmfile.
 	#
 	if [ "$xval" ]; then
+
 		check_mismatch_file
 		if [ $? -ne 0 ]; then
 			# echo -e "${BLD}Rebuild the conflicts log:$OFF $mmfile"
-			patbatcmpmgr -P "$valpatchlist" -R $indir -U $outdir \
-				     -o $mmfile "$xval"
+			patbatcmpmgr -P "$valpatchlist" -R "$indir" -U "$outdir" \
+				     -o "$mmfile" "$xval" -b "$tb"
 		fi
 	else
-		patbatcmpmgr -x -P $valpatchlist -R $indir -U $outdir -o $mmfile
+
+		patbatcmpmgr -X -P "$valpatchlist" \
+			-R "$indir" -U "$outdir" -o "$mmfile" -b "$tb"
 	fi
-	patcmp $quiet -b $tb -m $mmfile -u $remote_dir $indir $outdir $editor "$us_commits"
+	patcmp "$quiet" -b "$tb" -m "$mmfile" -u "$remote_dir" \
+		"$indir" "$outdir" "$editor" "$us_commits"
+
 	return $?
 }
 
