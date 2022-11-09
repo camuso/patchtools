@@ -130,9 +130,10 @@ cfg_read_key() {
 		return $cfg_err_nokey
 	}
 
-	index=$(ui_strindex "$keyline" "=")
-	value="${keyline:index+1}"
+	shopt -s extglob # ON to enable trimming spaces
+	value="$(echo "$keyline" | cut -d'=' -f2-)"
 	value="${value##*( )}"
+	shopt -u extglob # OFF
 	echo "$value"
 }
 
@@ -194,37 +195,41 @@ cfg_compare_configfiles() {
 
 cfg_read_configfile() {
 	local confline=
-	local lary
-	local index
 	local item
 	local value
 
 	$cfg_test_ready || return $cfg_err_notready
 
-	# Extracting the strings is complicated, because they may
-	# have things like '=' and ' ' in them.
-	# Simple tokenization won't do what we need.
-	# Instead, find where the first '=' is located and separate
-	# the item from its value at that index.
 	shopt -s extglob # ON to enable trimming spaces
 	while read confline; do
 		# Find the first '='.
-		index=$(ui_strindex "$confline" "=")
-		# extract the item identifier
-		item=${confline:0:index}
+		item="$(echo "$confline" | cut -d'=' -f1)"
 		# strip any trailing spaces
 		item="${item%%*( )}"
 		# extract the value string
-		value=${confline:index+1}
+		value="$(echo "$confline" | cut -d'=' -f2-)"
 		# strip any leading spaces
 		value="${value##*( )}"
 		# Assign the value to the item
-		eval $item="$value"
-	done < $cfg_file
+		eval "$item"="$value"
+	done < "$cfg_file"
 	shopt -u extglob # OFF
 }
 
 cfg_update_configfile() {
+	local confline=
+	local item
+
+	shopt -s extglob # ON to enable trimming spaces
+	while read confline; do
+		item="$(echo "$confline" | cut -d'=' -f1)"
+		item="${item%%*( )}"
+		eval "$item"="${!item}"
+	done < "$cfg_file"
+	shopt -u extglob # OFF
+}
+
+cfg_refresh_configfile() {
 	local key1=
 	local tmp=
 	local tmpfile=/dev/shm/cfg_temp
@@ -249,7 +254,7 @@ cfg_update_configfile() {
 }
 
 cfg_init() {
-	cfg_compare_configfiles || cfg_update_configfile
+	cfg_compare_configfiles || cfg_refresh_configfile
 	cfg_read_configfile
 }
 
