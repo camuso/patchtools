@@ -83,14 +83,9 @@ create_patchlist() {
 
 	[ "$startpat" ] && snum=$((startpat - 1))
 	list=("${list[@]:$snum}")
-	is_prologue "${list[0]}"
-	stat=$?
 
-	# If the first patch is a prologue, determined by whether the
-	# subject line is the zeroth patch, then set the prologue flag
-	# true.
-	#
-	[ $stat -eq 0 ] && list=("${list[@]:1}")
+	# If the first patch is a prologue, then skip it.
+	is_prologue "${list[0]}" && list=("${list[@]:1}")
 
 	retlist="${list[@]}"
 
