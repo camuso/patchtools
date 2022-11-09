@@ -189,6 +189,12 @@ ui_use_colors() {
 	ui_set_colors
 }
 
+ui_do_colors() {
+	terminal_background="$1"
+	b_color=true
+	ui_set_colors
+}
+
 # ui_get_curpos - get the cursor row and column
 #
 # $1 - receives the zero-based row value
