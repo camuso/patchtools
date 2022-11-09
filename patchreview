@@ -559,19 +559,7 @@ init_files() {
 # 	All clearly visible on every line.
 #
 init_loopvars() {
-	indir=$(get_cfg_item indir)
-	outdir=$(get_cfg_item outdir)
-	editor=$(get_cfg_item editor)
-	cmpmode=$(get_cfg_item cmpmode)
-	applymode=$(get_cfg_item applymode)
-	applyfailmode=$(get_cfg_item applyfailmode)
-	patchvalfuzz=$(get_cfg_item patchvalfuzz)
-	menumode=$(get_cfg_item menumode)
-	remote_repo=$(get_cfg_item remote_repo)
-	remote_branch=$(get_cfg_item remote_branch)
-	remote_dir=$(get_cfg_item remote_dir)
-	mergelist_filter=$(get_cfg_item mergelist_filter)
-	opmode=$(get_cfg_item opmode)
+	cfg_read_configfile
 	[ "$opmode" -eq $opmode_mr ] && b_mrflag=true
 	init_files
 }
