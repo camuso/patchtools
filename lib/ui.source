@@ -261,7 +261,7 @@ ui_padfield() {
 	return
 }
 
-# ui_clrline - clear the current line and optionally move cursor up one
+# ui_clrline - clear the current line
 #
 # $1 - if not empty, moves the cursor up one line.
 #
@@ -277,7 +277,31 @@ ui_clearline() {
 	#
 	echo -en "$CL1"
 	echo -en "$CCR"
-	[ -z "$1" ] || echo -en "$UP1"
+	echo -en "$CL1"
+	echo -en "$CCR"
+}
+
+# ui_nclrline - clear the current line and move cursor up by 'n'
+#
+# $1 - number of lines to move the cursor up
+#
+# GLOBALS
+# 	CL1 - puts cursor at column 1
+# 	CCR - clears the line and issues a carriage return
+# 	UP1 - moves the cursor up one line
+#
+ui_nclearline() {
+	local up="$1"
+	local -i i
+	# Erase the line and put the cursor back in the first column of the
+	# line. Leave the TTY calls as discrete echos for the sake of
+	# clarity. The bash interpreter will merge them anyway.
+	#
+	echo -en "$CL1"
+	echo -en "$CCR"
+	while ((up--)); do
+		echo -en "$UP1"
+	done
 	echo -en "$CL1"
 	echo -en "$CCR"
 }
