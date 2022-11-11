@@ -2,13 +2,14 @@
 #
 # compare submitted patches with upstream
 
-declare version="7.2"
+declare version="8.0"
 
-declare MYDATA=./.data
-declare MYDIR=$(dirname $(which $(basename "$0")))
-declare MYLIB=$MYDIR/lib
-[ "$ui_loaded" ]         || source $MYLIB/ui.source
-[ "$patchutils_loaded" ] || source $MYLIB/patch-utils.source
+declare MYDIR=
+MYDIR="$(dirname "$(which "$(basename "$0")")")"
+declare MYLIB="$MYDIR"/lib
+
+[ "$ui_loaded" ]         || source "$MYLIB"/ui.source
+[ "$patchutils_loaded" ] || source "$MYLIB"/patch-utils.source
 
 declare -i code_ok=0
 declare -i code_special_action=1
@@ -51,19 +52,19 @@ declare -i maxmmindex		# highest mismatch index
 declare -i mismatch_count	# cardinal number of mismatches (maxmmindex + 1)
 declare -a mismatch_array	# array of patch numbers in the series that
 				# : conflict with upstream.
+declare -a mlfiles
+declare -a usfiles
 
 declare lasttag=
-declare lasttagfile=$MYDATA/lasttag
-declare b_rmlasttag=false
-
-declare -i optcount=0
 
 declare b_selected=false
 declare b_quiet=false
 declare b_seen=false
 declare b_lastseen=false
 
-declare usagestr=$(
+declare usagestr=
+
+usagestr=$(
 cat <<EOF
 
 $(basename "$0") [options] dir-1 dir-2 editor commits-file
@@ -115,12 +116,12 @@ EOF
 
 usage() {
 	echo -e "$usagestr"
-	exit $1
+	exit "$1"
 }
 
 exit_patcmp() {
 	[ -e /dev/shm/lasttag ] && rm -f /dev/shm/lasttag
-	exit $1
+	exit "$1"
 }
 
 # run if user hits control-c
@@ -156,13 +157,12 @@ backup() {
 	$b_runmismatch && bk_max=$last_mismatch || bk_max=$maxindex
 
 # echo "curidx: $curidx previndex: $previndex  bk_max: $bk_max"
-	let _bk_idx--
+	((_bk_idx--))
+	((previndex != bk_max)) && ((_bk_idx--))
 
-	((previndex != bk_max)) && let _bk_idx--
-
-	(($_bk_idx <= 0)) && _bk_idx=0
+	((_bk_idx <= 0)) && _bk_idx=0
 # echo "_bk_idx: $_bk_idx"
-	eval $2=$_bk_idx
+	eval "$2"=$_bk_idx
 }
 
 # backup_wrapper - wraps the backup routine with globals
@@ -177,10 +177,10 @@ backup_wrapper() {
 # echo "backup_wrapper: index: $index"
 
 	if $b_runmismatch; then
-		backup $mmindex mmindex
+		backup "$mmindex" mmindex
 		index=${mismatch_array[$mmindex]}
 	else
-		backup $index index
+		backup "$index" index
 	fi
 # echo "index: $index"
 # read
@@ -208,12 +208,12 @@ get_patch_number() {
 			continue
 		fi
 
-		if [ $patnum -lt 1 ]; then
+		if [ "$patnum" -lt 1 ]; then
 			echo -e "\n$WRN$patnum < 1$errstr"
 			continue
 		fi
 
-		if [ $patnum -gt $mlcount ]; then
+		if [ "$patnum" -gt "$mlcount" ]; then
 			echo -e "\n$WRN$patnum > $mlcount$errstr"
 			continue
 		fi
@@ -240,7 +240,9 @@ replace_commit() {
 	local patcnt
 	local pfx
 	local stat=0
-	local retstr=$(
+	local retstr=
+
+	retstr=$(
 cat <<EOF
 ${MNU}Enter $qstr$MNU to return to previous menu without changing anything.$OFF"
 EOF
@@ -249,13 +251,13 @@ EOF
 	patnum=$((locindex + 1))
 # echo "locindex: $locindex patnum: $patnum  last_mismatch: $last_mismatch"
 
-	pfx=$(printf "%04d" $patnum)
+	pfx=$(printf "%04d" "$patnum")
 
 	[ -f "$uscommits" ] || \
 		ui_getfilespec "File containing the upstream commits: " uscommits
 
 	echo -e "$retstr"
-	[ -n "$upstream_dir" ] && cd $upstream_dir
+	[ -n "$upstream_dir" ] && { cd "$upstream_dir" || exit; }
 
 	while :; do
 		stat=0
@@ -263,12 +265,12 @@ EOF
 
 		if [ "$commit" == "q" ]; then
 			echo -e "${INF}Nothing was changed.$OFF"
-			[ -n "$upstream_dir" ] && cd - > /dev/null 2>&1
+			[ -n "$upstream_dir" ] && { cd - > /dev/null || exit; }
 			return 1
 		fi
 
 		if [ -n "$commit" ]; then
-			git log --oneline -n1 $commit > /dev/null 2>&1
+			git log --oneline -n1 "$commit" > /dev/null 2>&1
 			stat=$?
 		else
 			echo -e "${WRN}No commit entered."
@@ -286,20 +288,20 @@ EOF
 	done
 
 # echo -e "${INF}removing: locindex: $STA$locindex$INF patch: $STA${usfiles[$locindex]}$OFF"
-	rm -f ${usfiles[$locindex]}
+	rm -f "${usfiles[$locindex]}"
 	echo -e "${INF}Replacing upstream commit for $STA$patnum$INF with commit: $STA$commit$OFF"
-	ui_replaceline $patnum "$commit $patnum/$patcnt" "$uscommits"
-	git format-patch --no-renames -1 -k --start-number $patnum $commit -o $usdir
+	ui_replaceline "$patnum" "$commit $patnum/$patcnt" "$uscommits"
+	git format-patch --no-renames -1 -k --start-number $patnum $commit -o "$usdir"
 	stat=$?
 	# echo $stat
 
 	# If we could not format the patch, then create an empty
 	# patch with the bad commit id in it.
 	#
-	[ $stat -ne 0 ] && echo -e "\ninvalid commit: $commit\n" > $usdir/$pfx-inv.patch
+	[ $stat -ne 0 ] && echo -e "\ninvalid commit: $commit\n" > "$usdir"/"$pfx"-inv.patch
 
-	usfiles[$locindex]=$(ls $usdir/$pfx-*.patch)
-	[ -n "$upstream_dir" ] && cd - > /dev/null 2>&1
+	usfiles[$locindex]=$(ls "$usdir"/"$pfx"-*.patch)
+	[ -n "$upstream_dir" ] && cd - > /dev/null || exit
 	return 0
 }
 
@@ -328,11 +330,11 @@ show_mismatch() {
 	echo -e "\n${MNU}Patches conflicting with upstream commits$INF"
 	echo -e       "=========================================$OFF"
 	echo -e "${INF}Conflict number, Patch number, Conflicting Patch file$OFF"
-	for seqno in ${mismatch_array[@]}; do
+	for seqno in "${mismatch_array[@]}"; do
 		dispnum=$((seqno + 1))
-		padded=$(ui_padfield "$dispnum" " " $fldwidth)
+		padded=$(ui_padfield "$dispnum" " " "$fldwidth")
 		echo -e "$MNU$confnum. $padded: $STA${mlfiles[seqno]}$OFF"
-		let ++confnum
+		((confnum++))
 	done
 }
 
@@ -358,30 +360,30 @@ init_mismatch() {
 
 	# Determine the verbose level of the mismatch_file
 	#
-	line=$(ui_readline 1 $mismatch_file)
-	verbosity=$(echo $line | cut -d':' -f2)
+	line=$(ui_readline 1 "$mismatch_file")
+	verbosity=$(echo "$line" | cut -d':' -f2)
 
 	# create the array of mismatched patched file indexes. The index is
 	# 0-based, while the patch sequence number is 1-basd, so subtract 1
 	# from each sequence number to get the index into the mlfiles and
 	# usfiles arrays.
 	#
-	while read line; do
+	while read -r line; do
 		[ "${line:0:6}" == "PATCH:" ] || continue
-		(($verbosity > 0)) && { [[ "$line" == *"!="* ]] || continue; }
+		((verbosity > 0)) && { [[ "$line" == *"!="* ]] || continue; }
 
 		seqno=$(echo "$line" | cut -d':' -f2)
-		mismatch_array[$mmindex]=$((seqno - 1))
+		mismatch_array[mmindex]=$((seqno - 1))
 
-		let mmindex++
-	done < $mismatch_file
+		((mmindex++))
+	done < "$mismatch_file"
 
 	[ ${#mismatch_array[@]} -gt 0 ] && show_mismatch
 
 	mismatch_count=$mmindex
 	maxmmindex=$((mismatch_count - 1))
 
-	if [ $mismatch_count -gt 0 ]; then
+	if [ "$mismatch_count" -gt 0 ]; then
 		echo -e "\n${INF}Total number of conflicts with upstream:"\
 			"$STA$mismatch_count$OFF"
 		last_mismatch=${mismatch_array[$((mmindex-1))]}
@@ -410,7 +412,6 @@ getlasttag() {
 	done
 
 	echo
-	b_rmlasttag=true
 }
 
 show_env() {
@@ -443,12 +444,17 @@ tkdiff_cmd() {
 get_color() {
 	local tb=$1
 
-	( [ -z "$tb" ] || [ $tb -eq 0 ] ) && return 1
+	[ -z "$tb" ] || [ "$tb" -eq 0 ] && return 1
 
 	terminal_background=$tb
 	b_color=true
 	ui_set_colors
 	return 0
+}
+
+list_patches() {
+	local dir="$1"
+	find "$dir" -maxdepth 1 -type f -name "*.patch"
 }
 
 #############################################
@@ -459,28 +465,35 @@ get_color() {
 #
 trap control_c SIGINT
 
-while getopts z:m:b:u:hq OPTION; do
-    case "$OPTION" in
+for arg in "$@"; do
 
-	z ) zstr="$OPTARG"
+    if [ "${arg:0:1}" == '-' ]; then
+	    opt="${arg:1}"
+    else
+	    continue
+    fi
+
+    case "$opt" in
+
+	z ) zstr="$2"
 	    b_zstr=true
-	    optcount=$((optcount+2))
+	    shift 2
 	    ;;
-	m ) mismatch_file="$OPTARG"
+	m ) mismatch_file="$2"
 	    b_runmismatch=true
-	    optcount=$((optcount+2))
+	    shift 2
 	    ;;
-	t ) lasttagfile="$OPTARG"
-	    optcount=$((optcount+2))
+	b ) [ -n "$2" ] && get_color "$2"
+	    shift 2
 	    ;;
-	b ) [ -n "$OPTARG" ] && get_color $OPTARG
-	    optcount=$((optcount+2))
-	    ;;
-	u ) upstream_dir=$OPTARG
-	    optcount=$((optcount+2))
+	u ) upstream_dir="$2"
+	    shift 2
 	    ;;
 	q ) b_quiet=true
-	    optcount=$((optcount+1))
+	    shift
+	    ;;
+	v ) b_quiet=false
+	    shift
 	    ;;
 	h ) usage
 	    ;;
@@ -490,47 +503,19 @@ while getopts z:m:b:u:hq OPTION; do
     esac
 done
 
-# Shift past the options and see if we still have the right number of
-# arguments.
-#
-shift $optcount
 [ $# -eq 4 ] || usage $code_parmcount_err
-
-# Get the input arguments
-#
-mldir=$1
-usdir=$2
-editor=$3
-uscommits=$4
 
 ##############################
 # Herald
 #############################
 echo -e "\n${MNU}patcmp $STA$version$INF - Compare submitted patches with upstream$OFF"
-# echo -e "\tType '$BLD\0h$OFF' for help\n"
 
-patlist=$(ls -1 "$1"/*.patch | sort -V)
-uscount=$(ls -1 "$usdir"/*.patch | wc -l)
-
-create_patchlist "$patlist" valpatchlist
-mlcount=$( wc -w <<< "$valpatchlist")
-maxindex=$((mlcount - 1))
-
-# It is not really required that the two directories have the same number
-# of files, because we will simply stop processing when we run out of files
-# in one directory or the other. However, it could lead to confusion, since
-# we are comparing a patch set. Both directories containing the patch set
-# must therefore have the same number of patch files.
+# Get the input arguments
 #
-if ((mlcount != uscount)); then
-	echo
-	echo -e "${WRN}The two directories must have the same number of files.$OFF"
-	echo -e "\t$STA$usdir$INF has $STA$uscount$INF entries.\n"
-	echo -e "\t$STA$mldir$INF has $STA$mlcount$INF entries.\n"
-	echo -e "$INFExiting ...$OFF"
-	echo
-	exit $code_filecount_neq
-fi
+mldir="$1"
+usdir="$2"
+editor="$3"
+uscommits="$4"
 
 case "$editor" in
     "vimdiff" )	editcmd=vim_cmd
@@ -544,6 +529,29 @@ case "$editor" in
 		;;
 esac
 
+# It is not really required that the two directories have the same number
+# of files, because we will simply stop processing when we run out of files
+# in one directory or the other. However, it could lead to confusion, since
+# we are comparing a patch set. Both directories containing the patch set
+# must therefore have the same number of patch files.
+
+patlist=$(list_patches "$mldir" | sort -V)
+create_patchlist "$patlist" valpatchlist
+
+mlcount=$( wc -w <<< "$valpatchlist")
+uscount=$(list_patches "$usdir" | wc -l)
+
+if ((mlcount != uscount)); then
+	echo
+	echo -e "${WRN}The two directories must have the same number of files.$OFF"
+	echo -e "\t$STA$usdir$INF has $STA$uscount$INF entries.\n"
+	echo -e "\t$STA$mldir$INF has $STA$mlcount$INF entries.\n"
+	echo -e "${INF}Exiting ...$OFF"
+	echo
+	exit $code_filecount_neq
+fi
+maxindex=$((mlcount - 1))
+
 echo
 echo -e "${INF}Local patches in $STA$mldir$INF will be compared with"
 echo -e        "upstream commits in $STA$usdir$OFF"
@@ -551,25 +559,28 @@ echo -e "${INF}Diff editor of choice is $STA$editor$OFF"
 
 echo -e "\n${INF}Building the index of patch files$OFF"
 echo -e   "${INF}=================================$OFF"
-mlfiles=($valpatchlist)
-for ((i = 0; i < ${#mlfiles[@]}; ++i)) ; do
-	$b_quiet && {
+IFS=" " read -ra mlfiles <<< "$valpatchlist"
+for pf in "${mlfiles[@]}"; do
+	if $b_quiet; then
 		ui_clearline
-		echo -n "${mlfiles[$i]}"
-	} || echo "${mlfiles[$i]}"
+		echo -n "$pf"
+	else
+		echo "$pf"
+	fi
 done
+set +x
 $b_quiet && echo
 
 echo -e "\n${INF}Building the index of upstream commits$OFF"
 echo -e   "${INF}======================================$OFF"
-index=0
-usfiles=($(ls "$usdir"/*.patch  | sort -V))
-for ((i = 0; i < ${#usfiles[@]}; ++i)) ; do
-	$b_quiet && {
+mapfile -t usfiles < <(list_patches "$usdir" | sort -V)
+for uf in "${usfiles[@]}"; do
+	if $b_quiet; then
 		ui_clearline
-		echo -n "${usfiles[$index]}"
-	} || echo "${usfiles[$index]}"
-	let index++
+		echo -n "$uf"
+	else
+		echo "$uf"
+	fi
 done
 $b_quiet && echo
 echo
@@ -586,7 +597,7 @@ previndex=$index
 # If the lasttag file does not exist, then go create it with a
 # call to getlasttag().
 #
-[ -f /dev/shm/lasttag ] && b_rmlasttag=true || getlasttag
+[ -f /dev/shm/lasttag ] || getlasttag
 lasttag=$(cat /dev/shm/lasttag)
 
 declare anystr="\t${MNU}    Any other key displays the diff for patch "
@@ -596,6 +607,8 @@ declare anystr="\t${MNU}    Any other key displays the diff for patch "
 ############################################
 
 while :; do
+
+	declare answer=	# User menu selection
 
 	if [ $index -lt 0 ] || [ $index -gt $maxindex ]; then
 		echo -e "${INF}There is no patch number:$STA $((index + 1))$OFF."
@@ -609,9 +622,11 @@ while :; do
 	fi
 
 	if ($b_runmismatch && [ $index -gt 0 ] && [ $index -lt $maxindex ]); then
-		ui_inarray $index mismatch_array[@]
-		[ $? -eq 0 ] && index=${mismatch_array[$mmindex]} \
-			     || index=${mismatch_array[0]}
+		if ui_inarray $index mismatch_array[@]; then
+			index=${mismatch_array[$mmindex]}
+		else
+			index=${mismatch_array[0]}
+		fi
 	fi
 
 	echo -e "\n${MNU}$STA$editor$MNU will diff local patches with upstream commits"
@@ -630,8 +645,8 @@ while :; do
 		echo -e   "*******************************************$OFF"
 	fi
 
-	echo -e "${INF}Diff Local:$STA $mldir/$(basename ${mlfiles[$index]})"
-	echo -e "${INF}v Upstream:$STA $usdir/$(basename ${usfiles[$index]})$OFF"
+	echo -e "${INF}Diff Local:$STA $mldir/$(basename "${mlfiles[$index]}")"
+	echo -e "${INF}v Upstream:$STA $usdir/$(basename "${usfiles[$index]}")$OFF"
 
 	if $b_runmismatch; then
 	  echo -e "${WRN}Conflict$INF :$STA $((mmindex+1)) ${INF}of$STA $mismatch_count$OFF"
@@ -675,7 +690,7 @@ while :; do
 	echo -e  "\t${MNU}e$OFF - show environment, directories, last tag, etc.$OFF"
 	echo -e  "\t${MNU}C$OFF - run batch file comparison to find conflicts with upstream$OFF"
 	echo -e  "\t${MNU}q$OFF - quit and return to previous execution environment"
-	$b_zstr && echo -e  "\t${MNU}z$OFF - "$zstr""
+	$b_zstr && echo -e  "\t${MNU}z$OFF - $zstr"
 	echo -e  "$anystr$STA$((index + 1))$MNU of $STA$((maxindex + 1))$MNU.$OFF"
 	promptgetchar "\n\t${MNU}Your choice : $OFF" answer
 	echo
@@ -683,22 +698,24 @@ while :; do
 	case $answer in
 		q )	break
 			;;
-		b )	$b_runmismatch && tmpidx=$mmindex || tmpidx=$index
-			[ $tmpidx -gt 1 ] || continue
+		b )	if $b_runmismatch; then tmpidx=$mmindex; else tmpidx=$index; fi
+			((tmpidx > 1)) || continue
 			echo
 			backup_wrapper
 			;;
-		n )	get_patch_number
-			[ $? -eq 0 ] && b_selected=true || continue
+		n )	if get_patch_number; then b_selected=true; else continue; fi
 			;;
-		p )	replace_commit
-			[ $? -eq 0 ] || continue
+		p )	replace_commit || continue
 			;&
-		r )	if $b_runmismatch && [ $mmindex -gt 0 ]; then
+		r )	if $b_runmismatch && ((mmindex > 0)); then
 				index=$previndex
 				mmindex=$prevmmindex
-			elif [ $index -gt 0 ]; then
-				$b_lastseen && index=$maxindex || index=$previndex
+			elif ((index > 0)); then
+				if $b_lastseen; then
+					index=$maxindex;
+				else
+					index=$previndex;
+				fi
 			fi
 			;;
 		z )	$b_zstr && exit $code_special_action
@@ -720,9 +737,9 @@ while :; do
 		s )	# Only works when there is a mismatch file
 			#
 			if ! $b_nomismatch; then
-				less $mismatch_file
+				less "$mismatch_file"
 				echo
-				read -n1 -p "Press any key to continue... "
+				read -r -n1 -p "Press any key to continue... "
 				echo
 				continue;
 			fi
@@ -732,19 +749,25 @@ while :; do
 			continue
 			;;
 
-		C )	patbatcmpmgr -R $mldir -U $usdir -o $usdir/mm.log
-			mismatch_file=$usdir/mm.log
+		C )	patbatcmpmgr -R "$mldir" -U "$usdir" -o "$usdir"/mm.log
+			mismatch_file="$usdir"/mm.log
 			b_runmismatch=true
 			init_mismatch
 			echo
 			continue
 			;;
 
-		c )	[ ${#mismatch_array[@]} -gt 0 ] && show_mismatch
+		c )	if ((${#mismatch_array[@]} > 0)); then
+				show_mismatch
+			else
+				say_nomismatch
+			fi
 			continue
 			;;
 	esac
-
+# echo "mlfiles[$index]: ${mlfiles[$index]}"
+# echo "usfiles[$index]: ${usfiles[$index]}"
+# read
 	$editcmd "${mlfiles[$index]}" "${usfiles[$index]}"
 
 	b_seen=true
@@ -766,11 +789,9 @@ while :; do
 			ui_nextinarray $index mismatch_array[@] mmindex
 			b_selected=false
 		else
-			ui_inarray $index mismatch_array[@] mmindex
-			stat=$?
-
-			([ $stat -eq 0 ] && [ $mmindex -lt $((mismatch_count - 1)) ]) &&
-				let mmindex++
+			ui_inarray $index mismatch_array[@] mmindex \
+			&& [ $mmindex -lt $((mismatch_count - 1)) ] \
+			&& ((mmindex++))
 		fi
 
 		# Set the index into the commit log files to the element
@@ -782,7 +803,7 @@ while :; do
 		[ $index -ge 1 ] && bupnum=$index
 
 		[ $index -ge $maxindex ] && b_lastseen=true || b_lastseen=false
-		[ $index -lt $maxindex ] && let index++
+		[ $index -lt $maxindex ] && ((index++))
 # echo "Forward index: $index maxindex: $maxindex"
 	fi
 
