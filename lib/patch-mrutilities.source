@@ -189,12 +189,20 @@ show_mrstatus() {
 	[ -n "$current_mr" ] || return 1
 	[ "$current_mr" == "q" ] && return 1
 
-	( $b_acked || $b_nacked ) && {
-		$b_acked && ackstr="${STA}ACKED$OFF" \
-			  || $ackstr="${WRN}NACKED$OFF"
-	} || {
+	cfg_get_item "b_acked" b_acked
+	cfg_get_item "b_nacked" b_nacked
+
+echo "b_acked: $b_acked  b_nacked: $b_nacked"
+
+	if $b_acked || $b_nacked; then
+		if $b_acked; then
+			ackstr="${STA}ACKED$OFF"
+		else
+			$ackstr="${WRN}NACKED$OFF"
+		fi
+	else
 		ackstr=
-	}
+	fi
 
 	echo -e "\n    Merge Request            : $STA$current_mr $ackstr"
 
@@ -322,6 +330,8 @@ $STA$current_mr$wcomment$MNU (y/n)? $OFF"
 			b_nacked=false
 		fi
 
+		cfg_set_item "b_acked" "$b_acked"
+		cfg_set_item "b_nacked" "$b_nacked"
 		continue
 	done
 
@@ -529,8 +539,13 @@ get_merge_request() {
 	local stat=0
 
 	getuser "Enter a merge request number or $qstr$INF to quit: " current_mr
+	cfg_set_item "current_mr" "$current_mr"
 	while :; do
-		[ "$current_mr" == "q" ] && { current_mr=; return 1; }
+		[ "$current_mr" == "q" ] && {
+			current_mr=
+			cfg_set_item "current_mr" "$current_mr"
+			return 1
+		}
 		if [ -n "$comments_only" ]; then
 			echo -e "$INF   View comments for $STA$current_mr$INF ...$OFF"
 			lab mr show $origin $current_mr --comments;
