@@ -909,7 +909,7 @@ check_fixes() {
 
 		find_fixes "$commitid" "$fixfile" "$remdir" "$rembranch" & mypid=$!
 		ui_waitonproc_tty $mypid .05 "${INF}Checking $STA$patch${INF}: $commitid$OFF"
-		$verbose || ui_clearline up
+		$verbose || ui_nclearline 1
 
 		# The fixfile will always have at least one line in it. The first line
 		# is always the date of the commit being tested for fixes.
