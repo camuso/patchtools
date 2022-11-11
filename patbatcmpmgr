@@ -38,17 +38,10 @@ source "$LIB"/config-manager.source
 #######################################
 # Global variables
 #######################################
-declare -i prj_entries=0
-declare -i index=0
-declare -i boolcount=0
-declare -i boolindex=0
 
-declare b_found_first_bool=false
 declare b_nopaths=true
 declare b_strict=true
 declare b_exec_exit=false
-declare b_extern_rhdir=false
-declare b_extern_usdir=false
 
 declare -i verbosemode
 declare -i vmode_off=0
@@ -179,7 +172,7 @@ exitme() {
 
 usage() {
 	$b_exec_exit || echo -e "$usagestr"
-	exit $1
+	exit "$1"
 }
 
 init_booleans() {
@@ -188,47 +181,13 @@ init_booleans() {
 	cfg_set_item "b_strict" true
 }
 
-# get_booleans
-#
-# Read the values of the program flow control booleans from the
-# project file.
-#
-get_booleans() {
-	index=$boolindex
-	for bool in \
-	b_nodiffst \
-	b_nopaths \
-	b_strict
-	do
-		cfg_get_item "$bool" "$bool"
-		ui_digit2bool $bool
-	done
-}
-
-# set_booleans
-#
-# Write the current values of the program flow booleans into the
-# project file.
-#
-set_booleans() {
-	index=$boolindex
-	for bool in \
-	b_nodiffst \
-	b_nopaths \
-	b_strict
-	do
-		cfg_set_item "$bool" "${!bool}"
-	done
-	return 0
-}
-
 show_verbosemode() {
 	local _mode_=$1
 
 	case $_mode_ in
-		$vmode_off  ) echo "OFF"; b_verbose=false; b_veryverb=false ;;
-		$vmode_on   ) echo "Verbose"; b_verbose=true; b_veryberb=false ;;
-		$vmode_very ) echo "Very Verbose"; b_verbose=true; b_veryverb=true ;;
+		"$vmode_off"  ) echo "OFF";;
+		"$vmode_on"   ) echo "Verbose";;
+		"$vmode_very" ) echo "Very Verbose";;
 	esac
 }
 
@@ -266,7 +225,7 @@ $INF     Most Recent Tag            : $STA$lasttag$MNU
   s$INF  without leading + or -     : $STA$b_strict$MNU
 
      $UND\0Output Parameters $OFF$MNU
-  v$INF  Verbose mode               : $STA$(show_verbosemode $verbosemode)$MNU
+  v$INF  Verbose mode               : $STA$(show_verbosemode "$verbosemode")$MNU
 
      $UND\0Control           $OFF$MNU
   r$INF  run the comparison $STA$(show_read_ofile)$MNU
@@ -286,15 +245,20 @@ set_dir() {
 	local -n dir="$2"
 
 	ui_getnewdir "New $MNU$dtyp$INF directory:$OFF " dir
-	cfg_set_item "$itnam" "$dir"
+
+	cfg_set_item "$itnam" "$(realpath "$dir")"
 }
 
+list_patches() {
+	local dir="$1"
+	find "$dir" -maxdepth 1 -type f -name "*.patch"
+}
 
 menu_parser() {
 	local setting
 
-	[ -n "$rhdir" ] && rhfcount=$(ls -1 $rhdir/*.patch | wc -l)
-	[ -n "$usdir" ] && usfcount=$(ls -1 $usdir/*.patch | wc -l)
+	[ -n "$rhdir" ] && rhfcount=$(list_patches "$rhdir" | wc -l)
+	[ -n "$usdir" ] && usfcount=$(list_patches "$usdir" | wc -l)
 	show_settings
 	promptgetchar "${MNU}Enter one of the above: $OFF" setting
 
@@ -336,39 +300,6 @@ menu_parser() {
 	return $rc_continue
 }
 
-# check_dir
-# 	Checks whether the directory coming from the project file is valid.
-# 	If not, calls prj_set_directory to get the new directory name.
-# 	The prj_set_directory routine calls ui_getnewdir, which will ask
-# 	if the user wants to create the directory if it does not already
-# 	exist.
-#
-# $1 - index into the project file where the directory name string goes
-# $2 - string representing the directory type, e.g. "RHEL" or "Upstream"
-# $3 - returns the name of the directory
-#
-check_dir() {
-	local index=$1
-	local dirtype="$2"
-	local dirname=$(prj_get_item $index)
-	local blank="\n$dirtype$BLD is blank$OFF\n"
-	local nofil="\n$dirname$BLD does not exist.$OFF\n"
-	local getit=false
-
-	# If the filename is blank, print the blank statement
-	# Else if the filename does not exist, print the doesn't exist statement
-	#
-	[ "$dirname" ] || { getit=true; echo -e "$blank"; }
-	[ "$dirname" ] && [ -d "$dirname" ] || { getit=true; echo -e "$nofil"; }
-
-	if $getit; then
-		prj_set_directory "$dirtype" $index dirname quiet
-		dirname=$(prj_get_item $index)
-	fi
-
-	eval $3=$dirname
-}
-
 getlasttag() {
 	local _mypid_
 	echo -n "Getting last git tag.."
@@ -395,14 +326,12 @@ parse_opts() {
 
 		h ) usage | less
 		    ;;
-		R ) rhdir=$OPTARG
-		    b_extern_rhdir=true
+	        R ) rhdir="$(realpath "$OPTARG")"
 		    ;;
 		P ) valpatchlist="$OPTARG"
 		    b_valpatchlist=true
 		    ;;
-		U ) usdir=$OPTARG
-		    b_extern_usdir=true
+	        U ) usdir="$(realpath "$OPTARG")"
 		    ;;
 		o ) pfile=$OPTARG
 		    ;;
@@ -460,11 +389,11 @@ main() {
 		esac
 
 		if $b_valpatchlist; then
-			# echo -e "patbatcmp $optstr -o $ofile -P \"$valpatchlist\" $usdir"
+			echo -e "patbatcmp $optstr -o $ofile -P (valid patchl ist) $usdir"
 			patbatcmp -x $optstr -o "$ofile" -P "$valpatchlist" "$rhdir" "$usdir"
 		else
 			echo "patbatcmp $optstr -x -o $ofile $rhdir $usdir"
-			patbatcmp $optstr -x -o $ofile $rhdir $usdir
+			patbatcmp $optstr -x -o "$ofile" "$rhdir" "$usdir"
 		fi
 
 		# Only one pass if all we want is to execute and exit.
