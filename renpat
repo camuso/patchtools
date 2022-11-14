@@ -7,11 +7,11 @@ shopt -s extglob
 remove_spaces()
 {
     local sp=" "
-    ls | while read -r FILE
+    while IFS= read -r -d '' file
     do
-	[[ $FILE == *$sp* ]] || continue
-	mv -v "$FILE" `echo $FILE | tr ' ' '_' `
-    done
+	[[ $file == *$sp* ]] || continue
+	mv -v "$file" "$(echo "$file" | tr ' ' '_' )"
+    done < <(find . -maxdepth 1 -type f -print0)
 }
 
 # strtok - tokenizes a string and returns an array
@@ -27,12 +27,12 @@ remove_spaces()
 # ${array[@]} will contain all the tokens.
 #
 strtok() {
-	IFS="$2" read -r -a $3 <<< "$1"
+	IFS="$2" read -r -a "$3" <<< "$1"
 }
 
 strindex() {
 	local x="${1%%$2*}"
-	[[ $x = $1 ]] && echo -1 || echo ${#x}
+	[[ $x = "$1" ]] && echo -1 || echo ${#x}
 }
 
 
@@ -48,11 +48,11 @@ function usage {
 }
 [ $# -ge 1 ] || usage
 
-cd $1
-echo "Changing directory to "$PWD""
+cd "$1" || exit
+echo "Changing directory to $PWD"
 
 declare -i count=1
-declare -i total=$(find -maxdepth 1 -not -type d | wc -l)
+declare -i total=
 declare -i windex
 declare -i fldwid=0
 declare -a subary
@@ -63,9 +63,11 @@ declare iszero=false
 declare patcnt
 declare patnum
 
+total=$(find . -maxdepth 1 -type f | wc -l)
+
 echo "$PWD has $total files."
 
-if [ $total -eq 0 ]; then
+if ((total == 0)); then
 	echo "No files to rename. Exiting ..."
 	echo
 	exit 1
@@ -79,7 +81,8 @@ remove_spaces
 # these have already been renamed.
 #
 # for filename in $(ls !(*.patch) | sort -t'_' -k2 -h); do
-for filename in $(find -maxdepth 1 -not -type d -not -name "*.patch"); do
+# for filename in $(find . -maxdepth 1 -type f -not -name "*.patch"); do
+while IFS= read -r -d '' filename; do
 
 	iszero=false
 	word=""
@@ -93,7 +96,6 @@ for filename in $(find -maxdepth 1 -not -type d -not -name "*.patch"); do
 	#
 	subject=$(sed 's /\*//g' <<< "$subject")
 	echo "$subject"
-	read
 
 	# Remove the word "Subject: " from the line
 	#
@@ -131,7 +133,7 @@ for filename in $(find -maxdepth 1 -not -type d -not -name "*.patch"); do
 	# In that case, we need to determine the correct number of padding
 	# zeroes required in the first number.
 	#
-	if [ $windex -gt 0 ]; then
+	if ((windex > 0)); then
 
 		# Tokenize the word with the "/" in it. We need to pad the
 		# leading number with zeroes to make it the same width as
@@ -146,7 +148,7 @@ for filename in $(find -maxdepth 1 -not -type d -not -name "*.patch"); do
 			# The total number of patches is in the second word
 			# of the wary stripped of any non-alphanumeric chars.
 			#
-			patcnt=$(echo ${wary[1]} | sed 's/[][<>(),"]//g')
+			patcnt=$(echo "${wary[1]}" | sed 's/[][<>(),"]//g')
 
 			# Determine the fieldwidth of the total number of
 			# patches.
@@ -158,7 +160,7 @@ for filename in $(find -maxdepth 1 -not -type d -not -name "*.patch"); do
 		# with leading zeroes if necessary.
 		#
 		patnum="${wary[0]}"
-		for ((j = $fldwid - ${#patnum}; j > 0; --j )); do
+		for ((j = fldwid - ${#patnum}; j > 0; --j )); do
 			wary[0]="0${wary[0]}"
 		done
 
@@ -167,8 +169,8 @@ for filename in $(find -maxdepth 1 -not -type d -not -name "*.patch"); do
 		# that will be handled when we strip the non-alphanumeric
 		# characters from the subject string.
 		#
-		subary[$windex]="${wary[@]}"
-		subject=${subary[@]}
+		subary[$windex]="${wary[*]}"
+		subject="${subary[*]}"
 	fi
 
 	# Remove any version numbers from within the brackets. There is no
@@ -180,31 +182,32 @@ for filename in $(find -maxdepth 1 -not -type d -not -name "*.patch"); do
 	# the next one.
 	#
 	rb_pos=$(strindex "$subject" "]")
-	[ $rb_pos -lt 0 ] && continue
+	((rb_pos < 0)) && continue
 
 	# extract the bracketed prefix substring and remove any version numbers
 	#
 	pfx="${subject:0:$rb_pos}"
-	new="$(echo $pfx | sed 's/v\w//i')"
+	new="$(echo "$pfx" | sed 's/v\w//i')"
 
 	# Substitute the new prefix for the old in the subject string.
 	#
-	subject="$(echo ${subject/"$pfx"/"$new"})"
+	subject="${subject/$pfx/$new}"
 
 	# Replace non-alphanumerics with a hyphen, then delete the leading
 	# hyphen that replaced the left bracket '['
 	#
-	subject=$(echo "$subject" | sed 's/[^[:alnum:]]\+/-/g')
-	subject=$(echo "$subject" | sed 's/^-//')
+	for s in punct space; do subject="${subject//[[:$s:]]/-}"; done
+	subject="${subject/-/}"
 
 	# If the last character is a hyphen, remove it.
 	#
 	[ "${subject:(-1)}" = "-" ] && subject=${subject%?}
 
-	newname=$(echo "$subject"".patch")
-	echo "mv "$filename" -> "$newname""
+	newname="$subject.patch"
+	echo "mv $filename -> $newname"
 	mv "$filename" "$newname"
 	count=$((count+1))
-done
-cd -
+done < <(find . -maxdepth 1 -type f -not -name "*.patch" -print0)
+
+cd - || exit 1
 exit 0
