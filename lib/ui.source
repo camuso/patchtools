@@ -870,11 +870,11 @@ ui_testdir() {
 #
 ui_remove_spaces() {
     local sp=" "
-    ls | while read -r FILE
+    while IFS= read -r -d '' file
     do
-	[[ $FILE == *$sp* ]] || continue
-	mv -v "$FILE" `echo $FILE | tr ' ' '_' `
-    done
+	[[ $file == *$sp* ]] || continue
+	mv -v "$file" "$(echo "$file" | tr ' ' '_' )"
+    done < <(find . -maxdepth 1 -type f -print0)
 }
 
 ##########################
