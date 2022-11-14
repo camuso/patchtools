@@ -1565,12 +1565,12 @@ init_menu() {
 	startpat=1
 	b_fmt_upstream=true
 	b_allapplied=false
-	[ $opmode -eq $opmode_mr ] && b_mrflag=true || b_mrflag=false
+	if ((opmode == opmode_mr)); then b_mrflag=true; else b_mrflag=false; fi
 	[ -f "$usvbp_commits" ] && rm -f "$usvbp_commits"
 	if $b_mrflag; then
 		current_mr=
-		rm -f $indir/* 2>/dev/null
-		rm -f $outdir/* 2>/dev/null
+		rm -f "$indir"/* >/dev/null || exit 1
+		rm -f "$outdir"/* >/dev/null || exit 1
 	fi
 }
 
@@ -1585,16 +1585,18 @@ init_menu() {
 #
 check_patch_count() {
 	local b_cont
-	local miscntmsg=$(
+	local miscntmsg=
+
+	miscntmsg=$(
 cat <<EOF
 
 There are $BLD$renpatcnt$OFF patch files, but the series claims
 to have $BLD$rensetcnt$OFF patches.
 EOF
 )
-	( [ $renpatcnt -gt 1 ] && [ $rensetcnt -gt 0 ] ) || return 0
+	if ((renpatcnt > 1)) && ((rensetcnt > 0)); then return 0; fi
 
-	if [ $renpatcnt -eq $rensetcnt ]; then
+	if ((renpatcnt == rensetcnt)); then
 		return 0
 	else
 		echo -e "$miscntmsg"
@@ -1626,33 +1628,29 @@ renpatfiles() {
     declare iszero=false
     declare patnum
     declare pfx		# subject prefix, stuff between the [ and ]
-    declare isaset	# true if this is a patch series
 
     rensetcnt=0		# globally declared in this file
     renpatcnt=0		# :
 
-    cd $indir
-    echo -e ""$INF"Changing directory to $STA$PWD$OFF"
-    total=$(find -maxdepth 1 -not -type d | wc -l)
+    cd "$indir" > /dev/null || exit 1
+    echo -e "${INF}Changing directory to $STA$PWD$OFF"
+    total=$(find . -maxdepth 1 -type f | wc -l)
     echo -e "$STA$PWD$INF has $STA$total$INF files.$OFF"
 
-    if [ $total -eq 0 ]; then
+    if ((total == 0)); then
 	echo -e "$STA$indir$INF has no files to rename.$OFF"
-	echo -en ""$INF"Returning to main menu. and repo directory: $STA"
-	cd - > /dev/null 2>&1
+	echo -en "${INF}Returning to main menu. and repo directory: $STA"
+	cd - > /dev/null || exit
 	echo -en "$OFF"
 	return $ui_err_nofiles
     fi
 
-    # remove spaces from filenames
-    #
     ui_remove_spaces
 
     # Don't try to rename files that have ".patch" endings, because
     # these have already been renamed.
     #
-    for filename in $(find -maxdepth 1 -not -type d -not -name "*.patch");
-    do
+    while IFS= read -r -d '' filename; do
 	iszero=false
 	word=""
 	windex=0
@@ -1682,16 +1680,16 @@ renpatfiles() {
 	# to the next file.
 	#
 	rb_pos=$(ui_strindex "$subject" "]")
-	[ $rb_pos -lt 0 ] && continue
+	((rb_pos < 0)) && continue
 
 	# extract the bracketed prefix substring and remove any version numbers
 	#
 	pfx="${subject:1:$((rb_pos-1))}"
-	new="$(echo $pfx | sed 's/v\w//i')"
+	new="$(echo "$pfx" | sed 's/v\w//i')"
 
 	# Substitute the new prefix for the old in the subject string.
 	#
-	subject="$(echo ${subject/"$pfx"/"$new"})"
+	subject="${subject/"$pfx"/"$new"}"
 
 	# If there is no / in the subject prefix, then it is not a series.
 	#
@@ -1728,7 +1726,7 @@ renpatfiles() {
 	    # nonzero.  In that case, we need to determine the correct
 	    # number of padding zeroes required in the first number.
 	    #
-	    if [ $windex -gt 0 ]; then
+	    if ((windex > 0)); then
 
 		# Tokenize the word with the "/" in it. We need to
 		# pad the leading number with zeroes to make it the
@@ -1740,7 +1738,7 @@ renpatfiles() {
 
 		# We only need to do this once per patchset
 		#
-		if [ $fldwid -eq 0 ]; then
+		if ((fldwid == 0)); then
 
 		    # The total number of patches is in the
 		    # second word of the wary stripped of any
@@ -1758,7 +1756,7 @@ renpatfiles() {
 		# with leading zeroes if necessary.
 		#
 		patnum="${wary[0]}"
-		for ((j = $fldwid - ${#patnum}; j > 0; --j )); do
+		for ((j = fldwid - ${#patnum}; j > 0; --j )); do
 		    wary[0]="0${wary[0]}"
 		done
 
@@ -1767,32 +1765,30 @@ renpatfiles() {
 		# that will be handled when we strip the non-alphanumeric
 		# characters from the subject string.
 		#
-		pfxary[$windex]="${wary[@]}"
-		subject="${pfxary[@]}""-""${subject:$rb_pos}"
+		pfxary[$windex]="${wary[*]}"
+		subject="${pfxary[*]}-${subject:$rb_pos}"
 	    fi
 	fi
 
 	# Replace non-alphanumerics with a hyphen, then delete any leading
-	# hyphen.
+	# and trailing hyphens.
 	#
-	subject=$(echo "$subject" | sed 's/[^[:alnum:]]\+/-/g')
-	subject=$(echo "$subject" | sed 's/^-//')
+	for s in punct space; do subject="${subject//[[:%s:]]/-}"; done
+	subject="${subject##+(-)}"
+	subject="${subject%%+(-)}"
 
-	# If the last character is a hyphen, remove it.
-	#
-	[ "${subject:(-1)}" = "-" ] && subject=${subject%?}
-
-	newname=$(echo "$subject"".patch")
+	newname="$subject.patch"
 
 	# See if we already have one of these, if so, skip it.
 	#
 	[ -f "$newname" ] && continue
 
-	echo "mv "$filename" -> "$newname""
+	echo "mv $filename -> $newname"
 	mv "$filename" "$newname"
-	renpatcnt=$((renpatcnt+1))
-    done
-    cd - > /dev/null 2>&1
+	((renpatcnt++))
+    done < <(find . -maxdepth 1 -type f -not -name "*.patch" -print0)
+
+    cd - > /dev/null || exit 1
     check_patch_count
     return $?
 }
@@ -1816,8 +1812,8 @@ find_filebynumber() {
 	num=$(echo "$num" | cut -d'/' -f1)
 
 	# pad the number out to four digits with leading zeroes.
-	num=$(printf "%04d" $num)
+	num=$(printf "%04d" "$num")
 
 	# find and echo the filename.
-	ls -1 "$dir" | grep -m1 "$num"
+	find "$dir" -maxdepth 1 -type f -name "$num*" | head -1
 }
