@@ -193,11 +193,12 @@ while IFS= read -r -d '' filename; do
 	#
 	subject="${subject/$pfx/$new}"
 
-	# Replace non-alphanumerics with a hyphen, then delete the leading
-	# hyphen that replaced the left bracket '['
+	# Replace non-alphanumerics with a hyphen, then delete any leading
+	# or trailing hyphens.
 	#
 	for s in punct space; do subject="${subject//[[:$s:]]/-}"; done
-	subject="${subject/-/}"
+	subject="${subject##+(-)}"
+	subject="${subject%%+(-)}"
 
 	# If the last character is a hyphen, remove it.
 	#
