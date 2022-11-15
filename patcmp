@@ -114,9 +114,20 @@ $(basename "$0") [options] dir-1 dir-2 editor commits-file
 EOF
 )
 
+is_interactive() {
+	local caller
+
+	caller="$(cat /proc/$PPID/comm)"
+
+	if [ "$caller" == "bash" ] || [ "$caller" == "sshd" ]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
 usage() {
 	echo -e "$usagestr"
-	exit "$1"
 }
 
 exit_patcmp() {
@@ -492,9 +503,6 @@ for arg in "$@"; do
 	q ) b_quiet=true
 	    shift
 	    ;;
-	v ) b_quiet=false
-	    shift
-	    ;;
 	h ) usage
 	    ;;
 	* ) echo "unrecognized option"
@@ -508,7 +516,11 @@ done
 ##############################
 # Herald
 #############################
-echo -e "\n${MNU}patcmp $STA$version$INF - Compare submitted patches with upstream$OFF"
+
+# Only print the herald if we're interactive.
+
+is_interactive && \
+echo -e "${MNU}patcmp $STA$version$INF - Compare submitted patches with upstream$OFF"
 
 # Get the input arguments
 #
