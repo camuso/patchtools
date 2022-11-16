@@ -77,7 +77,9 @@ declare -i ui_err_nofiles=5
 declare -i ui_err_notdigit=6
 declare -i ui_err_missing_arg=7
 declare -i ui_err_bashver=8
-declare -i ui_err_boundary=$ui_err_bashver
+declare -i ui_err_norepo=9
+declare -i ui_err_invcmd=10
+declare -i ui_err_boundary="$ui_err_invcmd"
 
 declare -a ui_err_msg=(
 ""
@@ -88,6 +90,9 @@ declare -a ui_err_msg=(
 "No files found"
 "not a didgit"
 "missing argument"
+"wrong bash version"
+"not a valid git repo"
+"not a valid or installed command"
 ""
 )
 
@@ -97,10 +102,6 @@ declare -a ui_err_msg=(
 unset CTLC_EXIT &&  declare -i CTLC_EXIT=130
 
 declare ui_tempfile="/dev/shm/ui_temp_file"
-
-#########################
-# Shell Routines
-#########################
 
 # ui_testbash - bash version must be 4 or higher to use this script
 #
@@ -410,56 +411,6 @@ ui_waitonproc_tty () {
     return $stat
 }
 
-# ui_sh_backout
-# Back out of all shells until you are down to the one you want.
-# Takes one parameter, the shell you want to back out to.
-#
-function ui_sh_backout {
-	while [ $SHLVL -gt $1 ]; do
-		echo "Exiting shell level $SHLVL"
-		exit 0
-	done
-}
-
-# ui_sh_spawn
-# Spawns a new shell.
-# $1 - Additional message sent by caller
-# $2 - logfile to capture all session output. In this case,
-#      $1 would at least have to be an empty string.
-# Returns the value the user exited with.
-#
-function ui_sh_spawn {
-	local message="$1"
-	local logfile="$2"
-	local ret=0
-	echo "Leaving shell $SHLVL, spawning shell $(($SHLVL + 1))."
-	[ "$message" ] && echo -e ""$message""
-	echo "Type \"exit\" or \"ctrl-D\" to return to this point in the script."
-	if [ "$logfile" ]; then
-		bash 3>&2>&1 | tee $logfile
-		ret=$?
-	else
-		bash
-		ret=$?
-	fi
-
-	return $ret
-}
-
-function ui_sh_myshlvl {
-	echo "Shell level: $SHLVL"
-}
-
-function buhbye() {
-	local exitstr=$1
-	local exitfun=$2
-	echo -e "$exitstr"
-	exit 0
-}
-
-# END shell routines
-#####################
-
 #######################
 # User Input Routines
 #######################
@@ -470,33 +421,31 @@ function buhbye() {
 # Places true or false into $2, which is an optional argument.
 # User is prompted for (y/n) answer at the end of the prompt string.
 #
-b_ui_int_first_getyn=false
-b_ui_int_firstpass=true
-
-function getyn {
-
+getyn() {
 	local promptstring="$1"
-	local __answer__
-	local __stat__
+	local retval="$2"
+	local answer
+
+	[ -n "$retval" ] && local -n p_retval="$2"
 
 	while true; do
 
 		echo -en "$INF$promptstring $MNU(y/n) : $OFF"
-		read -n1 __answer__
+		read -r -n1 answer
 		echo
 
-		if [ "$__answer__" == "y" ]; then
-			__stat__=true
-			break
+		if [[ $answer =~ [yY] ]]; then
+			[ -n "$retval" ] && p_retval=true
+			return 0
 		fi
 
-		if [ "$__answer__" == "n" ]; then
-			__stat__=false
-			break
+		if [[ $answer =~ [nN] ]]; then
+			[ -n "$retval" ] && p_retval=false
+			return 1
 		fi
+
+		echo -e "${INF}Please enter$MNU y$INF or$MNU n$OFF."
 	done
-
-	[ $# -eq 2 ] && eval $2=$__stat__
 }
 
 # doyn() $1 $2 [$3] [$4]
@@ -509,14 +458,17 @@ function getyn {
 # $4 - 	Optional. Will contain the value of the user's response. If there is
 #	no action for $3 to do, then a null string "" must be passed for $3.
 #
-function doyn {
-	local promptstring=$1
-	local y_command=$2
-	local n_command=$3
+doyn() {
+	local promptstring="$1"
+	local y_command="$2"
+	local n_command="$3"
+	local -i argc=$#
 	local response
 
+	((argc == 4)) && local -n p_response="$4"
+
 	getyn "$promptstring" response
-	[ $# -lt 3 ] && n_command=""
+	((argc < 3)) && n_command=""
 
 	if $response ; then
 		$y_command
@@ -526,16 +478,15 @@ function doyn {
 		$n_command
 	fi
 
-	[ $# -eq 4 ] && eval $4=$response
+	((argc == 4)) && p_response="$response"
 }
 
 getuser() {
 	local promptstring="$1"
-	local var=
+	local -n var="$2"
 
 	echo -ne "$INF$promptstring$OFF"
-	read var
-	eval $2=$var
+	read -r var
 }
 
 # getch()
