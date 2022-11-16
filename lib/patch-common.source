@@ -179,6 +179,15 @@ show_missing_fixes() {
 	echo -e "$MNU f$OFF  Show missing fixes"
 }
 
+show_screenbg() {
+	echo -en "${MNU}Currently $STA"
+	if ((background == tb_dark)); then
+		echo -e "DARK$OFF"
+	else
+		echo -e "LIGHT$OFF"
+	fi
+}
+
 print_missing_fixes() {
 	if [ -s "$missing_fixes" ]; then
 		echo -e $INF

@@ -253,6 +253,7 @@ $MNU
    $MNU f$OFF  Patch Validation fuzz    :$STA $(show_patchvalfuzz)
    $MNU p$OFF  Cycle Patch Compare Mode :$STA $(show_cmpmode)$OFF
    $MNU v$OFF  Toggle verbose mode      : $(show_verbose)
+   $MNU C$OFF  Toggle screen background : $(show_screenbg)
    $MNU q$OFF  Quit and return to previous menu
 \0
 EOF
@@ -305,6 +306,11 @@ config_parser() {
 			;;
 		s )	ui_toggle b_seekfixes
 			set_cfg_item "b_seekfixes" "$b_seekfixes"
+			;;
+		C )	ui_cycle_state background 2
+			cfg_set_item background "$background"
+			terminal_background="$background"
+			ui_set_colors
 			;;
 		q ) 	return
 			;;
