@@ -136,30 +136,8 @@ declare rc_run=1	# Run
 
 function exit_me {
 	echo -e "$OFF"
-	set_booleans
 
-	for item in \
-		menumode \
-		patchvalfuzz \
-		applyfailmode \
-		applymode \
-		cmpmode \
-		editor \
-		indir \
-		outdir \
-		background \
-		remote_dir \
-		remote_repo \
-		remote_branch \
-		mergelist_filter \
-		opmode \
-		current_mr \
-		b_rename_infiles \
-		b_fmt_upstream \
-		b_verbose \
-		b_mrcomments \
-		b_seekfixes
-	do set_cfg_item $item ${!item}; done
+	cfg_update_configfile
 
 	_prologue=false
 	[ -f "$prologue_file".txt ] && 	mv "$prologue_file".txt "$prologue_file"

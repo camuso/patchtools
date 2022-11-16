@@ -603,42 +603,21 @@ init_parms() {
 	local confline
 	local configfile=
 	local cfgtemplate=
+	local bgtemp
 
-	b_color=true
+	ui_setbg bgtemp
 
-	# Initialize the paths for the current working directory
-	#
 	MYDATA=$(realpath ./.data)
+	[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
+
 	configfile="$MYDATA/patchreview.conf"
 	cfgtemplate="$MYLIB/patchreview.conf"
 	branchlist="$MYDATA/branchlist"
 	last_tag_file="$MYDATA/lasttag"
 
-	# If the .data directory has not been created yet, do that and
-	# get its realpath.
-	[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
-
-	# If the config file doens't exist, copy the default one
-	# from MYLIB.
-	#
-	[ -f "$configfile" ] || cp "$cfgtemplate" "$configfile"
-
-	# Initialize the config manager and get the global variables.
-	#
-	cfg_set_template "$cfgtemplate"
-	cfg_set_configfile "$configfile"
-	cfg_init
-
-	# If color hasn't already been set up, then query the user for terminal
-	# background color and init the color engine.
-	# Else just init the terminal_background variable from the config global.
-	#
-	if [ -z "$background" ] || (( background < 1 || background > 2 )); then
-		set_colors
-	else
-		terminal_background=$background
-		ui_set_colors
-	fi
+	cfg_start "$cfgtemplate" "$configfile"
+	background="$bgtemp"
+	cfg_set_item "background" "$background"
 
 	# Trap for control-c
 	#
