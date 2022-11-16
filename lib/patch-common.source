@@ -9,26 +9,26 @@ version="11.9"
 
 # Get the directory defaults if they don't already exist
 #
-[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename "$0")))
-[ "$MYLIB" ] || declare MYLIB=$MYDIR/lib
+[ "$MYDIR" ] || declare MYDIR=
+MYDIR="$(dirname "$(which "$(basename "$0")")")"
+[ "$MYLIB" ] || declare MYLIB="$MYDIR"/lib
 
-[ "$ui_loaded" ]            || source $MYLIB/ui.source
-[ "$gitutilities_loaded" ]  || source $MYLIB/gitutilities.source
-[ "$patchutils_loaded" ]    || source $MYLIB/patch-utils.source
-[ "$configmanager_loaded" ] || source $MYLIB/config-manager.source
+[ "$ui_loaded" ]            || source "$MYLIB"/ui.source
+[ "$gitutilities_loaded" ]  || source "$MYLIB"/gitutilities.source
+[ "$patchutils_loaded" ]    || source "$MYLIB"/patch-utils.source
+[ "$configmanager_loaded" ] || source "$MYLIB"/config-manager.source
 
 declare patchcommon_loaded=true
-
-b_ui_int_first_getyn=false	# For lib/ui.source
 
 # Enable extglob for more specific directory actions
 #
 shopt -s extglob
 
-declare manual="$MYDIR/man/$(basename "$0").txt"
 declare MYDATA=
 declare configfile=
 declare repolist="$HOME"/.config/patchreview/repolist
+declare manual=
+manual="$MYDIR/man/$(basename "$0").txt"
 
 #######################################
 # External Scripts
@@ -134,22 +134,35 @@ declare b_cmdline=false
 declare rc_continue=0	# Continue for another pass
 declare rc_run=1	# Run
 
-function exit_me {
+exit_me() {
 	echo -e "$OFF"
 
 	cfg_update_configfile
 
 	_prologue=false
 	[ -f "$prologue_file".txt ] && 	mv "$prologue_file".txt "$prologue_file"
-	[ -e "$last_tag_file" ] && rm -f $last_tag_file
+	[ -e "$last_tag_file" ] && rm -f "$last_tag_file"
 	[ -e "$branchlist" ] && rm -f "$branchlist"
-	exit $1
+	exit "$1"
+}
+
+# exit_msg - uses exit messages from lib/ui.source
+#
+exit_msg() {
+	local -i msgindex="$1"
+	local artifact="$2"
+	local msg
+
+	msg="$WRN${ui_err_msg[msgindex]}$OFF"
+	[ -n "$artifact" ] && msg="$MNU$artifact $msg"
+	echo -e "$msg"
+	exit_me "$msgindex"
+
 }
 
 # run if user hits control-c
 #
-control_c()
-{
+control_c() {
 	echo -en "\nCtrl-c detected\nCleaning up and exiting.\n"
 	exit_me $CTLC_EXIT
 }
@@ -159,11 +172,11 @@ function test_sanity { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
 ###################################################################
 
 set_cfg_item() {
-	cfg_write_key $1 $2
+	cfg_write_key "$1" "$2"
 }
 
 get_cfg_item() {
-	cfg_read_key $1
+	cfg_read_key "$1"
 }
 
 show_version() {
@@ -190,9 +203,9 @@ show_screenbg() {
 
 print_missing_fixes() {
 	if [ -s "$missing_fixes" ]; then
-		echo -e $INF
+		echo -e "$INF"
 		missingfixes -a
-		echo -e $OFF
+		echo -e "$OFF"
 		ui_press_any
 	fi
 }
@@ -207,7 +220,9 @@ set_working_repo() {
 	local dnum
 	local dary=()
 	local repod
-	local instruct=$(
+	local instruct
+
+	instruct=$(
 cat <<EOF
 $INF
 You must create a $MNU$repolist$INF file
@@ -228,13 +243,13 @@ EOF
 		return 1
 	}
 
-	dary=($(cat $repolist))
+	mapfile -t dary < "$repolist"
 	for ((dndx = 0; dndx < ${#dary[@]}; ++dndx)); do
 		echo -e "$MNU$((dndx+1)). $OFF${dary[dndx]}"
 	done
 
 	loop_range_q 1 ${#dary[@]} dnum || return 1
-	repod=${dary[dnum-1]}
+	repod="$(realpath "${dary[dnum-1]}")"
 
 	[ -d "$repod" ] || {
 		echo -e "$WRN$repod is not a directory!$OFF"
@@ -242,17 +257,17 @@ EOF
 		return 1
 	}
 
-	cd $(realpath "$repod")
+	cd "$repod" || exit_msg "$ui_err_invdir" "$repod"
 	[ -d .git ] || {
 		echo -e "$WRN$repod is not a git repo!$OFF"
 		ui_press_any
-		cd -
+		cd - > /dev/null || exit_msg "$ui_err_invdir" "cd -"
 		return 1
 	}
 
 	init_parms
 	missing_fixes="$outdir/missing_fixes"
-	git_get_lasttag lasttag $last_tag_file
+	git_get_lasttag lasttag "$last_tag_file"
 	return 0
 }
 
@@ -270,8 +285,8 @@ set_remotedir() {
 
 	if [ -n "$remote_dir" ]; then
 		echo -e "$INF Your current remote directory is: $STA$remote_dir"
-		prstr=$(echo "$INF Enter a new remote directory or press " \
-			"$qstr$INF to leave it unchanged : $OFF")
+		prstr="$INF Enter a new remote directory or press " \
+			"$qstr$INF to leave it unchanged : $OFF"
 		b_exists=true
 	else
 		prstr="$INF Enter a new remote directory : $OFF"
@@ -298,12 +313,8 @@ set_remotedir() {
 	# If there is no git repo in it, print the tutor to the screen
 	# and exit gracefully.
 	#
-	remote_dir=$(realpath $remote_dir)
-	[ -d $remote_dir/.git ] || {
-		echo -e "${WRN}No git repo detected in $MNU$remote_dir$OFF"
-		echo -e "${INF}This script will exit now."
-		exit_me 1
-	}
+	remote_dir=$(realpath "$remote_dir")
+	[ -d "$remote_dir"/.git ] || exit_msg "$ui_err_norepo" "$remote_dir"
 
 	# Changing the remote directory means changing the remote
 	# origin/branch, too.
@@ -327,7 +338,9 @@ set_remotedir() {
 set_remote_seek() {
 	local remotes=
 	local b_set=true
-	local remrepo_msg=$(
+	local remrepo_msg
+
+	remrepo_msg=$(
 cat <<EOF
 $INF
  Set the upstream origin/branch in: $STA$remote_dir$INF
@@ -337,16 +350,16 @@ EOF
 	[ -n "$remote_dir" ] || set_remotedir
 	echo -e "$remrepo_msg"
 
-	if ([ -n "$remote_repo" ] && [ -n "$remote_branch" ]); then
+	if [ -n "$remote_repo" ] && [ -n "$remote_branch" ]; then
 		remotes="$remote_repo/$remote_branch"
 		echo -e "$INF Your current remote repo/branch is: $STA$remotes"
 		loop_yn "$MNU Do you want to change this? (y/n) : $OFF" b_set
 	fi
 
 	if $b_set; then
-		cd $remote_dir
+		cd "$remote_dir" || exit_msg "$ui_err_invdir" "$remote_dir"
 		select_remrepo remote_repo && select_rembranch "$remote_repo" remote_branch
-		cd - > /dev/null 2>&1
+		cd - > /dev/null || exit_msg "$ui_err_invdir" "cd -"
 		set_cfg_item "remote_repo" "$remote_repo"
 		set_cfg_item "remote_branch" "$remote_branch"
 	fi
@@ -361,15 +374,15 @@ EOF
 check_upstream() {
 
 	# See if the remote/branch exists. If not, query for them
-	cd $remote_dir
+	cd "$remote_dir" || exit_msg "$ui_err_invdir" "$remote_dir"
 	while :; do
-		git branch -r | grep "$remote_repo/$remote_branch" > /dev/null 2>&1
-		[ $? -eq 0 ] && break
+		git branch -r | grep -q "$remote_repo/$remote_branch" \
+			&& break
 		echo -e "${WRN}Cannot find $STA$remote_repo/$remote_branch$WRN"
 		echo -e "in remote directory: $STA$remote_dir$OFF"
 		set_remote_seek
 	done
-	cd - > /dev/null 2>&1
+	cd - > /dev/null || exit_msg "$ui_err_invdir" "cd -"
 }
 
 # seek_missing_fixes() - search remote/branch for missing commits
@@ -379,23 +392,25 @@ check_upstream() {
 # 	remote_repo
 # 	remote_branch
 # 	remote_dir
+# 	missing_fixes	# file
+# 	b_verbose
 #
 seek_missing_fixes() {
-	[ -d $remote_dir ] || set_remotedir
-	[ -n "$remote_repo" ] || select_remrepo remote_repo
+	[ -d "$remote_dir" ]      || set_remotedir
+	[ -n "$remote_repo" ]   || select_remrepo remote_repo
 	[ -n "$remote_branch" ] || select_rembranch "$remote_repo" remote_branch
-	[ -f "$us_commits" ] || format_upstream_patches
+	[ -f "$us_commits" ]    || format_upstream_patches
 
 	check_upstream
 
-	> $missing_fixes
+	: > "$missing_fixes"
 	check_fixes "$us_commits" \
 		"$remote_dir" \
 		"$remote_repo/$remote_branch" \
 		"$missing_fixes" \
 		$b_verbose
 
-	[ -s $missing_fixes ] && \
+	[ -s "$missing_fixes" ] && \
 	grep -q 'WARNING:' "$missing_fixes" && echo -e \
 		"${WRN}There are missing fixes listed in $STA$missing_fixes$OFF"
 	return 0
@@ -419,20 +434,20 @@ seek_missing_fixes() {
 #
 test_editor() {
 	local _editor_="$1"
-	local _ans_
-	local _noed_=\
+	local _noed_
+	local _pstr_
+
+	_noed_=\
 "$WRN$_editor_$INF is not installed. Do you want to exit and install it now?$OFF"
-	local _pstr_=\
+
+	_pstr_=\
 "${INF}Press '${MNU}y$INF' to exit now or '${MNU}n$INF' to select another editor: $INF"
 
-	which "$_editor_" > /dev/null 2>&1
-
-	if [ $? -ne 0 ]; then
+	which "$_editor_" > /dev/null 2>&1 || {
 		echo -e "$_noed_"
-		getyn "$_pstr_" _ans_
-		$_ans_ && exit_me 0
+		getyn "$_pstr_" && exit_msg "$ui_err_invcmd" "$_editor_"
 		return 1
-	fi
+	}
 
 	set_cfg_item editor "$_editor_"
 	return 0
@@ -440,40 +455,41 @@ test_editor() {
 
 function set_editor {
 	local choice
-	echo -e ""$INF$"Select one of these currently supported diff editors.$OFF"
+	echo -e "${INF}Select one of these currently supported diff editors.$OFF"
 	echo -e "$MNU 1 -$OFF vimdiff"
 	echo -e "$MNU 2 -$OFF emacs"
 	echo -e "$MNU 3 -$OFF tkdiff"
 
 	while true; do
 		loop_range 1 3 choice
-		case $choice in
+		case "$choice" in
 			1 )	editor="vimdiff";;
 			2 )	editor="emacs"	;;
 			3 )	editor="tkdiff"
 		esac
-		test_editor "$editor"
-		[ $? -eq 0 ] && break
+		test_editor "$editor" && break
 	done
 	set_cfg_item "editor" "$editor"
 	echo -e "${INF}Editor is $STA$editor$OFF\n"
 }
 
 set_colors() {
-	local ans
 	while :; do
 		ui_use_colors
-		background=$terminal_background
-		set_cfg_item background $terminal_background
+		background="$terminal_background"
+		set_cfg_item background "$terminal_background"
 		echo -en "${INF}You chose "
 
-		case $terminal_background in
+		case "$terminal_background" in
 			1) echo -e "${STA}light$INF background$OFF\n";;
 			2) echo -e "${STA}dark$INF background$OFF\n";;
 		esac
 
-		loop_yn_ro "Is that what you want? (y/n) : "
-		[ $? -eq 0 ] && return || continue
+		if loop_yn_ro "Is that what you want? (y/n) : "; then
+			return
+		else
+			continue
+		fi
 	done
 }
 
@@ -487,11 +503,15 @@ set_colors() {
 #     patchvalfuzz - current patch validation fuzz level
 #
 get_currentfuzz() {
-	local fuzz=$1
+	local fuzz="$1"
 	local ast="* $fuzz - "
 	local noa="  $fuzz - "
 
-	[ $fuzz -eq $patchvalfuzz ] && echo "$ast" || echo "$noa"
+	if ((fuzz == patchvalfuzz)); then
+		echo "$ast"
+	else
+		echo "$noa"
+	fi
 }
 
 # set_patchvalfuzz - set the fuzz level for patch validation
@@ -500,7 +520,9 @@ get_currentfuzz() {
 #     patchvalfuzz - current patch validation fuzz level
 #
 set_patchvalfuzz() {
-	local fuzz_msg=$(
+	local fuzz_msg
+
+	fuzz_msg=$(
 cat <<EOF
 $YEL
 
@@ -527,7 +549,7 @@ EOF
 )
 	echo -e "$fuzz_msg\n"
 	loop_range_q 0 3 patchvalfuzz
-	set_cfg_item patchvalfuzz $patchvalfuzz
+	set_cfg_item patchvalfuzz "$patchvalfuzz"
 }
 
 # show_patchvalfuzz - show the current patch validation fuzz level
@@ -536,7 +558,7 @@ EOF
 #    patchvalfuzz - current patch validation fuzz level
 #
 show_patchvalfuzz() {
-	case $patchvalfuzz in
+	case "$patchvalfuzz" in
 		0 ) echo "0 - no fuzz, strictest comparison"
 		    ;;
 		1 ) echo "1 - case insensitive (DEFAULT)"
@@ -559,9 +581,11 @@ show_patchvalfuzz() {
 set_dir() {
 	local dirstr="$1"
 	local dircfgkey="$2"
-	local dir="${!3}"
+	local -n pdir="$3"
 	local b_msgshown=false
-	local ndirmsg=$(
+	local ndirmsg
+
+	ndirmsg=$(
 cat <<EOF
 $INF
 This directory has not yet been named.
@@ -571,18 +595,18 @@ for you.
 $OFF
 EOF
 )
-	[ -n "$dir" ] && {
-		echo -e "${INF}Current $STA$dirstr$INF directory : $STA$dir$OFF"
+	[ -n "$pdir" ] && {
+		echo -e "${INF}Current $STA$dirstr$INF directory : $STA$pdir$OFF"
 		echo -e "${INF}Type $qstr$INF to leave it as it is.$OFF"
 	}
 
 	# We can't accept a NULL directory name, so cycle until we get one.
 	#
 	while :; do
-		ui_getnewdir "${INF}New $STA$dirstr$INF directory : $OFF" dir
+		ui_getnewdir "${INF}New $STA$dirstr$INF directory : $OFF" pdir
 
-		if [ -n "$dir" ]; then
-			[ -d "$dir" ] || mkdir -p "$dir"
+		if [ -n "$pdir" ]; then
+			[ -d "$pdir" ] || mkdir -p "$pdir"
 			break
 		else
 			$b_msgshown || echo -e "$ndirmsg"
@@ -590,10 +614,9 @@ EOF
 		fi
 	done
 
-	dir=$(realpath $dir)
-	set_cfg_item $dircfgkey "$dir"
-	echo -e "$INF$dirstr directory is $STA$dir$OFF\n"
-	eval $3=$dir
+	pdir=$(realpath "$pdir")
+	set_cfg_item "$dircfgkey" "$pdir"
+	echo -e "$INF$dirstr directory is $STA$pdir$OFF\n"
 }
 
 # exec_boolean
@@ -609,18 +632,20 @@ EOF
 # Returns the status of the executed command string.
 #
 function exec_boolean {
-	argc=$#
-	argv="$@"
+	local argc=$#
+	local argv="$*"
 	local stat
-	local boolean=$1
-	local b_newval=$2
-	local cmdstr="$(echo "$@" | cut -d' ' -f$argc-)"
+	local boolean="$1"
+	local b_newval="$2"
+	local cmdstr
+
+	cmdstr="$(echo "$argv" | cut -d' ' -f$argc-)"
 
 	$cmdstr
 	stat=$?
 	# echo "$cmdstr status: $stat"
-	if [ $stat -eq 0 ]; then
-		[ $argc -ge 2 ] && set_cfg_item "$boolean" $b_newval
+	if ((stat == 0)); then
+		((argc >= 2)) && set_cfg_item "$boolean" "$b_newval"
 	else
 		echo "$cmdstr"
 		echo -e "\tDid not execute successfully"
@@ -638,14 +663,16 @@ function exec_boolean {
 function replace_patch {
 	local patnum
 	local commit
-	local patcnt=$(cat "$us_commits" | wc -l)
+	local patcnt
+
+	patcnt=$(wc -l < "$us_commits")
 
 	getuser "Patch Number to replace: " patnum
 	getuser "Correct commit ID: " commit
-	ui_replaceline $patnum "$commit $patnum/$patcnt" "$us_commits"
+	ui_replaceline "$patnum" "$commit $patnum/$patcnt" "$us_commits"
 	rm -f "$outdir"/*.patch
 	# git_file2patchset "$us_commits" "$outdir"
-	git_commit2patch $patnum $commit $outdir
+	git_commit2patch "$patnum" "$commit" "$outdir"
 }
 
 # create_commit_msg
@@ -660,16 +687,18 @@ function create_commit_msg {
 	local diffstr="diff "
 	local subjstr="Subject: "
 	local found_subj=false
-	local commit_msg_path=""$outdir"/"$commit_msg_file""
+	local commit_msg_path="$outdir/$commit_msg_file"
+	local sumstrpos
+	local sumstr
 
-	echo "" > "$commit_msg_path"
+	: > "$commit_msg_path"
 
-	while read line; do
+	while read -r line; do
 		[ "${line:0:5}" == "$diffstr" ] && break
 
 		if [ "${line:0:9}" == "$subjstr" ]; then
-			local sumstrpos=$(($(ui_strindex "$line" "]") + 1))
-			local sumstr=$(echo -e ${line:$sumstrpos})
+			sumstrpos=$(($(ui_strindex "$line" "]") + 1))
+			sumstr="$(echo -e "${line:$sumstrpos}")"
 			echo "$sumstr" >> "$commit_msg_path"
 			echo "" >> "$commit_msg_path"
 			found_subj=true
@@ -685,8 +714,8 @@ function create_commit_msg {
 # 	applyfailmode*
 #
 process_patcherr() {
-	local failedpatch=$1
-	local head=$2
+	local failedpatch="$1"
+	local ghead="$2"
 	local amresolve
 
 	echo -en "$BLD"
@@ -702,26 +731,26 @@ process_patcherr() {
 		echo
 		loop_range 1 2 amresolve
 
-		case $amresolve in
+		case "$amresolve" in
 			1 ) git am --abort
-			    git reset --hard $head
+			    git reset --hard "$ghead"
 			    patchcount=0
 			    ;;
 			2 ) git am --quit
-			    patchcount=$(git log --oneline $head..HEAD | wc -l)
+			    patchcount=$(git log --oneline "$ghead"..HEAD | wc -l)
 			    ;;
 		esac
 	fi
 
-	case $applyfailmode in
-	    $applyfailmode_exit )
+	case "$applyfailmode" in
+	    "$applyfailmode_exit" )
 		    echo -e "Exiting script ...\n"
 		    exit_me 1
 		    ;;
-	    $applyfailmode_cont )
+	    "$applyfailmode_cont" )
 		    echo -e "Continuing without patching...\n"
 		    ;;
-	    $applyfailmode_menu )
+	    "$applyfailmode_menu" )
 		    echo -e "Returning to main menu ...\n"
 	esac
 }
@@ -741,21 +770,19 @@ use_patch() {
 	local cmtlog="/dev/shm/cmtlog.txt"
 
 	for patch in $patchlist; do
-		let patchcount++
+		((patchcount++))
 		# [ $patchcount -ge $startpat ] || continue
 		echo "$patch"
-		patch --fuzz=3 -p1 < $patch
+		patch --fuzz=3 -p1 < "$patch"
 		stat=$?
 
-		# If the patch applied cleanly, build a commit log message.
-		#
-		if [ $stat -eq 0 ]; then
-			git log -n1 --pretty=format:"%s" > $cmtlog
+		((stat == 0)) && {
+			git log -n1 --pretty=format:"%s" > "$cmtlog"
 			echo -e "\n" >> $cmtlog
-			git log -n1 --pretty=medium >> $cmtlog
-			git commit . -s -F $cmtlog
-			rm -f $cmtlog > /dev/null 2>&1
-		fi
+			git log -n1 --pretty=medium >> "$cmtlog"
+			git commit . -s -F "$cmtlog"
+			rm -f "$cmtlog" > /dev/null 2>&1
+		}
 	done
 
 	return $stat
@@ -770,16 +797,16 @@ use_patch() {
 #
 get_failedpatch() {
 	local patchlist="$1"
-	local patcharray=( $patchlist )
+	local patcharray=( "$patchlist" )
 	local patsub
 	local patfil
 
 	if (( applymode == applymode_patch )); then
 		echo "${patcharray[$((patchcount - 1))]}"
 	else
-		patsub=$(git am --show-current-patch | grep -m1 'Subject: ')
-		patsub=$(echo "$patsub" | cut -d'[' -f2 | cut -d']' -f1)
-		patfil=$(grep -l "$patsub" $patchlist)
+		patsub="$(git am --show-current-patch | grep -m1 'Subject: ')"
+		patsub="$(echo "$patsub" | cut -d'[' -f2 | cut -d']' -f1)"
+		patfil="$(grep -l "$patsub" "$patchlist")"
 		echo "$patfil"
 	fi
 }
@@ -796,20 +823,20 @@ map_us2bp() {
 	local bpline=
 	local b_done=false
 
-	> $usvbp_commits
+	: > "$usvbp_commits"
 
 	# Create two file descriptors for the upstream and backported logs.
 	exec 5<"$us_commits"
 	exec 6<"$bp_commits"
 
 	until $b_done; do
-		read -u 5 usline || b_done=true
-		read -u 6 bpline || b_done=true
+		read -ru 5 usline || b_done=true
+		read -ru 6 bpline || b_done=true
 
 		usline="$(echo "$usline" | cut -d' ' -f1)"
 
-		$b_done || echo -n "$usline " >> $usvbp_commits
-		$b_done || echo "$bpline" >> $usvbp_commits
+		$b_done || echo -n "$usline " >> "$usvbp_commits"
+		$b_done || echo "$bpline" >> "$usvbp_commits"
 	done
 
 	exec 5<&-
@@ -831,33 +858,32 @@ map_us2bp() {
 function apply_patches {
 	# echo -e "\n$BLD\0patch-common::apply_patches()$OFF"
 	local stat=0
-	local patchlist="$(ls -1 "$indir"/*.patch)"
-	local head=$(git log --oneline -n1 | cut -d' ' -f 1)
+	local patchlist
 
-	create_patchlist "$patchlist" valpatchlist $startpat
+	patchlist="$(ls -1 "$indir"/*.patch)"
+
+	create_patchlist "$patchlist" valpatchlist "$startpat"
 	patchtotal=$(wc -w <<< "$valpatchlist")
 
 	((applymode == applymode_off)) && return 0
-	> "$bp_commits"
+	: > "$bp_commits"
 
         [ "$valpatchlist" ] || {
 		echo -e "$WRN\nIt appears there are no valid patches to apply.\n$OFF"
 		return 1
 	}
 
-	case $applymode in
-	    $applymode_norm  ) git am $valpatchlist; stat=$? ;;
-	    $applymode_3way  ) git am -3 $valpatchlist ; stat=$? ;;
-	    $applymode_patch ) use_patch "$valpatchlist"; stat=$? ;;
+	case "$applymode" in
+	    "$applymode_norm"  ) git am "$valpatchlist"    ; stat=$? ;;
+	    "$applymode_3way"  ) git am -3 "$valpatchlist" ; stat=$? ;;
+	    "$applymode_patch" ) use_patch "$valpatchlist" ; stat=$? ;;
 	esac
 
-	((stat == 0)) || process_patcherr $(get_failedpatch "$valpatchlist")
+	((stat == 0)) || process_patcherr "$(get_failedpatch "$valpatchlist")"
 
 	# Create the log of commits backported.
-	shopt -s extglob
-	patchcount=$(ls -1 $indir/*.patch | wc -l)
-	shopt -u extglob
-	git log --oneline -n$patchcount > "$bp_commits"
+	patchcount=$(find "$indir" -maxdepth 1 -name "*.patch" | wc -l)
+	git log --oneline -n"$patchcount" > "$bp_commits"
 	map_us2bp
 
 	if ((stat == 0)); then b_allapplied=true; else tail -1 "$bp_commits"; fi
@@ -866,9 +892,9 @@ function apply_patches {
 
 show_discrete_ops() {
 	echo -en "$MNU x$OFF  "
-	case $menumode in
-		$menumode_ext ) echo -en "Hide " ;;
-		$menumode_min ) echo -en "Show ";;
+	case "$menumode" in
+		"$menumode_ext" ) echo -en "Hide " ;;
+		"$menumode_min" ) echo -en "Show ";;
 	esac
 	echo -e "$MNU${UND}Discrete Operations$OFF Menu"
 }
@@ -899,65 +925,66 @@ show_workdir() {
 
 show_cmpmode() {
 
-	case $cmpmode in
-	    $cmpmode_off   )	echo "OFF" ;;
-	    $cmpmode_batch )	echo "Batch" ;;
-	    $cmpmode_inter )	echo "Interactive Only" ;;
-	    $cmpmode_setup )	echo "Batch compare setup" ;;
-		         * )	echo "Not a valid comparison mode" ;;
+	case "$cmpmode" in
+	    "$cmpmode_off"   )	echo "OFF" ;;
+	    "$cmpmode_batch" )	echo "Batch" ;;
+	    "$cmpmode_inter" )	echo "Interactive Only" ;;
+	    "$cmpmode_setup" )	echo "Batch compare setup" ;;
+		           * )	echo "Not a valid comparison mode" ;;
 	esac
 }
 
 show_applymode() {
 
-	case $applymode in
-	    $applymode_off   )	echo "OFF" ;;
-	    $applymode_norm  )	echo "git am" ;;
-	    $applymode_3way  )	echo "git am 3-way merge" ;;
-	    $applymode_patch )  echo "patch --fuzz=3 -p1 <" ;;
-	                   * )	echo "Not a valid apply mode" ;;
+	case "$applymode" in
+	    "$applymode_off"   )	echo "OFF" ;;
+	    "$applymode_norm"  )	echo "git am" ;;
+	    "$applymode_3way"  )	echo "git am 3-way merge" ;;
+	    "$applymode_patch" )  echo "patch --fuzz=3 -p1 <" ;;
+	                     * )	echo "Not a valid apply mode" ;;
 	esac
 }
 
 show_applyfailmode() {
 
-	case $applyfailmode in
-	    $applyfailmode_exit ) echo "Exit" ;;
-	    $applyfailmode_cont ) echo "Continue without applying" ;;
-	    $applyfailmode_menu ) echo "Return to main menu" ;;
-	                      * ) echo "Not a valid failover mode" ;;
+	case "$applyfailmode" in
+	    "$applyfailmode_exit" ) echo "Exit" ;;
+	    "$applyfailmode_cont" ) echo "Continue without applying" ;;
+	    "$applyfailmode_menu" ) echo "Return to main menu" ;;
+	                        * ) echo "Not a valid failover mode" ;;
 	esac
 }
 
 show_view_logs() {
-	local logs=$(ls -1 $outdir/*.log 2> /dev/null)
+	local logs
+
+	logs=$(ls -1 "$outdir"/*.log 2> /dev/null)
 
 	[  "$logs" ] && echo -e "\n$MNU V$OFF  View the log files"
 }
 
 view_logs() {
-	local logs=($(ls  $outdir/*.log  2>/dev/null))
+	local logs
 	local logfile
 	local index=1
 	local choice
 
+	mapfile -t logs < <(find "$outdir" -type f -name "*.log")
 	((${#logs[@]} != 0)) || {
 		echo -e "\n${INF}There are currently no log files.$OFF"
 		return
 	}
 
 	echo -e "\n${MNU}Select the log file you wish to view.$OFF\n"
-	for logfile in ${logs[@]}; do
+	for logfile in "${logs[@]}"; do
 		echo -e "$MNU$index$OFF - $logfile"
-		let ++index
+		((++index))
 	done
 	echo
 
-	loop_range_q 1 $((index - 1)) choice
+	loop_range_q 1 $((index - 1)) choice || return
 
-	[ $? -ne 0 ] && return
-
-	less ${logs[$((choice - 1))]}
+	less "${logs[$((choice - 1))]}"
 }
 
 # get_filecount() - count the files in the indir
@@ -971,14 +998,16 @@ view_logs() {
 # 	b_selpat
 #
 get_filecount() {
-	local fc=$(find $indir -maxdepth 1 -not -type d -name "*.patch" -print -quit)
+	local fc
+
+	fc=$(find "$indir" -maxdepth 1 -type f -name "*.patch" -print -quit)
 	if [ "$fc" ]; then
-		infilecount=$(find $indir -maxdepth 1 -not -type d -name "*.patch" | wc -l)
+		infilecount=$(find "$indir" -maxdepth 1 -type f -name "*.patch" | wc -l)
 		! $b_allapplied && b_selpat=true || b_selpat=false
 		patstr="patch "
 		b_rename_infiles=false
 	else
-		infilecount=$(find $indir -maxdepth 1 -not -type d | wc -l)
+		infilecount=$(find "$indir" -maxdepth 1 -type f | wc -l)
 		patstr=""
 		b_selpat=false
 		b_rename_infiles=true
@@ -993,13 +1022,15 @@ get_filecount() {
 # 	b_allapplied
 #
 show_nextpatch() {
-	local shownext=$(
+	local shownext=
+
+	shownext=$(
 cat <<EOF
 $MNU
  5$OFF  Start applying at patch  :$STA $startpat$OFF
 EOF
 )
-	[ $infilecount -eq 0 ] && { b_selpat=false; return; }
+	((infilecount == 0)) && { b_selpat=false; return; }
 
 	$b_allapplied && {
 		echo -e "\n$INF    All patches were successfully applied$OFF"
@@ -1019,13 +1050,13 @@ EOF
 show_apply_patches() {
 	echo -en "\n$MNU A$OFF  Apply patches"
 
-	if [ $applymode -eq $applymode_off ] && $b_allapplied; then
+	if ((applymode == applymode_off)) && $b_allapplied; then
 		echo -en "            :$OFF "
 		echo -en "already applied and apply mode ${STA}OFF${OFF}"
-	elif [ $applymode -eq $applymode_off ] && ! $b_allapplied; then
+	elif ((applymode == applymode_off)) && ! $b_allapplied; then
 		echo -en "            :$OFF "
 		echo -en "apply mode is ${STA}OFF$OFF"
-	elif [ $applymode -ne $applymode_off ] && $b_allapplied; then
+	elif ((applymode != applymode_off)) && $b_allapplied; then
 		echo -en "            :$OFF "
 		echo -en "already applied"
 	fi
@@ -1040,13 +1071,13 @@ show_apply_patches() {
 #
 select_patch() {
 
-	[ "patstr" ] || {
+	[ "$patstr" ] || {
 		echo "Please run the rename on the files first."
 		return
 	}
 
-	loop_range_q 1 $infilecount startpat
-	[ $? -ne 0 ] && echo "Leaving starting patch at $startpat."
+	loop_range_q 1 "$infilecount" startpat ||
+		echo "Leaving starting patch at $startpat."
 	return
 }
 
@@ -1064,12 +1095,11 @@ select_patch() {
 #
 show_branch_mismatch() {
 	local _distro_="$1"
-	local _yn_
+	local -n _yn_="$2"
 
 	echo -e "$BLD\0Patches are$OFF $_distro_$BLD but kernel is$OFF $lasttag"
 	doyn "Switch branches now?" "git_setbranch $branchlist" "" _yn_
-	$_yn_ && git_get_lasttag lasttag $last_tag_file
-	eval $2=$_yn_
+	$_yn_ && git_get_lasttag lasttag "$last_tag_file"
 }
 
 # check_patchvbranch - see if the patch names match the branch
@@ -1089,29 +1119,28 @@ check_patchvbranch() {
 	local tag
 	local elstr=""
 	local yn=false
-	local i
-	local j
+	local -i i
+	local -i j
 	local ary
 	local b_pegas=false
 
-	[ $indir ] || return 1
+	[ "$indir" ] || return 1
 
 	# See if there are any .patch files in the $indir
 	#
-	stat $indir/*.patch > /dev/null 2>&1
-	[ $? -eq 0 ] || {
+	stat "$indir"/*.patch > /dev/null 2>&1 || {
 		echo -e "\nNo .patch files in $BLD$indir$OFF"
 		ui_press_any
 		return 1
 	}
 
 	# Get the subject line from the first patch and remove "Subject:"
-	pat=$(ls -1 $indir/*.patch | head -1)
-	subject=$(grep 'Subject: ' -m1 $pat)
+	pat="$(find "$indir" -type f -name "*.patch" | head -1)"
+	subject="$(grep 'Subject: ' -m1 i"$pat")"
 	subject=${subject//"Subject: "/}
 
 	# Convert to upper case
-	pfx="$(echo "$subject" | tr [a-z] [A-Z])"
+	pfx="$(echo "$subject" | tr '[:lower:]' '[:upper:]')"
 
 	# Remove the word PATCH if it's there
 	pfx="${pfx//"PATCH"/}"
@@ -1124,9 +1153,9 @@ check_patchvbranch() {
 	j=$(ui_strindex "$pfx" "]")
 
 	# echo "i: $i j: $j"
-	if ( [ $i -lt 0 ] || [ $j -le 0 ] || [ $j -le $i ] ); then
+	if ((i < 0)) || ((j <= 0)) || ((j <= i)); then
 		echo -e "$STA$subject$OFF"
-		echo -e ""$WRN"...does not appear to be a RHEL patch or series$OFF"
+		echo -e "${WRN}...does not appear to be a RHEL patch or series$OFF"
 		getyn "Do you wish to continue anyway?" yn
 		$yn || return 1
 		distname="NOT RHEL"
@@ -1211,9 +1240,12 @@ check_patchvbranch() {
 get_current_head_trunc() {
 	local used=$1
 	local cols=$((tcols-used))
-	local current_head=$(git log --oneline -n1)
-	local current_head_trunc=${current_head:0:$cols}
-	echo $current_head_trunc
+	local current_head=
+	local current_head_trunc=
+
+	current_head="$(git log --oneline -n1)"
+	current_head_trunc="${current_head:0:$cols}"
+	echo "$current_head_trunc"
 }
 
 # create_branch - creates a branch at the current head
@@ -1221,8 +1253,11 @@ get_current_head_trunc() {
 create_branch() {
 	local bname=
 	local tagname=
-	local current_head_trunc=$(get_current_head_trunc 23)
-	local brstr=$(
+	local current_head_trunc=
+	local brstr=
+
+	current_head_trunc=$(get_current_head_trunc 23)
+	brstr=$(
 cat <<EOF
 
 Create new branch at: $BLD$current_head_trunc$OFF
@@ -1234,7 +1269,7 @@ EOF
 	echo -e "$brstr"
 	getuser "Name of the new branch: " bname
 	[[ "qQ" == *"$bname"* ]]  && return
-	git branch $bname
+	git branch "$bname"
 	echo -e "Created branch $BLD$bname$OFF"
 	getuser "New tag name: " tagname
 	[[ "qQ" == *"$tagname"* ]] || git tag "$tagname"
@@ -1267,59 +1302,59 @@ format_upstream_patches() {
 
 	$b_verbose || quiet="-q"
 
-	fc=$(find $outdir -maxdepth 1 -not -type d -name "*.patch" -print -quit)
+	fc=$(find . "$outdir" -maxdepth 1 -type f -name "*.patch" -print -quit)
 
 	[ "$fc" ] && {
 		echo
-		echo -e ""$INF"There are already upstream patch files in $STA$outdir$OFF"
+		echo -e "${INF}There are already upstream patch files in $STA$outdir$OFF"
 		getyn "Do you want to replace them? " b_yup
 
 		if $b_yup; then
-			rm -f $outdir/* > /dev/null 2>&1
-			> $missing_fixes
+			rm -f "$outdir"/* > /dev/null 2>&1
+			: > "$missing_fixes"
 		else
 			return 1
 		fi
 	}
 
-	ls $indir/*.patch > /dev/null 2>&1
-	[ $? -ne 0 ] && {
+	ls "$indir"/*.patch > /dev/null 2>&1 || {
 		echo
-		echo -e ""$INF"There are no patch files to review in $STA$indir$OFF"
+		echo -e "${INF}There are no patch files to review in $STA$indir$OFF"
 		return 1
 	}
 
 	rm -vf "$outdir"/* > /dev/null 2>&1
-	> "$us_commits"
+	: > "$us_commits"
 	echo
 
 	git_comment2commitsfile \
-		-r "$remote_dir" -i $indir -o "$us_commits" -f $patchvalfuzz $quiet
+		-r "$remote_dir" -i "$indir" -o "$us_commits" -f "$patchvalfuzz" $quiet
 	stat=$?
 	echo
 	[ $stat -eq 0 ] || {
 		echo -en "$WRN${ui_err_msg[$stat]}"
 		case $stat in
-			$ui_err_invdir )  echo -e " : $STA$indir$OFF";;
-			$ui_err_invfile ) echo -e " : $STA$us_commits$OFF";;
+			"$ui_err_invdir" )  echo -e " : $STA$indir$OFF";;
+			"$ui_err_invfile" ) echo -e " : $STA$us_commits$OFF";;
 		esac
 		return 1
 	}
 
 	if $b_verbose; then
-		banner=""$INF"Upstream commits extracted from the patches in $STA$us_commits$INF"
+		banner="${INF}Upstream commits extracted from the patches in $STA$us_commits$INF"
 		escnt=$((${#INF} + ${#STA} + ${#INF}))
-		pad=$(ui_putnchar '=' $(( ${#banner} - $escnt)))
+		pad=$(ui_putnchar '=' $(( ${#banner} - escnt)))
 		echo -e "$banner\n$pad$OFF"
 
 		cat "$us_commits"
 		echo
 	fi
 
-	cd $remote_dir
+	(
+	cd "$remote_dir" > /dev/null || exit_msg "$ui_err_invdir" "$remote_dir"
 	exec_boolean b_fmt_upstream false \
 		"git_file2patchset ${us_commits} ${outdir} ${b_verbose}"
-	cd - > /dev/null 2>&1
+	)
 	return 0
 }
 
@@ -1338,7 +1373,9 @@ check_already_applied() {
 	local promptresp
 	local b_done=false
 	local b_header=true
-	local header=$(
+	local header=
+
+	header=$(
 cat <<EOF
 $INF
 The backported commits log $STA$bp_commits$OFF$INF is not empty.
@@ -1359,7 +1396,7 @@ EOF
 	exec 5<"$us_commits"
 
 	until $b_done; do
-		read -u 5 usline || b_done=true
+		read -r -u 5 usline || b_done=true
 		uscommit="$(echo "$usline" | cut -d' ' -f1)"
 		(( 16#$uscommit )) || continue
 		echo -n "$uscommit"
@@ -1386,7 +1423,7 @@ EOF
 			fi
 
 			echo "${uscommit:0:12}""   ""$bpcommit"
-			let ++linecnt
+			((++linecnt))
 		else
 			ui_clearline
 		fi
@@ -1415,13 +1452,12 @@ exec_apply_patches(){
 	git am --abort 2>/dev/null
 	patchcount=0
 
-	check_patchvbranch
-	[ $? -eq 0 ] || return 1
+	check_patchvbranch || return 1
 
-	apply_patches
-	stat=$?
-	[ $stat -ne 0 ] && [ $applyfailmode -eq $applyfailmode_menu ] \
-		&& return $stat
+	apply_patches; stat=$?
+		if ((stat != 0)) && ((applyfailmode == applyfailmode_menu)); then
+			return $stat
+		fi
 
 	applymode=$applymode_off
 	set_cfg_item "applymode" $applymode
@@ -1441,19 +1477,18 @@ exec_apply_patches(){
 #
 check_mismatch_file() {
 	# echo -e "\n$BLD\0patch-common::check_mismatch_file$OFF"
-	declare b_found=false
 	declare -i num=0
 
 
-	[ -f $mmfile ] || return 1
+	[ -f "$mmfile" ] || return 1
 
-	num=$(tac $mmfile | while read line; do
+	num=$(tac "$mmfile" | while read -r line; do
 		echo "$line" | grep -q '^PATCH:' && {
 			echo "$line" | cut -d':' -f2;
 			break
 		}
 	done)
-	[ $num -eq $infilecount ] && return 0 || return 1
+	if ((num == infilecount)); then return 0; else return 1; fi
 }
 
 # exec_patcmp - execute the comparison of the patches
@@ -1474,10 +1509,11 @@ check_mismatch_file() {
 exec_patcmp() {
 	$ui_b_debug && echo -e "${STA}patch-common::exec_patcmp$OFF"
 	local xval="$1"
-	local patchlist="$(ls -1 "$indir"/*.patch)"
+	local patchlist=
 	local tb=$terminal_background
 	local quiet=
 
+	patchlist="$(ls -1 "$indir"/*.patch)"
 	if $b_verbose; then quiet='-v'; else quiet="-q"; fi
 
 	# If we don't have a valid patch list, create one now.
@@ -1499,12 +1535,10 @@ exec_patcmp() {
 	#
 	if [ "$xval" ]; then
 
-		check_mismatch_file
-		if [ $? -ne 0 ]; then
+		check_mismatch_file ||
 			# echo -e "${BLD}Rebuild the conflicts log:$OFF $mmfile"
 			patbatcmpmgr -P "$valpatchlist" -R "$indir" -U "$outdir" \
 				     -o "$mmfile" "$xval" -b "$tb"
-		fi
 	else
 
 		patbatcmpmgr -X -P "$valpatchlist" \
@@ -1531,11 +1565,12 @@ compare_patches() {
 	$b_verbose || quiet="-q"
 
 	case $cmpmode in
-		$cmpmode_batch ) exec_patcmp "-X"; stat=$? ;;
-		$cmpmode_setup ) exec_patcmp; stat=$? ;;
-		$cmpmode_inter ) patcmp $quiet -b $tb $indir $outdir $editor $us_commits
-				 stat=$? ;;
-			     * ) cmpmode=$cmpmode_off
+		"$cmpmode_batch" ) exec_patcmp "-X"; stat=$? ;;
+		"$cmpmode_setup" ) exec_patcmp; stat=$? ;;
+		"$cmpmode_inter" ) patcmp $quiet -b "$tb" \
+				   "$indir" "$outdir" "$editor" "$us_commits"
+				   stat=$? ;;
+			       * ) cmpmode=$cmpmode_off
 	esac
 
 	return $stat
@@ -1556,8 +1591,8 @@ init_menu() {
 	[ -f "$usvbp_commits" ] && rm -f "$usvbp_commits"
 	if $b_mrflag; then
 		current_mr=
-		rm -f "$indir"/* >/dev/null || exit 1
-		rm -f "$outdir"/* >/dev/null || exit 1
+		rm -f "$indir"/* >/dev/null
+		rm -f "$outdir"/* >/dev/null
 	fi
 }
 
@@ -1619,7 +1654,7 @@ renpatfiles() {
     rensetcnt=0		# globally declared in this file
     renpatcnt=0		# :
 
-    cd "$indir" > /dev/null || exit 1
+    cd "$indir" > /dev/null || exit_msg "$ui_err_invdir" "$indir"
     echo -e "${INF}Changing directory to $STA$PWD$OFF"
     total=$(find . -maxdepth 1 -type f | wc -l)
     echo -e "$STA$PWD$INF has $STA$total$INF files.$OFF"
@@ -1627,7 +1662,7 @@ renpatfiles() {
     if ((total == 0)); then
 	echo -e "$STA$indir$INF has no files to rename.$OFF"
 	echo -en "${INF}Returning to main menu. and repo directory: $STA"
-	cd - > /dev/null || exit
+	cd - > /dev/null || exit_msg "$ui_err_invdir" "cd -"
 	echo -en "$OFF"
 	return $ui_err_nofiles
     fi
@@ -1775,7 +1810,7 @@ renpatfiles() {
 	((renpatcnt++))
     done < <(find . -maxdepth 1 -type f -not -name "*.patch" -print0)
 
-    cd - > /dev/null || exit 1
+    cd - > /dev/null || exit_msg "$ui_err_invdir" "cd -"
     check_patch_count
     return $?
 }
