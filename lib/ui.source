@@ -136,7 +136,11 @@ EOF
 #
 ui_popterm() {
 	cmd="$1"
-	[ -n "$cmd" ] && x-terminal-emulator -e "$cmd" || x-terminal-emulator
+	if [ -n "$cmd" ]; then
+		x-terminal-emulator -e "$cmd"
+	else
+		x-terminal-emulator
+	fi
 }
 
 ui_get_screenbackground() {
@@ -159,18 +163,18 @@ ui_set_colors() {
 		return 1
 	}
 
-	case $terminal_background in
-		$tb_lite ) INF="$OFF""\033[38;5;90m"
-			   MNU="\033[1;38;5;21m"
-			   STA="\033[1;38;5;28m"
-			   WRN=$BRED
-			   ;;
-		$tb_dark ) INF=$OFF$YEL
-			   MNU=$BYEL
-			   STA=$BGRN
-			   # WRN=$BWOR
-			   WRN=$BRED
-			   ;;
+	case "$terminal_background" in
+		"$tb_lite" ) INF="$OFF""\033[38;5;90m"
+			     MNU="\033[1;38;5;21m"
+			     STA="\033[1;38;5;28m"
+			     WRN=$BRED
+			     ;;
+		"$tb_dark" ) INF=$OFF$YEL
+			     MNU=$BYEL
+			     STA=$BGRN
+			     # WRN=$BWOR
+			     WRN=$BRED
+			     ;;
 	esac
 
 	qstr="${STA}q${OFF}"
@@ -238,28 +242,6 @@ ui_do_colors() {
 	ui_set_colors
 }
 
-# ui_get_curpos - get the cursor row and column
-#
-# $1 - receives the zero-based row value
-# $2 - receives the zero-based column value
-#
-ui_get_curpos() {
-	exec < /dev/tty
-	oldstty=$(stty -g)
-	stty raw -echo min 0
-	# on my system, the following line can be replaced by the line below it
-	echo -en "\033[6n" > /dev/tty
-	# tput u7 > /dev/tty    # when TERM=xterm (and relatives)
-	IFS=';' read -r -d R -a pos
-	stty $oldstty
-	# change from one-based to zero based so they work with: tput cup $row $col
-	row=$((${pos[0]:2} - 1))    # strip off the esc-[
-	col=$((${pos[1]} - 1))
-
-	eval $1=$row
-	eval $2=$col
-}
-
 # ui_putnchar - repeat print a char "n" times as directed
 #
 # $1 - the character to repeat print
@@ -271,10 +253,10 @@ ui_get_curpos() {
 #
 ui_putnchar() {
 	local ch="$1"
-	local num=$2
-	local i
+	local -i num="$2"
+	local -i i
 
-	for ((i = 0; i < $num; ++i)); do
+	for ((i = 0; i < num; ++i)); do
 		echo -n "$ch"
 	done
 }
@@ -293,13 +275,13 @@ ui_putnchar() {
 ui_padfield() {
 	local str="$1"
 	local padch="$2"
-	local fldw=$3
-	local padn
+	local -i fldw="$3"
+	local -i padn
 	local padstr
 
-	[ ${#str} -ge $fldw ] && echo -n "$str" && return
+	((${#str} >= fldw)) && echo -n "$str" && return
 	padn=$((fldw - ${#str}))
-	padstr=$(ui_putnchar "$padch" $padn)
+	padstr=$(ui_putnchar "$padch" "$padn")
 	echo -n "$padstr$str"
 	return
 }
@@ -358,17 +340,20 @@ ui_nclearline() {
 # $2 - optional time argument
 #
 ui_waitonproc () {
-    local __pid__=$1;
-    local __time__=1
-    local __stat__=0
+    local -i pid="$1"
+    local time=1
+    local stat=0
+    local -i argc=$#
 
-    [ $# -eq 2 ] && __time__=$2
-    while kill -0 $__pid__ > /dev/null 2>&1; do
-        echo -n '.';
-        sleep $__time__;
+    ((argc == 2)) && time="$2"
+
+    while kill -0 "$pid" > /dev/null 2>&1; do
+        echo -n '.'
+        sleep "$time"
     done
-    wait $__pid__ || __stat__=$?
-    return $__stat__
+
+    wait "$pid" || stat=$?
+    return $stat
 }
 
 # ui_waitonproc_tty
@@ -387,27 +372,28 @@ ui_waitonproc () {
 # $3 - optional text
 #
 ui_waitonproc_tty () {
-    local pid=$1;
+    local -i pid="$1"
     local tmo="$2"
     local txt="$3"
-    local tcnt=1
-    local stat=0
+    local -i tcnt=1
+    local -i stat=0
 
     [ -z "$txt" ] || echo -e "$txt"
-    while kill -0 $pid > /dev/null 2>&1; do
-        echo -n '.';
-        sleep $tmo;
-	let ++tcnt
-	if [ $tcnt -ge $tcols ]; then
+    while kill -0 "$pid" > /dev/null 2>&1; do
+        echo -n '.'
+        sleep "$tmo"
+	((++tcnt))
+
+	((tcnt >= tcols)) && {
             ui_clearline
 	    tcnt=1
-	fi
+    	}
     done
 
     # Leave the TTY as it was before we were called.
     #
     ui_clearline
-    wait $pid || stat=$?
+    wait "$pid" || stat=$?
     return $stat
 }
 
@@ -424,9 +410,10 @@ ui_waitonproc_tty () {
 getyn() {
 	local promptstring="$1"
 	local retval="$2"
+	local -i argc=$#
 	local answer
 
-	[ -n "$retval" ] && local -n p_retval="$2"
+	((argc == 2)) && local -n p_retval="$2"
 
 	while true; do
 
@@ -435,12 +422,12 @@ getyn() {
 		echo
 
 		if [[ $answer =~ [yY] ]]; then
-			[ -n "$retval" ] && p_retval=true
+			((argc == 2)) && p_retval=true
 			return 0
 		fi
 
 		if [[ $answer =~ [nN] ]]; then
-			[ -n "$retval" ] && p_retval=false
+			((argc == 2)) && p_retval=false
 			return 1
 		fi
 
@@ -512,9 +499,9 @@ getchar() {
 #
 # Prints a prompt passed in $1 and returns the char in $2
 #
-function promptgetchar {
+promptgetchar() {
 	echo -en "$1"
-	getchar $2
+	getchar "$2"
 }
 
 # loop_yn()
@@ -577,9 +564,9 @@ loop_range() {
 	local number
 	local cmd
 	local pstr=\
-""$OFF$INF"Please enter a number between $MNU$min$INF and $MNU$max$OFF: "
+"$OFF${INF}Please enter a number between $MNU$min$INF and $MNU$max$OFF: "
 
-	[ $max -lt 10 ] && cmd=promptgetchar || cmd=getuser
+	((max < 10)) && cmd=promptgetchar || cmd=getuser
 	# echo "cmd: $cmd"
 
 	while true; do
@@ -588,7 +575,7 @@ loop_range() {
 		if [[ $number =~ ^-?[0-9]+$ ]]  && \
 		   [[ $number -ge $min ]]       && \
 		   [[ $number -le $max ]]; then
-			eval $3=$number
+			eval "$3"="$number"
 			echo
 			return 0
 		fi
@@ -605,15 +592,15 @@ loop_range() {
 # $3 - the value to be returned
 #
 loop_range_q() {
-	local min=$1
-	local max=$2
-	local number
+	local min="$1"
+	local max="$2"
+	local -i number
 	local cmd
 	local pstr=\
 "$OFF${INF}Please enter a number between $MNU$min$INF and $MNU$max$OFF or $qstr: "
 
-	echo -e ""$INF"Press $qstr$INF to return without making a selection.$OFF"
-	[ $max -lt 10 ] && cmd=promptgetchar || cmd=getuser
+	echo -e "${INF}Press $qstr$INF to return without making a selection.$OFF"
+	((max < 10)) && cmd=promptgetchar || cmd=getuser
 	# echo "cmd: $cmd"
 
 	while true; do
@@ -624,7 +611,7 @@ loop_range_q() {
 		if [[ $number =~ ^-?[0-9]+$ ]]  && \
 		   [[ $number -ge $min ]]       && \
 		   [[ $number -le $max ]]; then
-			eval $3=$number
+			eval "$3"="$number"
 			echo
 			return 0
 		fi
@@ -632,26 +619,24 @@ loop_range_q() {
 }
 
 select_from_array() {
-	local contents=$1[@]
+	local contents="$1[@]"
 	local promptstr="$2"
 	local current="${!3}"
 	# local current=$3
 
-	local array=(${!contents})
-	local asize=asize=${#array[@]}
-	local curnum
-	local i
+	local -a array=("${!contents}")
+	local -i asize=asize=${#array[@]}
+	local -i i
 	local element
 	local selection
 
-	echo -en "\n"$MNU"Choose one of the $STA$promptstr$OFF"
+	echo -en "\n${MNU}Choose one of the $STA$promptstr$OFF"
 	echo -e "$MNU in the following list.$OFF"
-	echo -e ""$INF"Current selection is :$STA $current$OFF"
+	echo -e "${INF}Current selection is :$STA $current$OFF"
 
 	for ((i = 0; i < asize; ++i)); do
 		element="${array[i]}"
 		if [ "$element" == "$current" ]; then
-			curnum=$i
 			echo -e "$STA * $((i+1)). $element$OFF"
 		else
 			echo -e "   $MNU$((i+1)).$OFF $element"
@@ -661,15 +646,16 @@ select_from_array() {
 	echo
 
 	while true; do
-		loop_range_q 1 $asize selection || return 1
+		if loop_range_q 1 "$asize" selection; then
+			eval "$3"="${array[$((selection-1))]}"
+		else
+			return 1
+		fi
 
-		[ $? -eq 0 ] && eval $3=${array[$((selection-1))]}
-		is_array_member array ${!3}
-
-		if [ $? -eq 0 ]; then
+		if is_array_member array "${!3}"; then
 			break
 		else
-			echo -e ""$STA"${!3}$WRN is not a valid selection$OFF"
+			echo -e "${STA}${!3}$WRN is not a valid selection$OFF"
 			continue
 		fi
 	done
@@ -678,12 +664,12 @@ select_from_array() {
 }
 
 is_array_member() {
-	local contents=$1[@]
+	local contents="$1[@]"
 	local member="$2"
 
-	local array=(${!contents})
-	local asize=${#array[@]}
-	local i
+	local -a array=("${!contents}")
+	local -i asize=${#array[@]}
+	local -i i
 	local mem
 
 	for ((i = 0; i < asize; ++i)); do
@@ -706,7 +692,6 @@ is_array_member() {
 ui_getfilespec() {
 	local prompt="$1"
 	local filespec
-	local found=false
 	local retval=0
 	local msginvfilnam="${WRN}Invalid file name. $msgretry"
 
@@ -718,7 +703,7 @@ ui_getfilespec() {
 		echo -e "$WRN$filespec is not a valid file.$OFF"
 	done
 
-	eval $2=$filespec
+	eval "$2"="$filespec"
 	return $retval
 }
 
@@ -796,7 +781,7 @@ ui_getnewdir() {
 		stat=$?
 
 		case $stat in
-		0 ) 	eval $2="$newdir"	# valid existing directory
+		0 ) 	eval "$2"="$newdir"	# valid existing directory
 			return $stat
 			;;
 		1 )	echo -e "${WRN}Nothing entered. $msgretry"
@@ -804,18 +789,15 @@ ui_getnewdir() {
 		2 )	echo -e "$exists"
 			;;
 		3 )	echo -e "$STA$newdir $noexist"
-			getyn "Want to create "$newdir" now?" ans
-			if $ans; then
-				mkdir -p "$newdir"
-				stat=$?
-				if [ $stat -ne 0 ]; then
+			if getyn "Want to create $newdir now?"; then
+				mkdir -p "$newdir" || {
 					echo -e "$fail"
 					continue
-				fi
+				}
 			else
 				continue
 			fi
-			eval $2="$newdir"
+			eval "$2"="$newdir"
 			return $stat
 			;;
 		4 )	# echo "ui_getnewdir: newdir: $newdir"
@@ -834,21 +816,21 @@ ui_testdir() {
 		ui_chkdir "$tstdir"
 		stat=$?
 
-		if [ $stat -eq 0 ]; then
+		if ((stat == 0)); then
 			echo -e "$STA$tstdir$INF does not exist."
 			doyn "$createstr" "mkdir -p $tstdir"
-			eval $2="$tstdir"
+			eval "$2"="$tstdir"
 			return $stat
 		fi
 
-		if [ $stat -eq 1 ]; then
+		if ((stat == 1)); then
 			echo -e "$STA$tstdir$INF exists as a file. Try again."
 			getuser "Gimme a valid directory: " tstdir
 			continue;
 		fi
 
-		if [ $stat -eq 2 ]; then
-			eval $2="$tstdir"
+		if ((stat == 2)); then
+			eval "$2"="$tstdir"
 			return $stat
 		fi
 	done
@@ -880,7 +862,7 @@ ui_remove_spaces() {
 # $2 - one-based number of the line
 #
 ui_catoneline() {
-	echo $(cat $1 | head -$2 | tail -1)
+	head -"$2" "$1" | tail -1
 }
 
 # ui_replaceline
@@ -893,23 +875,20 @@ ui_catoneline() {
 # Returns 1 if the line number exceeds the number of lines in the file.
 #
 ui_replaceline() {
-	local stat
-	local line
+	local -i line
 	local new_content
 
-	[ $# -ne 3 ] && return $ui_err_invargc
-	check_lineargs $1 $3
-	stat=$?
-	[ $stat -ne 0 ] && return $stat
+	(($# != 3)) && return "$ui_err_invargc"
+	check_lineargs "$1" "$3" || return $?
 
-	awk -v line=$1 -v new_content="$2" '{
+	awk -v line="$1" -v new_content="$2" '{
 		if (NR == line) {
 			print new_content;
 		} else {
 			print $0;
 		}
-	}' "$3" > $ui_tempfile
-	[ -f "$ui_tempfile" ] && mv -f $ui_tempfile "$3"
+	}' "$3" > "$ui_tempfile"
+	[ -f "$ui_tempfile" ] && mv -f "$ui_tempfile" "$3"
 	return 0
 }
 
@@ -928,31 +907,28 @@ ui_replaceline() {
 # $3 - File
 #
 ui_replaceline_raw() {
-	local linenum
+	local -i linenum
+	local newtext
 
-	awk -v linenum=$1 -v newtext="$2" \
+	awk -v linenum="$1" -v newtext="$2" \
 		'NR==linenum {$0=newtext} {print}' \
-		$3 > $ui_tempfile
-	[ -f "$ui_tempfile" ] && mv -f $ui_tempfile "$3"
+		"$3" > "$ui_tempfile"
+	[ -f "$ui_tempfile" ] && mv -f "$ui_tempfile" "$3"
 	return 0
 }
 
 check_lineargs() {
-	local number=$1
+	local -i number="$1"
 	local file="$2"
-	local lines
-	local argc=$#
+	local -i lines
+	local -i argc=$#
 
-	[ $argc -eq 2 ] || return $ui_err_invargc
-
-	ui_isdigit $number
-	[ $? -eq 0 ] || return $ui_err_notdigit
-
-	[ -f "$file" ] || return $ui_err_notfile
-
-	lines=$(cat "$file" | wc -l)
-	((number > lines)) && return $ui_err_invlinec
-	((number == 0)) && return $ui_err_invlinec
+	((argc == 2)) || return "$ui_err_invargc"
+	ui_isdigit "$number" return "$ui_err_notdigit"
+	[ -f "$file" ] || return "$ui_err_invfile"
+	lines=$(wc -l < "$file")
+	((number > lines)) && return "$ui_err_invlinec"
+	((number == 0)) && return "$ui_err_invlinec"
 	return 0
 }
 
@@ -972,18 +948,15 @@ check_lineargs() {
 # The line of text will be echoed to stdout
 #
 ui_readline() {
-	local __line__
-	local stat
+	local -i line
 
-	check_lineargs $1 $2
-	stat=$?
-	[ $stat -eq 0 ] || return $stat
+	check_lineargs "$1" "$2" || return $?
 
-	awk -v __line__="$1" '{
-		if (NR == __line__) {
+	awk -v line="$1" '{
+		if (NR == line) {
 			print $0;
 		}
-	}' $2
+	}' "$2"
 	return 0
 }
 
@@ -1000,13 +973,13 @@ ui_readline() {
 # The line of text will be echoed to stdout
 #
 ui_readline_raw() {
-	local __line__
+	local -i line
 
-	awk -v __line__="$1" '{
-		if (NR == __line__) {
+	awk -v line="$1" '{
+		if (NR == line) {
 			print $0;
 		}
-	}' $2
+	}' "$2"
 	return 0
 }
 
@@ -1020,25 +993,28 @@ ui_readline_raw() {
 # $3 - file
 #
 ui_insertline() {
-	local lc=$(cat $3 | wc -l)
+	local -i lc
+	local -i line
+	local new_content
 
-	[ $# -eq 3 ] || return $ui_err_invargc
+	lc=$(wc -l < "$3")
 
-	ui_isdigit $1
-	[ $? -eq 0 ] || return $ui_err_notdigit
+	(($# == 3)) || return "$ui_err_invargc"
 
-	[ -f "$3" ] || return $ui_err_notfile
+	ui_isdigit "$1" || return "$ui_err_notdigit"
 
-	if [ $1 -gt $lc ]; then
-		echo "$2" >> $3
+	[ -f "$3" ] || return "$ui_err_invfile"
+
+	if (($1 > lc)); then
+		echo "$2" >> "$3"
 	else
-		awk -v line=$1 -v new_content="$2" '{
+		awk -v line="$1" -v new_content="$2" '{
 			if (NR == line) {
 				print new_content;
 			}
 			print $0;
-		}' $3 > $ui_tempfile
-		mv -f $ui_tempfile "$3"
+		}' "$3" > "$ui_tempfile"
+		mv -f "$ui_tempfile" "$3"
 	fi
 }
 
@@ -1049,25 +1025,23 @@ ui_insertline() {
 # $2 - file
 #
 ui_deleteline() {
-	local stat
+	local -i line
 
-	check_lineargs $1 $2
-	stat=$?
-	[ $stat -eq 0 ] || return $stat
+	check_lineargs "$1" "$2" || return $?
 
-	awk -v line=$1 '{
+	awk -v line="$1" '{
 		if (NR != line) {
 			print $0;
 		}
-	}' $2 > $ui_tempfile
-	mv -f $ui_tempfile $2
+	}' "$2" > "$ui_tempfile"
+	mv -f "$ui_tempfile" "$2"
 }
 
 # ui_toggle - toggle a boolean value
 #
 ui_toggle() {
 	local boolean=${!1}
-	$boolean && eval $1=false || eval $1=true
+	if $boolean; then eval "$1"=false; else eval "$1"=true; fi
 }
 
 # ui_cycle_state - cycle through the states of a variable
@@ -1089,7 +1063,7 @@ ui_cycle_state() {
 #
 ui_digit2bool() {
 	local boolean=${!1}
-	$boolean && eval $1=true || eval $1=false
+	if $boolean; then eval "$1"=true; else eval "$1"=false; fi
 }
 
 # ui_strindex string-1 string-2
@@ -1099,7 +1073,7 @@ ui_digit2bool() {
 #
 ui_strindex() {
 	local x="${1%%$2*}"
-	[[ $x = $1 ]] && echo -1 || echo ${#x}
+	[[ $x = "$1" ]] && echo -1 || echo ${#x}
 }
 
 # ui_getlastch char string
@@ -1148,20 +1122,23 @@ ui_getlastch() {
 # returns 0 if found, nonzero if not found
 #
 ui_inarray() {
-	local i
-	local j=0
-	local ary=(${!2})
+	local -i index="$1"
+	local -a ary=("${!2}")
+	local -i i
+	local -i j=0
 
-	for i in ${ary[@]}; do
-		if [ $i -eq $1 ]; then
+	(($# == 3)) && local -i -n jdx="$3"
+
+	for i in "${ary[@]}"; do
+		if ((i == index)); then
 
 			# If there is a third argument, then give it the value
 			# of the current index, j.
 			#
-			[ $# -eq 3 ] && eval $3=$j
+			(($# == 3)) && jdx="$j"
 			return 0
 		fi
-		let j++
+		((j++))
 	done
 
 	return 1
@@ -1195,20 +1172,21 @@ ui_inarray() {
 #   2
 #
 ui_nextinarray() {
-	local i
-	local j=0
-	local ary=(${!2})
+	local -i index="$1"
+	local -a ary=("${!2}")
+	local -i -n jdx="$3"
+	local -i i
 
-	for i in ${ary[@]}; do
-		if [ $i -gt $1 ]; then
-			eval $3=$j
+	jdx=0
+
+	for i in "${ary[@]}"; do
+		if ((i > index)); then
 			return 0
 		fi
-		let j++
+		((jdx++))
 	done
 
-	j=$((${#ary[@]} - 1 ))
-	eval $3=$j
+	jdx=$((${#ary[@]} - 1 ))
 	return 1
 }
 
@@ -1250,7 +1228,7 @@ ui_isxdigit() {
 # and "-", and the delimiters will be replaced by spaces.
 #
 ui_strtok() {
-	IFS="$2" read -r -a $3 <<< "$1"
+	IFS="$2" read -r -a "$3" <<< "$1"
 }
 
 #===  FUNCTION  ================================================================
@@ -1277,11 +1255,11 @@ ui_trunc_string() {
 
 ui_press_any() {
 	echo -en "${MNU}Press any key to continue ...$OFF "
-	read -n1
+	read -r -n1
 }
 
 ui_press_any_ctlc() {
 	echo -en "${MNU}Press any key to continue or Ctl-C to exit ...$OFF "
-	read -n1
+	read -r -n1
 	echo
 }
