@@ -17,16 +17,10 @@
 #
 # Calls on the following external scripts.
 #
-# ./githead
 # ./patcmp
 # ./patbatcmp
 # ./patbatcmpmgr
 #
-# Requires to run ...
-#
-# ./lib/*.source
-# ./.data/patchreview.prj
-# ./man/patchreview.man
 
 #######################################
 # Default file locations
@@ -35,7 +29,7 @@
 # Whatever directory this script and its companions are located in
 # must be in the executable path.
 #
-# export PATH=$PATH:MYDIR
+# export PATH=$PATH:$MYDIR
 #
 # Where MYDIR is the directory in which this script and its companions
 # are located.
@@ -58,7 +52,7 @@ source "$MYLIB"/config-manager.source
 # Functions
 #########################################
 
-function init_booleans {
+init_booleans() {
 	# Only these two booleans are inited to true at the
 	# beginning of every invocation of the script.
 	#
@@ -75,7 +69,7 @@ function init_booleans {
 # Read the values of the program flow control booleans from the
 # config file.
 #
-function get_booleans {
+get_booleans() {
 	# echo "patchreview::get_booleans()"
 	local bool
 	for bool in \
@@ -95,7 +89,7 @@ function get_booleans {
 # Write the current values of the program flow booleans into the
 # config file.
 #
-function set_booleans {
+set_booleans() {
 	# echo "patchreview::set_booleans()"
 	local bool
 
@@ -112,7 +106,7 @@ function set_booleans {
 	return 0
 }
 
-function clean_dir {
+clean_dir() {
 	local delquery="Are you sure you want to delete the contents of:"
 	local response=false
 
@@ -566,7 +560,7 @@ init_files() {
 #
 init_loopvars() {
 	cfg_read_configfile
-	[ "$opmode" -eq $opmode_mr ] && b_mrflag=true
+	((opmode == opmode_mr)) && b_mrflag=true
 	init_files
 }
 
@@ -576,7 +570,7 @@ init_loopvars() {
 # presented in the primary and configuration menus, and to call the
 # menu_parser function in a loop.
 #
-function menu_loop {
+menu_loop() {
 
 	get_booleans
 	init_loopvars
@@ -591,7 +585,7 @@ function menu_loop {
 		menu_parser
 		stat=$?
 		# echo "menu_parser_stat: $stat"
-		[ $stat -eq $rc_run ] && break
+		((stat == rc_run)) && break
 	done
 	return $stat
 }
@@ -678,7 +672,7 @@ main_loop() {
 	##############################################
 
 	while true; do
-		[ $stat -ne $rc_run ] && menu_loop
+		((stat != $rc_run)) && menu_loop
 		# menu_stat=$?
 		# echo "menu_loop_stat: $menu_stat"
 
@@ -692,13 +686,13 @@ main_loop() {
 			$b_fmt_upstream && format_upstream_patches
 		fi
 
-		if [ "$applymode" -ne $applymode_off ]; then
+		if ((applymode != applymode_off)); then
 			exec_apply_patches && continue
 		fi
 
 		$b_seekfixes && seek_missing_fixes
 
-		if [ "$cmpmode" -ne $cmpmode_off ]; then
+		if ((cmpmode != cmpmode_off)); then
 			compare_patches || continue
 			$b_mrflag && query_acknack
 			stat=$?
@@ -931,7 +925,7 @@ EOF
 main() {
 	local argc=$#
 
-	if [ $argc -eq 0 ]; then
+	if ((argc == 0)); then
 		check_env
 		git_get_lasttag lasttag "$last_tag_file"
 		main_loop

@@ -168,7 +168,7 @@ control_c() {
 }
 
 ################  SANITY TEST DEBUGER  ###########################
-function test_sanity { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
+test_sanity() { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
 ###################################################################
 
 set_cfg_item() {
@@ -453,7 +453,7 @@ test_editor() {
 	return 0
 }
 
-function set_editor {
+set_editor() {
 	local choice
 	echo -e "${INF}Select one of these currently supported diff editors.$OFF"
 	echo -e "$MNU 1 -$OFF vimdiff"
@@ -631,7 +631,7 @@ EOF
 #
 # Returns the status of the executed command string.
 #
-function exec_boolean {
+exec_boolean() {
 	local argc=$#
 	local argv="$*"
 	local stat
@@ -660,7 +660,7 @@ function exec_boolean {
 #	outdir
 #	us_commits
 #
-function replace_patch {
+replace_patch() {
 	local patnum
 	local commit
 	local patcnt
@@ -683,7 +683,7 @@ function replace_patch {
 # GLOBALS
 #	commit_msg_file
 #
-function create_commit_msg {
+create_commit_msg() {
 	local diffstr="diff "
 	local subjstr="Subject: "
 	local found_subj=false
@@ -855,7 +855,7 @@ map_us2bp() {
 #	startpat      - patch from which to start the apply
 #	valpatchlist  - created by call to lib/patch-utils::create_patchlist
 #
-function apply_patches {
+apply_patches() {
 	# echo -e "\n$BLD\0patch-common::apply_patches()$OFF"
 	local stat=0
 	local patchlist
