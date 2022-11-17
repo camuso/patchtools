@@ -285,8 +285,8 @@ set_remotedir() {
 
 	if [ -n "$remote_dir" ]; then
 		echo -e "$INF Your current remote directory is: $STA$remote_dir"
-		prstr="$INF Enter a new remote directory or press " \
-			"$qstr$INF to leave it unchanged : $OFF"
+		prstr="$INF Enter a new remote directory or press "
+		prstr+="$qstr$INF to leave it unchanged : $OFF"
 		b_exists=true
 	else
 		prstr="$INF Enter a new remote directory : $OFF"
