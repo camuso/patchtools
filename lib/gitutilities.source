@@ -8,8 +8,37 @@
 declare gitutilities_loaded=true
 declare scratchdir=/dev/shm
 
-[ "$ui_loaded" ]         || source $MYLIB/ui.source
-[ "$patchutils_loaded" ] || source $MYLIB/patch-utils.source
+[ "$MYDIR" ] || {
+	declare MyDIR=
+	MYDIR="$(dirname "$(which "$(basename "$0")")")"
+}
+
+[ "$MYLIB" ]             || declare MYLIB="$MYDIR"/lib
+[ "$ui_loaded" ]         || source "$MYLIB"/ui.source
+[ "$patchutils_loaded" ] || source "$MYLIB"/patch-utils.source
+
+# return_msg - uses exit messages from lib/ui.source
+#
+gut_retmsg() {
+	local -i msgindex="$1"
+	local artifact="$2"
+	local msg
+
+	msg="$WRN${ui_err_msg[msgindex]}$OFF"
+	[ -n "$artifact" ] && msg="$MNU$artifact $msg"
+	echo -e "$msg"
+}
+
+gut_exit() { gut_retmst "$1" "$2"; exit "$1"; }
+
+gut_chdir() {
+	local dir="$1"
+	local dirstr
+
+	if [ "$dir" == "-" ]; then dirstr="cd -"; else dirstr="$dir"; fi
+
+	cd "$dir" > /dev/null || gut_exit "$ui_err_invdir" "$dirstr"
+}
 
 # git_commit2patchset
 # 	creates a patchset from contiguous commits starting with the most
@@ -19,12 +48,12 @@ declare scratchdir=/dev/shm
 # $2 - destination directory for the patch set.
 # $3 - optional commit to start from (most recent of the set)
 #
-function git_commit2patchset {
+git_commit2patchset() {
 	local patchcount=$1
 	local destdir="$2"
 	local commit="$3"
 
-	git format-patch --no-renames -s -n$patchcount "$commit" -o "$destdir"
+	git format-patch --no-renames -s -n"$patchcount" "$commit" -o "$destdir"
 	return 0
 }
 
@@ -37,21 +66,25 @@ function git_commit2patchset {
 # $2 - commit hash
 # $3 - destination directory
 #
-function git_commit2patch {
+git_commit2patch() {
 	local index=$1
 	local commit=$2
 	local destdir=$3
-	local pfx=$(printf "%04d" $index)
+	local pfx
 
-	if [ ${#commitnum} -gt 1 ]; then
-		git format-patch -1 -k --no-renames --start-number $index $commit -o $destdir
+	pfx=$(printf "%04d" "$index")
+
+	if ((${#commitnum} > 1)); then
+		git format-patch -1 -k --no-renames --start-number "$index" \
+			"$commit" -o "$destdir" \
+		||
 
 		# If we could not format the patch, then create an empty
 		# patch with the bad patch number in it.
 		#
-		[ $? -eq 0 ] || echo "invalid commit: $commit" > $destdir/"$pfx-inv.patch"
+		echo "invalid commit: $commit" > "$destdir/$pfx-inv.patch"
 	else
-		echo -n "" > $destdir/"$pfx-no.patch"
+		echo -n "" > "$destdir/$pfx-no.patch"
 	fi
 }
 
@@ -71,12 +104,12 @@ function git_commit2patch {
 # $2 - destination directory for the patch set.
 # $3 - optional verbose true or false
 #
-function git_file2patchset {
+git_file2patchset() {
 	$ui_b_debug && echo -e "${STA}git_file2patchset$OFF"
 	local commitsfile="$1"
 	local destdir="$2"
-	[ $# -eq 3 ] && b_verbose=$3 || b_verbose=true
-	local patchcount=$(cat "$commitsfile" | wc -l)
+	local argc=$#
+	local patchcount
 	local commit=""
 	local commitnum=0
 	local index=1
@@ -84,61 +117,68 @@ function git_file2patchset {
 	local pad=
 	local remotearray=()
 	local outline
-	local banner=\
-""$INF"\
-Formatting $STA$patchcount$INF patches from $STA$commitsfile$INF into \
-$STA$destdir$OFF"
+	local banner
+	local notfound
+	local escnt
 
-	local notfound=\
-"was not found in any of the upstream repos in your .git/config file"
-	local escnt=$(((${#STA} * 3) +(${#INF} * 3) + ${#OFF}))
+	if ((argc == 3)); then b_verbose=$3; else b_verbose=true; fi
 
-
-	if [ $patchcount -eq 0 ]; then
+	patchcount=$(wc -l < "$commitsfile")
+	if ((patchcount == 0)); then
 		echo
-		echo -e ""$WRN"File "$STA""$commitsfile""$WRN" is empty.$OFF"
+		echo -e "${WRN}File $STA$commitsfile$WRN is empty.$OFF"
 		echo
-		[ $# -eq 3 ] && eval $3=$patchcount
 		return 1
 	fi
 
-	pad=$(ui_putnchar '=' $(( ${#banner} - $escnt )))
+	banner="${INF}Formatting $STA$patchcount$INF patches from "
+	banner+="$STA$commitsfile$INF into $STA$destdir$OFF"
+
+	notfound="was not found in any of the upstream repos in "
+	notfound+="your .git/config file"
+
+	escnt=$(( (${#STA} * 3) + (${#INF} * 3) + ${#OFF} ))
+
+
+	pad="$(ui_putnchar '=' $(( ${#banner} - escnt )))"
 	echo -e "$banner\n$INF$pad$OFF"
 	$verbose || echo
 
-	while read line; do
+	while read -r line; do
 		[ "${line:0:1}" == "#" ] && continue
-		commit=$(echo $line | cut -d' ' -f1 | tr -dc "[[:xdigit:]]")
-		commitnum=$(echo $commit | tr -s 0)
+		commit=$(echo "$line" | cut -d' ' -f1 | tr -dc "[:xdigit:]")
+		commitnum=$(echo "$commit" | tr -s 0)
 		pfx=$(printf "%04d" $index)
 
-		if [[ 16#${commitnum} -eq 0 ]]; then
+		if (( 16#${commitnum} == 0)); then
 			outline="No upstream commit detected for patch $index."
-			echo "$outline" > $destdir/"$pfx-nocommit.patch"
+			echo "$outline" > "$destdir/$pfx-nocommit.patch"
 		else
-			if git show $commit > /dev/null 2>&1; then
+			if git show "$commit" > /dev/null 2>&1; then
 				outline=$(git format-patch -1 -k \
-					--start-number $index $commit -o $destdir)
+					--start-number "$index" "$commit" -o "$destdir")
 			else
 				# If we could not format the patch, then create an empty
 				# patch with the bad patch number in it.
 				#
 				create_remote_array remotearray
-				echo "Commit $commit" > $destdir/"$pfx-notfound.patch"
-				echo "$notfound" >> $destdir/"$pfx-notfound.patch"
-				echo >> $destdir/"$pfx-notfound.patch"
-				show_remotes >> $destdir/"$pfx-notfound.patch"
+				echo "Commit $commit" > "$destdir/$pfx-notfound.patch"
+				echo "$notfound" >> "$destdir/$pfx-notfound.patch"
+				echo >> "$destdir/$pfx-notfound.patch"
+				show_remotes >> "$destdir/$pfx-notfound.patch"
 				outline="No upstream found for $commit"
 			fi
 		fi
 
-		$b_verbose && echo $outline || {
+		if $b_verbose; then
+			echo "$outline"
+		else
 			ui_clearline
-			echo -n $outline
-		}
+			echo -n "$outline"
+		fi
 
-		let index++
-	done < $commitsfile
+		((index++))
+	done < "$commitsfile"
 
 	$b_verbose || echo
 	return 0
@@ -147,7 +187,9 @@ $STA$destdir$OFF"
 # git_setsubjectprefix - set the subject prefix in .git/config
 #
 git_setsubjectprefix() {
-	local newpfx="$(git config format.subjectprefix)"
+	local newpfx
+
+	newpfx="$(git config format.subjectprefix)"
 
 	echo -e \
 "Just press $BLD\0ENTER$OFF to leave the current subject prefix unchanged."
@@ -160,13 +202,17 @@ git_setsubjectprefix() {
 #
 # $1 - query, ask user if he wants to change the prefix
 #
-function git_getsubjectprefix {
-	local newpfx="$(git config format.subjectprefix)"
+git_getsubjectprefix() {
+	local newpfx=
 	local b_ans=true
 	local b_query=false
+
 	[ "$1" == "query" ] && b_query=true
+
+	newpfx="$(git config format.subjectprefix)"
+
 	while true; do
-		echo -e "Current subject prefix: "$attr_bold""$newpfx""$attr_OFF""
+		echo -e "Current subject prefix: $STA$newpfx$OFF"
 		$b_query && getyn "Change subject prefix?" b_ans
 		if $b_ans; then
 			getuser "New prefix: " newpfx
@@ -178,39 +224,6 @@ function git_getsubjectprefix {
 	done
 }
 
-# git_repo2commitsfile
-# 	create a file containing a list of commits from consecutive commits
-#	in a git repo.
-#
-# Unless the user supplies an option, only the short form hashes will be
-# written to the file.
-#
-# $1 - path to destination file
-# $2 - Number of commits to format, before and including the most recent.
-# $3 - Most recent commit in the set. Default is top of the tree, if empty.
-# $4 - optional argument - "long" for long hash, short is the default.
-#
-# returns - 128 if $2 is an invalid commit.
-#         -   1 if $3 is an invalid option
-#         -   0 if all is well.
-#
-function git_repo2commitsfile {
-	local file=$1
-	local count=$2
-	local lastcommit=$3
-	local hashfmt_option=$4
-	local hashfmt="short"
-
-	if [ "$hashfmt_option" ]; then
-		[ "$hashfmt_option" == "long" ] && hashfmt="long"
-	fi
-
-	[ "$hashfmt" == "short" ] && git log --reverse -n$2 --oneline $3 > $file
-	[ "$hashfmt" == "long" ] && git log --reverse -n$2 --pretty=oneline $3 > $file
-
-	return $?
-}
-
 # git_excisecommit - excise the commit hash from the line
 #
 # If there appears to be more than one hash on the line, just take the
@@ -219,11 +232,11 @@ function git_repo2commitsfile {
 # $1 - the line to be grep'd
 # $2 - the size of the hash (40 or 7,40)
 #
-function git_excisecommit {
+git_excisecommit() {
 	local line="$1"
 	local hashsize="$2"
 
-	echo "$line" | egrep -o "\b[0-9a-f]{"$hashsize"}\b" | head -1
+	grep -E -o "\b[0-9a-f]{$hashsize}\b" <<< "$line"| head -1
 }
 
 # extract_subject - get the subject from the subject line of the patch
@@ -239,10 +252,12 @@ function git_excisecommit {
 #
 extract_subject() {
 	local file="$1"
-	local subject=$(grep -n -m1 'Subject: ' $file)
-	local subline=$(echo "$subject" | cut -d':' -f1)
+	local subject
+	local subline
 	local subext=
-	local pos
+
+	subject=$(grep -n -m1 'Subject: ' "$file")
+	subline=$(echo "$subject" | cut -d':' -f1)
 
 	# Remove the line number from the grep of the subject
 	subject=$(echo "$subject" | cut -d':' -f2-)
@@ -252,10 +267,10 @@ extract_subject() {
 	# not begin with a white space character, then it is not a part
 	# of the subject line, so zero it.
 	#
-	subext=$(ui_readline $((subline + 1)) $file)
+	subext=$(ui_readline $((subline + 1)) "$file")
 	[[ "${subext:0:1}" =~ [[:space:]] ]] || subext=
 
-	echo "$subject""$subext"
+	echo "$subject$subext"
 }
 
 # validate_commit - check the hash for a repo and congruent subject
@@ -277,20 +292,20 @@ extract_subject() {
 #	128 - if invalid commit (from 'git log')
 #
 validate_commit() {
-	local commit
-	local rhsubj
-	local valfuzz=1   # default fuzz level is case-insensitive
-	local ussubj=
-	local ussubary=()
-	local rhsubary=()
-	local delimiters=" "
-	local stat
-	local index
-	local ustoks
-	local rhtoks
-	local rhindex
-	local b_nocase=false
-	local updir=
+	local    commit
+	local    rhsubj
+	local -i valfuzz=1   # default fuzz level is case-insensitive
+	local    ussubj=
+	local -a ussubary=()
+	local -a rhsubary=()
+	local    delimiters=" "
+	local -i stat
+	local -i index
+	local -i ustoks
+	local -i rhtoks
+	local -i rhindex
+	local    b_nocase=false
+	local    updir=
 
 	# Parse the options
 	while [ "${1:0:1}" == "-" ]; do
@@ -324,15 +339,16 @@ validate_commit() {
 
 	# Get the upstream commit subj line or return the error.
 	# Send error output to /dev/null
-	[ -n "$updir" ] && cd $updir
-	ussubj=$(git log --oneline -n1 $commit 2> /dev/null)
+	[ -n "$updir" ] && gut_chdir "$updir"
+	ussubj="$(git log --oneline -n1 "$commit" 2> /dev/null)"
 	stat=$?
-	[ -n "$updir" ] && cd - > /dev/null 2>&1
 
-	[ $stat -eq 0 ] || return $stat
+	[ -n "$updir" ] && gut_chdir -
+
+	((stat == 0)) || return $stat
 
 	# strip the leading commit hash off the 'git log --oneline'
-	ussubj=$(echo $ussubj | cut -d' ' -f2-)
+	ussubj=$(echo "$ussubj" | cut -d' ' -f2-)
 
 	# Tokenize the subject strings.
 	ui_strtok "$ussubj" "$delimiters" ussubary
@@ -340,11 +356,11 @@ validate_commit() {
 
 	# strip out extra space chars and nulls by redeclaring the array
 	# contents without double quotes.
-	ussubary=( ${ussubary[@]} )
-	rhsubary=( ${rhsubary[@]} )
+	ussubary=( "${ussubary[@]}" )
+	rhsubary=( "${rhsubary[@]}" )
 
 	# Remove the word "Subject" in the rhsubary if it's there.
-	[ "${rhsubary[0]}" == "Subject" ] && rhsubary=( ${rhsubary[@]:1} )
+	[ "${rhsubary[0]}" == "Subject" ] && rhsubary=( "${rhsubary[@]:1}" )
 
 	# Get the number of elements in each array.
 	ustoks=${#ussubary[@]}
@@ -353,7 +369,7 @@ validate_commit() {
 	# If there are more tokens in the rhsubary, it's almost 100% certain
 	# the rh maintainer added stuff to the beginning of the summary line,
 	# so let's move beyond that.
-	[ $rhtoks -gt $ustoks ] && rhsubary=( ${rhsubary[@]:((rhtoks - ustoks))} )
+	((rhtoks > ustoks)) && rhsubary=( "${rhsubary[@]:((rhtoks - ustoks))}" )
 
 #echo -e "delimiters: \"$delimiters\""
 #echo "rhsubary: "${rhsubary[@]}""
@@ -368,31 +384,31 @@ validate_commit() {
 	# ussubary. If we can't find any, return 1.
 	#
 #echo "ussubary[0]: |${ussubary[0]}|"
-	for ((index = 0; index < $rhtoks; ++index)); do
-#echo "rhsubary[i]: |${rhsubary[$index]}|[$index]"
-		[ "${rhsubary[$index]}" == "${ussubary[0]}" ] && break
+	for ((index = 0; index < rhtoks; ++index)); do
+#echo "rhsubary[i]: |${rhsubary[index]}|[index]"
+		[ "${rhsubary[index]}" == "${ussubary[0]}" ] && break
 	done
 
 	# If we loop through the whole rhsubary without finding a match,
 	# return 1.
 	#
-	[ $index -gt $rhtoks ] && return 1
+	((index > rhtoks)) && return 1
 	rhtoks=$((rhtoks - index))
 	rhindex=$((index))
 
 	# Now see if the arrays are the same from here out.
-	for ((index = 1; index < $rhtoks; ++index)); do
+	for ((index = 1; index < rhtoks; ++index)); do
 #echo "rh tok: ${rhsubary[$rhindex + $index]}"
 #echo "us tok: ${ussubary[$udex]}"
 
-		[[ "${rhsubary[$rhindex + $index]}" == "${ussubary[$index]}" ]] || break
+		[[ "${rhsubary[rhindex + index]}" == "${ussubary[index]}" ]] || break
 	done
 #echo "index: $index  rhtoks: $rhtoks"
 
 	# Restore case sensitivity.
 	$b_nocase && shopt -u nocasematch
 
-	[ $index -eq $rhtoks ] && return 0 || return 1
+	if ((index == rhtoks)); then return 0; else return 1; fi
 }
 
 # git_comment2commitsfile
@@ -411,36 +427,33 @@ validate_commit() {
 # -f - valfuzz OPTIONAL default is 1
 # -q - b_quiet OPTIONAL default is false
 #
-function git_comment2commitsfile {
+git_comment2commitsfile() {
 	# echo -e "${MNU}git_comment2commitsfile$OFF"
-	local srcdir=
-	local commitsfile=
-	local hashsize=40
-	local valfuzz=1
-	local srcfile=
-	local line=
-	local index=1
-	local jdex
-	local patchlist=
-	local cmtindex=1
-	local linenumber=0
-	local rawcmtarray=()
-	local commitarray=()
-	local sorted
-	local _40digit=true
-	local valpatchlist
-	local filecount
-	local subject
-	local commit
-	local stat=0
-	local banner=
-	local b_quiet=false
-	local opt
-	local remdir=
+	local    srcdir=
+	local    commitsfile=
+	local -i hashsize=40
+	local -i valfuzz=1
+	local    srcfile=
+	local    line=
+	local -i index=1
+	local    patchlist=
+	local -i cmtindex=1
+	local -i linenumber=0
+	local -a rawcmtarray=()
+	local -a commitarray=()
+	local    valpatchlist
+	local -i filecount
+	local    subject
+	local    commit
+	local -i stat=0
+	local    banner=
+	local    b_quiet=false
+	local    opt
+	local    remdir=
 
 	while [ -n "$1" ]; do
 		opt="$1"
-		case $opt in
+		case "$opt" in
 			"-i" ) srcdir="$2"; shift 2;;
 			"-o" ) commitsfile="$2"; shift 2;;
 			"-h" ) hashsize=$2; shift 2;;
@@ -450,21 +463,21 @@ function git_comment2commitsfile {
 		esac
 	done
 
-	[ -d $srcdir ] || return $ui_err_invdir
-	[ -f $commitsfile ] || return $ui_err_invfile
+	[ -d "$srcdir" ] || return $ui_err_invdir
+	[ -f "$commitsfile" ] || return $ui_err_invfile
 
-	> $commitsfile
+	: > "$commitsfile"
 
-	patchlist=$(ls $srcdir/*.patch | sort -V)
+	patchlist="$(find "$srcdir" -maxdepth 1 -name "*.patch" | sort -V)"
 	patchtotal=$(wc -w <<< "$patchlist")
 	create_patchlist "$patchlist" valpatchlist
 	filecount=$( wc -w <<< "$valpatchlist")
 
 	banner="$patchtotal Patches in $indir"
-	pad=$(ui_putnchar '=' ${#banner})
+	pad="$(ui_putnchar '=' ${#banner})"
 	echo -e "$INF$banner\n$pad$OFF"
 
-# while read line; do  echo $line; done; <<< "$valpatchlist"
+# while read -r line; do  echo $line; done; <<< "$valpatchlist"
 # ui_press_any
 
 	for srcfile in $valpatchlist; do
@@ -474,10 +487,10 @@ function git_comment2commitsfile {
 		# Else, print every file on a newline.
 		$b_quiet && {
 			ui_clearline
-			echo -n $srcfile
-		} || echo $srcfile
+			echo -n "$srcfile"
+		} || echo "$srcfile"
 
-		subject=$(extract_subject $srcfile)
+		subject="$(extract_subject "$srcfile")"
 
 		linenumber=0
 		commitarray=()
@@ -489,27 +502,27 @@ function git_comment2commitsfile {
 		# Skip over reverted commits and use sort -u to squeeze out
 		# duplicates
 		#
-		rawcmtarray=($(egrep '(commit|cherry)' $srcfile \
-			| egrep -vi 'revert' \
-			| egrep -o "\b[0-9a-f]{$hashsize}\b" \
-			| sort -u))
+		rawcmtarray=("$(grep -E '(commit|cherry)' "$srcfile" \
+			| grep -E -vi 'revert' \
+			| grep -E -o "\b[0-9a-f]{$hashsize}\b" \
+			| sort -u)")
 
 		cmtindex=0
 #set -x
 		for commit in "${rawcmtarray[@]}"; do
 #echo "commit: $commit"
-			if [ ${#rawcmtarray[@]} -eq 1 ]; then
-				[ -n "$remdir" ] && cd "$remdir"
-				git log --oneline -n1 $commit > /dev/null 2>&1
+			if ((${#rawcmtarray[@]} == 1)); then
+				[ -n "$remdir" ] && gut_chdir "$remdir"
+				git log --oneline -n1 "$commit" > /dev/null 2>&1
 				stat=$?
-				[ -n "$remdir" ] && cd - > /dev/null 2>&1
+				[ -n "$remdir" ] && gut_chdir "$remdir"
 			else
 				# If there's more than one commit cited in the
 				# commit log, and more than one of them can be
 				# found upstream, minimize the user's pain by
 				# matching the subject line of the RHEL patch
 				# to the summary line of the upstream commit.
-				validate_commit -f $valfuzz -u $remdir $commit "$subject"
+				validate_commit -f "$valfuzz" -u "$remdir" "$commit" "$subject"
 				stat=$?
 			fi
 
@@ -520,13 +533,13 @@ function git_comment2commitsfile {
 				# valid commit but subject doesn't match summary
 				# Create an array of these to present if we can't
 				# find a match for the summary.
-				1   ) commitarray[$cmtindex]=$commit
-				      let cmtindex++
+				1   ) commitarray[cmtindex]="$commit"
+				      ((cmtindex++))
 				      ;;
 				# commit found and subject matches summary
 				# We're done. No need to present a list to the
 				# user.
-				0   ) commitarray=( $commit )
+				0   ) commitarray=( "$commit" )
 				      break
 				      ;;
 			esac
@@ -539,18 +552,18 @@ function git_comment2commitsfile {
 			echo -e  "$STA $index $INF \n"
 			echo -e  "Please choose one of the following.\n"
 # set -x
-			[ -n "$remdir" ] && cd "$remdir"
+			[ -n "$remdir" ] && gut_chdir "$remdir"
 
 			for ((cmtindex=0; cmtindex < ${#commitarray[@]}; cmtindex++))
 			do
-				cmtstr=$(git log --oneline -n1 ${commitarray[$cmtindex]})
+				cmtstr="$(git log --oneline -n1 "${commitarray[$cmtindex]}")"
 				printf "${MNU}%d${INF} - $cmtstr$OFF\n" $((cmtindex +1))
 			done
 
-			[ -n "$remdir" ] && cd - > /dev/null 2>&1
+			[ -n "$remdir" ] && gut_chdir "$remdir"
 			echo
 
-			loop_range 1 $cmtindex linenumber
+			loop_range 1 "$cmtindex" linenumber
 		else
 			linenumber=1
 		fi
@@ -559,15 +572,15 @@ function git_comment2commitsfile {
 		commit=${commitarray[$cmtindex]}
 
 		if [ -n "$commit" ]; then
-			echo "$commit $index/$filecount" >> $commitsfile
+			echo "$commit $index/$filecount" >> "$commitsfile"
 		else
 			# If we didn't get a commit in this srcfile, then
 			# indicate that in the commitsfile by printing 40
 			# zeroes where the commit number should be.
 			#
-			printf "%040d $index/$filecount\n" 0 >> $commitsfile
+			printf "%040d $index/$filecount\n" 0 >> "$commitsfile"
 		fi
-		let index++
+		((index++))
 #set +x
 	done
 	$b_quiet && echo
@@ -585,16 +598,12 @@ function git_comment2commitsfile {
 # $1 - directory where the git-formatted patches were extracted
 # $2 - filename, including path, of the commits file.
 #
-function git_mailhead2commitsfile {
+git_mailhead2commitsfile() {
 	local srcdir="$1"
 	local commitsfile="$2"
 
-	cat /dev/null > $commitsfile
-	grep "From " $srcdir/*.patch | cut -d' ' -f2 >> $commitsfile
-}
-
-function git_invrepomsg {
-	echo -e ""$attr_bold""$PWD""$attr_OFF" is not a valid git repo\n"
+	cat /dev/null > "$commitsfile"
+	grep "From " "$srcdir"/*.patch | cut -d' ' -f2 >> "$commitsfile"
 }
 
 # git_checkrepo
@@ -605,8 +614,9 @@ function git_invrepomsg {
 # usage:
 # 	$(git_checkrepo) || echo "$PWD is not a valid git repo" || exit 1
 #
-function git_checkrepo {
-	[ -d .git ] && return 0 || return 1
+git_checkrepo() {
+	[ -d .git ] || gut_exit "$ui_err_norepo" "$PWD"
+	return 0
 }
 
 # git_get_lasttag <tagstr> [path]
@@ -627,24 +637,24 @@ function git_checkrepo {
 #
 git_get_lasttag() {
 
-	local _ltfile_="$2"
-	local _lasttag_
-	local _mypid_
+	local -n gut_lasttag="$1"
+	local ltfile="$2"
+	local mypid
 
-	[ -z "_ltfile_" ] && {
-		echo "git_get_lasttag: requires path to last tag file as 2nd arg"
+	[ -z "$ltfile" ] && {
+		echo -en "${MNU}git_get_lasttag${WRN}: "
+		echo -e  "requires path to last tag file as 2nd arg$OFF"
 		return 1
 	}
 
-	[ -f "$_ltfile_" ] && rm -f $_ltfile_
+	[ -f "$ltfile" ] && rm -f "$ltfile" > /dev/null 2>&1
 
-	echo -en ""$INF"Getting most recent git tag..$OFF"
-	git describe --tags --abbrev=0 > $_ltfile_ &
-	_mypid_=$!
-	ui_waitonproc $_mypid_ .1
-	_lasttag_=$(< $_ltfile_)
+	echo -en "${INF}Getting most recent git tag..$OFF"
+	git describe --tags --abbrev=0 > "$ltfile" &
+	mypid=$!
+	ui_waitonproc $mypid .1
+	gut_lasttag=$(< "$ltfile")
 	echo
-	eval $1="$_lasttag_"
 	return 0
 }
 
@@ -656,47 +666,43 @@ git_get_lasttag() {
 # usage:
 # 	local current_branch=$(git_getcurrentbranch)
 #
-function git_getcurrentbranch {
- 	git_checkrepo true
-	[ $? -eq 0 ] || exit 1
-	echo $(git branch | egrep \* | cut -d' ' -f2)
+git_getcurrentbranch() {
+ 	git_checkrepo
+	git branch | grep -E '^\*' | cut -d' ' -f2
 }
 
 # git_setbranch outdir
 #
 # $1 if it exists sets the outpath. Default is /dev/shm/branchlist
 #
-function git_setbranch {
-	local index=1
+git_setbranch() {
+	local -i argc=$#
+	local -i index=1
 	local line
-	local status=0
 	local gitbranch
 	local linenumber
 	local outpath="/dev/shm/branchlist"
 
-	[ $# -eq 1 ] && outpath="$1"
+	((argc == 1)) && outpath="$1"
 
-	git branch > $outpath
+	git branch > "$outpath"
 	echo
 	echo -e "$BLD$UND\0Change Current Branch$OFF\n"
 
-	while read line; do
-		printf "$BLD%2d$OFF  $line\n" $index
-		let index++
-	done < $outpath
+	while read -r line; do
+		printf "$BLD%2d$OFF  $line\n" "$index"
+		((index++))
+	done < "$outpath"
 
 	echo
-	loop_range_q 1 $((index - 1)) linenumber
-	status=$?
-	[ $status -ne 0 ] && return
+	loop_range_q 1 $((index - 1)) linenumber || return 1
 
-	gitbranch="$(ui_readline $linenumber $outpath | tr -d [\*" "])"
-	echo "git checkout "$gitbranch""
+	gitbranch="$(ui_readline $linenumber "$outpath" | tr -d [\*" "])"
+	echo "git checkout $gitbranch"
 	git am --abort 2>/dev/null
-	git checkout "$gitbranch" # 2>/dev/null
-	status=$?
+	git checkout "$gitbranch" || return $?
 	git log --oneline -n1
-	return $status
+	return 0
 }
 
 # find_fixes - grep for all the commits since the one passed as $1 where
@@ -716,7 +722,7 @@ function git_setbranch {
 #
 find_fixes () {
 	local commit_id="$1"
-	local tmpfil="$2"
+	local outfil="$2"
 	local remdir="$3"
 	local rembranch="$4"
 	local commit_info=
@@ -725,18 +731,18 @@ find_fixes () {
 
 	# cd to the remote repo directory
 	#
-	cd "$remdir"
+	gut_chdir "$remdir"
 
 	# get the author date, which is what is displayed in git-log output
-	commit_info=$(git log --pretty="%h|%ad" -1 "$commit_id" 2>/dev/null)
-	[ $? -eq 0 ] || return 1
+	commit_info="$(git log --pretty="%h|%ad" -1 "$commit_id" 2>/dev/null)" \
+		|| return 1
 	short_hash=$(echo "$commit_info" | awk -F "|"  ' { print $1 } ')
 	commit_date=$(echo "$commit_info" | awk -F "|"  ' { print $2 } ')
 
 
-	# Make the commit date the first line in the tmpfil
+	# Make the commit date the first line in the outfil
 	#
-	echo "$commit_date" > $tmpfil
+	echo "$commit_date" > "$outfil"
 
 	# use the date to do a git log --since=$commit_date and grep for Fixes?
 	# then look for short hash
@@ -745,11 +751,11 @@ find_fixes () {
 		--pretty='%h ("%s")' \
 		--since="$commit_date" \
 		--grep="Fixes: $short_hash" \
-		$rembranch >> $tmpfil
+		"$rembranch" >> "$outfil"
 
 	# Return to the original directory
 	#
-	cd - > /dev/null 2>&1
+	gut_chdir -
 }
 
 # extract_commitlog - extract the commit log from a patch
@@ -761,12 +767,12 @@ extract_commitlog() {
 	local patchfile="$1"
 	local outfile="$2"
 
-	> $outfile
+	: > "$outfile"
 
-	while read line; do
+	while read -r line; do
 		[ "${line:0:3}" == "---" ] && break
-		echo "$line" >> $outfile
-	done < $patchfile
+		echo "$line" >> "$outfile"
+	done < "$patchfile"
 }
 
 # parse_missingfix - parse the missing fix
@@ -793,8 +799,8 @@ parse_missingfix() {
 	local missing_file=$5
 	local mr_commitlog="$6"
 
-	local fix_id=$(echo "$fix_line" | awk ' { print $1 } ')
-	local currentbranch=$(git branch | egrep \* | cut -d' ' -f2)
+	local fix_id=
+	local currentbranch=
 	local missing="Missing Fix:"
 	local tskip="Intentionally Omitted Fix:"
 	local merged="$currentbranch already has Fix:"
@@ -804,11 +810,14 @@ parse_missingfix() {
 	local found_id=
 	local mypid=
 
+	fix_id="$(echo "$fix_line" | awk ' { print $1 } ')"
+	currentbranch="$(git branch | grep -E '^\*' | cut -d' ' -f2)"
+
 	# If the "missing" commit was intentionally omitted, print a message
 	# and return.
-	if cat $mr_commitlog | grep -i "omitted-fix" | grep "$fix_id" > /dev/null 2>&1; then
+	if grep -i "omitted-fix" "$mr_commitlog" | grep "$fix_id" > /dev/null 2>&1; then
 		echo -e "$INF$tskip $fix_line for $commitnum $OFF"
-		echo "$tskip $fix_line for $commitnum" >> $missing_file
+		echo "$tskip $fix_line for $commitnum" >> "$missing_file"
 		return 1
 	fi
 
@@ -817,7 +826,7 @@ parse_missingfix() {
 	if found=$(grep "$fix_id" "$commitsfile"); then
 		found_id=$(echo "$found" | cut -d' ' -f2)
 		echo -e "$INF$found_id $tokay $fix_line for $commitnum$OFF"
-		echo "$found_id $tokay $fix_line for $commitnum" >> $missing_file
+		echo "$found_id $tokay $fix_line for $commitnum" >> "$missing_file"
 		return 1
 	fi
 
@@ -825,15 +834,15 @@ parse_missingfix() {
 	# then the upstream commitid has already been applied.
 	# In that case, inform the user and return.
 	git log --since="$cmtdate" | grep -m1 "commit $fix_id" > /dev/null 2>&1 & mypid=$!
-	ui_waitonproc_tty $mypid .05
-	if [ $? -eq 0 ]; then
+
+	if ui_waitonproc_tty $mypid .05; then
 		echo -e "$INF$merged $fix_line for $commitnum$OFF"
-		echo "$merged $fix_line for $commitnum"  >> $missing_file
+		echo "$merged $fix_line for $commitnum"  >> "$missing_file"
 		return 1
 	else
 		# The missing fix is truly missing, so warn accordingly.
 		echo -e "$WRN$tmsg $MNU$fix_line$WRN for $STA$commitnum$OFF"
-		echo "$tmsg $fix_line for $commitnum" >> $missing_file
+		echo "$tmsg $fix_line for $commitnum" >> "$missing_file"
 		return 2
 	fi
 
@@ -871,41 +880,42 @@ check_fixes() {
 	local rembranch="$3"
 	local missing_file="$4"
 	local line=
-	local fixes=
 	local commitid=
 	local commit_fix=
-	local commit_fix_id=
 	local tmsg="WARNING: found missing fix "
-	local emsg="$WRN$tmsg$MNU"
 	local tskip="Intentionally Omitted Fix : "
-	local eskip="$MNU$tskip$STA"
 	local mypid
 	local fixfile="/dev/shm/fixfile"
-	local currentbranch=$(git branch | egrep \* | cut -d' ' -f2)
+	local currentbranch=
 	local verbose=true
 	local patch=
 	local mr_commitlog="/dev/shm/mr_commit.log"
 	local patch_filename=
 	local stat=0
 	local cmtdate=
+	local tmpcmtsfile="/dev/shm/tmpcmtsfile"
 
+	currentbranch=$(git branch | grep -E '^\*' | cut -d' ' -f2)
 	[ -n "$5" ] && verbose=$5
 
-	[ -f $commitsfile ] || {
-		echo -e ""$INF"Expecting file: $STA$commitsfile$OFF"
-		echo -en ""$INF"to contain the upstream commits to be checked, but"
+	[ -f "$commitsfile" ] || {
+		echo -e "${INF}Expecting file: $STA$commitsfile$OFF"
+		echo -en "${INF}to contain the upstream commits to be checked, but"
 		echo -e "$WRN it does not exist$OFF"
 		return 1
 	}
 
-	echo -e "\n"$INF"Looking for missing fixes in $STA$remdir : $rembranch$INF...$OFF"
+	echo -e "\n${INF}Looking for missing fixes in $STA$remdir : $rembranch$INF...$OFF"
 
-	while read line; do
+	: > "$tmpcmtsfile"
+	cp -f "$commitsfile" "$tmpcmtsfile" > /dev/null 2>&1
+
+	while read -r line; do
 		commitid=$(echo "$line" | cut -d' ' -f1)
 		patch=$(echo "$line" | cut -d' ' -f2)
 
 		# If the commitid is empty, get the next line in commitsfile.
-		(( 16#$commitid )) || continue
+		[ -z "$commitid" ] && continue
 
 		find_fixes "$commitid" "$fixfile" "$remdir" "$rembranch" & mypid=$!
 		ui_waitonproc_tty $mypid .05 "${INF}Checking $STA$patch${INF}: $commitid$OFF"
@@ -914,10 +924,10 @@ check_fixes() {
 		# The fixfile will always have at least one line in it. The first line
 		# is always the date of the commit being tested for fixes.
 		#
-		if [ -f "$fixfile" ] && [ $(cat "$fixfile" | wc -l) -gt 1 ]; then
+		if [ -f "$fixfile" ] && (($(wc -l < "$fixfile") > 1)); then
 
-			patch_filename=$(find_filebynumber "$patch" "$indir")
-			extract_commitlog "$indir/$patch_filename" "$mr_commitlog"
+			patch_filename="$(find_filebynumber "$patch" "$indir")"
+			extract_commitlog "$patch_filename" "$mr_commitlog"
 
 			cmtdate=
 			while read -r commit_fix; do
@@ -929,57 +939,57 @@ check_fixes() {
 					"$cmtdate" \
 					"$commit_fix" \
 					"$patch" \
-					"$commitsfile" \
+					"$tmpcmtsfile" \
 					"$missing_file" \
 					"$mr_commitlog" & mypid=$!
-				wait $mypid
-
-				[ $? -eq 0 ] || { stat=1; }
+				wait $mypid || stat=1
 
 			done < "$fixfile"
 		fi
 
 	done < "$commitsfile"
 
-	[ -f $fixfile ] && rm -f $fixfile
+	rm -f "$tmpcmtsfile" > /dev/null 2>&1
+
+	[ -f "$fixfile" ] && rm -f "$fixfile" > /dev/null 2>&1
 	return $stat
 }
 
 show_remotes() {
 	local line
-	local toks=()
-	local gitcfgarray=()
+	local -a toks=()
+	local -a gitcfgarray=()
 	local remoteurl=
 
-	gitcfgarray=$(grep -w '\[remote' .git/config)
-	while read line; do
+	gitcfgarray=("$(grep -w '\[remote' .git/config)")
+	while read -r line; do
 		ui_strtok "$line" '" ' toks
-		remote=$(echo ${toks[1]} | sed  's/]//')
+		remote=$(echo "${toks[1]}" | sed  's/]//')
 		remoteurl=$(show_remote_url "$remote")
 		echo -e "$remote"
 		echo -e "$remoteurl"
 		echo
-	done <<< "$gitcfgarray"
+	done <<< "${gitcfgarray[@]}"
 }
 
 create_remote_array() {
+	# echo "create_remote_array"
 	local line
-	local toks=()
-	local remarray=()
-	local gitcfgarray=()
+	local -a toks=()
+	local -n remarray="$1"
+	local -a gitcfgarray=()
 
-	gitcfgarray=$(grep -w '\[remote' .git/config)
-	while read line; do
+	gitcfgarray=("$(grep -w '\[remote' .git/config)")
+	while read -r line; do
 		ui_strtok "$line" '" ' toks
-		remote=$(echo ${toks[1]} | sed  's/]//')
-		remarray+=($remote)
-	done <<< "$gitcfgarray"
-
-	eval $1="(${remarray[@]})"
+		remote=$(echo "${toks[1]}" | sed  's/]//')
+		remarray+=("$remote")
+	done <<< "${gitcfgarray[@]}"
 }
 
 select_remrepo() {
-	local cur="${!1}"
+	# echo "select_remrepo"
+	local -n cur="$1"
 	local remotearray=()
 	local num_of_remotes
 	local stat
@@ -991,14 +1001,13 @@ select_remrepo() {
 		0 ) echo -e "${WRN}No remotes could be detected in .git/config.$OFF"
 		    return 1
 		    ;;
-		1 ) cur=${remotearray[0]}
+		1 ) cur="${remotearray[0]}"
 		    stat=0
 		    ;;
 		* ) select_from_array remotearray "remote repos" cur
 		    stat=$?
 	esac
 
-	eval $1=$cur
 	return $stat
 }
 
@@ -1020,7 +1029,7 @@ select_rembranch() {
 	brstr=$(git branch -r | grep "$repo" | cut -d'/' -f2)
 
 	# Filter out lines with '-> in them, because they are not branches
-	while read s; do [[ $s == *"->"* ]] || brancharray+=($s); done <<< "$brstr"
+	while read -r s; do [[ $s == *"->"* ]] || brancharray+=("$s"); done <<< "$brstr"
 
 	if [ ${#brancharray[@]} -gt 1 ]; then
 		select_from_array brancharray "remote branches in $remote_repo" cur
@@ -1030,6 +1039,6 @@ select_rembranch() {
 		echo -e "$INF Nothing else to choose from.$OFF"
 	fi
 
-	eval $2=$cur
+	eval "$2"="$cur"
 	return 0
 }
