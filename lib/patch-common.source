@@ -1514,7 +1514,7 @@ exec_patcmp() {
 	local quiet=
 
 	patchlist="$(ls -1 "$indir"/*.patch)"
-	if $b_verbose; then quiet='-v'; else quiet="-q"; fi
+	$b_verbose || quiet="-q"
 
 	# If we don't have a valid patch list, create one now.
 	#
@@ -1544,7 +1544,7 @@ exec_patcmp() {
 		patbatcmpmgr -X -P "$valpatchlist" \
 			-R "$indir" -U "$outdir" -o "$mmfile" -b "$tb"
 	fi
-	patcmp "$quiet" -b "$tb" -m "$mmfile" -u "$remote_dir" \
+	patcmp $quiet -b "$tb" -m "$mmfile" -u "$remote_dir" \
 		"$indir" "$outdir" "$editor" "$us_commits"
 
 	return $?
