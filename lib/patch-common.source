@@ -396,7 +396,7 @@ check_upstream() {
 # 	b_verbose
 #
 seek_missing_fixes() {
-	[ -d "$remote_dir" ]      || set_remotedir
+	[ -d "$remote_dir" ]    || set_remotedir
 	[ -n "$remote_repo" ]   || select_remrepo remote_repo
 	[ -n "$remote_branch" ] || select_rembranch "$remote_repo" remote_branch
 	[ -f "$us_commits" ]    || format_upstream_patches
@@ -1323,7 +1323,7 @@ format_upstream_patches() {
 		return 1
 	}
 
-	rm -vf "$outdir"/* > /dev/null 2>&1
+	rm -f "$outdir"/* > /dev/null 2>&1
 	: > "$us_commits"
 	echo
 
