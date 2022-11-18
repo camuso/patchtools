@@ -142,7 +142,7 @@ cat <<EOF
 EOF
 )
 	echo -e "$cleanstr"
-	loop_range_q 1 3 answer && return
+	loop_range_q 1 3 answer || return
 
 	case $answer in
 		1 ) clean_indir
