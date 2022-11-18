@@ -470,6 +470,7 @@ git_comment2commitsfile() {
 
 	patchlist="$(find "$srcdir" -maxdepth 1 -name "*.patch" | sort -V)"
 	patchtotal=$(wc -w <<< "$patchlist")
+
 	create_patchlist "$patchlist" valpatchlist
 	filecount=$( wc -w <<< "$valpatchlist")
 
@@ -477,18 +478,17 @@ git_comment2commitsfile() {
 	pad="$(ui_putnchar '=' ${#banner})"
 	echo -e "$INF$banner\n$pad$OFF"
 
-# while read -r line; do  echo $line; done; <<< "$valpatchlist"
-# ui_press_any
-
 	for srcfile in $valpatchlist; do
 
 		# If verbose is off, then just print each file on one
 		# line.
 		# Else, print every file on a newline.
-		$b_quiet && {
+		if $b_quiet; then
 			ui_clearline
 			echo -n "$srcfile"
-		} || echo "$srcfile"
+		else
+			echo "$srcfile"
+		fi
 
 		subject="$(extract_subject "$srcfile")"
 
@@ -498,31 +498,34 @@ git_comment2commitsfile() {
 
 		# The default number of digits for a commit hash is 40.
 		#
-		# Gather anything that looks like a commit into the rawcmtarray.
+		# Gather anything that looks like an upstream commit into the
+		# rawcmtarray.
 		# Skip over reverted commits and use sort -u to squeeze out
 		# duplicates
 		#
-		rawcmtarray=("$(grep -E '(commit|cherry)' "$srcfile" \
-			| grep -E -vi 'revert' \
+		mapfile -t rawcmtarray < \
+			<(grep -Ew '(commit|cherry-picked from)' "$srcfile" \
+			| grep -vi 'revert' \
 			| grep -E -o "\b[0-9a-f]{$hashsize}\b" \
-			| sort -u)")
+			| sort -u)
 
 		cmtindex=0
-#set -x
+
 		for commit in "${rawcmtarray[@]}"; do
-#echo "commit: $commit"
+# echo "commit: $commit"
 			if ((${#rawcmtarray[@]} == 1)); then
-				[ -n "$remdir" ] && gut_chdir "$remdir"
+				gut_chdir "$remdir"
 				git log --oneline -n1 "$commit" > /dev/null 2>&1
 				stat=$?
-				[ -n "$remdir" ] && gut_chdir "$remdir"
+				gut_chdir -
 			else
 				# If there's more than one commit cited in the
 				# commit log, and more than one of them can be
 				# found upstream, minimize the user's pain by
 				# matching the subject line of the RHEL patch
 				# to the summary line of the upstream commit.
-				validate_commit -f "$valfuzz" -u "$remdir" "$commit" "$subject"
+				validate_commit \
+					-f "$valfuzz" -u "$remdir" "$commit" "$subject"
 				stat=$?
 			fi
 
@@ -545,14 +548,14 @@ git_comment2commitsfile() {
 			esac
 
 		done
-# set +x
+
 		if [ ${#commitarray[@]} -gt 1 ]; then
 
-			echo -en "\n${INF}There is more than one commit mentioned in patch"
-			echo -e  "$STA $index $INF \n"
+			echo -en "\n${INF}There is more than one upstream commit "
+			echo -e  "mentioned in patch$STA $index $INF \n"
 			echo -e  "Please choose one of the following.\n"
 # set -x
-			[ -n "$remdir" ] && gut_chdir "$remdir"
+			gut_chdir "$remdir"
 
 			for ((cmtindex=0; cmtindex < ${#commitarray[@]}; cmtindex++))
 			do
@@ -560,7 +563,7 @@ git_comment2commitsfile() {
 				printf "${MNU}%d${INF} - $cmtstr$OFF\n" $((cmtindex +1))
 			done
 
-			[ -n "$remdir" ] && gut_chdir "$remdir"
+			gut_chdir -
 			echo
 
 			loop_range 1 "$cmtindex" linenumber
@@ -583,6 +586,7 @@ git_comment2commitsfile() {
 		((index++))
 #set +x
 	done
+
 	$b_quiet && echo
 	return 0
 }
@@ -803,7 +807,7 @@ parse_missingfix() {
 	local currentbranch=
 	local missing="Missing Fix:"
 	local tskip="Intentionally Omitted Fix:"
-	local merged="$currentbranch already has Fix:"
+	local dmerged
 	local tokay="contains Fix:"
 	local tmsg="WARNING: found $missing"
 	local found=
@@ -812,6 +816,7 @@ parse_missingfix() {
 
 	fix_id="$(echo "$fix_line" | awk ' { print $1 } ')"
 	currentbranch="$(git branch | grep -E '^\*' | cut -d' ' -f2)"
+	dmerged="$currentbranch branch in $PWD has Fix:"
 
 	# If the "missing" commit was intentionally omitted, print a message
 	# and return.
@@ -821,8 +826,8 @@ parse_missingfix() {
 		return 1
 	fi
 
-	# If the missing fix is in the list of upstream commits, then it's
-	# applied later in the current MR.
+	# If the missing fix is in the list of upstream commits, see if it's
+	# applied later in the current MR series.
 	if found=$(grep "$fix_id" "$commitsfile"); then
 		found_id=$(echo "$found" | cut -d' ' -f2)
 		echo -e "$INF$found_id $tokay $fix_line for $commitnum$OFF"
@@ -834,10 +839,9 @@ parse_missingfix() {
 	# then the upstream commitid has already been applied.
 	# In that case, inform the user and return.
 	git log --since="$cmtdate" | grep -m1 "commit $fix_id" > /dev/null 2>&1 & mypid=$!
-
 	if ui_waitonproc_tty $mypid .05; then
-		echo -e "$INF$merged $fix_line for $commitnum$OFF"
-		echo "$merged $fix_line for $commitnum"  >> "$missing_file"
+		echo -e "$INF$dmerged $fix_line for $commitnum$OFF"
+		echo "$dmerged $fix_line for $commitnum"  >> "$missing_file"
 		return 1
 	else
 		# The missing fix is truly missing, so warn accordingly.
@@ -847,6 +851,15 @@ parse_missingfix() {
 	fi
 
 	return 0
+}
+
+is_validcmthash() {
+	local hash="$1"
+
+	[ -z "$hash" ] && return 1
+	((0x$hash == 0)) && return 1
+	[[ $hash =~ ^[a-zA-Z0-9]{40}$ ]] && return 0
+	return 1
 }
 
 # check_fixes - look for missing fixes
@@ -881,7 +894,7 @@ check_fixes() {
 	local missing_file="$4"
 	local line=
 	local commitid=
-	local commit_fix=
+	local fixline=
 	local tmsg="WARNING: found missing fix "
 	local tskip="Intentionally Omitted Fix : "
 	local mypid
@@ -895,7 +908,7 @@ check_fixes() {
 	local cmtdate=
 	local tmpcmtsfile="/dev/shm/tmpcmtsfile"
 
-	currentbranch=$(git branch | grep -E '^\*' | cut -d' ' -f2)
+	currentbranch=$(git branch | grep '^\*' | cut -d' ' -f2)
 	[ -n "$5" ] && verbose=$5
 
 	[ -f "$commitsfile" ] || {
@@ -915,7 +928,7 @@ check_fixes() {
 		patch=$(echo "$line" | cut -d' ' -f2)
 
 		# If the commitid is empty, get the next line in commitsfile.
-		[ -z "$commitid" ] && continue
+		is_validcmthash "$commitid" || continue
 
 		find_fixes "$commitid" "$fixfile" "$remdir" "$rembranch" & mypid=$!
 		ui_waitonproc_tty $mypid .05 "${INF}Checking $STA$patch${INF}: $commitid$OFF"
@@ -925,19 +938,18 @@ check_fixes() {
 		# is always the date of the commit being tested for fixes.
 		#
 		if [ -f "$fixfile" ] && (($(wc -l < "$fixfile") > 1)); then
-
 			patch_filename="$(find_filebynumber "$patch" "$indir")"
 			extract_commitlog "$patch_filename" "$mr_commitlog"
 
 			cmtdate=
-			while read -r commit_fix; do
+			while read -r fixline; do
 				# first line in the file is the date
 				# get that and continue
-				[ -z "$cmtdate" ] && { cmtdate="$commit_fix"; continue; }
+				[ -z "$cmtdate" ] && { cmtdate="$fixline"; continue; }
 
 				parse_missingfix \
 					"$cmtdate" \
-					"$commit_fix" \
+					"$fixline" \
 					"$patch" \
 					"$tmpcmtsfile" \
 					"$missing_file" \
