@@ -103,6 +103,17 @@ unset CTLC_EXIT &&  declare -i CTLC_EXIT=130
 
 declare ui_tempfile="/dev/shm/ui_temp_file"
 
+ui_exit() {
+	local -i msgindex="$1"
+	local artifact="$2"
+	local msg
+
+	msg="$WRN${ui_err_msg[msgindex]}$OFF"
+	[ -n "$artifact" ] && msg="$MNU$artifact $msg"
+	echo -e "$msg"
+	exit "$msgindex"
+}
+
 # ui_testbash - bash version must be 4 or higher to use this script
 #
 ui_testbash() {
@@ -120,7 +131,7 @@ EOF
 	verstr=$(bash --version | grep -m1 -o '[0-9].*')
 	((${verstr:0:1} >= 4)) && return
 	echo -e "$warnstr"
-	exit $ui_err_bashver
+	ui_exit $ui_err_bashver
 }
 
 # ui_popterm
@@ -850,6 +861,21 @@ ui_remove_spaces() {
 	[[ $file == *$sp* ]] || continue
 	mv -v "$file" "$(echo "$file" | tr ' ' '_' )"
     done < <(find . -maxdepth 1 -type f -print0)
+}
+
+# ui_cd - cd with return test and error message exit on fault
+#
+# This is necessary, because you must test the return value of
+# every cd. A failed cd could have dire consequences when
+# subsequent directory and file commands are executed,
+#
+ui_cd() {
+	local dir="$1"
+	local dirstr
+
+	if [ "$dir" == "-" ]; then dirstr="cd -"; else dirstr="$dir"; fi
+
+	cd "$dir" > /dev/null || ui_exit "$ui_err_invdir" "$dirstr"
 }
 
 ##########################
