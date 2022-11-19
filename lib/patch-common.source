@@ -188,8 +188,10 @@ show_seekfixes() {
 }
 
 show_missing_fixes() {
-	[ -s "$missing_fixes" ] || return
-	echo -e "$MNU f$OFF  Show missing fixes"
+	if [ -s "$missing_fixes" ] \
+	&& grep -q 'WARNING:' "$missing_fixes"; then
+		echo -e "$MNU f$OFF  Show missing fixes"
+	fi
 }
 
 show_screenbg() {
