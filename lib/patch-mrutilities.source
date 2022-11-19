@@ -35,6 +35,7 @@ declare -i opmode_states=2
 declare prj_opmode
 
 declare current_mr=
+declare mrcomments="$indir"/mrcomments.log
 declare b_mrflag=false
 declare b_reviewed=false
 declare b_acked=false
@@ -386,9 +387,9 @@ show_comments() {
 # 	current_mr
 #
 view_comments() {
-	if [ -n "$current_mr" ]; then
+	if [ -n "$current_mr" ] && [ -f "$mrcommits" ]; then
 		echo -e "$INF   View comments for $STA$current_mr$INF ...$OFF"
-		lab mr show $origin $current_mr --comments
+		less "$mrcomments"
 	else
 		get_merge_request "comments"
 	fi
@@ -625,6 +626,7 @@ get_mrcommits_labmr() {
 #	bp_commits
 #	indir
 #	missing_fixes
+#	mrcomments
 #
 get_merge_request_patches() {
 	$ui_b_debug && echo -e "${STA}get_merge_request_patches$OFF"
@@ -633,7 +635,6 @@ get_merge_request_patches() {
 	local mypid
 	local stat
 	local patches=$(ls $indir/*.patch 2>/dev/null)
-	local mrcomments=/dev/shm/mrcomments.log
 	local ackcount=
 	local bascmt=
 	local basmr=
@@ -653,7 +654,7 @@ get_merge_request_patches() {
 	set_cfg_item "b_rename_infiles" $b_rename_infiles
 	set_cfg_item "b_fmt_upstream" $b_fmt_upstream
 
-	> $missing_fixes
+	: > "$missing_fixes"
 	valpatchlist=
 
 	lab mr show $origin $mr --comments > $mrcomments & mypid=$!
