@@ -207,15 +207,15 @@ ui_isdarkbg() {
 }
 
 ui_setbg() {
-	local -n bg="$1"
+	local -n uibg="$1"
 
 	b_color=true
 
 	if ui_isdarkbg; then
-		bg=$tb_dark
+		uibg=$tb_dark
 		terminal_background=$tb_dark
 	else
-		bg=$tb_lite
+		uibg=$tb_lite
 		terminal_background=$tb_lite
 	fi
 
@@ -413,7 +413,7 @@ getyn() {
 	local -i argc=$#
 	local answer
 
-	((argc == 2)) && local -n p_retval="$2"
+	((argc == 2)) && local -n uip_retval="$2"
 
 	while true; do
 
@@ -422,12 +422,12 @@ getyn() {
 		echo
 
 		if [[ $answer =~ [yY] ]]; then
-			((argc == 2)) && p_retval=true
+			((argc == 2)) && uip_retval=true
 			return 0
 		fi
 
 		if [[ $answer =~ [nN] ]]; then
-			((argc == 2)) && p_retval=false
+			((argc == 2)) && uip_retval=false
 			return 1
 		fi
 
@@ -452,7 +452,7 @@ doyn() {
 	local -i argc=$#
 	local response
 
-	((argc == 4)) && local -n p_response="$4"
+	((argc == 4)) && local -n uip_response="$4"
 
 	getyn "$promptstring" response
 	((argc < 3)) && n_command=""
@@ -465,15 +465,15 @@ doyn() {
 		$n_command
 	fi
 
-	((argc == 4)) && p_response="$response"
+	((argc == 4)) && uip_response="$response"
 }
 
 getuser() {
 	local promptstring="$1"
-	local -n var="$2"
+	local -n uivar="$2"
 
 	echo -ne "$INF$promptstring$OFF"
-	read -r var
+	read -r uivar
 }
 
 # getch()
@@ -481,8 +481,8 @@ getuser() {
 # Returns character in $1, no echo
 #
 getch() {
-	local -n char="$1"
-	read -r -n1 char
+	local -n uichar="$1"
+	read -r -n1 uichar
 }
 
 # getchar()
@@ -490,8 +490,8 @@ getch() {
 # Returns character in $1 followed by echo
 #
 getchar() {
-	local -n gc_char="$1"
-	read -r -n1 gc_char
+	local -n uigc_char="$1"
+	read -r -n1 uigc_char
 	echo
 }
 
@@ -517,14 +517,14 @@ promptgetchar() {
 #  1 for no
 #
 loop_yn() {
-	local -n retval="$2"
+	local -n uilyn_retval="$2"
 	local ans
 
 	while true; do
 		promptgetchar "$1" ans
 		[ -z "$ans" ] && continue
-		[[ $ans =~ [yY] ]] && retval=true  && return 0
-		[[ $ans =~ [nN] ]] && retval=false && return 1
+		[[ $ans =~ [yY] ]] && uilyn_retval=true  && return 0
+		[[ $ans =~ [nN] ]] && uilyn_retval=false && return 1
 		echo -e "${MNU}Please enter 'y' or 'n'.$OFF"
 	done
 }
@@ -1050,11 +1050,11 @@ ui_toggle() {
 # $2 - number of states
 #
 ui_cycle_state() {
-	local -n var=$1
+	local -n uics_var=$1
 	local states=$2
 
-	((++var))
-	((var >= states)) && var=0
+	((++uics_var))
+	((uics_var >= states)) && uics_var=0
 }
 
 # ui_digit2bool - convert 0 and 1 to true and false
