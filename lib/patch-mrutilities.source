@@ -97,10 +97,9 @@ show_mrcomments() {
 # 	mergelist_author
 #
 show_mrfilter() {
+	cfg_get_item "mergelist_filter" mergelist_filter
 	[ -n "$mergelist_filter" ] && \
 		echo -en "${INF}String:$OFF $STA$mergelist_filter$OFF"
-	[ -n "$mergelist_author" ] && \
-		echo -en "${INF}Author:$OFF $STA$mergelist_author$OFF"
 }
 
 # grep_mrlist() - grep or filter the mr list
@@ -117,7 +116,7 @@ Enter grep string or just press$STA Enter$INF to clear it and return:
 EOF
 )
 	getuser "$promptstr" mergelist_filter
-	set_cfg_item "mergelist_filter" $mergelist_filter
+	set_cfg_item "mergelist_filter" "$mergelist_filter"
 	[ -n "$mergelist_filter" ] || return 1
 	select_merge_request
 	return $?
@@ -192,8 +191,6 @@ show_mrstatus() {
 
 	cfg_get_item "b_acked" b_acked
 	cfg_get_item "b_nacked" b_nacked
-
-echo "b_acked: $b_acked  b_nacked: $b_nacked"
 
 	if $b_acked || $b_nacked; then
 		if $b_acked; then
