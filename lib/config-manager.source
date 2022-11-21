@@ -139,9 +139,9 @@ cfg_read_key() {
 
 cfg_get_item() {
 	local key="$1"
-	local -n item="$2"
+	local -n cfg_item="$2"
 
-	item=$(cfg_read_key "$key")
+	cfg_item=$(cfg_read_key "$key")
 }
 
 cfg_write_key() {
