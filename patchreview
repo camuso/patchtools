@@ -465,7 +465,7 @@ menu_parser() {
 			;;
 		m )	$b_mrflag && select_merge_request && return $rc_run
 			;;
-		M )	$b_mrflag && get_merge_request && return $rc_run
+		M )	$b_mrflag && get_merge_request -u && return $rc_run
 			;;
 		u )	set_remotedir
 			set_remote_seek
@@ -533,7 +533,7 @@ menu_parser() {
 			;;
 		h )	less "$manual"
 			;;
-		v )     view_comments
+		v )     get_merge_request -c
 			;;
 #		T )	# test functions
 			# hidden from main menu
@@ -562,6 +562,7 @@ init_loopvars() {
 	cfg_read_configfile
 	((opmode == opmode_mr)) && b_mrflag=true
 	init_files
+	init_mr
 }
 
 # menu_loop - loop containing the call to the menu_parser
@@ -705,7 +706,6 @@ cmd_getmr() {
 		getuser "Enter a merge request number or $qstr$INF to quit: " \
 			current_mr
 		if [ "$current_mr" == "q" ]; then
-			current_mr=
 			exit_me $ui_err_missing_arg
 		else
 			break
