@@ -35,7 +35,7 @@ declare -i opmode_states=2
 declare prj_opmode
 
 declare current_mr=
-declare mrcomments="$indir"/mrcomments.log
+declare mrcomments=
 declare b_mrflag=false
 declare b_reviewed=false
 declare b_acked=false
@@ -65,6 +65,7 @@ init_mr() {
 	origin="${origin//[^[:alnum:]]}"
 
 	mergelist_file=$MYDATA/mergelist.log
+	mrcomments="$outdir"/mrcomments.log
 }
 
 # show_init - display the init menu option
@@ -74,7 +75,7 @@ init_mr() {
 #
 show_init() {
 	echo -n "Init to defaults"
-	if [ "$current_mr" ]; then
+	if is_validnumber "$current_mr"; then
 		echo -en " and clear MR $STA$current_mr$OFF and its files"
 	fi
 	echo
@@ -186,9 +187,9 @@ show_opmode() {
 show_mrstatus() {
 	local ackstr
 
-	[ -n "$current_mr" ] || return 1
-	[ "$current_mr" == "q" ] && return 1
+	cfg_get_item "current_mr" current_mr
 
+	is_validnumber "$current_mr" || return 1
 	cfg_get_item "b_acked" b_acked
 	cfg_get_item "b_nacked" b_nacked
 
@@ -211,7 +212,7 @@ show_mrstatus() {
 	}
 }
 
-# query_acknack - ask the user if they want to respond to the MR
+# display_acknack_menu - ask the user how they want to respond to the MR results
 #
 # Globals
 # 	b_mrflag
@@ -225,8 +226,9 @@ display_acknack_menu() {
 	local cmt=
 	local _dak_response
 	local b_yes=false
-	local b_newmr=false
-	local acknackmenu=$(
+	local acknackmenu
+
+	acknackmenu=$(
 cat <<EOF
 
    $MNU For MR $STA$current_mr$MNU, you want to ...
@@ -242,18 +244,12 @@ cat <<EOF
 \0
 EOF
 )
-
-	[ -z "$current_mr" ] && {
-		getuser "   Enter a merge request number or $qstr$INF to exit: " current_mr
-		b_newmr=true
-		b_reviewed=false
-		b_acked=false
-		b_nacked=false
-		[ "$current_mr" == "q" ] && {
-			current_mr=
-			return
-		}
-	}
+	cfg_get_item "current_mr" current_mr
+	b_reviewed=false
+	b_acked=false
+	b_nacked=false
+	cfg_set_item "b_acked" "$b_acked"
+	cfg_set_item "b_nacked" "$b_nacked"
 
 	while :; do
 		echo -e "$acknackmenu"
@@ -268,6 +264,7 @@ query_acknack() {
 	local choice
 	local actstr=
 	local wcomment=
+	local querystring=
 
 	while :;do
 		actstr=
@@ -275,11 +272,14 @@ query_acknack() {
 
 		display_acknack_menu choice
 
-		$b_reviewed && ( $b_acked || $b_nacked ) && {
-			$b_acked && actstr="${STA}ACKED$OFF" \
-				 || actstr="${WRN}NACKED$OFF"
+		if $b_reviewed && [[ $b_acked || $b_nacked ]]; then
+			if $b_acked; then
+				actstr="${STA}ACKED$OFF"
+			else
+				actstr="${WRN}NACKED$OFF";
+			fi
 			echo -e "$INF   Merge Request: $STA$current_mr$INF has already been $actstr"
-		}
+		fi
 
 		case "$choice" in
 			q ) return 0
@@ -302,27 +302,24 @@ query_acknack() {
 			    b_acked=false
 			    b_reviewed=true
 			    echo -e "$INF   Comment on $STA$current_mr$INF ...$OFF"
-			    lab mr note $origin $current_mr --force-linebreak
+			    lab mr note "$origin" "$current_mr" --force-linebreak
 			    continue
 			    ;;
-			v ) view_comments
+			v ) get_merge_request -c
 			    continue
 			    ;;
-			M ) get_merge_request && return $rc_run || continue
+			M ) get_merge_request -u && return $rc_run || continue
 			    ;;
 			m ) select_merge_request && return $rc_run || continue
 			    ;;
 		esac
 
-	local querystring="\
-$INF   Are you sure you want to $actstr$INF Merge Request \
-$STA$current_mr$wcomment$MNU (y/n)? $OFF"
+		querystring="$INF   Are you sure you want to $actstr$INF Merge " \
+			    "Request $STA$current_mr$wcomment$MNU (y/n)? $OFF"
 
-		loop_yn "$querystring" b_yes
-
-		if $b_yes; then
-			$b_acked && lab mr approve $origin $cmt $current_mr
-			$b_nacked && lab mr unapprove $origin $cmt $current_mr
+		if loop_yn "$querystring"; then
+			$b_acked && lab mr approve "$origin" "$cmt" "$current_mr"
+			$b_nacked && lab mr unapprove "$origin" "$cmt" "$current_mr"
 		else
 			b_acked=false
 			b_nacked=false
@@ -342,14 +339,12 @@ $STA$current_mr$wcomment$MNU (y/n)? $OFF"
 # 	$1 - outfile that will contain the list
 #
 call_lab_mr_list() {
-# set -x
 	local outfile="$1"
 	local specifier="$2"
 	local srtcmd="sort -t ! -k2 -h"
 	local labcmd="lab mr list $origin $specifier"
 
 	$labcmd | $srtcmd > $outfile
-# set +x
 }
 
 # refresh_mergelist - refresh the file containing the list of merge requests
@@ -371,26 +366,11 @@ refresh_mergelist() {
 # 	current_mr
 #
 show_comments() {
-	if [ -n "$current_mr" ]; then
+	if is_validnumber "$current_mr"; then
 		echo "View comments for MR $STA$current_mr$OFF"
 	else
 		echo "View comments for a specific MR"
 	fi
-}
-
-# view_comments - view the comments only for a specific MR
-#
-# Globals
-# 	current_mr
-#
-view_comments() {
-	if [ -n "$current_mr" ] && [ -f "$mrcommits" ]; then
-		echo -e "$INF   View comments for $STA$current_mr$INF ...$OFF"
-		less "$mrcomments"
-	else
-		get_merge_request "comments"
-	fi
-	return $?
 }
 
 # get_mrlist_specifier - which mr list specifier does the user want
@@ -425,7 +405,7 @@ EOF
 	while :; do
 		promptgetchar "${MNU}Select a MR list specifier: $OFF" spec
 		case $spec in
-			q ) current_mr= ; return 1 ;;
+			q ) return 1 ;;
 			a ) spec="--state all --all";  break ;;
 			o ) spec="--state opened --all"; break ;;
 			d ) spec="--draft --all"; break ;;
@@ -452,7 +432,7 @@ EOF
 # show_mrlist - display the list of MRs obtained by call_lab_mr_list
 #
 #  Globals
-#	current_mr
+#	current_mr - indirectly by call to get_new_mr
 #	mergelist_file
 #
 show_mrlist() {
@@ -460,18 +440,15 @@ show_mrlist() {
 	local mr=
 	local mrnum=
 	local mrsub=
-# set -x
+
 	while read mr; do
 		[[ $mr == *$mergelist_filter* ]] || continue
-		mr=$(echo ${mr:1})
-		mrnum=$(echo $mr | cut -d' ' -f1)
-		mrsub=$(echo $mr | cut -d' ' -f2-)
+		mr=$(echo "${mr:1}")
+		mrnum=$(echo "$mr" | cut -d' ' -f1)
+		mrsub=$(echo "$mr" | cut -d' ' -f2-)
 		mrarray+=("$mrnum")
 		echo -e " $MNU$mrnum$OFF $mrsub"
-	done < $mergelist_file
-# set +x
-	getuser "Enter a merge request number or $qstr$INF to exit: " current_mr
-
+	done < "$mergelist_file"
 }
 
 # select_merge_request - select a MR from a list
@@ -494,30 +471,93 @@ select_merge_request() {
 	local select=
 	local mypid=
 	local specifier=
+	local response
 
 	[ -s "$mergelist_file" ] || {
 		get_mrlist_specifier specifier
 		[ $? -eq 0 ] || return 1
 		call_lab_mr_list "$mergelist_file" "$specifier" & mypid=$!
 		ui_waitonproc_tty $mypid .05 \
-		""$INF"Please wait while we get the list of merge requests.$OFF"
+		"${INF}Please wait while we get the list of merge requests.$OFF"
 	}
 
 	while :; do
 		show_mrlist mrs
-		[ "$current_mr" == "q" ] && return 1
-		echo ${mrs[@]} | grep -w $current_mr > /dev/null 2>&1
+		get_new_mr || return
 
-		if [ $? -eq 0 ]; then
-			get_merge_request_patches "$current_mr"
-			[ $? -eq 0 ] && break || continue
+		if echo "${mrs[@]}" | grep -q -w "$current_mr"; then
+
+			if get_merge_request_patches "$current_mr"; then
+				break
+			else
+				continue
+			fi
 		fi
 
 		echo -e "$STA$current_mr$WRN is not in the current list of Merge Requests."
-		getuser "Enter a different MR or press $qstr$INF to quit: " current_mr
 	done
 
 	return 0
+}
+
+# update_current_mr
+#
+#  If the provided mr is a valid number, update the global mr and
+#  save it with cfg_set_item.
+#
+#  GLOBALS
+#    current_mr:
+#
+update_current_mr() {
+	local cmr="$1"
+
+	if is_validnumber "$cmr"; then
+		current_mr="$cmr"
+		cfg_set_item "current_mr" "$current_mr"
+		b_reviewed=false
+		b_acked=false
+		b_nacked=false
+		return 0
+	fi
+	return 1
+}
+
+get_new_mr() {
+	local querystr
+	local response
+
+	querystr="Enter a Merge Request or press ${MNU}ENTER$INF "
+
+	if is_validnumber "$current_mr"; then
+		querystr+="to keep$STA $current_mr$INF : "
+	else
+		querystr+="to return : "
+	fi
+
+	getuser "$querystr" response
+	update_current_mr "$response" || return 1
+	return 0
+}
+
+# is_valid_mrcomments
+#
+# See if the comments file is valid and is for the current_mr
+#
+# GLOBALS
+#   mrcomments
+#   current_mr
+#
+is_valid_mrcomments() {
+	local line
+	local mr
+
+	if [ -f "$mrcomments" ] && [ -s "$mrcomments" ]; then
+		line="$(ui_readline_raw 1 "$mrcomments")"
+		mr="$(cut -d' ' -f1 <<< "$line")"
+		mr="${mr:1}"
+		((mr == current_mr)) && return 0
+	fi
+	return 1
 }
 
 # get_merge_request - check-out a specific MR
@@ -533,31 +573,41 @@ select_merge_request() {
 #
 get_merge_request() {
 	$ui_b_debug && echo -e "${STA}get_merge_request$OFF"
-	local comments_only="$1"
+	local b_comments=false
+	local b_newmr=false
 	local stat=0
 
-	getuser "Enter a merge request number or $qstr$INF to quit: " current_mr
-	cfg_set_item "current_mr" "$current_mr"
-	while :; do
-		[ "$current_mr" == "q" ] && {
-			current_mr=
-			cfg_set_item "current_mr" "$current_mr"
-			return 1
-		}
-		if [ -n "$comments_only" ]; then
-			echo -e "$INF   View comments for $STA$current_mr$INF ...$OFF"
-			lab mr show $origin $current_mr --comments;
-			stat=$?
-		else
-			get_merge_request_patches "$current_mr"
-			stat=$?
-		fi
-		[ $stat -eq 0 ] && break
-		[ $stat -lt $mr_norev ] && {
-			echo -e "$WRN${mr_errs[$stat]}$INF : $STA$current_mr$OFF"
-		} || return $mr_norev
+	while [ "${1:0:1}" == "-" ]; do
+		opt="$1"
+		case $opt in
+			"-c" ) b_comments=true; shift 1;;
+			"-u" ) b_newmr=true; shift 1;;
+		esac
+	done
 
-		getuser "Enter a different MR or $qstr$INF to quit: " current_mr
+	cfg_get_item "current_mr" current_mr
+	$b_newmr && get_new_mr
+
+	while :; do
+		if $b_comments; then
+			is_valid_mrcomments || {
+				get_newmr
+				lab mr show "$origin" "$current_mr" --comments > "$mrcomments"
+			}
+
+			echo -e "$INF   View comments for $STA$current_mr$INF ...$OFF"
+			less "$mrcomments"
+			return 0
+		fi
+
+		if get_merge_request_patches "$current_mr"; then
+			return 0
+		else
+			stat=$?
+			((stat < mr_norev)) &&
+				echo -e "$WRN${mr_errs[$stat]}$INF : $STA$current_mr$OFF"
+			return $stat
+		fi
 	done
 
 	return 0
@@ -580,21 +630,21 @@ get_mrcommits_labmr() {
 	local lcnt
 	local tfil=/dev/shm/tempcommitsfile
 
-	lab mr show $mr -p --reverse | grep '^commit ' | cut -d ' ' -f2 > $bp_commits
+	lab mr show "$mr" -p --reverse | grep '^commit ' | cut -d ' ' -f2 > "$bp_commits"
 
 	# If there is a base commit for a dependency, then it won't be the
 	# same as the origin commit, so remove its patches from the commits
 	# file.
 	[ "$bascmt" == "$origin" ] || {
-		lcnt=$(grep -n -m1 $bascmt $bp_commits | cut -d':' -f1)
+		lcnt=$(grep -n -m1 "$bascmt" "$bp_commits" | cut -d':' -f1)
 		[ -n "$lcnt" ] && {
-			head -$((lcnt - 1)) $bp_commits > $tfil
-			mv -f $tfil $bp_commits
-			rm -f $tfil
+			head -$((lcnt - 1)) "$bp_commits" > "$tfil"
+			mv -f "$tfil" "$bp_commits"
+			rm -f "$tfil"
 		}
 	}
 
-	patchcount=$(cat $bp_commits | wc -l)
+	patchcount=$(wc -l < "$bp_commits")
 	echo -e "\npatchcount: $patchcount"
 }
 
@@ -631,12 +681,15 @@ get_merge_request_patches() {
 	local b_yes=false
 	local mypid
 	local stat
-	local patches=$(ls $indir/*.patch 2>/dev/null)
+	local patches=
 	local ackcount=
 	local bascmt=
 	local basmr=
 	local basary=()
 
+	patches=$(ls "$indir"/*.patch 2>/dev/null)
+
+	# Init global bools
 	b_mrflag=true
 	b_reviewed=false
 	b_acked=false
@@ -653,58 +706,52 @@ get_merge_request_patches() {
 
 	: > "$missing_fixes"
 	valpatchlist=
-
-	lab mr show $origin $mr --comments > $mrcomments & mypid=$!
-	ui_waitonproc_tty $mypid .05 ""$INF"Getting comments from MR $STA$current_mr$OFF"
-	stat=$?
-	[ $stat -eq 1 ] && return $mr_inv
+	lab mr show "$origin" "$mr" --comments > "$mrcomments" & mypid=$!
+	ui_waitonproc_tty $mypid .05 "${INF}Getting comments from MR $STA$current_mr$OFF" \
+		|| return $mr_inv
 
 	# If there's a dependency, find the base commit for it.
 	#
-	if basmr=$(grep -i -A3 'Depends tags:' $mrcomments); then
-		basmr=$(echo "$basmr" | tail -1)
+	if basmr="$(grep -i -A3 'Depends tags:' "$mrcomments")"; then
+		basmr="$(echo "$basmr" | tail -1)"
 		ui_strtok "$basmr" "|: " basary
-		bascmt=${basary[6]}
+		bascmt="${basary[6]}"
 		echo -e "${INF}Dependency detected:$INF MR${STA}"\
-			 "$(echo -en ${basary[1]} | cut -d'!' -f2)"\
+			 "$(echo -en "${basary[1]}" | cut -d'!' -f2)"\
 		         "${INF}commit $STA${basary[6]}$OFF"
 	else
-		bascmt=$origin
+		bascmt="$origin"
 	fi
 
-	ackcount=$(grep '^Approved By' $mrcomments | cut -d':' -f2- | wc -w)
-	less $mrcomments
+	ackcount=$(grep '^Approved By' "$mrcomments" | cut -d':' -f2- | wc -w)
+	less "$mrcomments"
 
-	grep '^Approved By' $mrcomments | grep $USER
-	if [ $? -eq 0 ]; then
+	if grep '^Approved By' "$mrcomments" | grep "$USER"; then
 		b_already_acked=true
 		echo -e "${INF}You have already ACKed MR $STA$mr$INF."
 	fi
 
-	if [ $ackcount -ge 3 ]; then
+	if ((ackcount >= 3)); then
 		b_has_3_acks=true
 		echo -e "${INF}MR $STA$mr$INF already has 3 ACKs."
 	fi
 
-	loop_yn "${MNU}Continue with review? y/n: " b_yes
-	$b_yes || return $mr_norev
+	loop_yn "${MNU}Continue with review? y/n: " || return $mr_norev
 
 	if [ -n "$patches" ]; then
 		echo -e "${INF}There are already RHEL patch files in $STA$indir$OFF."
-		getyn "Do you want to replace them? " b_yes
 
-		if $b_yes; then
-			rm -f $indir/* 2>/dev/null
-			rm -f $outdir/* 2>/dev/null
+		if getyn "Do you want to replace them? "; then
+			rm -f "$indir"/* 2>/dev/null
+			rm -f "$outdir"/* 2>/dev/null
 		else
 			return 0
 		fi
 	fi
 
-	get_mrcommits_labmr $mr $bascmt & mypid=$!
-	ui_waitonproc_tty $mypid .05 ""$INF"Getting patches from MR $STA$current_mr$OFF"
+	get_mrcommits_labmr "$mr" "$bascmt" & mypid=$!
+	ui_waitonproc_tty $mypid .05 "${INF}Getting patches from MR $STA$current_mr$OFF"
 
-	git_file2patchset $bp_commits $indir $b_verbose
-	stat=$?
-	[ $stat -ne 0 ] && return $mr_nop || return 0
+	git_file2patchset "$bp_commits" "$indir" $b_verbose || { echo "stat $?"; return $mr_nop; }
+	return 0
 }
