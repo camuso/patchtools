@@ -521,14 +521,14 @@ promptgetchar() {
 # Simpler than the getyn() routine above.
 #
 # $1 - prompt string
-# $2 - the boolean value to be returned (true/false)
+# $2 - optional boolean value to be returned (true/false)
 #
 # RETURNS
 #  0 for yes
 #  1 for no
 #
 loop_yn() {
-	local -n uilyn_retval="$2"
+	if [ -n "$2" ]; then local -n uilyn_retval="$2"; else local uilyn_retval; fi
 	local ans
 
 	while true; do
@@ -688,6 +688,13 @@ is_array_member() {
 		[ "$mem" == "$member" ] && return 0
 	done
 
+	return 1
+}
+
+is_validnumber() {
+	local ui_num="$1"
+
+	[ -n "$ui_num" ] && [[ $ui_num =~ ^-?[0-9]+$ ]] && return 0
 	return 1
 }
 
