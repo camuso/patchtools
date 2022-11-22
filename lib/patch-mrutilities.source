@@ -10,16 +10,20 @@
 
 # Get the directory defaults if they don't already exist
 #
-[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename "$0")))
-[ "$MYLIB" ] || declare MYLIB=$(cd $(dirname ${BASH_SOURCE[0]}); pwd)
+[ "$MYDIR" ] || {
+	declare MYDIR=
+	MYDIR="$(dirname "$(which "$(basename "$0")")")"
+}
+[ "$MYLIB" ] || {
+	declare MYLIB=
+	MYLIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1; pwd)"
+}
 
-[ "$ui_loaded" ] || source $MYLIB/ui.source
-[ "$patchcommon_loaded" ] || source $MYLIB/patch-common.source
-[ "$configmanager_loaded" ] || source $MYLIB/config-manager.source
+[ "$ui_loaded" ] || source "$MYLIB"/ui.source
+[ "$patchcommon_loaded" ] || source "$MYLIB"/patch-common.source
+[ "$configmanager_loaded" ] || source "$MYLIB"/config-manager.source
 
 patchmrutilities_loaded=true
-
-b_ui_int_first_getyn=false	# For lib/ui.source
 
 # Enable extglob for more specific directory actions
 #
@@ -32,7 +36,6 @@ declare -i opmode
 declare -i opmode_mr=0
 declare -i opmode_email=1
 declare -i opmode_states=2
-declare prj_opmode
 
 declare current_mr=
 declare mrcomments=
@@ -41,7 +44,6 @@ declare b_reviewed=false
 declare b_acked=false
 declare b_nacked=false
 declare mergelist_filter=
-declare mergelist_author=
 declare mergelist_file=
 declare gl_projid=24118165	# gitlab project ID
 declare origin=			# the principal remote in a git repo
@@ -95,7 +97,6 @@ show_mrcomments() {
 #
 # Globals
 # 	mergelist_filter
-# 	mergelist_author
 #
 show_mrfilter() {
 	cfg_get_item "mergelist_filter" mergelist_filter
@@ -110,8 +111,9 @@ show_mrfilter() {
 #
 grep_mrlist() {
 	$b_mrflag || return
+	local promptstr=
 
-	local promptstr=$(
+	promptstr=$(
 cat <<EOF
 Enter grep string or just press$STA Enter$INF to clear it and return: 
 EOF
@@ -143,20 +145,20 @@ EOF
 #
 change_opmode() {
 	ui_cycle_state opmode $opmode_states
-	set_cfg_item "opmode" $opmode
+	set_cfg_item "opmode" "$opmode"
 
 	case $opmode in
-	$opmode_mr    ) b_mrflag=true
-			b_rename_files=false
-			b_fmt_upstream=true
-			cmpmode=$cmpmode_batch
-			applymode=$applymode_off
-			;;
-	$opmode_email ) b_mrflag=false
-			b_rename_files=false
-			b_fmt_upstream=true
-			cmpmode=$cmpmode_batch
-			applymode=$applymode_norm
+	"$opmode_mr"    ) b_mrflag=true
+			  b_rename_files=false
+			  b_fmt_upstream=true
+			  cmpmode=$cmpmode_batch
+			  applymode=$applymode_off
+			  ;;
+	"$opmode_email" ) b_mrflag=false
+			  b_rename_files=false
+			  b_fmt_upstream=true
+			  cmpmode=$cmpmode_batch
+			  applymode=$applymode_norm
 			;;
 	esac
 }
@@ -171,8 +173,8 @@ change_opmode() {
 #
 show_opmode() {
 	case $opmode in
-		$opmode_mr    ) echo "Merge Request Mode" ;;
-		$opmode_email ) echo "Email Patch Mode" ;;
+		"$opmode_mr"    ) echo "Merge Request Mode" ;;
+		"$opmode_email" ) echo "Email Patch Mode" ;;
 	esac
 }
 
@@ -197,7 +199,7 @@ show_mrstatus() {
 		if $b_acked; then
 			ackstr="${STA}ACKED$OFF"
 		else
-			$ackstr="${WRN}NACKED$OFF"
+			ackstr="${WRN}NACKED$OFF"
 		fi
 	else
 		ackstr=
@@ -205,7 +207,7 @@ show_mrstatus() {
 
 	echo -e "\n    Merge Request            : $STA$current_mr $ackstr"
 
-	[ -s $missing_fixes ] && {
+	[ -s "$missing_fixes" ] && {
 		grep -q 'WARNING:' "$missing_fixes" && echo -e \
 		"   $WRN There are missing fixes listed in $STA$missing_fixes$OFF"
 		show_missing_fixes
@@ -225,7 +227,6 @@ display_acknack_menu() {
 	$b_mrflag || return 1
 	local cmt=
 	local _dak_response
-	local b_yes=false
 	local acknackmenu
 
 	acknackmenu=$(
@@ -257,7 +258,7 @@ EOF
 		[[ qnaNAcvMm =~ $_dak_response ]] && break
 	done
 
-	eval $1=$_dak_response
+	eval "$1"="$_dak_response"
 }
 
 query_acknack() {
@@ -289,14 +290,14 @@ query_acknack() {
 			    ;&
 			a ) b_acked=true
 			    b_reviewed=true
-			    actstr=""$STA"ACK$OFF"
+			    actstr="${STA}ACK$OFF"
 			    ;;
 			N ) cmt="--with-comment --force-linebreak "
 			    wcomment="$INF with comments"
 			    ;&
 			n ) b_nacked=true
 			    b_reviewed=true
-			    actstr=""$WRN"NACK$OFF"
+			    actstr="${WRN}NACK$OFF"
 			    ;;
 			c ) b_nacked=false
 			    b_acked=false
@@ -308,9 +309,11 @@ query_acknack() {
 			v ) get_merge_request -c
 			    continue
 			    ;;
-			M ) get_merge_request -u && return $rc_run || continue
+			M ) if get_merge_request -u; then return $rc_run; \
+			    else continue; fi
 			    ;;
-			m ) select_merge_request && return $rc_run || continue
+			m ) if select_merge_request; then return $rc_run; \
+			    else continue; fi
 			    ;;
 		esac
 
@@ -344,7 +347,7 @@ call_lab_mr_list() {
 	local srtcmd="sort -t ! -k2 -h"
 	local labcmd="lab mr list $origin $specifier"
 
-	$labcmd | $srtcmd > $outfile
+	$labcmd | $srtcmd > "$outfile"
 }
 
 # refresh_mergelist - refresh the file containing the list of merge requests
@@ -379,10 +382,14 @@ show_comments() {
 #     $1 - specifier string is returned in $1
 #
 get_mrlist_specifier() {
+	local -n gmr_spec="$1"
 	local spec=
+	local mnu=
 	local author=
 	local targbranch=
-	local specmenu=$(
+	local specmenu=
+
+	specmenu=$(
 cat <<EOF
 $MNU
      ${UND}Specify the MR list content   $OFF
@@ -403,8 +410,8 @@ EOF
 	echo -e "$specmenu"
 
 	while :; do
-		promptgetchar "${MNU}Select a MR list specifier: $OFF" spec
-		case $spec in
+		promptgetchar "${MNU}Select a MR list specifier: $OFF" mnu
+		case $mnu in
 			q ) return 1 ;;
 			a ) spec="--state all --all";  break ;;
 			o ) spec="--state opened --all"; break ;;
@@ -425,7 +432,7 @@ EOF
 		esac
 	done
 
-	eval $1='$spec'
+	gmr_spec="$spec"
 	return 0
 }
 
@@ -441,9 +448,9 @@ show_mrlist() {
 	local mrnum=
 	local mrsub=
 
-	while read mr; do
+	while read -r mr; do
 		[[ $mr == *$mergelist_filter* ]] || continue
-		mr=$(echo "${mr:1}")
+		mr="${mr:1}"
 		mrnum=$(echo "$mr" | cut -d' ' -f1)
 		mrsub=$(echo "$mr" | cut -d' ' -f2-)
 		mrarray+=("$mrnum")
@@ -468,14 +475,12 @@ select_merge_request() {
 	local mr=
 	local mrnum=
 	local mrsub=
-	local select=
 	local mypid=
 	local specifier=
 	local response
 
 	[ -s "$mergelist_file" ] || {
-		get_mrlist_specifier specifier
-		[ $? -eq 0 ] || return 1
+		get_mrlist_specifier specifier || return 1
 		call_lab_mr_list "$mergelist_file" "$specifier" & mypid=$!
 		ui_waitonproc_tty $mypid .05 \
 		"${INF}Please wait while we get the list of merge requests.$OFF"
@@ -591,7 +596,6 @@ get_merge_request() {
 	while :; do
 		if $b_comments; then
 			is_valid_mrcomments || {
-				get_newmr
 				lab mr show "$origin" "$current_mr" --comments > "$mrcomments"
 			}
 
@@ -678,7 +682,6 @@ get_mrcommits_labmr() {
 get_merge_request_patches() {
 	$ui_b_debug && echo -e "${STA}get_merge_request_patches$OFF"
 	local mr="$1"
-	local b_yes=false
 	local mypid
 	local stat
 	local patches=
@@ -743,7 +746,7 @@ get_merge_request_patches() {
 
 		if getyn "Do you want to replace them? "; then
 			rm -f "$indir"/* 2>/dev/null
-			rm -f "$outdir"/* 2>/dev/null
+			rm -f "$outdir"/*.patch 2>/dev/null
 		else
 			return 0
 		fi
