@@ -819,7 +819,8 @@ parse_missingfix() {
 
 	# If the "missing" commit was intentionally omitted, print a message
 	# and return.
-	if grep -i "omitted-fix" "$mr_commitlog" | grep "$fix_id" > /dev/null 2>&1; then
+	if grep -i "omitted.fix" "$mr_commitlog" | grep -q "$fix_id" || \
+	   grep -i "omitted.fix" "$mrcomments"   | grep -q "$fix_id"; then
 		echo -e "$INF$tskip $fix_line for $commitnum $OFF"
 		echo "$tskip $fix_line for $commitnum" >> "$missing_file"
 		return 1
