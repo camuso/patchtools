@@ -1325,7 +1325,7 @@ format_upstream_patches() {
 		return 1
 	}
 
-	rm -f "$outdir"/* > /dev/null 2>&1
+	rm -f "$outdir"/*.patch > /dev/null 2>&1
 	: > "$us_commits"
 	echo
 
