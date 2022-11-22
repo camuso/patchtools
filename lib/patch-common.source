@@ -133,6 +133,7 @@ declare b_cmdline=false
 ########################################
 declare rc_continue=0	# Continue for another pass
 declare rc_run=1	# Run
+declare rc_pass=2	# don't run
 
 exit_me() {
 	echo -e "$OFF"

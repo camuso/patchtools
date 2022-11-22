@@ -463,9 +463,11 @@ menu_parser() {
 			;;
 		a )	$b_mrflag && query_acknack
 			;;
-		m )	$b_mrflag && select_merge_request && return $rc_run
+		m )	$b_mrflag && {
+				select_merge_request && return $rc_run || return $rc_pass; }
 			;;
-		M )	$b_mrflag && get_merge_request -u && return $rc_run
+		M )	$b_mrflag && {
+				get_merge_request -u && return $rc_run || return $rc_pass; }
 			;;
 		u )	set_remotedir
 			set_remote_seek
@@ -673,7 +675,7 @@ main_loop() {
 	##############################################
 
 	while true; do
-		((stat != $rc_run)) && menu_loop
+		((stat != rc_run)) && menu_loop
 		# menu_stat=$?
 		# echo "menu_loop_stat: $menu_stat"
 
