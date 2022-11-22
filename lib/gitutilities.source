@@ -6,10 +6,9 @@
 #
 
 declare gitutilities_loaded=true
-declare scratchdir=/dev/shm
 
 [ "$MYDIR" ] || {
-	declare MyDIR=
+	declare MYDIR=
 	MYDIR="$(dirname "$(which "$(basename "$0")")")"
 }
 
