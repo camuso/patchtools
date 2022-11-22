@@ -40,9 +40,9 @@ declare -i opmode_states=2
 declare current_mr=
 declare mrcomments=
 declare b_mrflag=false
-declare b_reviewed=false
-declare b_acked=false
-declare b_nacked=false
+declare b_reviewed=
+declare b_acked=
+declare b_nacked=
 declare mergelist_filter=
 declare mergelist_file=
 declare gl_projid=24118165	# gitlab project ID
@@ -182,7 +182,6 @@ show_opmode() {
 #
 # Globals:
 # 	current_mr
-# 	b_reviewed
 # 	b_acked
 # 	b_nacked
 #
@@ -242,23 +241,39 @@ cat <<EOF
    $MNU M$OFF  Review another Merge Request
    $MNU m$OFF  Display a list of Merge Requests
    $MNU q$OFF  Quit and return to main menu$OFF
-\0
 EOF
 )
-	cfg_get_item "current_mr" current_mr
-	b_reviewed=false
-	b_acked=false
-	b_nacked=false
-	cfg_set_item "b_acked" "$b_acked"
-	cfg_set_item "b_nacked" "$b_nacked"
-
 	while :; do
 		echo -e "$acknackmenu"
+
+		if $b_reviewed && [[ $b_acked || $b_nacked ]]; then
+			if $b_acked; then
+				actstr="${STA}ACKED$OFF"
+			else
+				actstr="${WRN}NACKED$OFF";
+			fi
+			echo -e "$INF   Merge Request: $STA$current_mr $INF" \
+			        "has already been ${actstr}\n"
+		fi
+
 		promptgetchar "$MNU   Enter one of the above: $OFF" _dak_response
 		[[ qnaNAcvMm =~ $_dak_response ]] && break
 	done
 
 	eval "$1"="$_dak_response"
+}
+
+get_acknack() {
+	cfg_get_item "current_mr" current_mr
+	cfg_get_item "b_acked" b_acked
+	cfg_get_item "b_nacked" b_nacked
+	cfg_get_item "b_reviewed" b_reviewed
+}
+
+set_acknack() {
+	cfg_set_item "b_acked" "$b_acked"
+	cfg_set_item "b_nacked" "$b_nacked"
+	cfg_set_item "b_reviewed" "$b_reviewed"
 }
 
 query_acknack() {
@@ -271,16 +286,8 @@ query_acknack() {
 		actstr=
 		wcomment=
 
+		get_acknack
 		display_acknack_menu choice
-
-		if $b_reviewed && [[ $b_acked || $b_nacked ]]; then
-			if $b_acked; then
-				actstr="${STA}ACKED$OFF"
-			else
-				actstr="${WRN}NACKED$OFF";
-			fi
-			echo -e "$INF   Merge Request: $STA$current_mr$INF has already been $actstr"
-		fi
 
 		case "$choice" in
 			q ) return 0
@@ -289,20 +296,21 @@ query_acknack() {
 			    wcomment="$INF with comments"
 			    ;&
 			a ) b_acked=true
+			    b_nacked=false
 			    b_reviewed=true
 			    actstr="${STA}ACK$OFF"
+			    set_acknack
 			    ;;
 			N ) cmt="--with-comment --force-linebreak "
 			    wcomment="$INF with comments"
 			    ;&
 			n ) b_nacked=true
-			    b_reviewed=true
-			    actstr="${WRN}NACK$OFF"
-			    ;;
-			c ) b_nacked=false
 			    b_acked=false
 			    b_reviewed=true
-			    echo -e "$INF   Comment on $STA$current_mr$INF ...$OFF"
+			    actstr="${WRN}NACK$OFF"
+			    set_acknack
+			    ;;
+			c ) echo -e "$INF   Comment on $STA$current_mr$INF ...$OFF"
 			    lab mr note "$origin" "$current_mr" --force-linebreak
 			    continue
 			    ;;
@@ -317,19 +325,14 @@ query_acknack() {
 			    ;;
 		esac
 
-		querystring="$INF   Are you sure you want to $actstr$INF Merge " \
-			    "Request $STA$current_mr$wcomment$MNU (y/n)? $OFF"
+		querystring="$INF   Are you sure you want to $actstr$INF Merge "
+		querystring+="Request $STA$current_mr$wcomment$MNU (y/n)? $OFF"
 
 		if loop_yn "$querystring"; then
-			$b_acked && lab mr approve "$origin" "$cmt" "$current_mr"
-			$b_nacked && lab mr unapprove "$origin" "$cmt" "$current_mr"
-		else
-			b_acked=false
-			b_nacked=false
+			$b_acked && lab mr approve "$origin" $cmt "$current_mr"
+			$b_nacked && lab mr unapprove "$origin" $cmt "$current_mr"
 		fi
 
-		cfg_set_item "b_acked" "$b_acked"
-		cfg_set_item "b_nacked" "$b_nacked"
 		continue
 	done
 
@@ -517,11 +520,15 @@ update_current_mr() {
 	local cmr="$1"
 
 	if is_validnumber "$cmr"; then
+		((cmr == current_mr)) && return 1
 		current_mr="$cmr"
-		cfg_set_item "current_mr" "$current_mr"
 		b_reviewed=false
 		b_acked=false
 		b_nacked=false
+		cfg_set_item "current_mr" "$current_mr"
+		cfg_set_item "b_reviewed" "$b_reviewed"
+		cfg_set_item "b_acked" "$b_acked"
+		cfg_set_item "b_nacked" "$b_nacked"
 		return 0
 	fi
 	return 1
@@ -541,6 +548,7 @@ get_new_mr() {
 
 	getuser "$querystr" response
 	update_current_mr "$response" || return 1
+
 	return 0
 }
 
@@ -590,8 +598,7 @@ get_merge_request() {
 		esac
 	done
 
-	cfg_get_item "current_mr" current_mr
-	$b_newmr && get_new_mr
+	$b_newmr && { get_new_mr || return 1; }
 
 	while :; do
 		if $b_comments; then
@@ -694,9 +701,6 @@ get_merge_request_patches() {
 
 	# Init global bools
 	b_mrflag=true
-	b_reviewed=false
-	b_acked=false
-	b_nacked=false
 	b_fmt_upstream=true
 	b_rename_infiles=false
 	b_already_acked=false
