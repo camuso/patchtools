@@ -491,7 +491,7 @@ select_merge_request() {
 
 	while :; do
 		show_mrlist mrs
-		get_new_mr || return
+		get_new_mr || return 1
 
 		if echo "${mrs[@]}" | grep -q -w "$current_mr"; then
 
@@ -511,10 +511,14 @@ select_merge_request() {
 # update_current_mr
 #
 #  If the provided mr is a valid number, update the global mr and
-#  save it with cfg_set_item.
+#  save it with cfg_set_item. With a new MR, alll associasted
+#  booleans will also be reinitialized.
 #
 #  GLOBALS
 #    current_mr:
+#    b_reviewed
+#    b_acked
+#    b_nacked
 #
 update_current_mr() {
 	local cmr="$1"
@@ -673,12 +677,6 @@ get_mrcommits_labmr() {
 #	b_mrflag
 # 	b_rename_infiles
 #	b_fmt_upstream
-#	b_reviewed
-#	b_acked
-#	b_nacked
-#	prj_applymode
-#	prj_b_fmt_upstream
-#	prj_b_rename_infiles
 #	current_mr
 # 	valpatchlist
 #	bp_commits
@@ -696,6 +694,8 @@ get_merge_request_patches() {
 	local bascmt=
 	local basmr=
 	local basary=()
+	local b_already_acked=false
+	local b_has_3_acks=false
 
 	patches=$(ls "$indir"/*.patch 2>/dev/null)
 
@@ -703,8 +703,6 @@ get_merge_request_patches() {
 	b_mrflag=true
 	b_fmt_upstream=true
 	b_rename_infiles=false
-	b_already_acked=false
-	b_has_3_acks=false
 
 	applymode=$applymode_off
 	set_cfg_item "applymode" $applymode
@@ -752,7 +750,7 @@ get_merge_request_patches() {
 			rm -f "$indir"/* 2>/dev/null
 			rm -f "$outdir"/*.patch 2>/dev/null
 		else
-			return 0
+			return $nr_norev
 		fi
 	fi
 
