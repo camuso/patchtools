@@ -25,10 +25,13 @@ declare patchcommon_loaded=true
 shopt -s extglob
 
 declare MYDATA=
+declare MYMAN="$MYDIR"/man
 declare configfile=
 declare repolist="$HOME"/.config/patchreview/repolist
-declare manual=
-manual="$MYDIR/man/$(basename "$0").txt"
+declare main_man=
+declare config_man=
+main_man="$MYMAN/$(basename "$0").txt"
+config_man="$MYMAN/$(basename "$0")-config.txt"
 
 #######################################
 # External Scripts

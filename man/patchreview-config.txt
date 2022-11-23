@@ -1,0 +1,77 @@
+
+       Configuration
+       -------------
+    o  Operating mode           : Merge Request Mode
+    c  See comments first       : ON
+    s  Automatically Seek Fixes : ON
+    d  Patch directory          : /work/c9s/kernel/.patches has 381 patch files.
+    w  Work directory           : /work/c9s/kernel/.patches/tmp
+    r  Remote Repo/Branch       : origin/master
+       Remote URL               : git@gitlab.com:redhat/centos-stream/src/kernel/centos-stream-9.git
+    e  Diff Editor              : vimdiff
+    f  Patch Validation fuzz    : 3 - case insensitive and ignore all punctuation
+    p  Cycle Patch Compare Mode : Batch
+    v  Toggle verbose mode      : verbose is ON
+    C  Toggle screen background : Currently DARK
+    h  Help text for this menu
+    q  Quit and return to previous menu
+
+    Enter one of the above:
+_________________________________________________________________________
+Configuration Menu
+
+	o - Operating mode, selects between Merge Request and email modes.
+	    Merge Request is the default.
+
+	c - Presents the comments for the Merge request before downloading
+	    the MR patches and comparing them with upstream.
+	    This switch toggles this utility ON/OFF
+
+	s - Toggles the 'Automatially Seek Fixes' mode ON/OFF
+	    When ON, the script will search upstream for fixes that are not
+	    included in the series being reviewed and not yet merged into
+	    the downstream (RHEL) repo.
+
+	d - Name the directory to receive the RHEL patches.
+
+	w - Name the directory to receive the corresponding upstream patches
+	    and the script log files.
+
+	r - Selects the remote branch to search for missing fixes.
+	    Fixes are defined in the upsteam patch submission rules as
+	    follows.
+	    If your patch fixes a bug in a specific commit, e.g. you found
+	    an issue using git bisect, please use the ‘Fixes:’ tag with the
+	    first 12 characters of the SHA-1 ID, and the one line summary.
+	    For example:
+	    Fixes: e21d2170f366 ("video: remove unnecessary platform_set_drvdata()"$OFF
+
+	    See: https://www.kernel.org/doc/html/v4.17/process/submitting-patches.html
+
+	e - Presents a menu from which to select one of the three supported
+	    diff editors.
+	     1 - vimdiff
+ 	     2 - emacs
+ 	     3 - tkdiff
+
+	f - Because there can be some differences in the way developers copy
+	    the upstream summary line, fuzz is sometimes necessary to minimize
+	    false positives of invalid commits.
+	    This item will present a menu of available fuzz levels.
+	    The default is 'case insensitive and ignore all punctuation'
+
+	p - This selection will cycle the patch compare mode through three
+	    different states.
+	    The default is Batch, and, unless you're familiar with the
+	    Patch Compare Manager, it's probably best to just leave it.
+
+	v - Toggle verbose mode ON/OFF
+
+	C - Toggle screen background LIGHT/DARK
+	    This is automatically sensed by the script when invoked, but
+	    can be changed with this selection.
+
+	h - Uses 'less' to print this menu to the screen.
+
+	q - Return to Main Menu
+

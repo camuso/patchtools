@@ -248,6 +248,7 @@ $MNU
    $MNU p$OFF  Cycle Patch Compare Mode :$STA $(show_cmpmode)$OFF
    $MNU v$OFF  Toggle verbose mode      : $(show_verbose)
    $MNU C$OFF  Toggle screen background : $(show_screenbg)
+   $MNU h$OFF  Help text for this menu
    $MNU q$OFF  Quit and return to previous menu
 \0
 EOF
@@ -305,6 +306,8 @@ config_parser() {
 			cfg_set_item background "$background"
 			terminal_background="$background"
 			ui_set_colors
+			;;
+		h )     less "$config_man"
 			;;
 		q ) 	return
 			;;
@@ -533,7 +536,7 @@ menu_parser() {
 				return $rc_run
 			fi
 			;;
-		h )	less "$manual"
+		h )	less "$main_man"
 			;;
 		v )     get_merge_request -c
 			;;
@@ -826,7 +829,7 @@ cat <<EOF
               $STA${UND}Environment$OFF$MNU
   version  $INF : show $(basename "$0") version$MNU
   help     $INF : command line help (this text)$MNU
-  man      $INF : full patchreview manual$MNU
+  man      $INF : patchreview manual$MNU
 
   editor   $INF ; choose one of three available editors for diff presentation$MNU
   upstream $INF : select a directory for your upstream repo and remote/branches$MNU
@@ -911,7 +914,7 @@ EOF
 			"-help" ) 	;&
 			"--help" )	echo -e "$cmdlineops"
 					;;
-			"man" )		less "$manual"
+			"man" )		less "$main_man"
 					;;
 			* ) echo -e "$STA$key ${WRN}is an invalid argument!$OFF\n"
 			    exit 1
@@ -932,7 +935,7 @@ main() {
 		git_get_lasttag lasttag "$last_tag_file"
 		main_loop
 	else
-		[ "$1" == "man" ] && { less "$manual"; exit 0; }
+		[ "$1" == "man" ] && { less "$main_man"; exit 0; }
 		check_env
 		parse_cmdline "$@"
 	fi
