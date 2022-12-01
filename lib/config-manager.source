@@ -88,29 +88,6 @@ cfg_set_template() {
 	[ -f "$cfg_file" ] && cfg_b_ready=true
 }
 
-cfg_start() {
-	cfg_template="$1"
-	cfg_file="$2"
-	local cfgdir
-
-	cfgdir=$(dirname "$cfg_file")
-
-	[ -f "$cfg_template" ] || cfg_show_err "$cfg_err_invtemplate" "$cfg_template"
-	[ -d "$cfgdir"   ]     || cfg_show_err "$cfg_err_invdir" "$cfgdir"
-
-	cfg_set_template "$cfg_template"
-
-	[ -f "$cfg_file" ] || {
-		cp "$cfg_template" "$cfg_file" || {
-			echo -e "${WRN}Cannot copy $MNU$cfg_template$WRN to $MNU$cfg_file!$OFF"
-			exit 1
-		}
-	}
-
-	cfg_b_ready=true
-	cfg_init
-}
-
 cfg_test_ready() {
 	$cfg_b_ready || {
 		echo -e "\n$WRN${cfg_err_msg[$cfg_err_notready]}$OFF"
@@ -166,91 +143,133 @@ cfg_set_item() {
 	local key="$1"
 	local item="$2"
 
+
 	cfg_write_key "$key" "$item"
 }
 
+# cfg_read_configfile - read out the values from the config file
+#
+# Read each key in the config file and set the corresponding var
+# in the calling script to the value stored in the config file.
+#
+# GLOBALS
+#    cfg_file
+#    cfg_template
+#
+cfg_read_configfile() {
+	local item
+	local value
+	local fd_cfgfile
+
+	$cfg_test_ready || return $cfg_err_notready
+
+	exec {fd_cfgfile}< "$cfg_file"
+
+	while IFS=" =" read -ru "$fd_cfgfile" item value; do
+		[ -n "$value" ] && eval "$item"="$value"
+	done
+	exec {fd_cfgfile}<&-
+}
+
+cfg_dump_vars() {
+	local item
+	local value
+	local fd_cfgfile
+
+	exec {fd_cfgfile}< "$cfg_file"
+	while IFS=" =" read -ru "$fd_cfgfile" item value; do
+		echo "\"$item\": ${!item}"
+	done
+	exec {fd_cfgfile}<&-
+}
+
+
+# Updates the cfg_file with updated values from the calling app.
+#
+# GLOBALS:
+#    cfg_file
+#
+cfg_update_configfile() {
+	local item
+	local value
+	local tmpfile=/dev/shm/cfg_temp
+	local fd_cfgfile
+	local tmpfile
+
+	tmpfile="/dev/shm/tempfile"
+	: > "$tmpfile"
+
+	exec {fd_cfgfile}< "$cfg_file"
+
+	while IFS=" =" read -ru "$fd_cfgfile" item value; do
+		value="${!item}"
+		echo "$item" = "$value" >> "$tmpfile"
+	done
+
+	exec {fd_cfgfile}<&-
+	cp -f "$tmpfile" "$cfg_file"
+	rm -f "$tmpfile"
+}
+
+# Updates the cfg_file with any changes in the cfg_template
+#
+cfg_refresh_configfile() {
+	local key=
+	local tmp=
+	local tmpfile=/dev/shm/cfg_temp
+	local stat=
+	local fd_template
+
+	$cfg_test_ready || return $cfg_err_notready
+
+	exec {fd_template}< "$cfg_template"
+	: > "$tmpfile"
+
+	while IFS=" =" read -ru "$fd_template" key tmp; do
+		cfgline=$(grep "^$key" "$cfg_file") \
+			&& echo "$cfgline" >> "$tmpfile" \
+			|| echo "$key = $tmp" >> "$tmpfile"
+	done
+
+	exec {fd_template}<&-
+	cp -f "$tmpfile" "$cfg_file"
+	rm -f "$tmpfile"
+}
+
+# cfg_compare_configfiles - compare the template with the current config file
+#
+# Returns 0 if the config file has the same elements in the same order as
+#           the current config file being compared.
+# Returns 1 if they're different.
+#
+# GLOBALS
+#    cfg_file
+#    cfg_template
+#
 cfg_compare_configfiles() {
 	local key1=
 	local key2=
 	local tmp=
 	local stat=
+	local fd_template
+	local fd_cfgfile
 
 	$cfg_test_ready || return $cfg_err_notready
 
 	[ $(cat "$cfg_template" | wc -l) -ne $(cat "$cfg_file" | wc -l) ] && return 1
 
-	exec 5<"$cfg_template"
-	exec 6<"$cfg_file"
+	exec {fd_template}< "$cfg_template"
+	exec {fd_cfgfile}< "$cfg_file"
 
 	while :; do
-		read -r -u 5 key1 tmp || { stat=0; break; }
-		read -r -u 6 key2 tmp
+		IFS=" =" read -ru "$fd_template" key1 tmp || { stat=0; break; }
+		IFS=" =" read -ru "$fd_cfgfile"  key2 tmp
 		[ "$key1" == "$key2" ] || { stat=1; break; }
 	done
 
-	exec 5<&-
-	exec 6<&-
+	exec {fd_template}<&-
+	exec {fd_cfgfile}<&-
 	return $stat
-}
-
-cfg_read_configfile() {
-	local confline=
-	local item
-	local value
-
-	$cfg_test_ready || return $cfg_err_notready
-
-	shopt -s extglob # ON to enable trimming spaces
-	while read confline; do
-		# Find the first '='.
-		item="$(echo "$confline" | cut -d'=' -f1)"
-		# strip any trailing spaces
-		item="${item%%*( )}"
-		# extract the value string
-		value="$(echo "$confline" | cut -d'=' -f2-)"
-		# strip any leading spaces
-		value="${value##*( )}"
-		# Assign the value to the item
-		eval "$item"="$value"
-	done < "$cfg_file"
-	shopt -u extglob # OFF
-}
-
-cfg_update_configfile() {
-	local confline=
-	local item
-
-	shopt -s extglob # ON to enable trimming spaces
-	while read confline; do
-		item="$(echo "$confline" | cut -d'=' -f1)"
-		item="${item%%*( )}"
-		eval "$item"="${!item}"
-	done < "$cfg_file"
-	shopt -u extglob # OFF
-}
-
-cfg_refresh_configfile() {
-	local key1=
-	local tmp=
-	local tmpfile=/dev/shm/cfg_temp
-	local stat=
-
-	$cfg_test_ready || return $cfg_err_notready
-
-	exec 5<"$cfg_template"
-	> $tmpfile
-
-	while :; do
-		read -r -u 5 key1 tmp || break
-		cfgline=$(grep "^$key1" $cfg_file) \
-			&& echo "$cfgline" >> $tmpfile \
-			|| echo "$key1 $tmp" >> $tmpfile
-	done
-
-	cp -f $tmpfile $cfg_file
-	rm -f $tmpfile
-
-	exec 5<&-
 }
 
 cfg_init() {
@@ -265,6 +284,29 @@ cfg_init() {
 # template and read every key.
 #
 cfg_init_ready() {
-	cfg_file="$1"
+	cfg_file="$(realpath "$1")"
 	cfg_b_ready=true
+}
+
+cfg_start() {
+	cfg_template="$(realpath "$1")"
+	cfg_file="$(realpath "$2")"
+	local cfgdir
+
+	cfgdir=$(dirname "$cfg_file")
+
+	[ -f "$cfg_template" ] || cfg_show_err "$cfg_err_invtemplate" "$cfg_template"
+	[ -d "$cfgdir"   ]     || cfg_show_err "$cfg_err_invdir" "$cfgdir"
+
+	cfg_set_template "$cfg_template"
+
+	[ -f "$cfg_file" ] || {
+		cp "$cfg_template" "$cfg_file" || {
+			echo -e "${WRN}Cannot copy $MNU$cfg_template$WRN to $MNU$cfg_file!$OFF"
+			exit 1
+		}
+	}
+
+	cfg_b_ready=true
+	cfg_init
 }
