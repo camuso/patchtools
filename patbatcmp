@@ -295,7 +295,10 @@ is_patch() {
 # to expect. We'll do this by writing a number into the first line of
 # the output file. If it's stdout, then we'll skip this step.
 #
-$b_stdout || fprintf "verbose level: %d\n" $verbosity
+$b_stdout || {
+	fprintf "file count   : %d\n" $fcountA
+	fprintf "verbose level: %d\n" $verbosity
+}
 
 # > $tlog
 
