@@ -1471,32 +1471,6 @@ exec_apply_patches(){
 	return 0
 }
 
-# check_mismatch_file - see that it has the correct number of patches
-#
-# Globals
-#	mmfile
-#	infilecount
-#
-# Returns
-# 	0 if number of patches in the mismatch file is the same as infilecount
-# 	1 if not
-#
-check_mismatch_file() {
-	# echo -e "\n$BLD\0patch-common::check_mismatch_file$OFF"
-	declare -i num=0
-
-
-	[ -f "$mmfile" ] || return 1
-
-	num=$(tac "$mmfile" | while read -r line; do
-		echo "$line" | grep -q '^PATCH:' && {
-			echo "$line" | cut -d':' -f2;
-			break
-		}
-	done)
-	if ((num == infilecount)); then return 0; else return 1; fi
-}
-
 # exec_patcmp - execute the comparison of the patches
 #
 #  $1 - Contains "-X" to execute in patbatcmpmgr in batch mode.
@@ -1541,8 +1515,7 @@ exec_patcmp() {
 	#
 	if [ "$xval" ]; then
 
-		check_mismatch_file ||
-			# echo -e "${BLD}Rebuild the conflicts log:$OFF $mmfile"
+		$b_reviewed ||
 			patbatcmpmgr -P "$valpatchlist" -R "$indir" -U "$outdir" \
 				     -o "$mmfile" "$xval" -b "$tb"
 	else
