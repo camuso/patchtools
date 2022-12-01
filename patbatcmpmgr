@@ -26,13 +26,12 @@ declare MYDIR=
 MYDIR="$(dirname "$(which "$(basename "$0")")")"
 declare MYLIB="$MYDIR"/lib
 declare MYDATA="./.data"
-LIB="$MYLIB"
 
 #######################################
 # External Source Files
 #######################################
-source "$LIB"/ui.source
-source "$LIB"/config-manager.source
+source "$MYLIB"/ui.source
+source "$MYLIB"/config-manager.source
 
 #######################################
 # Global variables
@@ -341,6 +340,7 @@ parse_opts() {
 		X ) b_exec_exit=true
 		    ;;
 		b ) background="$OPTION"
+		    cfg_set_item "background" "$background"
 		    ui_do_colors "$background"
 		    ;;
 		* ) echo "unrecognized option"
@@ -354,9 +354,18 @@ parse_opts() {
 ###########################################
 
 init() {
+	local bgtmp
+
+	ui_setbg bgtmp
+
 	cfg_start "$MYLIB"/patbatcmpmgr.conf "$MYDATA"/patbatcmpmgr.conf
-	[ -n "$background" ] && ui_do_colors "$background"
+
 	parse_opts "$@"
+
+	[ -n "$background" ] || {
+		ui_do_colors "$bgtmp"
+		background="$bgtmp"
+	}
 
 	# If the caller passed a desired output file name (pfile), then use that
 	# Else, if the ofile retrieved from the config file is an empty string,
