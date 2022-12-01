@@ -508,6 +508,21 @@ select_merge_request() {
 	return 0
 }
 
+# redo_mr - if user submits the same mr number, query for a redo
+#
+#
+#  GLOBALS
+#    current_mr
+#
+redo_mr() {
+	if loop_yn "${INF}Do you want to redo MR$STA $current_mr${INF}?$MNU y/n$INF: "
+	then
+		return 0
+	else
+		return 1
+	fi
+}
+
 # update_current_mr
 #
 #  If the provided mr is a valid number, update the global mr and
@@ -519,12 +534,13 @@ select_merge_request() {
 #    b_reviewed
 #    b_acked
 #    b_nacked
+#    b_redo
 #
 update_current_mr() {
 	local cmr="$1"
 
 	if is_validnumber "$cmr"; then
-		((cmr == current_mr)) && return 1
+		((cmr == current_mr)) && { redo_mr || return 1; }
 		current_mr="$cmr"
 		b_reviewed=false
 		b_acked=false
@@ -663,6 +679,14 @@ get_mrcommits_labmr() {
 	echo -e "\npatchcount: $patchcount"
 }
 
+make_mrcomments_log() {
+	lab mr show "$origin" "$current_mr" --comments > "$mrcomments" & mypid=$!
+	ui_waitonproc_tty $mypid .05 \
+		"${INF}Getting comments from MR $STA$current_mr$OFF" \
+		|| return $mr_inv
+	return 0
+}
+
 # get_merge_request_patches - extract the patches from a merge request
 #
 # Inputs:
@@ -711,9 +735,7 @@ get_merge_request_patches() {
 
 	: > "$missing_fixes"
 	valpatchlist=
-	lab mr show "$origin" "$mr" --comments > "$mrcomments" & mypid=$!
-	ui_waitonproc_tty $mypid .05 "${INF}Getting comments from MR $STA$current_mr$OFF" \
-		|| return $mr_inv
+	make_mrcomments_log || return $mr_inv
 
 	# If there's a dependency, find the base commit for it.
 	#
