@@ -819,6 +819,7 @@ parse_missingfix() {
 
 	# If the "missing" commit was intentionally omitted, print a message
 	# and return.
+	[ -s "$mrcomments" ] || make_mrcomments_log
 	if grep -i "omitted.fix" "$mr_commitlog" | grep -q "$fix_id" || \
 	   grep -i "omitted.fix" "$mrcomments"   | grep -q "$fix_id"; then
 		echo -e "$INF$tskip $fix_line for $commitnum $OFF"
@@ -828,7 +829,7 @@ parse_missingfix() {
 
 	# If the missing fix is in the list of upstream commits, see if it's
 	# applied later in the current MR series.
-	if found=$(grep "$fix_id" "$commitsfile"); then
+	if found=$(grep -m1 "$fix_id" "$commitsfile"); then
 		found_id=$(echo "$found" | cut -d' ' -f2)
 		echo -e "$INF$found_id $tokay $fix_line for $commitnum$OFF"
 		echo "$found_id $tokay $fix_line for $commitnum" >> "$missing_file"
