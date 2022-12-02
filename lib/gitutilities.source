@@ -900,8 +900,6 @@ check_fixes() {
 	local line=
 	local commitid=
 	local fixline=
-	local tmsg="WARNING: found missing fix "
-	local tskip="Intentionally Omitted Fix : "
 	local mypid
 	local fixfile="/dev/shm/fixfile"
 	local currentbranch=
