@@ -735,19 +735,7 @@ get_merge_request_patches() {
 	: > "$missing_fixes"
 	valpatchlist=
 	make_mrcomments_log || return $mr_inv
-
-	# If there's a dependency, find the base commit for it.
-	#
-	if basmr="$(grep -i -A3 'Depends tags:' "$mrcomments")"; then
-		basmr="$(echo "$basmr" | tail -1)"
-		ui_strtok "$basmr" "|: " basary
-		bascmt="${basary[6]}"
-		echo -e "${INF}Dependency detected:$INF MR${STA}"\
-			 "$(echo -en "${basary[1]}" | cut -d'!' -f2)"\
-		         "${INF}commit $STA${basary[6]}$OFF"
-	else
-		bascmt="$origin"
-	fi
+	bascmt="$origin"
 
 	ackcount=$(grep '^Approved By' "$mrcomments" | cut -d':' -f2- | wc -w)
 	less "$mrcomments"
