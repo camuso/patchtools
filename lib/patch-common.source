@@ -5,7 +5,7 @@
 # This source file provides routines common to both patchreview and
 # patchdevelop scripts.
 #
-version="12.1"
+version="12.1.1"
 
 # Get the directory defaults if they don't already exist
 #
