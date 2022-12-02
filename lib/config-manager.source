@@ -5,9 +5,15 @@
 # The configfile must be declared and defined globally and externally.
 #
 
-[ "$MYDIR" ] || declare MYDIR=$(dirname $(which $(basename "$0")))
-[ "$MYLIB" ] || declare MYLIB=$MYDIR/lib
-[ "$ui_loaded" ] || source $MYLIB/ui.source
+[ "$MYDIR" ] || {
+	declare MYDIR=
+	MYDIR="$(dirname "$(which "$(basename "$0")")")"
+}
+[ "$MYLIB" ] || {
+	declare MYLIB=
+	MYLIB="$MYDIR"/lib
+}
+[ "$ui_loaded" ] || source "$MYLIB"/ui.source
 
 declare configmanager_loaded=true
 
@@ -22,7 +28,9 @@ declare cfg_template=
 declare cfg_b_ready=false
 
 cfg_manager_help() {
-	local helpmsg=$(
+	local helpmsg=
+
+	helpmsg=$(
 cat <<EOF
 	The config manager bash routines provide a means for maintaining
 	a config file of global variables with each line formatted as ...
@@ -71,16 +79,16 @@ cfg_show_err() {
 	local val="$2"
 
 	echo -e "\n$WRN${cfg_err_msg[$err]} $INF: $STA$val$OFF"
-	return $err
+	return "$err"
 }
 
 cfg_set_configfile() {
 	cfg_file="$1"
-	[ -f $cfg_template ] && cfg_b_ready=true
+	[ -f "$cfg_template" ] && cfg_b_ready=true
 }
 
 cfg_get_configfile() {
-	eval $1="$cfg_file"
+	eval "$1"="$cfg_file"
 }
 
 cfg_set_template() {
@@ -100,10 +108,10 @@ cfg_read_key() {
 	local keyline=
 	local value
 
-	$cfg_test_ready || return $cfg_err_notready
+	cfg_test_ready || return $cfg_err_notready
 
-	keyline=$(grep -w $key $cfg_file) || {
-		cfg_show_err $cfg_err_nokey $key
+	keyline="$(grep -w "$key" "$cfg_file")" || {
+		cfg_show_err $cfg_err_nokey "$key"
 		return $cfg_err_nokey
 	}
 
@@ -127,16 +135,16 @@ cfg_write_key() {
 	local keyline=
 	local linenumber=
 
-	$cfg_test_ready || return $cfg_err_notready
+	cfg_test_ready || return $cfg_err_notready
 
 	keyline=$(grep -nw "$key" "$cfg_file") || {
-		cfg_show_err $cfg_err_nokey $key
+		cfg_show_err $cfg_err_nokey "$key"
 		return $cfg_err_nokey
 	}
 	linenumber=$(echo "$keyline" | cut -d":" -f1)
 	keyline=$(echo "$keyline" | cut -d":" -f2- | cut -d"=" -f1)
 	keyline="$keyline""= $value"
-	ui_replaceline_raw $linenumber "$keyline" "$cfg_file"
+	ui_replaceline_raw "$linenumber" "$keyline" "$cfg_file"
 }
 
 cfg_set_item() {
@@ -161,7 +169,7 @@ cfg_read_configfile() {
 	local value
 	local fd_cfgfile
 
-	$cfg_test_ready || return $cfg_err_notready
+	cfg_test_ready || return $cfg_err_notready
 
 	exec {fd_cfgfile}< "$cfg_file"
 
@@ -220,7 +228,7 @@ cfg_refresh_configfile() {
 	local stat=
 	local fd_template
 
-	$cfg_test_ready || return $cfg_err_notready
+	cfg_test_ready || return $cfg_err_notready
 
 	exec {fd_template}< "$cfg_template"
 	: > "$tmpfile"
@@ -254,9 +262,9 @@ cfg_compare_configfiles() {
 	local fd_template
 	local fd_cfgfile
 
-	$cfg_test_ready || return $cfg_err_notready
+	cfg_test_ready || return $cfg_err_notready
 
-	[ $(cat "$cfg_template" | wc -l) -ne $(cat "$cfg_file" | wc -l) ] && return 1
+	(($(wc -l < "$cfg_template") != $(wc -l < "$cfg_file"))) && return 1
 
 	exec {fd_template}< "$cfg_template"
 	exec {fd_cfgfile}< "$cfg_file"
