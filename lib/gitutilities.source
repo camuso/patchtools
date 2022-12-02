@@ -502,8 +502,12 @@ git_comment2commitsfile() {
 		# Skip over reverted commits and use sort -u to squeeze out
 		# duplicates
 		#
+		# Limit this to just three commits, trusting that no developer
+		# would try to conflate more than three upstream commits into
+		# one RHEL commit.
+		#
 		mapfile -t rawcmtarray < \
-			<(grep -Ew '(commit|cherry-picked from)' "$srcfile" \
+			<(grep -Ew -m 3 '(commit|cherry-picked from)' "$srcfile" \
 			| grep -vi 'revert' \
 			| grep -E -o "\b[0-9a-f]{$hashsize}\b" \
 			| sort -u)
