@@ -9,9 +9,14 @@ version="12.0"
 
 # Get the directory defaults if they don't already exist
 #
-[ "$MYDIR" ] || declare MYDIR=
-MYDIR="$(dirname "$(which "$(basename "$0")")")"
-[ "$MYLIB" ] || declare MYLIB="$MYDIR"/lib
+[ "$MYDIR" ] || {
+	declare MYDIR=
+	MYDIR="$(dirname "$(which "$(basename "$0")")")"
+}
+[ "$MYLIB" ] || {
+	declare MYLIB=
+	MYLIB="$MYDIR"/lib
+}
 
 [ "$ui_loaded" ]            || source "$MYLIB"/ui.source
 [ "$gitutilities_loaded" ]  || source "$MYLIB"/gitutilities.source
