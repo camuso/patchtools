@@ -676,7 +676,6 @@ get_mrcommits_labmr() {
 	}
 
 	patchcount=$(wc -l < "$bp_commits")
-	echo -e "\npatchcount: $patchcount"
 }
 
 make_mrcomments_log() {
@@ -778,6 +777,7 @@ get_merge_request_patches() {
 
 	get_mrcommits_labmr "$mr" "$bascmt" & mypid=$!
 	ui_waitonproc_tty $mypid .05 "${INF}Getting patches from MR $STA$current_mr$OFF"
+	echo
 
 	git_file2patchset "$bp_commits" "$indir" $b_verbose || { echo "stat $?"; return $mr_nop; }
 	return 0
