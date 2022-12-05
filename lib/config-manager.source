@@ -172,8 +172,7 @@ cfg_read_configfile() {
 	cfg_test_ready || return $cfg_err_notready
 
 	exec {fd_cfgfile}< "$cfg_file"
-
-	while IFS=" =" read -ru "$fd_cfgfile" item value; do
+	while IFS+="=" read -ru "$fd_cfgfile" item value; do
 		[ -n "$value" ] && eval "$item"="$value"
 	done
 	exec {fd_cfgfile}<&-
@@ -185,7 +184,7 @@ cfg_dump_vars() {
 	local fd_cfgfile
 
 	exec {fd_cfgfile}< "$cfg_file"
-	while IFS=" =" read -ru "$fd_cfgfile" item value; do
+	while IFS+="=" read -ru "$fd_cfgfile" item value; do
 		echo "\"$item\": ${!item}"
 	done
 	exec {fd_cfgfile}<&-
@@ -209,7 +208,7 @@ cfg_update_configfile() {
 
 	exec {fd_cfgfile}< "$cfg_file"
 
-	while IFS=" =" read -ru "$fd_cfgfile" item value; do
+	while IFS+="=" read -ru "$fd_cfgfile" item value; do
 		value="${!item}"
 		echo "$item" = "$value" >> "$tmpfile"
 	done
@@ -233,7 +232,7 @@ cfg_refresh_configfile() {
 	exec {fd_template}< "$cfg_template"
 	: > "$tmpfile"
 
-	while IFS=" =" read -ru "$fd_template" key tmp; do
+	while IFS+="=" read -ru "$fd_template" key tmp; do
 		cfgline=$(grep "^$key" "$cfg_file") \
 			&& echo "$cfgline" >> "$tmpfile" \
 			|| echo "$key = $tmp" >> "$tmpfile"
@@ -270,8 +269,8 @@ cfg_compare_configfiles() {
 	exec {fd_cfgfile}< "$cfg_file"
 
 	while :; do
-		IFS=" =" read -ru "$fd_template" key1 tmp || { stat=0; break; }
-		IFS=" =" read -ru "$fd_cfgfile"  key2 tmp
+		IFS+="=" read -ru "$fd_template" key1 tmp || { stat=0; break; }
+		IFS+="=" read -ru "$fd_cfgfile"  key2 tmp
 		[ "$key1" == "$key2" ] || { stat=1; break; }
 	done
 
