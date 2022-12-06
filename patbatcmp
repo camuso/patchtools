@@ -293,10 +293,10 @@ is_patch() {
 # At this point, we know the level of verbosity of the output. We need
 # to notify scripted consumers of the output file what level of verbosity
 # to expect. We'll do this by writing a number into the first line of
-# the output file. If it's stdout, then we'll skip this step.
+# the output file. 
+# If it's stdout, then we'll skip this step.
 #
 $b_stdout || {
-	fprintf "file count   : %d\n" $fcountA
 	fprintf "verbose level: %d\n" $verbosity
 }
 
@@ -341,7 +341,7 @@ for ((index = 0; index < fcountA; ++index)); do
 	is_patch "${faryB[$index]}" || {
 		equiv=false
 		b_done=true
-		$equiv && fecho "PATCH: $((index+1)): ${faryA[$index]}"
+		fecho "PATCH: $((index+1)): ${faryA[$index]}"
 	}
 
 	# Open file descriptors based on the filenames in each array
