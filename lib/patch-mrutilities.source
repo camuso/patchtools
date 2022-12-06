@@ -661,7 +661,8 @@ get_mrcommits_labmr() {
 	local lcnt
 	local tfil=/dev/shm/tempcommitsfile
 
-	lab mr show "$mr" -p --reverse | grep '^commit ' | cut -d ' ' -f2 > "$bp_commits"
+	lab mr show "$origin" "$mr" -p --reverse | \
+		grep '^commit ' | cut -d ' ' -f2 > "$bp_commits"
 
 	# If there is a base commit for a dependency, then it won't be the
 	# same as the origin commit, so remove its patches from the commits
