@@ -99,7 +99,9 @@ declare -a ui_err_msg=(
 # Contlol-C exit code
 # see http://www.tldp.org/LDP/abs/html/exitcodes.html
 #
-unset CTLC_EXIT &&  declare -i CTLC_EXIT=130
+# If it hasn't been defined in the environment, then define it here.
+#
+declare -p CTLC_EXIT > /dev/null 2>&1 || declare -i CTLC_EXIT=130
 
 declare ui_tempfile="/dev/shm/ui_temp_file"
 
