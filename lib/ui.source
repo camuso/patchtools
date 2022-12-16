@@ -67,8 +67,9 @@ declare punctset="#$%&'()*+,-./:;<=>?@[\\]^\`{|}~!\""
 declare qstr="${MNU}'q'$OFF"
 declare msgretry="${INF}Retry or type $qstr$INF to quit: $OFF"
 
-# Errors
+# Exit codes
 #
+declare -i ui_exit_ok=0
 declare -i ui_err_invargc=1
 declare -i ui_err_invfile=2
 declare -i ui_err_invdir=3
