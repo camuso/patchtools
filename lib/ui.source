@@ -118,7 +118,7 @@ declare -a ui_err_msg=(
 "missing argument"
 "wrong bash version"
 "not a valid git repo"
-"not a valid or installed command"
+"not a valid command"
 ""
 )
 #*
