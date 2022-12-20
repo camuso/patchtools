@@ -1314,6 +1314,27 @@ ui_nextinarray() {
 	return 1
 }
 
+#** ui_aryindex: find the index of exact matching string in array
+#
+# $1 - array name passed by reference, no leading $
+# $2 - string being sought, passed by value
+# $3 - index of string in array, passed by reference, no leading $
+#
+# Returns 0 if match is found, 1 if not
+#*
+ui_aryindex () {
+    local -n ar=$1
+    local fld="$2"
+    local -n ix=$3
+
+    for ((ix = 0; ix < ${#ar[@]}; ix++))
+    do
+        [ "${ar[ix]}" == "$fld" ] && break
+    done
+
+    ((ix < ${#ar[@]})) && return 0 || return 1
+}
+
 # ui_isdigit - determines if $1 is a digit
 #
 # returns 0 if digit, 1 if not
