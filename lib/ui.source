@@ -105,7 +105,8 @@ declare -i ui_err_missing_arg=7
 declare -i ui_err_bashver=8
 declare -i ui_err_norepo=9
 declare -i ui_err_invcmd=10
-declare -i ui_err_boundary="$ui_err_invcmd"
+declare -i ui_err_invcmd_arg=11
+declare -i ui_err_boundary="$ui_err_invcmd_arg"
 
 declare -a ui_err_msg=(
 ""
@@ -119,6 +120,7 @@ declare -a ui_err_msg=(
 "wrong bash version"
 "not a valid git repo"
 "not a valid command"
+"not a valid command argument"
 ""
 )
 #*
