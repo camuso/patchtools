@@ -315,6 +315,29 @@ ui_putnchar() {
 	done
 }
 
+#** ui_rptchr: put a chr repeatedly n times
+#
+# This function is preferred over ui_putnchar
+#
+# $1 - char to repeat
+# $2 - number of times to repeat it
+#
+# Example:
+# 	pad=$(ui_rptchr "-" 5)
+# 	echo "$pad"
+#
+# 	prints "-----" to the teminal
+#*
+ui_rptchr() {
+	local chr="$1"
+	local -i num=$2
+	local tstr=
+
+	((num <= 0)) && return
+	tstr="$(printf "%*c" $num "$chr")"
+	echo "${tstr// /"$chr"}"
+}
+
 # ui_padfield - pad a string with a given character to fill a field
 #
 #  $1 - str
