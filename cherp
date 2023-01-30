@@ -926,11 +926,12 @@ function show_settings {
 	local lastbrcmt
 	local orighead
 	local settings
-
+set -x
 	subjectprefix="$(git config format.subjectprefix)"
 	lasttag=$(cat $lasttagfile)
 	lastbrcmt=$(git log -n1 --oneline)
 	orighead=$(git log --oneline -n1 "$dnorighead")
+set +x
 	settings=$(
 cat <<EOF
 $MNU
@@ -1464,41 +1465,25 @@ save_session() {
 #===============================================================================
 read_session() {
 	# echo -e "$UND\0read_session$OFF"
+	local configfile=
+	local cfgtemplate=
+	local bgtemp
 
-	b_color=true
+	ui_setbg bgtemp
 
 	# Initialize the paths for the current working directory
 	#
 	configfile="$MYDATA/cherp.conf"
 	cfgtemplate="$MYLIB/cherp.conf"
 
-	# If the .data directory has not been created yet, do that.
-	[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
-
-	# If the config file doens't exist, copy the default one
-	# from MYLIB.
-	[ -f "$configfile" ] || cp "$cfgtemplate" "$configfile"
-
-	# Initialize the config manager and get the global variables.
-	#
-	cfg_set_template "$cfgtemplate"
-	cfg_set_configfile "$configfile"
-	cfg_init
-
-	# If color hasn't already been set up, then query the user for terminal
-	# background color and init the color engine.
-	# Else just init the terminal_background variable from the config global.
-	#
-	if [ -z "$background" ] || (( background < 1 || background > 2 )); then
-		set_colors
-	else
-		terminal_background=$background
-		ui_set_colors
-	fi
-
+	cfg_start "$cfgtemplate" "$configfile"
 	init_global_strings
 
-	[ "$upcmtstartline" ] || return 1
+	cfg_get_item "upcmtstartline" upcmtstartline
+	[ "$upcmtstartline" ] || {
+		upcmtstartline=0
+		cfg_set_item "upcmtstartline" "$upcmtstartline"
+	}
 	[ "$dnorighead" ]     || dnorighead="HEAD"
 	[ "$workdir" ]        || set_working_directory
 	[ "$upcommitsfile" ]  || set_upcommitsfile
