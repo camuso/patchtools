@@ -82,6 +82,9 @@ declare gitbranch
 declare currentuphash
 declare currentupcommit
 
+# Default upstream repo
+declare upurl="git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git"
+
 # Lines starting with any of these chars will be ignored.
 # The '#' indicates a comment, and the '+' indicates already committed.
 declare ignore_str="#+"
@@ -298,6 +301,42 @@ set_upstream_directory() {
 	git remote add "$uprepo" "$upurl"
 	git fetch -p --all
 	return 0
+}
+
+fetch_upstream_repo() {
+	echo -e "${INF}Adding url: $UND$STA$upurl$OFF"
+	echo -e "${INF}as \"upstream\""
+	echo -e "${INF}Type: ${MNU}git branch -r | grep upstream$OFF"
+	echo -e "${INF}to see the upstream remote and its branches$OFF"
+	git remote add upstream "$upurl"
+	git fetch upstream
+}
+
+#===  FUNCTION  ================================================================
+#          NAME:  set_upstream_repo
+#   DESCRIPTION:  Set the upstream directory having the upstream repo
+#    PARAMETERS:  none
+#       GLOBALS:  updir
+#                 upurl
+#       RETURNS:  none
+#===============================================================================
+set_upstream_repo() {
+	local temp=
+	local mypid
+	local surmsg=$(
+cat <<EOF
+$INF
+Default upstream repo is the linus main branch: $STA$UND
+$upurl$OFF$INF
+Press ENTER if this is ok, or enter a different upstream repo.
+$OFF
+EOF
+)
+	echo -e "$surmsg"
+	read -r temp
+	[ -n "$temp" ] && upurl="$temp"
+	fetch_upstream_repo & mypid=$!
+	ui_waitonproc_tty $mypid .05 "${INF}Fetching upstream repo$OFF"
 }
 
 show_remote_url() {
@@ -926,12 +965,12 @@ function show_settings {
 	local lastbrcmt
 	local orighead
 	local settings
-set -x
+
 	subjectprefix="$(git config format.subjectprefix)"
 	lasttag=$(cat $lasttagfile)
 	lastbrcmt=$(git log -n1 --oneline)
 	orighead=$(git log --oneline -n1 "$dnorighead")
-set +x
+
 	settings=$(
 cat <<EOF
 $MNU
@@ -1401,27 +1440,6 @@ get_cfg_item() {
 	cfg_read_key "$1"
 }
 
-set_colors() {
-	local ans
-	while :; do
-		ui_use_colors
-		background=$terminal_background
-		set_cfg_item background $terminal_background
-		echo -en "${INF}You chose "
-
-		case $terminal_background in
-			1) echo -e "${STA}light$INF background$OFF\n";;
-			2) echo -e "${STA}dark$INF background$OFF\n";;
-		esac
-
-		if loop_yn_ro "Is that what you want? (y/n) : "; then
-			return
-		else
-			continue
-		fi
-	done
-}
-
 #===  FUNCTION  ================================================================
 #          NAME:  save_session
 #   DESCRIPTION:  Save session's project variables to the project file.
@@ -1467,9 +1485,10 @@ read_session() {
 	# echo -e "$UND\0read_session$OFF"
 	local configfile=
 	local cfgtemplate=
-	local bgtemp
+	local temp
 
-	ui_setbg bgtemp
+	ui_setbg temp
+	temp=
 
 	# Initialize the paths for the current working directory
 	#
@@ -1479,12 +1498,16 @@ read_session() {
 	cfg_start "$cfgtemplate" "$configfile"
 	init_global_strings
 
-	cfg_get_item "upcmtstartline" upcmtstartline
-	[ "$upcmtstartline" ] || {
-		upcmtstartline=0
-		cfg_set_item "upcmtstartline" "$upcmtstartline"
+	cfg_get_item "upurl" temp
+	[ "$temp" ] && upurl="$temp"
+	grep "upstream" .git/config || {
+		fetch_upstream_repo & mypid=$!
+		ui_waitonproc_tty $mypid .05 "${INF}Fetching upstream repo$OFF"
 	}
+
+	cfg_get_item "dnorighead" dnorighead
 	[ "$dnorighead" ]     || dnorighead="HEAD"
+	[ "$upcmtstartline" ] || return 1
 	[ "$workdir" ]        || set_working_directory
 	[ "$upcommitsfile" ]  || set_upcommitsfile
 	[ "$updir" ]          || set_upstream_directory
