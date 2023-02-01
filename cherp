@@ -5,7 +5,7 @@
 # Provide some automation for cherrypicking.
 #
 
-VERSION="3.0"
+VERSION="4.0"
 
 #######################################
 # Default file locations
@@ -60,10 +60,6 @@ declare lastuphash		# most recently applied upstream commit hash
 declare workdir			# scratch directory for the session
 declare upcommitsfile		# File of upstream commits to cherry-pick
 declare b_conflict		# last attempt generated a conflict
-declare updir			# directory with the upstream repo
-declare upurl			# the url of the upstream repo
-declare uprepo			# the name of the upstream repo
-declare upbranch		# the branch of the upstream repo
 
 #########################################
 # Global Variables
@@ -83,7 +79,8 @@ declare currentuphash
 declare currentupcommit
 
 # Default upstream repo
-declare upurl="git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git"
+declare upurl=
+declare upname="cp_upstream"
 
 # Lines starting with any of these chars will be ignored.
 # The '#' indicates a comment, and the '+' indicates already committed.
@@ -270,172 +267,43 @@ set_working_directory() {
 }
 
 #===  FUNCTION  ================================================================
-#          NAME:  set_upstream_directory
-#   DESCRIPTION:  Set the upstream directory having the upstream repo
+#          NAME:  fetch_upstream_repo
+#   DESCRIPTION:  git fetch $upname $upurl and wait
 #    PARAMETERS:  none
-#       GLOBALS:  updir
-#                 upurl
+#       GLOBALS:  upurl
+#                 upname
 #       RETURNS:  none
 #===============================================================================
-set_upstream_directory() {
-	# echo -e "$UND\0set_upstream_directory$OFF"
-	local newdir=
-
-	echo -e "${INF}The upstream directory has the upstream repo.$OFF"
-	[ "$updir" ] && echo -e "${INF}Current upstream dir: $STA$updir$OFF"
-	set_dir "upstream" "updir" newdir
-
-	[ "$newdir" == "$updir" ] || { [ "$uprepo" ] && git remote rm "$uprepo"; }
-	updir="$newdir"
-
-	cd "$updir" || { echo -e "${WRN}Unable to ${MNU}cd $updir$OFF"; return 1; }
-	select_remrepo uprepo
-	select_rembranch "$uprepo" upbranch
-	upurl=$(show_remote_url "$uprepo")
-
-	cd - || { echo -e "${WRN}Unable to ${MNU}cd -$OFF"; return 1; }
-	[ "$uprepo" == "origin" ] && uprepo="upstream"
-	set_cfg_item "uprepo"   "$uprepo"
-	set_cfg_item "upurl"    "$upurl"
-	set_cfg_item "upbranch" "$upbranch"
-	git remote add "$uprepo" "$upurl"
-	git fetch -p --all
-	return 0
-}
-
 fetch_upstream_repo() {
+	local mypid
+
 	echo -e "${INF}Adding url: $UND$STA$upurl$OFF"
-	echo -e "${INF}as \"upstream\""
-	echo -e "${INF}Type: ${MNU}git branch -r | grep upstream$OFF"
-	echo -e "${INF}to see the upstream remote and its branches$OFF"
-	git remote add upstream "$upurl"
-	git fetch upstream
+	echo -e "${INF}as \"$upname\""
+	echo -e "${INF}Type: ${MNU}git branch -r | grep $upname$OFF"
+	echo -e "${INF}to see the $upname remote and its branches$OFF"
+	echo -e "${INF}Fetching the upstream repo.$OFF"
+	echo -e "${INF}This could take some time, so please be patient.$OFF"
+	git fetch "$upname" & mypid=$!
+	ui_waitonproc_tty $mypid 1
 }
 
 #===  FUNCTION  ================================================================
-#          NAME:  set_upstream_repo
-#   DESCRIPTION:  Set the upstream directory having the upstream repo
+#          NAME:  set_upstream_url
+#   DESCRIPTION:  Set the upstream url
 #    PARAMETERS:  none
-#       GLOBALS:  updir
-#                 upurl
+#       GLOBALS:  upurl
+#                 upname
 #       RETURNS:  none
 #===============================================================================
-set_upstream_repo() {
+set_upstream_url() {
 	local temp=
-	local mypid
-	local surmsg=$(
-cat <<EOF
-$INF
-Default upstream repo is the linus main branch: $STA$UND
-$upurl$OFF$INF
-Press ENTER if this is ok, or enter a different upstream repo.
-$OFF
-EOF
-)
-	echo -e "$surmsg"
-	read -r temp
-	[ -n "$temp" ] && upurl="$temp"
-	fetch_upstream_repo & mypid=$!
-	ui_waitonproc_tty $mypid .05 "${INF}Fetching upstream repo$OFF"
-}
-
-show_remote_url() {
-	local reponame="$1"
-	local url
-	[ -z "$reponame" ] && return
-	url=$(grep -A1 "remote \"$reponame" .git/config | grep url | cut -d'=' -f2)
-	echo "$url"
-}
-
-show_remotes() {
-	local line
-	local toks=()
-	local gitcfgarray=()
-	local remoteurl=
-	local remote=
-
-	gitcfgarray=("$(grep -w '\[remote' .git/config)")
-	while read -r line; do
-		ui_strtok "$line" '" ' toks
-		remote="${toks[1]}"
-		remote="${remote//]/}"
-		remoteurl=$(show_remote_url "$remote")
-		echo -e "$remote"
-		echo -e "$remoteurl"
-		echo
-	done <<< "${gitcfgarray[@]}"
-}
-
-create_remote_array() {
-	local -n remarray=$1
-	local line
-	local remote=
-	local toks=()
-	local gitcfgarray=()
-
-	gitcfgarray=("$(grep -w '\[remote' .git/config)")
-	while read -r line; do
-		ui_strtok "$line" '" ' toks
-		remote="${toks[1]}"
-		remote="${remote//]/}"
-		remarray+=("$remote")
-	done <<< "${gitcfgarray[@]}"
-}
-
-select_remrepo() {
-	local cur="${!1}"
-	local remotes=()
-	local num_of_remotes
-	local stat
-
-	create_remote_array remotes
-	num_of_remotes=${#remotes[@]}
-
-	case $num_of_remotes in
-		0 ) echo -e "${WRN}No remotes could be detected in .git/config.$OFF"
-		    return 1
-		    ;;
-		1 ) cur="${remotes[0]}"
-		    stat=0
-		    ;;
-		* ) select_from_array remotes "remote repos" cur
-		    stat=$?
-	esac
-
-	eval "$1"="$cur"
-	return $stat
-}
-
-set_remote_url() {
-	local reponame="$1"
-	local url
-	[ -z "$reponame" ] && return
-	url=$(grep -A1 "remote \"$reponame" .git/config | grep url | cut -d'=' -f2)
-	echo "$url"
-}
-
-select_rembranch() {
-	local repo="$1"
-	local cur="${!2}"
-	local brstr=
-	local brancharray=()
-
-	# Get all the branches into one string
-	brstr=$(git branch -r | grep "$repo" | cut -d'/' -f2)
-
-	# Filter out lines with '-> in them, because they are not branches
-	while read -r s; do [[ $s == *"->"* ]] || brancharray+=("$s"); done <<< "$brstr"
-
-	if [ ${#brancharray[@]} -gt 1 ]; then
-		select_from_array brancharray "remote branches in $repo" cur
-	else
-		cur=${brancharray[0]}
-		echo -e "$INF Only one branch in this repo: $STA$cur$OFF"
-		echo -e "$INF Nothing else to choose from.$OFF"
-	fi
-
-	eval "$2"="$cur"
-	return 0
+	echo -e "${INF}Change the upstream url. Press ENTER to quit without changing.$OFF"
+	getuser "New upstream URL: " temp
+	[ -n "$temp" ] || return
+	upurl="$temp"
+	git remote remove "$upname"
+	git remote add "$upname" "$upurl"
+	fetch_upstream_repo
 }
 
 #===  FUNCTION  ================================================================
@@ -975,7 +843,8 @@ function show_settings {
 cat <<EOF
 $MNU
     ${UND}Upstream Environment    $OFF
-$MNU b$OFF  File of Backport Commits : $STA$upcommitsfile$OFF\
+$MNU b $OFF File of Backport Commits  : $STA$upcommitsfile$OFF
+$MNU u $OFF Upstream url              : $STA$upurl$OFF\
 $(show_most_recent_cherrypick)\
 $(show_next_cherrypick)
 $MNU
@@ -986,7 +855,6 @@ $MNU
 $MNU B $OFF Current git branch       : $STA$(get_gitbranch)$OFF
 $MNU b $OFF Backport File            : $STA$upcommitsfile$OFF
 $MNU w $OFF Working directory        : $STA$workdir$OFF
-$MNU u $OFF Upstream directory       : $STA$updir$OFF
 $MNU O $OFF Options menu
 $MNU
     ${UND}Control                $OFF
@@ -1027,7 +895,7 @@ function menu_parser {
 			;;
 		b )	set_upcommitsfile
 			;;
-		U )     set_upstream_directory
+		u )     set_upstream_url
 			;;
 		c )	set_next_cherrypick
 			;;
@@ -1452,9 +1320,6 @@ get_cfg_item() {
 save_session() {
 	# echo -e "$UND\0save_session$OFF"
 
-	set_cfg_item "updir"          "$updir"
-	set_cfg_item "uprepo"         "$uprepo"
-	set_cfg_item "upbranch"       "$upbranch"
 	set_cfg_item "upcmtstartline" "$upcmtstartline"
 	set_cfg_item "dnorighead"     "$dnorighead"
 	set_cfg_item "lastuphash"     "$lastuphash"
@@ -1474,10 +1339,9 @@ save_session() {
 #                 to be retrieved at init time and saved at exit time.
 #    PARAMETERS:  none
 #       GLOBALS:  workdir
-#                 cmtmsgfile
 #                 upcommitsfile
-#                 workdir
-#                 upcommits
+#                 upurl
+#                 upname
 #       RETURNS:  1 if any of the important conf values are missing
 #                 0 otherwise
 #===============================================================================
@@ -1488,29 +1352,31 @@ read_session() {
 	local temp
 
 	ui_setbg temp
-	temp=
 
 	# Initialize the paths for the current working directory
 	#
+	[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
 	configfile="$MYDATA/cherp.conf"
 	cfgtemplate="$MYLIB/cherp.conf"
 
 	cfg_start "$cfgtemplate" "$configfile"
 	init_global_strings
 
-	cfg_get_item "upurl" temp
-	[ "$temp" ] && upurl="$temp"
-	grep "upstream" .git/config || {
-		fetch_upstream_repo & mypid=$!
-		ui_waitonproc_tty $mypid .05 "${INF}Fetching upstream repo$OFF"
-	}
+	if grep -q "$upname" .git/config; then
+		upurl=$(grep -A1 "$upname" .git/config | grep url | cut -d'=' -f2)
+		# Trim spaces
+		upurl="${upurl// /}"
+	else
+		upurl="git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git"
+		git remote add "$upname" "$upurl"
+		fetch_upstream_repo
+	fi
 
 	cfg_get_item "dnorighead" dnorighead
 	[ "$dnorighead" ]     || dnorighead="HEAD"
 	[ "$upcmtstartline" ] || return 1
 	[ "$workdir" ]        || set_working_directory
 	[ "$upcommitsfile" ]  || set_upcommitsfile
-	[ "$updir" ]          || set_upstream_directory
 	return 0
 }
 
@@ -1574,9 +1440,7 @@ init_newsession() {
 	read_session
 	set_working_directory
 	set_upcommitsfile
-	set_upstream_directory
 	set_gitbranch
-	[ "$uprepo" ] || set_upstream_directory
 
 	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
 	set_cfg_item dnorighead "$dnorighead"
