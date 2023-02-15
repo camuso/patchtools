@@ -561,10 +561,10 @@ doyn() {
 #*
 getuser() {
 	local promptstring="$1"
-	local -n uivar="$2"
+	local -n uigu_var="$2"
 
 	echo -ne "$INF$promptstring$OFF"
-	read -r uivar
+	read -r uigu_var
 }
 
 #** getch(): reads one char user input without echoing the char
@@ -698,7 +698,7 @@ loop_range() {
 loop_range_q() {
 	local min="$1"
 	local max="$2"
-	local -i number
+	local number
 	local cmd
 	local pstr=\
 "$OFF${INF}Please enter a number between $MNU$min$INF and $MNU$max$OFF or $qstr: "
@@ -724,7 +724,7 @@ loop_range_q() {
 
 #** select_from_array: select an item from an enumerated list
 #
-# $1 - array name, passed without the leading '$' 
+# $1 - array name, passed without the leading '$'
 # $2 - prompt string
 # $3 - reference variable that receives the user's selected number
 #
@@ -735,8 +735,7 @@ loop_range_q() {
 select_from_array() {
 	local contents="$1[@]"
 	local promptstr="$2"
-	local current="${!3}"
-	# local current=$3
+	local -n uisfa_current="$3"
 
 	local -a array=("${!contents}")
 	local -i asize=asize=${#array[@]}
@@ -750,7 +749,7 @@ select_from_array() {
 
 	for ((i = 0; i < asize; ++i)); do
 		element="${array[i]}"
-		if [ "$element" == "$current" ]; then
+		if [ "$element" == "$uisfa_current" ]; then
 			echo -e "$STA * $((i+1)). $element$OFF"
 		else
 			echo -e "   $MNU$((i+1)).$OFF $element"
@@ -766,10 +765,10 @@ select_from_array() {
 			return 1
 		fi
 
-		if is_array_member array "${!3}"; then
+		if is_array_member array "$uisfa_current"; then
 			break
 		else
-			echo -e "${STA}${!3}$WRN is not a valid selection$OFF"
+			echo -e "${STA}$uisfa_current$WRN is not a valid selection$OFF"
 			continue
 		fi
 	done
@@ -787,16 +786,16 @@ select_from_array() {
 # 1 - if the item was not found.
 #*
 is_array_member() {
-	local contents="$1[@]"
+	local -n uiiam_array="$1"
 	local member="$2"
 
 	local -a array=("${!contents}")
-	local -i asize=${#array[@]}
+	local -i asize=${#uiiam_array[@]}
 	local -i i
 	local mem
 
 	for ((i = 0; i < asize; ++i)); do
-		mem=${array[i]}
+		mem=${uiiam_array[i]}
 		[ "$mem" == "$member" ] && return 0
 	done
 
