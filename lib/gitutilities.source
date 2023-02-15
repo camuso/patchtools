@@ -991,20 +991,20 @@ create_remote_array() {
 	# echo "create_remote_array"
 	local line
 	local -a toks=()
-	local -n remarray="$1"
+	local -n cra_remarray="$1"
 	local -a gitcfgarray=()
 
 	gitcfgarray=("$(grep -w '\[remote' .git/config)")
 	while read -r line; do
 		ui_strtok "$line" '" ' toks
 		remote=$(echo "${toks[1]}" | sed  's/]//')
-		remarray+=("$remote")
+		cra_remarray+=("$remote")
 	done <<< "${gitcfgarray[@]}"
 }
 
 select_remrepo() {
 	# echo "select_remrepo"
-	local -n cur="$1"
+	local -n srr_cur="$1"
 	local remotearray=()
 	local num_of_remotes
 	local stat
@@ -1016,10 +1016,10 @@ select_remrepo() {
 		0 ) echo -e "${WRN}No remotes could be detected in .git/config.$OFF"
 		    return 1
 		    ;;
-		1 ) cur="${remotearray[0]}"
+		1 ) srr_cur="${remotearray[0]}"
 		    stat=0
 		    ;;
-		* ) select_from_array remotearray "remote repos" cur
+		* ) select_from_array remotearray "remote repos" srr_cur
 		    stat=$?
 	esac
 
@@ -1036,7 +1036,7 @@ show_remote_url() {
 
 select_rembranch() {
 	local repo="$1"
-	local cur="${!2}"
+	local -n gusr_cur="$2"
 	local brstr=
 	local brancharray=()
 
@@ -1047,13 +1047,12 @@ select_rembranch() {
 	while read -r s; do [[ $s == *"->"* ]] || brancharray+=("$s"); done <<< "$brstr"
 
 	if [ ${#brancharray[@]} -gt 1 ]; then
-		select_from_array brancharray "remote branches in $remote_repo" cur
+		select_from_array brancharray "remote branches in $remote_repo" gusr_cur
 	else
-		cur=${brancharray[0]}
+		gusr_cur=${brancharray[0]}
 		echo -e "$INF Only one branch in this repo: $STA$cur$OFF"
 		echo -e "$INF Nothing else to choose from.$OFF"
 	fi
 
-	eval "$2"="$cur"
 	return 0
 }
