@@ -546,7 +546,7 @@ get_next_cherrypick() {
 	local line
 	local count
 
-	count=$(wc -l "$upcommitsfile" | cut -d' ' -f1)
+	count=$(wc -l < "$upcommitsfile")
 
 	# Find the first line that does NOT begin with one of the characters in the
 	# string of characters indicating the line is to be ignored.
@@ -1101,7 +1101,6 @@ cherrypick() {
 	local wcols=$((tcols - 10))
 	local conflictmsg
 	local bogusmsg
-
 	conflictmsg=$(
 cat <<EOF
 
