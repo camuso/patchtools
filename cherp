@@ -1204,7 +1204,7 @@ stage_commit() {
 	# message.
 	#
 	description=$(echo -e "$description")
-	echo -e "$description\n\n"'```'"\n" >> "$cmtmsgfile"
+	echo -e "$description\n\n" >> "$cmtmsgfile"
 	[ -n "$str_bugzilla" ] && echo -e "Bugzilla: $str_bugzilla" >> "$cmtmsgfile"
 	[ -n "$str_upstream" ] && echo -e "Upstream status: $str_upstream" >> "$cmtmsgfile"
 	echo -e "\n" >> "$cmtmsgfile"
