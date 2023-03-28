@@ -597,9 +597,12 @@ get_current_cherrypick() {
 #===  FUNCTION  ================================================================
 #          NAME:  show_next_cherrypick
 #   DESCRIPTION:  Show the upstream commit we will be starting from
-#    PARAMETERS:  $1 - if contains "status", then it's a status only call
+#    PARAMETERS:  None
 #       GLOBALS:  upcommitsfile
 #                 currentupcommit
+#                 currentuphash
+#                 b_conflict
+#                 b_cmdline
 #       RETURNS:  none
 #===============================================================================
 show_next_cherrypick() {
@@ -619,8 +622,8 @@ $STA$currentuphash ${INF}was the last commit in file: $STA$upcommitsfile$OFF
 
 EOF
 )
-	$b_cmdline && leadstr="    " || leadstr="$MNU c$OFF  "
-	$b_conflict && statstr="${WRN}Current conflict         :$OFF" \
+	($b_cmdline || $b_conflict) && leadstr="    " || leadstr="$MNU c$OFF  "
+	$b_conflict && statstr="${WRN}Current conflict         ${OFF}:" \
 		    || statstr="Next cherrypick          :$OFF"
 
 	get_current_cherrypick	&& prstr="$STA${currentupcommit:0:$cols}$OFF" \
@@ -633,7 +636,7 @@ cat <<EOF
 $leadstr$statstr $prstr
 EOF
 )
-	[ "$currentuphash" == "" ] || echo -e "$show_next_cherrypick_str"
+	[ -n "$currentuphash" ] && echo -e "$show_next_cherrypick_str"
 	return 0
 }
 
@@ -843,8 +846,8 @@ function show_settings {
 cat <<EOF
 $MNU
     ${UND}Upstream Environment    $OFF
-$MNU b $OFF File of Backport Commits  : $STA$upcommitsfile$OFF
-$MNU u $OFF Upstream url              : $STA$upurl$OFF\
+$MNU b $OFF File of Backport Commits : $STA$upcommitsfile$OFF
+$MNU u $OFF Upstream url             : $STA$upurl$OFF\
 $(show_most_recent_cherrypick)\
 $(show_next_cherrypick)
 $MNU
@@ -861,6 +864,7 @@ $MNU
 $MNU N $OFF Start a New Session
 $MNU P $OFF Pop 'n' commits
 $MNU H $OFF Show History
+$MNU I $OFF Init or restart session
 $MNU r $OFF Run cherp
 $MNU q $OFF Quit this script
 $MNU h $OFF Help
@@ -913,6 +917,8 @@ function menu_parser {
 		r )	run_me
 			;;
 		O )	options_loop
+			;;
+		I )	init_current_session
 	esac
 	return $rc_continue
 }
@@ -1447,6 +1453,24 @@ init_newsession() {
 	b_new=true
 	init_common
 	$b_cmdline && exit_cherp $exit_good
+}
+
+#===  FUNCTION  ================================================================
+#          NAME:  init_current_session
+#   DESCRIPTION:  initialize the current session to start from scratch
+#       GLOBALS:  All session variables are affected
+#    PARAMETERS:  none
+#       RETURNS:  none
+#===============================================================================
+init_current_session() {
+	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
+	upcmtstartline=1
+	b_conflict=false
+	set_cfg_item dnorighead "$dnorighead"
+	set_cfg_item "upcmtstartline" "$upcmtstartline"
+	set_cfg_item "b_conflict"     $b_conflict
+	git cherry-pick --abort > /dev/null 2>&1
+	init_session
 }
 
 #===  FUNCTION  ================================================================
