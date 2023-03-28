@@ -965,7 +965,7 @@ edit_commit() {
 		echo
 		getyn "Edit this commit message?" yup
 
-		if $yup; then git commit --amend else break; fi
+		if $yup; then git commit --amend; else break; fi
 	done
 }
 
