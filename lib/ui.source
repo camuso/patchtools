@@ -492,7 +492,6 @@ ui_waitonproc_tty () {
 #
 getyn() {
 	local promptstring="$1"
-	local retval="$2"
 	local -i argc=$#
 	local answer
 
