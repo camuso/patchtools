@@ -17,6 +17,9 @@ declare fmtstr=""
 declare b_format=true
 declare hashsiz="h"
 declare usagestr=
+declare cmtexpr=
+declare path=
+declare -a gitopt=()
 
 declare gitold=
 declare gver=
@@ -32,7 +35,7 @@ gmin=$(echo "$gver" | cut -d'.' -f2)
 usagestr=$(
 cat <<EOF
 
-$(basename "$0") [options] [commitexpr]
+$(basename "$0") [options] [commitexpr] [path]
 
   Displays commits in --oneline format, with options as detailed below.
   With no options and no arguments, the most recent commit is displayed
@@ -66,17 +69,18 @@ usage() {
 #
 # [ -t 1 ] && b_format=true || b_format=false
 
-test_help() {
-	local opt="$1"
+is_validcmtexpr() {
+	git log -n1 "$1" > /dev/null 2>&1
+	return $?
+}
 
-	# shopt -s nocasematch
-	[[ $opt =~ (h|help) ]] && usage 0
-	# shopt -u nocasematch
+is_validpath() {
+	[ -d "$1" ] && return 0
+	[ -f "$1" ] && return 0
+	return 1
 }
 
 for arg in "$@"; do
-
-	test_help "$1"
 
 	if [ "${arg:0:1}" == '-' ]; then
 		opt="${arg:1}"
@@ -107,7 +111,15 @@ for arg in "$@"; do
 			;;
 		w ) hashsiz="H"
 			shift
+			;;
+		h ) usage
+			;;
+		* ) gitopt+=( "$arg" )
+			shift
 		esac
+	else
+		is_validpath "$1" && { path="$1"; shift; continue; }
+		is_validcmtexpr "$1" &&	{ cmtexpr="$1"; shift; continue; }
 	fi
 done
 
@@ -119,11 +131,13 @@ $b_format && \
 || \
 	fmtstr="$hashwid%$hashsiz $cmtdate$autdate$authwid$cmtauth %s"
 
-[ -n "$number" ] && number="-""$number"
-if [ -z "$*" ] && [ -z "$number" ]; then
-	number="-1"
-fi
+[ -z "$number" ] && number="1"
+[ -n "$cmtexpr" ] && [[ "$cmtexpr" = *".."* ]] && number=
+grep -q '\-\-since' <<< "${gitopt[@]}" && number=
+grep -q '\-\-after' <<< "${gitopt[@]}" && number=
+[ -n "$number" ] && number="-$number"
+[ -n "$path" ] && path=" -- $path"
 
-git log --date=short --pretty=format:"$fmtstr" $reverse $number "$@"
+git log --date=short --pretty=format:"$fmtstr" $reverse $number ${gitopt[@]} $cmtexpr $path
 
 exit $?
