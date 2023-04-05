@@ -44,6 +44,9 @@ $(basename "$0") [options] [commitexpr] [path]
   commitexpr - Commit expression can be any valid commit expression, e.g.
   1234567, or 89abcde...f0123456, or -12
 
+  If the commit expression is for a single commit, only that commit will
+  be displayed.
+
   Options
   -c        - show commit date
   -d        - show author date
