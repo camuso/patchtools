@@ -112,7 +112,7 @@ for arg in "$@"; do
 		w ) hashsiz="H"
 			shift
 			;;
-		h ) usage
+		h ) usage 0
 			;;
 		* ) gitopt+=( "$arg" )
 			shift
