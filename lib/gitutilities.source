@@ -28,7 +28,7 @@ gut_retmsg() {
 	echo -e "$msg"
 }
 
-gut_exit() { gut_retmst "$1" "$2"; exit "$1"; }
+gut_exit() { gut_retmsg "$1" "$2"; exit "$1"; }
 
 gut_chdir() {
 	local dir="$1"
