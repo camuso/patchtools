@@ -319,7 +319,9 @@ set_colors() {
 }
 
 init_env() {
-	b_color=true	# from lib/ui.source
+	local bgtemp
+
+	ui_setbg bgtemp
 
 	MYDATA=$(realpath ./.data)
 	[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
@@ -328,24 +330,9 @@ init_env() {
 	cfgtemplate="$MYLIB/mkbackportlog.conf"
 	[ -f "$configfile" ] || cp "$cfgtemplate" "$configfile"
 
-	cfg_set_template "$cfgtemplate"
-	cfg_set_configfile "$configfile"
-	cfg_init
-
-	background=$(get_cfg_item background)
-
-	# If color hasn't already been set up, then query the user for terminal
-	# background color and init the color engine.
-	# Else just init the terminal_background variable from the config global.
-	#
-	if [ -z "$background" ] || (( background < 1 || background > 2 )); then
-		set_colors
-	else
-		terminal_background=$background
-		ui_set_colors
-	fi
-
-	set_cfg_item background "$background"
+	cfg_start "$cfgtemplate" "$configfile"
+	background="$bgtemp"
+	cfg_set_item "background" "$background"
 }
 
 check_log() {
