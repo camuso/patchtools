@@ -19,9 +19,16 @@
 	MYLIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1; pwd)"
 }
 
+[ -n "$MYDATA" ] || {
+	declare MYDATA=
+	MYDATA=$(realpath ./.data)
+}
+[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
+
 [ "$ui_loaded" ] || source "$MYLIB"/ui.source
 [ "$patchcommon_loaded" ] || source "$MYLIB"/patch-common.source
 [ "$configmanager_loaded" ] || source "$MYLIB"/config-manager.source
+[ "$aamgr_loaded" ] || source "$MYLIB"/aa-mgr.source
 
 patchmrutilities_loaded=true
 
@@ -43,10 +50,14 @@ declare b_mrflag=false
 declare b_reviewed=
 declare b_acked=
 declare b_nacked=
+declare b_unapp=
 declare mergelist_filter=
 declare mergelist_file=
 declare gl_projid=24118165	# gitlab project ID
 declare origin=			# the principal remote in a git repo
+declare mrhistoryfile="$MYDATA"/mrhistory.log
+declare -A mrhistory
+
 
 declare -i mr_val=0	# valid mr
 declare -i mr_inv=1	# invalid mr
@@ -68,6 +79,12 @@ init_mr() {
 
 	mergelist_file=$MYDATA/mergelist.log
 	mrcomments="$outdir"/mrcomments.log
+
+	aa_start mrhistory "$mrhistoryfile"
+}
+
+update_mrhistoryfile() {
+	aa_write_aafile mrhistory "$mrhistoryfile"
 }
 
 # show_init - display the init menu option
@@ -194,11 +211,11 @@ show_mrstatus() {
 	cfg_get_item "b_acked" b_acked
 	cfg_get_item "b_nacked" b_nacked
 
-	if $b_acked || $b_nacked; then
+	if $b_reviewed && ( $b_acked || $b_nacked ); then
 		if $b_acked; then
-			ackstr="${STA}ACKED$OFF"
+			ackstr="${STA}Approved$OFF"
 		else
-			ackstr="${WRN}NACKED$OFF"
+			ackstr="${WRN}Blocked$OFF"
 		fi
 	else
 		ackstr=
@@ -221,43 +238,46 @@ show_mrstatus() {
 # 	b_reviewed
 # 	b_acked
 # 	b_nacked
+# 	b_unapp
 #
 display_acknack_menu() {
 	$b_mrflag || return 1
-	local cmt=
 	local _dak_response
 	local acknackmenu
 
 	acknackmenu=$(
 cat <<EOF
 
-   $MNU For MR $STA$current_mr$MNU, you want to ...
-   $MNU a$STA  ACK$OFF
-   $MNU A$STA  ACK$OFF with comment
-   $MNU n$WRN  NACK$OFF
-   $MNU N$WRN  NACK$OFF with comment
-   $MNU c$OFF  Comment only
-   $MNU v$OFF  View description and comments for $STA$current_mr
-   $MNU M$OFF  Review another Merge Request
-   $MNU m$OFF  Display a list of Merge Requests
-   $MNU q$OFF  Quit and return to main menu$OFF
+  $MNU For MR $STA$current_mr$MNU, you want to ...
+  $MNU a$STA  Approve$OFF
+  $MNU A$STA  Approve$OFF with comment
+  $MNU b$WRN  Block$OFF and start a discussion
+  $MNU u$WRN  Unapprove$OFF
+  $MNU c$OFF  Comment only
+  $MNU v$OFF  View description and comments for $STA$current_mr
+  $MNU M$OFF  Review another Merge Request
+  $MNU m$OFF  Display the list of Merge Requests
+  $MNU r$OFF  Refresh the list of merge Requests
+  $MNU P$OFF  Review diffs for $STA$current_mr
+  $MNU q$OFF  Quit and return to main menu$OFF
 EOF
 )
 	while :; do
 		echo -e "$acknackmenu"
 
-		if $b_reviewed && [[ $b_acked || $b_nacked ]]; then
+		if $b_reviewed && ( $b_acked || $b_nacked ); then
 			if $b_acked; then
-				actstr="${STA}ACKED$OFF"
+				actstr="${STA}Approved$OFF"
 			else
-				actstr="${WRN}NACKED$OFF";
+				$b_unapp && actstr="${WRN}Unapproved$OFF" \
+					 || actstr="${WRN}Blocked$OFF"
 			fi
-			echo -e "$INF   Merge Request: $STA$current_mr $INF" \
-			        "has already been ${actstr}\n"
+			echo -e "$INF   You have $actstr Merge Request: "
+			echo -e "$STA$current_mr $INF\n"
 		fi
 
 		promptgetchar "$MNU   Enter one of the above: $OFF" _dak_response
-		[[ qnaNAcvMm =~ $_dak_response ]] && break
+		[[ qnbBaAcvMmr =~ $_dak_response ]] && break
 	done
 
 	eval "$1"="$_dak_response"
@@ -276,15 +296,43 @@ set_acknack() {
 	cfg_set_item "b_reviewed" "$b_reviewed"
 }
 
+confirm_acknack() {
+	# Globals
+	# 	b_acked
+	# 	b_nacked
+	# 	current_mr
+	# 	origin
+	#
+	local actstr="$1"	# ack/nack string
+	local labflags="$2"	# "with comments" string
+	local querystring=
+
+	querystring="$INF   Are you sure you want to $actstr$INF Merge "
+	querystring+="Request $STA$current_mr$wcomment$MNU (y/n)? $OFF"
+
+	if loop_yn "$querystring"; then
+		$b_acked && lab mr approve "$origin" $labflags "$current_mr"
+		$b_nacked && lab mr unapprove "$origin" $labflags "$current_mr"
+		return 0
+	else
+		# If the reviewer declined either to Approve or Block, then reset
+		# the b_reviewed, b_acked, and b_nacked flags to false and return
+		# with a 1 to avoid calling set_acknack().
+		b_acked=false
+		b_nacked=false
+		b_reviewed=false
+		return 1
+	fi
+}
+
 query_acknack() {
 	local choice
 	local actstr=
-	local wcomment=
-	local querystring=
+	local labaction
+	local labflags
 
 	while :;do
 		actstr=
-		wcomment=
 
 		get_acknack
 		display_acknack_menu choice
@@ -292,46 +340,37 @@ query_acknack() {
 		case "$choice" in
 			q ) return 0
 			    ;;
-			A ) cmt="--with-comment --force-linebreak "
-			    wcomment="$INF with comments"
+			A ) labflags="--with-comment --force-linebreak "
 			    ;&
 			a ) b_acked=true
 			    b_nacked=false
 			    b_reviewed=true
-			    actstr="${STA}ACK$OFF"
+			    actstr="${STA}Approve$OFF"
+			    confirm_acknack || continue
 			    set_acknack
 			    ;;
-			N ) cmt="--with-comment --force-linebreak "
-			    wcomment="$INF with comments"
-			    ;&
-			n ) b_nacked=true
+			b ) labflags="--with-comment --force-linebreak "
+			    b_nacked=true
 			    b_acked=false
 			    b_reviewed=true
-			    actstr="${WRN}NACK$OFF"
+			    actstr="${WRN}Block$OFF"
+			    confirm_acknack || continue
 			    set_acknack
 			    ;;
 			c ) echo -e "$INF   Comment on $STA$current_mr$INF ...$OFF"
 			    lab mr note "$origin" "$current_mr" --force-linebreak
-			    continue
 			    ;;
 			v ) get_merge_request -c
-			    continue
 			    ;;
-			M ) if get_merge_request -u; then return $rc_run; \
-			    else continue; fi
+			M ) if get_merge_request -u; then return $rc_run; fi
 			    ;;
-			m ) if select_merge_request; then return $rc_run; \
-			    else continue; fi
+			m ) if select_merge_request; then return $rc_run; fi
+			    ;;
+			r ) refresh_mergelist
+			    ;;
+			P ) compare_patches
 			    ;;
 		esac
-
-		querystring="$INF   Are you sure you want to $actstr$INF Merge "
-		querystring+="Request $STA$current_mr$wcomment$MNU (y/n)? $OFF"
-
-		if loop_yn "$querystring"; then
-			$b_acked && lab mr approve "$origin" $cmt "$current_mr"
-			$b_nacked && lab mr unapprove "$origin" $cmt "$current_mr"
-		fi
 
 		continue
 	done
@@ -395,18 +434,18 @@ get_mrlist_specifier() {
 	specmenu=$(
 cat <<EOF
 $MNU
-     ${UND}Specify the MR list content   $OFF
- $MNU a$OFF  All MRs on the project
- $MNU o$OFF  Open MRs
- $MNU r$OFF  Ready MRs
- $MNU d$OFF  Draft MRs
- $MNU n$OFF  No-conflicts, can be merged
- $MNU c$OFF  Conflicts, cannot be merged
- $MNU m$OFF  Merged MRs
- $MNU A$OFF  Author of MRs
- $MNU C$OFF  Closed MRs
- $MNU t$OFF  Specify a Target Branch
- $MNU q$OFF  Quit and return to main menu
+          ${UND}Specify the MR list content   $OFF
+      $MNU a$OFF  All MRs on the project
+      $MNU o$OFF  Open MRs
+      $MNU r$OFF  Ready MRs
+      $MNU d$OFF  Draft MRs
+      $MNU n$OFF  No-conflicts, can be merged
+      $MNU c$OFF  Conflicts, cannot be merged
+      $MNU m$OFF  Merged MRs
+      $MNU A$OFF  Author of MRs
+      $MNU C$OFF  Closed MRs
+      $MNU t$OFF  Specify a Target Branch
+      $MNU q$OFF  Quit and return to main menu
 \0
 EOF
 )

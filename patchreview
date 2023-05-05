@@ -596,6 +596,38 @@ menu_loop() {
 	return $stat
 }
 
+get_labuser() {
+	# Global: labuser
+	#
+	local usrline
+	local usrmsg
+
+	usrmsg=$(
+cat <<EOF
+$INF
+  You must create a lab.toml file in ~/.config/lab with the following
+  contents.
+$MNU
+  [core]
+    host = "https://gitlab.com"
+    token = "<your-gitlab-token>"
+    user = "<your-gitlab-username>"
+$INF
+  Please see: $STA
+    https://docs.google.com/document/d/1PLPBqrnV-m4hr8Jos_7dhYGYqtMdiuCZZC72t2ljyEA/edit
+$OFF
+EOF
+)
+	[ -s ~/.config/lab/lab.toml ] || {
+		echo -e "$usrmsg"
+		return 1
+	}
+
+	usrline=$(grep user ~/.config/lab/lab.toml | cut -d'=' -f2)
+	labuser==$(echo "$usrline" | tr -d ' \"')
+	return 0
+}
+
 ###########################################
 # Parameter Initialization
 ###########################################
@@ -612,6 +644,7 @@ init_parms() {
 	local bgtemp
 
 	ui_setbg bgtemp
+	get_labuser || exit 1
 
 	MYDATA=$(realpath ./.data)
 	[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
@@ -795,8 +828,18 @@ check_labstatus() {
 
 	labmsg=$(
 cat <<EOF
-$WRN
-  You must install the lab ustility.$INF
+$INF
+  You must install the$MNU lab$OFF ustility from this repo: $STA
+  Repo        : copr:copr.fedorainfracloud.org:bmeneguele:rhkernel-devtools
+$INF
+  You must also create a$MNU lab.toml$INF file in$MNU ~/.config/lab$INF with the following
+  contents.
+$MNU
+  [core]
+    host = "https://gitlab.com"
+    token = "<your-gitlab-token>"
+    user = "<your-gitlab-username>"
+$INF
   Please see: $STA
     https://docs.google.com/document/d/1PLPBqrnV-m4hr8Jos_7dhYGYqtMdiuCZZC72t2ljyEA/edit
 $OFF

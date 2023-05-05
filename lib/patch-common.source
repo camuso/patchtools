@@ -31,7 +31,6 @@ shopt -s extglob
 
 declare MYDATA=
 declare MYMAN="$MYDIR"/man
-declare configfile=
 declare repolist="$HOME"/.config/patchreview/repolist
 declare main_man=
 declare config_man=
@@ -49,6 +48,7 @@ alias patbatcmpmgr='$MYDIR/patbatcmpmgr'
 
 # Declare the global variables
 #
+declare labuser
 declare indir
 declare outdir
 declare indirstr="Patch"
@@ -147,6 +147,7 @@ exit_me() {
 	echo -e "$OFF"
 
 	cfg_update_configfile
+	update_mrhistoryfile
 
 	_prologue=false
 	[ -f "$prologue_file".txt ] && 	mv "$prologue_file".txt "$prologue_file"
