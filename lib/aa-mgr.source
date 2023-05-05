@@ -1,0 +1,295 @@
+#!/bin/bash
+#
+# lib/aa-mgr.source
+#
+
+declare aamgr_loaded=true
+
+[ -n "$MYDATA" ] || {
+	declare MYDATA=
+	MYDATA=$(realpath ./.data)
+}
+[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
+
+declare usagestr=
+
+usagestr=$(
+cat <<EOF
+
+aamgr - Associative Array storage file manager.
+        Call this library script by name from the command line
+	to see this help text.
+
+A script configuration manager.
+
+Arguments
+---------
+aatable: name of the associative array, which must be declared
+         by the user in the calling script, e.g:
+         declare -A my_associative_array
+         It is passed by reference, so no leading $ in front of
+         the identifier when calling aa_start.
+
+aafile:  Optional path of the file to contain the configtable
+         contents between invocations of the encapsulating script.
+         If no name is provided, aamgr will create one in ./.data
+	 relative to the PWD of the executing script and using the
+	 script's basename with .log extension, e.g.
+	 ./.data/myscript.conf.
+
+Public Functions
+----------------
+aa_start configtable [configfile]
+            Called at the beginning of your script to initialize and
+	    synchronize your script's config table asssociative array
+	    with its config file.
+
+aa_read_aafile configtable
+            Reads the contents of the config file into the config table
+	    associative array.
+
+aa_write_aafile configtable
+            Writes the contents of the config table associative array
+	    into the config file.
+
+aa_dump_aatbl configtable
+            Dumps the contents of the config table associative array
+	    to the screen.
+\0
+EOF
+)
+
+declare aafile=
+
+# Print the help text to the screen if this lib source is called from the
+# command line. Help text will not be printed if this file is sourced in
+# another script.
+# From:
+# https://stackoverflow.com/questions/2683279/how-to-detect-if-a-script-is-being-sourced
+(return 0 2>/dev/null) || {
+	echo -e "$usagestr"
+	exit 0
+}
+
+#** is_inarray: returns 0 if exact matching string is in array
+#
+# $1 - array name passed by reference, no leading $
+# $2 - string being sought, passed by value
+#
+# Returns 0 if match is found, 1 if not
+#*
+is_inarray () {
+    local -n ar=$1
+    local fld="$2"
+    local -i ix
+
+    for ((ix = 0; ix < ${#ar[@]}; ix++))
+    do
+        [ "${ar[ix]}" == "$fld" ] && return 0
+    done
+
+    return 1
+}
+
+# aa_init_aafile: init the config file with contents of aatbl
+#
+# PRIVATE: Not to be called externally
+# ************************************
+#
+aa_init_aafile() {
+	aatbl="$1"
+	local aafile="$2"
+
+	for key in ${!aatbl[@]}; do
+		echo "$key = ${aatbl["$key"]}" >> "$aafile"
+	done
+}
+
+# aa_set_aafile: if the aafile doesn't exist, then create it
+#
+# PRIVATE: Not to be called externally
+# ************************************
+#
+# If $1 is empty, then create a configfile in the MYDATA directory
+# using the basename of the script with '.confg' extension.
+#
+# Globals
+#   aafile: file containing the contents of the aatbl
+#
+aa_test_aafile() {
+	aafile="$1"
+
+	[ -f "$aafile" ] || touch "$aafile"
+}
+
+# aa_diff_aafile: diff the contents of the aafile with those in the aatbl
+#
+# PRIVATE: Not to be called externally
+# ************************************
+#
+# We want to do this without disturbing the existing contents of the aafile.
+#
+# If the aatbl has fewer entries than the aafile, remove the deprecated
+# entries from the aafile.
+#
+# If the aatbl has more entries than the aafile, then add the new entries
+# to the aafile.
+#
+# If the aatbl has different entries than the aafile, then reconcile the
+# differences.
+#
+# Arguments
+#    $1 - aatbl : passed as a reference to the user's config table in the
+#             calling function
+#    $2 - aafile; passed by user
+#
+# Returns
+#    0 - no differences found
+#    1 - there were diffs
+#
+aa_diff_aafile() {
+	aatbl="$1"
+	local aafile="$2"
+	local -a fkeys=()
+	local -a tkeys=()
+	local -i idx
+	local -i tblentries
+	local -i filentries
+	local -i stat=0
+	local -i i
+	local key
+
+	[ -s "$aafile" ] || {
+		aa_init_aafile aatbl "$aafile"
+		return 0
+	}
+
+	tblentries=${#aatbl[@]}
+
+	# Get all the keys from the aafile using callback defined in
+	# the mapfile call. Mapfile delivers the index as $1 and the
+	# line as $2 to the callback.
+	#
+	mapfile -c1 -C 'f() {
+		# Extract the fkeys field from each line
+		fkeys[$1]=$(echo $2 | cut -d'=' -f1)
+		# remove all spaces from the fkeys field
+		fkeys[$1]=${fkeys[$1]// /}
+	}; f' < "$aafile"
+
+	# Get all the keys from the aatbl
+	#
+	mapfile -t -d' ' tkeys <<< "${!aatbl[@]}"
+
+	# If there are any differences, add the different key to the
+	# aafile. The stale keys will be removed from the aafile by
+	# the code following this.
+	#
+	for ((i = 0; i < tblentries; i++)); do
+		key="${tkeys[i]}"
+
+		# Remove all non-alphanum chars
+		#
+		key="${key//[!a-zA-Z0-9]/}"
+		is_inarray fkeys "$key" && continue
+		echo "$key = ${aatbl["$key"]}" >> "$aafile"
+		stat=1
+	done
+
+	filentries=$(wc -l < "$aafile")
+	# If there are more entries in the aafile than in the aatbl
+	# Delete the entries from the aafile.
+	#
+	((filentries > tblentries)) && {
+		for key in ${fkeys[@]}; do
+			key="${key//[!a-zA-Z0-9]/}"
+			is_inarray tkeys $key && continue
+			sed -i "/$key/d" "$aafile"
+			stat=1
+		done
+	}
+
+	# If there are more entries in the config table than in the aafile
+	# Add the new aatbl entries to the aafile.
+	#
+	((tblentries > filentries)) && {
+		for key in ${tkeys[@]}; do
+			key="${key//[!a-zA-Z0-9]/}"
+			is_inarray fkeys $key && continue
+			echo "$key = ${aatbl["$key"]}" >> "$aafile"
+			stat=1
+		done
+	}
+
+	return $stat
+}
+
+# aa_dump_aatbl: dump the contents of the aatbl to the screen
+#
+# Arguments:
+# $1 - reference to user's aatbl associative array
+#      no leading $ when calling
+#
+aa_dump_aatbl() {
+	aatbl="$1"
+	local key
+
+	for key in "${!aatbl[@]}"; do
+		echo "$key = ${aatbl["$key"]}"
+	done
+}
+
+# aa_read_aafile: read the contents of the config file into user's table
+#
+# Globals
+#    aafile; either passed by user or created by aa_check_aafile above.
+#
+# Arguments
+#    $1 - aatbl : reference to the user's associative array
+#                  When used in calls initiated by aa_start, the aatbl
+#                  was inited in aatbl and is inherited from that func.
+#    $2 - aafile: file for storing the conents of the associative array.
+#
+aa_read_aafile() {
+	aatbl="$1"
+	local aafile="$2"
+
+	local key
+	local value
+
+	while IFS+="=" read -r key val; do
+		aatbl["$key"]=$val
+	done < "$aafile"
+}
+
+# aa_write_aafile: write the contents of the aatbl into aafile
+#
+# Arguments:
+#    $1 - aatbl : user's aatbl passed by reference
+#    $2 - aafile: storage for user's associative array
+#
+aa_write_aafile() {
+	aatbl="$1"
+	local aafile="$2"
+	local key
+
+	> "$aafile"
+
+	for key in "${!aatbl[@]}"; do
+		echo "$key = ${aatbl["$key"]}" >> "$aafile"
+	done
+}
+
+# aa_start: start the aamgr
+#
+# Globals
+#    aafile; passed by user
+#
+aa_start() {
+	local -n aatbl="$1"
+	local aafile="$(realpath "$2")"
+
+	aa_test_aafile aatbl "$aafile"
+	aa_diff_aafile aatbl "$aafile"
+	aa_read_aafile aatbl "$aafile"
+}
