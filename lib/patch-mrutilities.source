@@ -272,7 +272,7 @@ EOF
 				$b_unapp && actstr="${WRN}Unapproved$OFF"
 				$b_nacked && actstr="${WRN}Blocked$OFF"
 			fi
-			echo -en "$INF   You have $actstr Merge Request: "
+			echo -en "$INF   You have $actstr$INF Merge Request: "
 			echo -e "$STA$current_mr $INF\n"
 		fi
 
@@ -577,7 +577,7 @@ select_merge_request() {
 #    current_mr
 #
 redo_mr() {
-	if loop_yn "${INF}Do you want to redo MR$STA $current_mr${INF}?$MNU y/n$INF: "
+	if loop_yn "${INF}Do you want to redo MR$STA $current_mr${INF}?$MNU y/n$INF: $OFF"
 	then
 		return 0
 	else
@@ -767,7 +767,7 @@ is_already_approved() {
 
 print_already_approved() {
 	local mr="$1"
-	echo -e "${INF}You have already ${STA}Approved$OFF MR $STA$current_mr$OFF."
+	echo -e "${INF}You have already ${STA}Approved$INF MR $STA$current_mr$OFF."
 }
 
 # get_merge_request_patches - extract the patches from a merge request
