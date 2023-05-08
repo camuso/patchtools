@@ -201,6 +201,8 @@ show_opmode() {
 # 	current_mr
 # 	b_acked
 # 	b_nacked
+# 	b_unapp
+# 	b_reviewed
 #
 show_mrstatus() {
 	local ackstr
@@ -208,14 +210,17 @@ show_mrstatus() {
 	cfg_get_item "current_mr" current_mr
 
 	is_validnumber "$current_mr" || return 1
-	cfg_get_item "b_acked" b_acked
-	cfg_get_item "b_nacked" b_nacked
+	cfg_get_item "b_acked"    b_acked
+	cfg_get_item "b_nacked"   b_nacked
+	cfg_get_item "b_unapp"    b_unapp
+	cfg_get_item "b_reviewed" b_reviewed
 
-	if $b_reviewed && ( $b_acked || $b_nacked ); then
+	if $b_reviewed && ( $b_acked || $b_nacked || $b_unapp); then
 		if $b_acked; then
 			ackstr="${STA}Approved$OFF"
 		else
-			ackstr="${WRN}Blocked$OFF"
+			$b_unapp  && ackstr="${WRN}Unapproved$OFF"
+			$b_nacked && ackstr="${WRN}Blocked$OFF"
 		fi
 	else
 		ackstr=
@@ -254,7 +259,7 @@ cat <<EOF
   $MNU b$WRN  Block$OFF and start a discussion
   $MNU u$WRN  Unapprove$OFF
   $MNU c$OFF  Comment only
-  $MNU v$OFF  View description and comments for $STA$current_mr
+  $MNU v$OFF  View comments and activities for $STA$current_mr
   $MNU M$OFF  Review another Merge Request
   $MNU m$OFF  Display the list of Merge Requests
   $MNU r$OFF  Refresh the list of merge Requests
@@ -277,7 +282,7 @@ EOF
 		fi
 
 		promptgetchar "$MNU   Enter one of the above: $OFF" _dak_response
-		[[ qnbBaAcvMmr =~ $_dak_response ]] && break
+		[[ qnbBaAcvMmrP =~ $_dak_response ]] && break
 	done
 
 	eval "$1"="$_dak_response"
@@ -303,6 +308,7 @@ confirm_acknack() {
 	# 	b_acked
 	# 	b_nacked
 	# 	b_unapp
+	# 	b_reviewed
 	# 	current_mr
 	# 	origin
 	#
@@ -319,8 +325,6 @@ confirm_acknack() {
 		$b_acked  && lab mr approve    "$origin" $labflags "$current_mr"
 		$b_unapp  && lab mr unapprove  "$origin" $labflags "$current_mr"
 		$b_nacked && lab mr discussion "$origin" $labflags "$current_mr"
-		sleep 2
-		update_mrcomments_log
 		return 0
 	else
 		# If the reviewer declined either to Approve or Block, then reset
@@ -359,7 +363,7 @@ query_acknack() {
 			    confirm_acknack "$actstr" "$labflags" || continue
 			    set_acknack
 			    ;;
-			b ) labflags="--with-comment --force-linebreak "
+			b ) labflags=
 			    b_nacked=true
 			    b_acked=false
 			    b_reviewed=true
@@ -368,7 +372,7 @@ query_acknack() {
 			    confirm_acknack "$acstr" "$labflags" || continue
 			    set_acknack
 			    ;;
-			u ) labflags="--with-comment --force-linebreak "
+			u ) labflags=
 			    b_unapp=true
 			    b_nacked=true
 			    b_acked=false
@@ -380,7 +384,8 @@ query_acknack() {
 			c ) echo -e "$INF   Comment on $STA$current_mr$INF ...$OFF"
 			    lab mr note "$origin" "$current_mr" --force-linebreak
 			    ;;
-			v ) get_merge_request -c
+			v ) update_mrcomments_log
+			    less "$mrcomments"
 			    ;;
 			M ) if get_merge_request -u; then return $rc_run; fi
 			    ;;
@@ -388,7 +393,7 @@ query_acknack() {
 			    ;;
 			r ) refresh_mergelist
 			    ;;
-			P ) compare_patches
+			P ) examine_patches
 			    ;;
 		esac
 
@@ -588,7 +593,7 @@ redo_mr() {
 # update_current_mr
 #
 #  If the provided mr is a valid number, update the global mr and
-#  save it with cfg_set_item. With a new MR, alll associasted
+#  save it with cfg_set_item. With a new MR, all associasted
 #  booleans will also be reinitialized.
 #
 #  GLOBALS
@@ -684,9 +689,9 @@ get_merge_request() {
 
 	while :; do
 		if $b_comments; then
-			is_valid_mrcomments || {
-				lab mr show "$origin" "$current_mr" --comments > "$mrcomments"
-			}
+			# is_valid_mrcomments || {
+				update_mrcomments_log
+			# }
 
 			echo -e "$INF   View comments for $STA$current_mr$INF ...$OFF"
 			less "$mrcomments"
@@ -742,7 +747,7 @@ get_mrcommits_labmr() {
 }
 
 update_mrcomments_log() {
-	lab mr show "$origin" "$current_mr" --comments > "$mrcomments" & mypid=$!
+	lab mr show "$origin" "$current_mr" --full > "$mrcomments" & mypid=$!
 	ui_waitonproc_tty $mypid .05 \
 		"${INF}Updating comments from MR $STA$current_mr$OFF" \
 		|| return $mr_inv
