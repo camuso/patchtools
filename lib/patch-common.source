@@ -1477,6 +1477,18 @@ exec_apply_patches(){
 	return 0
 }
 
+examine_patches() {
+	local tb=$terminal_background
+	local quiet=
+
+	[ -f "$mmfile" ] || { compare_patches; return 0; }
+	[ -f "$us_commits" ] || { compare_patches; return 0; }
+
+	$b_verbose || quiet="-q"
+	patcmp $quiet -b "$tb" -m "$mmfile" -u "$remote_dir" \
+		"$indir" "$outdir" "$editor" "$us_commits"
+}
+
 # exec_patcmp - execute the comparison of the patches
 #
 #  $1 - Contains "-X" to execute in patbatcmpmgr in batch mode.
