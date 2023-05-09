@@ -387,11 +387,11 @@ query_acknack() {
 			v ) update_mrcomments_log
 			    less "$mrcomments"
 			    ;;
-			M ) if get_merge_request -u; then return $rc_run; fi
+			M ) get_merge_request -u && return 0 || return 1
 			    ;;
-			m ) if select_merge_request; then return $rc_run; fi
+			m ) select_merge_request && return 0 || return 1
 			    ;;
-			r ) refresh_mergelist
+			r ) refresh_mergelist && return 0 || return 1
 			    ;;
 			P ) examine_patches
 			    ;;
@@ -607,7 +607,7 @@ update_current_mr() {
 	local cmr="$1"
 
 	if is_validnumber "$cmr"; then
-		((cmr == current_mr)) && { redo_mr || return 1; }
+		((cmr == current_mr)) && { redo_mr || return 0; }
 		current_mr="$cmr"
 		b_reviewed=false
 		b_acked=false
@@ -852,6 +852,8 @@ get_merge_request_patches() {
 	ui_waitonproc_tty $mypid .05 "${INF}Getting patches from MR $STA$current_mr$OFF"
 	echo
 
+	# Format the patches extracted from the MR
 	git_file2patchset "$bp_commits" "$indir" $b_verbose || { echo "stat $?"; return $mr_nop; }
+
 	return 0
 }
