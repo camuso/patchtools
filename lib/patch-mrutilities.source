@@ -58,7 +58,6 @@ declare origin=			# the principal remote in a git repo
 declare mrhistoryfile="$MYDATA"/mrhistory.log
 declare -A mrhistory
 
-
 declare -i mr_val=0	# valid mr
 declare -i mr_inv=1	# invalid mr
 declare -i mr_nop=2	# no patches found
@@ -387,11 +386,11 @@ query_acknack() {
 			v ) update_mrcomments_log
 			    less "$mrcomments"
 			    ;;
-			M ) get_merge_request -u && return 0 || return 1
+			M ) return $mrqan_newg
 			    ;;
-			m ) select_merge_request && return 0 || return 1
+			m ) return $mrqan_news
 			    ;;
-			r ) refresh_mergelist && return 0 || return 1
+			r ) refresh_mergelist; return $mrqan_run
 			    ;;
 			P ) examine_patches
 			    ;;
@@ -558,6 +557,7 @@ select_merge_request() {
 
 	while :; do
 		show_mrlist mrs
+
 		get_new_mr || return 1
 
 		if echo "${mrs[@]}" | grep -q -w "$current_mr"; then
@@ -625,15 +625,9 @@ get_new_mr() {
 	local querystr
 	local response
 
-	querystr="Enter a Merge Request or press ${MNU}ENTER$INF "
-
-	if is_validnumber "$current_mr"; then
-		querystr+="to keep$STA $current_mr$INF : "
-	else
-		querystr+="to return : "
-	fi
-
+	querystr="Enter a Merge Request or press ${MNU}ENTER$INF to quit : "
 	getuser "$querystr" response
+	( [ -z "$response" ] || [ "$response" == 'q' ] ) && return 1
 	update_current_mr "$response" || return 1
 
 	return 0
@@ -853,7 +847,7 @@ get_merge_request_patches() {
 	echo
 
 	# Format the patches extracted from the MR
-	git_file2patchset "$bp_commits" "$indir" $b_verbose || { echo "stat $?"; return $mr_nop; }
+	git_file2patchset "$bp_commits" "$indir" $b_verbose || return $mr_nop
 
 	return 0
 }

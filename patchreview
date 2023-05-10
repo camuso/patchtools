@@ -448,102 +448,119 @@ EOF
 	[ "$menumode" -eq $menumode_ext ]  && show_extops
 }
 
-menu_parser() {
-	get_filecount
-	if $b_mrflag; then show_mr_menu; else show_email_menu; fi
-	promptgetchar "${MNU}Enter one of the above: $OFF" setting
+call_selmr() {
+	select_merge_request && return $rc_run || return $rc_pass
+}
 
-	case "$setting" in
-		W )	set_working_repo
-			;;
-		c )	config_parser
-			;;
-		o )	ui_cycle_state opmode $opmode_states
-			set_cfg_item "opmode" "$opmode"
-			if [ "$opmode" -eq $opmode_mr ]; then b_mrflag=true; else b_mrflag=false; fi
-			;;
-		g )	grep_mrlist && return $rc_run
-			;;
-		a )	$b_mrflag && {
-				query_acknack && return $rc_run || return $rc_pass; }
-			;;
-		m )	$b_mrflag && {
-				select_merge_request && return $rc_run || return $rc_pass; }
-			;;
-		M )	$b_mrflag && {
-				get_merge_request -u && return $rc_run || return $rc_pass; }
-			;;
-		u )	set_remotedir
-			set_remote_seek
-			;;
-		b )	git_setbranch "$branchlist"
-			git_get_lasttag lasttag "$last_tag_file"
-			;;
-		d )	set_dir "$indirstr" "indir" indir
-			;;
-		w )	set_dir "$outdirstr" "outdir" outdir
-			;;
-		e )	set_editor
-			;;
-		f )	print_missing_fixes
-			;;
-		x )	ui_cycle_state menumode $menumode_states
-			set_cfg_item "menumode" "$menumode"
-			;;
-		R )	$b_mrflag || renpatfiles
-			;;
-		F )	format_upstream_patches
-			;;
-		S )	seek_missing_fixes
-			;;
-		A )	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
-				&& exec_apply_patches
-			;;
-		V )	view_logs
-			;;
-		1 )	$b_mrflag || { ui_cycle_state cmpmode $cmpmode_states;
-				       set_cfg_item "cmpmode" $cmpmode; }
-			;;
-		2 )	$b_mrflag || { ui_cycle_state applymode "$applymode_states";
-			               set_cfg_item "applymode" "$applymode"; }
-			;;
-		3 )	$b_mrflag || { ui_cycle_state applyfailmode "$applyfailmode_states";
-			               set_cfg_item "applyfailmode" "$applyfailmode"; }
-			;;
-		4 )	$b_mrflag || { ui_toggle b_seekfixes;
-				       set_cfg_item "b_seekfixes" "$b_seekfixes"; }
-			;;
-		5 )	! $b_mrflag && $b_selpat && select_patch
-			;;
-		C )	clean_directories
-			;;
-		N )	nuke
-			;;
-		G )	reset_to_lasttag
-			rm -f "$usvbp_commits"
-			;;
-		B )	create_branch
-			;;
-		P )	compare_patches
-			;;
-		i )	init_menu
-			;;
-		q )	exit_me 0
-			;;
-		r )	if $b_mrflag; then
-				refresh_mergelist && return $rc_run
-			else
-				set_booleans
-				return $rc_run
-			fi
-			;;
-		h )	less "$main_man"
-			;;
-		v )     get_merge_request -c
-			;;
-#		T )	# test functions
-			# hidden from main menu
-			# ;;
+call_getmr() {
+	get_merge_request -u && return $rc_run || return $rc_pass
+}
+
+case_qanret() {
+	menuinput=
+	case $1 in
+	    $mrqan_news ) menuinput='m' ;;
+	    $mrqan_newg ) menuinput='M' ;;
+	    $mrqan_run  ) return $rc_run ;;
+		      * ) menuinput=; return $rc_continue ;;
+	esac
+}
+
+menu_parser() {
+	local stat
+
+	# menuinput is global!
+	#
+	case "$menuinput" in
+	    W )	set_working_repo
+		;;
+	    c )	config_parser
+		;;
+	    o )	ui_cycle_state opmode $opmode_states
+		set_cfg_item "opmode" "$opmode"
+		((opmode == opmode_mr)) && b_mrflag=true || b_mrflag=false fi
+		;;
+	    g )	grep_mrlist && return $rc_run
+		;;
+	    a )	$b_mrflag && ui_call query_acknack stat
+		case_qanret $stat
+		return $?
+		;;
+	    m )	$b_mrflag && { call_selmr; return $?; }
+		;;
+	    M )	$b_mrflag && { call_getmr; return $?; }
+		;;
+	    u )	set_remotedir
+		set_remote_seek
+		;;
+	    b )	git_setbranch "$branchlist"
+		git_get_lasttag lasttag "$last_tag_file"
+		;;
+	    d )	set_dir "$indirstr" "indir" indir
+		;;
+	    w )	set_dir "$outdirstr" "outdir" outdir
+		;;
+	    e )	set_editor
+		;;
+	    f )	print_missing_fixes
+		;;
+	    x )	ui_cycle_state menumode $menumode_states
+		set_cfg_item "menumode" "$menumode"
+		;;
+	    R )	$b_mrflag || renpatfiles
+		;;
+	    F )	format_upstream_patches
+		;;
+	    S )	seek_missing_fixes
+		;;
+	    A )	[ $applymode -ne $applymode_off ] && ! $b_allapplied \
+			&& exec_apply_patches
+		;;
+	    V )	view_logs
+		;;
+	    1 )	$b_mrflag || { ui_cycle_state cmpmode $cmpmode_states;
+			       set_cfg_item "cmpmode" $cmpmode; }
+		;;
+	    2 )	$b_mrflag || { ui_cycle_state applymode "$applymode_states";
+			       set_cfg_item "applymode" "$applymode"; }
+		;;
+	    3 )	$b_mrflag || { ui_cycle_state applyfailmode "$applyfailmode_states";
+			       set_cfg_item "applyfailmode" "$applyfailmode"; }
+		;;
+	    4 )	$b_mrflag || { ui_toggle b_seekfixes;
+			       set_cfg_item "b_seekfixes" "$b_seekfixes"; }
+		;;
+	    5 )	! $b_mrflag && $b_selpat && select_patch
+		;;
+	    C )	clean_directories
+		;;
+	    N )	nuke
+		;;
+	    G )	reset_to_lasttag
+		rm -f "$usvbp_commits"
+		;;
+	    B )	create_branch
+		;;
+	    P )	compare_patches
+		;;
+	    i )	init_menu
+		;;
+	    q )	exit_me 0
+		;;
+	    r )	if $b_mrflag; then
+			refresh_mergelist && return $rc_run
+		else
+			set_booleans
+			return $rc_run
+		fi
+		;;
+	    h )	less "$main_man"
+		;;
+	    v )     get_merge_request -c
+		;;
+#	    T )	# test functions
+		# hidden from main menu
+		# ;;
 	esac
 	return $rc_continue
 }
@@ -577,6 +594,12 @@ init_loopvars() {
 # presented in the primary and configuration menus, and to call the
 # menu_parser function in a loop.
 #
+# Globals
+# 	menuinput
+# 	b_mrflag
+# 	rc_run
+# 	indir
+#
 menu_loop() {
 
 	get_booleans
@@ -589,7 +612,15 @@ menu_loop() {
 	local stat=0
 
 	while true; do
-		menu_parser
+		# If the caller passed a menuitem, then forego prompting the
+
+		if [ -z "$menuinput" ]; then
+			get_filecount
+			if $b_mrflag; then show_mr_menu; else show_email_menu; fi
+			promptgetchar "${MNU}Enter one of the above: $OFF" menuinput
+		fi
+
+		menu_parser $menuinput
 		stat=$?
 		# echo "menu_parser_stat: $stat"; read
 		((stat == rc_run)) && break
@@ -698,21 +729,31 @@ init_parms() {
 	init_mr
 }
 
+##############################################
+# Main Program Loop
+##############################################
+#
 # main_loop - this is the loop for the top layer of the script
 #
 # When menu_loop returns, the patchreview is executed using the variables
 # and environment selected by the user in the menu_loop.
 #
+# Globals:
+# 	menuinput
+# 	b_mrflag
+# 	b_rename_infiles
+# 	b_fmt_upstream
+# 	b_seekfixes
+# 	applymode
+# 	applymode_off
+# 	cmpmode
+# 	cmpmode_off
+#
 main_loop() {
-
 	local stat=0
 
-	##############################################
-	# Main Program Loop
-	##############################################
-
 	while true; do
-		((stat != rc_run)) && menu_loop
+		((stat != rc_run)) && menu_loop $extmenuitem
 		# menu_stat=$?
 		# echo "menu_loop_stat: $menu_stat"
 
@@ -733,9 +774,12 @@ main_loop() {
 		$b_seekfixes && seek_missing_fixes
 
 		if ((cmpmode != cmpmode_off)); then
-			compare_patches || continue
-			$b_mrflag && query_acknack
-			stat=$?
+			ui_call compare_patches stat || continue
+			$b_mrflag && {
+				ui_call query_acknack stat
+				case_qanret $stat
+				stat=$?
+			}
 		fi
 	done
 }

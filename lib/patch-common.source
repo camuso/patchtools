@@ -136,6 +136,13 @@ declare remote_dir=
 
 declare b_cmdline=false
 
+declare -i mrqan_done=0
+declare -i mrqan_news=8
+declare -i mrqan_newg=9
+declare -i mrqan_run=10
+
+declare menuinput=
+
 ########################################
 # Function Return Codes
 ########################################
