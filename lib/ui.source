@@ -1400,7 +1400,7 @@ ui_strtok() {
 }
 
 #===  FUNCTION  ================================================================
-#          NAME:  ui_trunc_string
+#**        NAME:  ui_trunc_string
 #   DESCRIPTION:  truncates the given string according to the number of columns
 #                 in the terminal less the "pad" parameter. If the pad parameter
 #                 wasn't passed or is zero, then the string will be truncated to
@@ -1409,6 +1409,7 @@ ui_strtok() {
 #                 $2 - padding characters to subtract from terminal columns
 #       GLOBALS:  tcols - set at script load time by tcols=$(tput cols)
 #       RETURNS:  none
+#*
 #===============================================================================
 ui_trunc_string() {
 	local str="$1"
@@ -1420,6 +1421,24 @@ ui_trunc_string() {
 	strlen=$((tcols - pad))
 	echo "${str:0:$strlen}"
 }
+
+#** ui_call: call a function and save its status
+#
+# $1 - contains the function or command to execute
+# $2 - will receive the status, passed by reference, so no leading $
+#*
+ui_call() {
+	local uic_cmd="$1"
+	local -n uic_stat=$2
+
+	$uic_cmd
+	uic_stat=$?
+	return $uic_stat
+}
+
+##################
+# Debug Routines
+##################
 
 #** ui_press_any: prompt user to  press any key to continue
 #*
@@ -1434,4 +1453,21 @@ ui_press_any_ctlc() {
 	echo -en "${MNU}Press any key to continue or Ctl-C to exit ...$OFF "
 	read -r -n1
 	echo
+}
+
+#** ui_callwstat: call a function, print its status and pause with press_any
+#
+# $1 - contains the function or command to execute
+#*
+ui_callwstat() {
+	local uicws_cmd="$1"
+	local uicws_stat
+
+	echo -e "${INF}Executing $MNU$uicws_cmd$OFF"
+	ui_press_any
+	$uicws_cmd
+	uicws_stat=$?
+	echo -e "${MNU}$uicws_cmd ${INF}return status: $MNU$uicws_stat$OFF"
+	ui_press_any
+	return $uicws_stat
 }
