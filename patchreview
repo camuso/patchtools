@@ -642,6 +642,15 @@ menu_loop() {
 	return $stat
 }
 
+# get_labuser() - get the gitlab username for $USER
+#
+# Unfortunately, the gitlab username is not always the same as the $USER
+# on the system. This function extracts the gitlab username from the 
+# ~/.config/lab/lab.toml file.
+#
+# Globals
+# 	labuser
+#
 get_labuser() {
 	# Global: labuser
 	#
@@ -670,7 +679,8 @@ EOF
 	}
 
 	usrline=$(grep user ~/.config/lab/lab.toml | cut -d'=' -f2)
-	labuser==$(echo "$usrline" | tr -d ' \"')
+	labuser=$(echo "$usrline" | tr -d ' \"')
+
 	return 0
 }
 

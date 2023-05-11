@@ -757,7 +757,7 @@ make_mrcomments_log() {
 }
 
 is_already_approved() {
-	if grep '^Approved By' "$mrcomments" | grep "$USER" > /dev/null 2>&1
+	if grep '^Approved By' "$mrcomments" | grep "$labuser" > /dev/null 2>&1
 	then
 		return 0
 	fi
@@ -779,7 +779,7 @@ print_already_approved() {
 #	1 - if user does not want to get the patches
 #
 # Globals:
-#       USER - username, global to the login session
+#       labuser - gitlab username extracted from ~/.config/lab/lab.toml
 #	origin
 #	b_mrflag
 # 	b_rename_infiles
