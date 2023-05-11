@@ -203,6 +203,8 @@ EOF
 # 	applymode
 #
 nuke() {
+	loop_yn_ro "${MNU}Are you sure you want to delete everything in \n\
+$STA$indir$MNU and \n$STA$outdir$MNU ? \n(y/n) : $OFF" || return
 	clean_indir
 	clean_outdir
 
@@ -456,6 +458,17 @@ call_getmr() {
 	get_merge_request -u && return $rc_run || return $rc_pass
 }
 
+# case_qanret - look for return values from call to query_acknack
+#
+# This function allows query_acknack to act as an adjunct menu for
+# the main patchreview menu. It guarantees that calls to query_acknack
+# will return to menu_parser to execute calls to run patchreviews from
+# the query_acknack menu. This is necessary, because a patchreview will
+# call query_acknack after comparing patches. Allowing query_acknack to
+# call another patchreview directly would start an unintended recursion,
+# because, in effect, query_acknack will be calling itself at the end
+# of the chain of patchreview functions.
+#
 case_qanret() {
 	menuinput=
 	case $1 in
@@ -622,6 +635,7 @@ menu_loop() {
 
 		menu_parser $menuinput
 		stat=$?
+		menuinput=
 		# echo "menu_parser_stat: $stat"; read
 		((stat == rc_run)) && break
 	done
@@ -753,7 +767,7 @@ main_loop() {
 	local stat=0
 
 	while true; do
-		((stat != rc_run)) && menu_loop $extmenuitem
+		((stat != rc_run)) && menu_loop $menuinput
 		# menu_stat=$?
 		# echo "menu_loop_stat: $menu_stat"
 

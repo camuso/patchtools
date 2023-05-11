@@ -390,7 +390,7 @@ query_acknack() {
 			    ;;
 			m ) return $mrqan_news
 			    ;;
-			r ) refresh_mergelist; return $mrqan_run
+			r ) refresh_mergelist && return $mrqan_run
 			    ;;
 			P ) examine_patches
 			    ;;
@@ -508,7 +508,6 @@ EOF
 # show_mrlist - display the list of MRs obtained by call_lab_mr_list
 #
 #  Globals
-#	current_mr - indirectly by call to get_new_mr
 #	mergelist_file
 #
 show_mrlist() {
