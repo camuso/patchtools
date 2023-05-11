@@ -757,7 +757,8 @@ make_mrcomments_log() {
 }
 
 is_already_approved() {
-	if grep '^Approved By' "$mrcomments" | grep "$USER"; then
+	if grep '^Approved By' "$mrcomments" | grep "$USER" > /dev/null 2>&1
+	then
 		return 0
 	fi
 	return 1
