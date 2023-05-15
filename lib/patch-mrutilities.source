@@ -56,7 +56,7 @@ declare mergelist_file=
 declare gl_projid=24118165	# gitlab project ID
 declare origin=			# the principal remote in a git repo
 declare mrhistoryfile="$MYDATA"/mrhistory.log
-declare -A mrhistory
+# declare -A mrhistory
 
 declare -i mr_val=0	# valid mr
 declare -i mr_inv=1	# invalid mr
@@ -79,12 +79,13 @@ init_mr() {
 	mergelist_file=$MYDATA/mergelist.log
 	mrcomments="$outdir"/mrcomments.log
 
-	aa_start mrhistory "$mrhistoryfile"
+	# aa_start mrhistory "$mrhistoryfile"
+	[ -s "$mrhistoryfile" ] || touch "$mrhistoryfile"
 }
 
-update_mrhistoryfile() {
-	aa_write_aafile mrhistory "$mrhistoryfile"
-}
+# update_mrhistoryfile() {
+#	aa_write_aafile mrhistory "$mrhistoryfile"
+# }
 
 # show_init - display the init menu option
 #
@@ -234,6 +235,143 @@ show_mrstatus() {
 	}
 }
 
+# update_history - maintain a history of MR actions
+#
+# Updates the contents of mrhistoryfile. The contents for each are maintained 
+# as follows.
+#
+# MR ID   Date    Action
+# -----   ------  ------
+#                 Commented
+#                 Approved
+#                 Unapproved
+#                 Blocked/Discussion
+#
+# The complete history of Action for any given MR is retained.
+#
+# Globals:
+# 	mrhistoryfile
+#
+# Arguments
+# 	$1 - MR number
+# 	$2 - Action
+#
+update_history() {
+	local mrid="$1"
+	local action="$2"
+	local linenumber
+	local nextitem
+	local fldwid=7
+	local spc
+	local mridpad
+
+	spc=$(ui_rptchr " " "$fldwid")
+	mridpad=$(ui_padfield_aft "$mrid" " " "$fldwid")
+
+	linenumber=$(grep -wn "$mrid" "$mrhistoryfile" | cut -d':' -f1
+			exit ${PIPESTATUS[0]})
+
+	if (($? == 0)); then
+		# Find the NEXT mrid in the file. This number will be the offset
+		# from the current mrid to the next mrid.
+		nextitem=$(tail -n +"$((linenumber + 1))" "$mrhistoryfile" | \
+			grep -n -m1 "^\w" | cut -d':' -f1)
+		# Add the offset to the next item to the current linenuber and insert the
+		# new content.
+		linenumber=$((linenumber + nextitem + 1))
+		ui_insertline "$linenumber" "$spc $(date)  $action" "$mrhistoryfile"
+	else
+		echo "$mridpad $(date)  $action" >> "$mrhistoryfile"
+	fi
+}
+
+clean_history() {
+	local prompt
+
+	echo
+	prompt="$MNU      Are you sure you want to clear all review history (y/n) : $OFF"
+	loop_yn "$prompt" && :> "$mrhistoryfile"
+}
+
+view_mrhistory() {
+	local mrid
+	local linenumber
+	local nextitem
+	local notfound
+	local spc="      "
+
+	echo
+
+	while :; do
+		getuser "$MNU${spc}Enter the MR ID : $OFF" mrid
+		linenumber=$(grep -wn "$mrid" "$mrhistoryfile" | cut -d':' -f1
+			exit ${PIPESTATUS[0]})
+
+		if (($? == 0)); then
+			# Find the NEXT mrid in the file. This number will be the offset
+			# from the current mrid to the next mrid.
+			nextitem=$(tail -n +"$((linenumber + 1))" "$mrhistoryfile" | \
+				grep -n -m1 "^\w" | cut -d':' -f1)
+			echo -e "$INF"
+			tail -n +"$linenumber" "$mrhistoryfile" | head -"$nextitem"
+			echo -en "$OFF"
+			break
+		else
+			notfound=$(
+cat <<EOF
+$INF${spc}Merge Request $STA$mrid$INF is not in your review history.$OFF
+EOF
+)
+			echo -e "$notfound"
+			loop_yn "$MNU${spc}Try another? (y/n) : $OFF" || break
+		fi
+
+	done
+}
+
+# display_review_history_menu
+#
+# Globals
+#
+display_review_history_menu() {
+	local revhist_response
+	local revhist_menu=$(
+cat <<EOF
+$MNU
+      ${UND}MR Review History Manager$OFF
+     $MNU v$OFF View all review history
+     $MNU m$OFF View specific MR in history
+     $MNU C$OFF Clear MR review history
+     $MNU q$OFF Quit this menu
+EOF
+)
+	while :; do
+		echo -e "$revhist_menu\n"
+		promptgetchar "$MNU      Enter one of the above: $OFF" revhist_response
+		[[ vmCq =~ $revhist_response ]] && break
+	done
+
+	eval "$1"="$revhist_response"
+}
+
+query_review_history() {
+	local choice
+
+	while :; do
+		display_review_history_menu choice
+		case "$choice" in
+			v ) less "$mrhistoryfile"
+			    ;;
+			m ) view_mrhistory
+			    ;;
+			C ) clean_history
+			    ;;
+			q ) return
+			    ;;
+		esac
+	done
+}
+
 # display_acknack_menu - ask the user how they want to respond to the MR results
 #
 # Globals
@@ -251,7 +389,8 @@ display_acknack_menu() {
 
 	acknackmenu=$(
 cat <<EOF
-
+$MNU
+   ${UND}Merge Request Review Actions$OFF
   $MNU For MR $STA$current_mr$MNU, you want to ...
   $MNU a$STA  Approve$OFF
   $MNU A$STA  Approve$OFF with comment
@@ -263,6 +402,7 @@ cat <<EOF
   $MNU m$OFF  Display the list of Merge Requests
   $MNU r$OFF  Refresh the list of merge Requests
   $MNU P$OFF  Review diffs for $STA$current_mr
+  $MNU H$OFF  Show my review history
   $MNU q$OFF  Quit and return to main menu$OFF
 EOF
 )
@@ -281,7 +421,7 @@ EOF
 		fi
 
 		promptgetchar "$MNU   Enter one of the above: $OFF" _dak_response
-		[[ qnbBaAcvMmrP =~ $_dak_response ]] && break
+		[[ qnbBaAcvMmrPH =~ $_dak_response ]] && break
 	done
 
 	eval "$1"="$_dak_response"
@@ -361,6 +501,7 @@ query_acknack() {
 			    actstr="${STA}Approve$OFF"
 			    confirm_acknack "$actstr" "$labflags" || continue
 			    set_acknack
+			    update_history $current_mr "Approved"
 			    ;;
 			b ) labflags=
 			    b_nacked=true
@@ -370,6 +511,7 @@ query_acknack() {
 			    actstr="${WRN}Block$OFF"
 			    confirm_acknack "$acstr" "$labflags" || continue
 			    set_acknack
+			    update_history $current_mr "Blocked/Discussion"
 			    ;;
 			u ) labflags=
 			    b_unapp=true
@@ -379,6 +521,7 @@ query_acknack() {
 			    actstr="${WRN}Unapprove$OFF"
 			    confirm_acknack "$actstr" "$labflags" || continue
 			    set_acknack
+			    update_history $current_mr "Unapproved"
 			    ;;
 			c ) echo -e "$INF   Comment on $STA$current_mr$INF ...$OFF"
 			    lab mr note "$origin" "$current_mr" --force-linebreak
@@ -393,6 +536,8 @@ query_acknack() {
 			r ) refresh_mergelist && return $mrqan_run
 			    ;;
 			P ) examine_patches
+			    ;;
+			H ) query_review_history
 			    ;;
 		esac
 
@@ -766,7 +911,7 @@ is_already_approved() {
 
 print_already_approved() {
 	local mr="$1"
-	echo -e "${INF}You have already ${STA}Approved$INF MR $STA$current_mr$OFF."
+echo -e "$INF   You have already ${STA}Approved$INF MR $STA$current_mr$OFF."
 }
 
 # get_merge_request_patches - extract the patches from a merge request
