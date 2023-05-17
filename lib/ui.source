@@ -338,7 +338,9 @@ ui_rptchr() {
 	echo "${tstr// /"$chr"}"
 }
 
-# ui_padfield - pad a string with a given character to fill a field
+#** ui_padfield - pad a string with a given character to fill a field
+#
+#  The pad will be placed BEFORE the string in the returned string
 #
 #  $1 - str
 #  $2 - pad character
@@ -348,7 +350,7 @@ ui_rptchr() {
 #  	paddedstr=$(ui_padfield "foo" "." 6
 #  	echo $paddedstr
 #  	...foo
-#
+#*
 ui_padfield() {
 	local str="$1"
 	local padch="$2"
@@ -360,6 +362,33 @@ ui_padfield() {
 	padn=$((fldw - ${#str}))
 	padstr=$(ui_putnchar "$padch" "$padn")
 	echo -n "$padstr$str"
+	return
+}
+
+#** ui_padfield_aft - pad a string with a given character to fill a field
+#
+#  The pad will be placed AFTER the string in the returned string
+#
+#  $1 - str
+#  $2 - pad character
+#  $3 - field width
+#
+#  Example:
+#  	paddedstr=$(ui_padfield "foo" "." 6
+#  	echo $paddedstr
+#  	foo...
+#*
+ui_padfield_aft() {
+	local str="$1"
+	local padch="$2"
+	local -i fldw="$3"
+	local -i padn
+	local padstr
+
+	((${#str} >= fldw)) && echo -n "$str" && return
+	padn=$((fldw - ${#str}))
+	padstr=$(ui_putnchar "$padch" "$padn")
+	echo -n "$str$padstr"
 	return
 }
 
