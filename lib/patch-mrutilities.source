@@ -261,25 +261,35 @@ update_history() {
 	local action="$2"
 	local linenumber
 	local nextitem
-	local fldwid=7
+	local fldwid
 	local spc
 	local mridpad
 
+	fldwid=$((${#mrid} + 2))
 	spc=$(ui_rptchr " " "$fldwid")
 	mridpad=$(ui_padfield_aft "$mrid" " " "$fldwid")
 
 	linenumber=$(grep -wn "$mrid" "$mrhistoryfile" | cut -d':' -f1
 			exit ${PIPESTATUS[0]})
 
+	# If we found the mrid, then update it.
+	# Else add it to the end of the file.
 	if (($? == 0)); then
 		# Find the NEXT mrid in the file. This number will be the offset
 		# from the current mrid to the next mrid.
 		nextitem=$(tail -n +"$((linenumber + 1))" "$mrhistoryfile" | \
 			grep -n -m1 "^\w" | cut -d':' -f1)
-		# Add the offset to the next item to the current linenuber and insert the
-		# new content.
-		linenumber=$((linenumber + nextitem + 1))
-		ui_insertline "$linenumber" "$spc $(date)  $action" "$mrhistoryfile"
+
+		# If nextitem is not empty, then add the offset to the next item
+		# to the current linenumber and insert the new content there.
+		# Else there is no nextitem, just the end of file, so append
+		# the update to the end of the file.
+		if [ -n "$nextitem" ]; then
+			linenumber=$((linenumber + nextitem))
+			ui_insertline "$linenumber" "$spc $(date)  $action" "$mrhistoryfile"
+		else
+			echo "$spc $(date)  $action" >> "$mrhistoryfile"
+		fi
 	else
 		echo "$mridpad $(date)  $action" >> "$mrhistoryfile"
 	fi
@@ -289,12 +299,12 @@ clean_history() {
 	local prompt
 
 	echo
-	prompt="$MNU      Are you sure you want to clear all review history (y/n) : $OFF"
+	prompt="$MNU      Are you sure you want to clear all Review History (y/n) : $OFF"
 	loop_yn "$prompt" && :> "$mrhistoryfile"
 }
 
 view_mrhistory() {
-	local mrid
+	local mrid="$1"
 	local linenumber
 	local nextitem
 	local notfound
@@ -303,7 +313,7 @@ view_mrhistory() {
 	echo
 
 	while :; do
-		getuser "$MNU${spc}Enter the MR ID : $OFF" mrid
+		[ -n "$mrid" ] || getuser "$MNU${spc}Enter the MR ID : $OFF" mrid
 		linenumber=$(grep -wn "$mrid" "$mrhistoryfile" | cut -d':' -f1
 			exit ${PIPESTATUS[0]})
 
@@ -338,9 +348,10 @@ display_review_history_menu() {
 	local revhist_menu=$(
 cat <<EOF
 $MNU
-      ${UND}MR Review History Manager$OFF
+      ${UND}History of MR Reviews$OFF
      $MNU v$OFF View all review history
-     $MNU m$OFF View specific MR in history
+     $MNU m$OFF View history for current MR: $STA$current_mr$OFF
+     $MNU s$OFF Specify a different MR history to view
      $MNU C$OFF Clear MR review history
      $MNU q$OFF Quit this menu
 EOF
@@ -348,7 +359,7 @@ EOF
 	while :; do
 		echo -e "$revhist_menu\n"
 		promptgetchar "$MNU      Enter one of the above: $OFF" revhist_response
-		[[ vmCq =~ $revhist_response ]] && break
+		[[ vmCqs =~ $revhist_response ]] && break
 	done
 
 	eval "$1"="$revhist_response"
@@ -362,7 +373,9 @@ query_review_history() {
 		case "$choice" in
 			v ) less "$mrhistoryfile"
 			    ;;
-			m ) view_mrhistory
+			m ) view_mrhistory "$current_mr"
+			    ;;
+			s ) view_mrhistory
 			    ;;
 			C ) clean_history
 			    ;;
@@ -402,7 +415,7 @@ $MNU
   $MNU m$OFF  Display the list of Merge Requests
   $MNU r$OFF  Refresh the list of merge Requests
   $MNU P$OFF  Review diffs for $STA$current_mr
-  $MNU H$OFF  Show my review history
+  $MNU H$OFF  History of MR Reviews
   $MNU q$OFF  Quit and return to main menu$OFF
 EOF
 )
@@ -466,9 +479,8 @@ confirm_acknack() {
 		$b_nacked && lab mr discussion "$origin" $labflags "$current_mr"
 		return 0
 	else
-		# If the reviewer declined either to Approve or Block, then reset
-		# the b_reviewed, b_acked, and b_nacked flags to false and return
-		# with a 1 to avoid calling set_acknack().
+		# If the reviewer declined to take action, then reset  all action
+		# flags to false and return  with a 1 to avoid calling set_acknack().
 		b_acked=false
 		b_nacked=false
 		b_unapp=false
@@ -477,6 +489,22 @@ confirm_acknack() {
 	fi
 }
 
+# query_acknack - query for action on the current_mr
+#
+# Called by patchreview menu_parser, main_loop, or cmd_mr. The menu
+# presented by this call is also used as an ancillary menu to the
+# patchreview main menu presented by show_mr_menu. This is done by
+# returning to the case_qanret function in patchreview which then
+# determines the action to take. This prevents an unintended recursion.
+#
+# Globals
+# 	b_acked
+# 	b_nacked
+# 	b_unapp
+# 	b_reviewed
+# 	current_mr
+# 	origin
+#
 query_acknack() {
 	local choice
 	local actstr=
