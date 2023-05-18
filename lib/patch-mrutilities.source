@@ -434,7 +434,7 @@ EOF
 		fi
 
 		promptgetchar "$MNU   Enter one of the above: $OFF" _dak_response
-		[[ qnbBaAcvMmrPH =~ $_dak_response ]] && break
+		[[ qbuaAcvMmrPH =~ $_dak_response ]] && break
 	done
 
 	eval "$1"="$_dak_response"
@@ -537,7 +537,7 @@ query_acknack() {
 			    b_reviewed=true
 			    b_unapp=false
 			    actstr="${WRN}Block$OFF"
-			    confirm_acknack "$acstr" "$labflags" || continue
+			    confirm_acknack "$actstr" "$labflags" || continue
 			    set_acknack
 			    update_history $current_mr "Blocked/Discussion"
 			    ;;
