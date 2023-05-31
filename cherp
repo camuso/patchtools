@@ -1208,7 +1208,7 @@ stage_commit() {
 	# it to the commit message. Also append the standard commit
 	# message.
 	#
-	description=$(echo -e "$description")
+	description=$(echo -e $description)
 	echo -e "$description\n\n" >> "$cmtmsgfile"
 	[ -n "$str_bugzilla" ] && echo -e "Bugzilla: $str_bugzilla" >> "$cmtmsgfile"
 	[ -n "$str_upstream" ] && echo -e "Upstream status: $str_upstream" >> "$cmtmsgfile"
