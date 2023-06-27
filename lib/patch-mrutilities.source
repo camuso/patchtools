@@ -25,6 +25,14 @@
 }
 [ -d "$MYDATA" ] || mkdir -p "$MYDATA"
 
+[ -n "$GLOBALDATA" ] || {
+	declare GLOBALDATA=
+	GLOBALDATA=$(realpath ~/.data/patchreview)
+}
+[ -d "$GLOBALDATA" ] || mkdir -p "$GLOBALDATA"
+
+
+
 [ "$ui_loaded" ] || source "$MYLIB"/ui.source
 [ "$patchcommon_loaded" ] || source "$MYLIB"/patch-common.source
 [ "$configmanager_loaded" ] || source "$MYLIB"/config-manager.source
@@ -55,7 +63,7 @@ declare mergelist_filter=
 declare mergelist_file=
 declare gl_projid=24118165	# gitlab project ID
 declare origin=			# the principal remote in a git repo
-declare mrhistoryfile="$MYDATA"/mrhistory.log
+declare mrhistoryfile="$GLOBALDATA"/mrhistory.log
 # declare -A mrhistory
 
 declare -i mr_val=0	# valid mr
@@ -79,7 +87,6 @@ init_mr() {
 	mergelist_file=$MYDATA/mergelist.log
 	mrcomments="$outdir"/mrcomments.log
 
-	# aa_start mrhistory "$mrhistoryfile"
 	[ -s "$mrhistoryfile" ] || touch "$mrhistoryfile"
 }
 
@@ -237,7 +244,7 @@ show_mrstatus() {
 
 # update_history - maintain a history of MR actions
 #
-# Updates the contents of mrhistoryfile. The contents for each are maintained 
+# Updates the contents of mrhistoryfile. The contents for each are maintained
 # as follows.
 #
 # MR ID   Date    Action
@@ -349,6 +356,7 @@ display_review_history_menu() {
 cat <<EOF
 $MNU
       ${UND}History of MR Reviews$OFF
+      ${INF}File: $mrhistoryfile$OFF
      $MNU v$OFF View all review history
      $MNU m$OFF View history for current MR: $STA$current_mr$OFF
      $MNU s$OFF Specify a different MR history to view
