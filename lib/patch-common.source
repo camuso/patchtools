@@ -228,6 +228,11 @@ print_missing_fixes() {
 	fi
 }
 
+pc_cd() {
+	local dir="$1"
+	cd "$dir" > /dev/null 2>&1 || exit_msg "$ui_err_invdir" "$dir"
+}
+
 # set_working_repo - set the repo directory to work in
 #
 # Globals
@@ -375,7 +380,7 @@ EOF
 	fi
 
 	if $b_set; then
-		cd "$remote_dir" || exit_msg "$ui_err_invdir" "$remote_dir"
+		pc_cd "$remote_dir"
 		select_remrepo remote_repo && select_rembranch "$remote_repo" remote_branch
 		cd - > /dev/null || exit_msg "$ui_err_invdir" "cd -"
 		set_cfg_item "remote_repo" "$remote_repo"
