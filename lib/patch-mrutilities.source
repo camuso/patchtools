@@ -271,6 +271,17 @@ update_history() {
 	local fldwid
 	local spc
 	local mridpad
+	local url
+
+	url="url=$(grep -A1 "origin" .git/config | grep url | cut -d'=' -f2)"
+	# Remove the 'git@'
+	url="${url##*@}"
+	# Remove the '.git'
+	url="${url%.*}"
+	# Replace the colon with a slash
+	url="${url//:/\/}"
+	# Create the link to the MR
+	url="https://$url/-/merge_requests/$mrid"
 
 	fldwid=$((${#mrid} + 2))
 	spc=$(ui_rptchr " " "$fldwid")
@@ -279,12 +290,15 @@ update_history() {
 	linenumber=$(grep -wn "$mrid" "$mrhistoryfile" | cut -d':' -f1
 			exit ${PIPESTATUS[0]})
 
-	# If we found the mrid, then update it.
-	# Else add it to the end of the file.
-	if (($? == 0)); then
+	# If we didn't find the mrid, then add it to the end of the file
+	# Else record the latest action.
+	if (($? != 0)); then
+		echo "$mridpad $url" >> "$mrhistoryfile"
+		echo "$spc $(date)  $action" >> "$mrhistoryfile"
+	else
 		# Find the NEXT mrid in the file. This number will be the offset
 		# from the current mrid to the next mrid.
-		nextitem=$(tail -n +"$((linenumber + 1))" "$mrhistoryfile" | \
+		nextitem=$(tail -n +"$((linenumber + 2))" "$mrhistoryfile" | \
 			grep -n -m1 "^\w" | cut -d':' -f1)
 
 		# If nextitem is not empty, then add the offset to the next item
@@ -297,8 +311,6 @@ update_history() {
 		else
 			echo "$spc $(date)  $action" >> "$mrhistoryfile"
 		fi
-	else
-		echo "$mridpad $(date)  $action" >> "$mrhistoryfile"
 	fi
 }
 
