@@ -1027,11 +1027,13 @@ select_remrepo() {
 }
 
 show_remote_url() {
+	# global remote_dir
 	local reponame="$1"
 	local url
-	[ -z "$reponame" ] && return
+	[ -z "$reponame" ] && return || pc_cd "$remote_dir"
 	url=$(grep -A1 "remote \"$reponame" .git/config | grep url | cut -d'=' -f2)
 	echo "$url"
+	[ -z "$reponame" ] || pc_cd "-"
 }
 
 select_rembranch() {
