@@ -233,6 +233,7 @@ $STA$indir$MNU and \n$STA$outdir$MNU ? \n(y/n) : $OFF" || return
 #
 show_config_menu() {
 	local config_menu
+	local remotes="$remote_dir : $remote_repo/$remote_branch"
 
 	config_menu=$(
 cat <<EOF
@@ -243,8 +244,8 @@ $MNU
    $MNU s$OFF  Automatically Seek Fixes :$STA $(show_seekfixes)
    $(show_patches)
    $(show_workdir)
-   $MNU r$OFF  Remote Repo/Branch       :$STA $remote_repo/$remote_branch$OFF
-       Remote URL               :$STA$(show_remote_url "$remote_repo")$OFF
+   $MNU u$OFF  Upstream Dir Repo/Branch :$STA $remotes$OFF
+       Upstream URL             :$STA$(show_remote_url "$remote_repo")$OFF
    $MNU e$OFF  Diff Editor              :$STA $editor
    $MNU f$OFF  Patch Validation fuzz    :$STA $(show_patchvalfuzz)
    $MNU p$OFF  Cycle Patch Compare Mode :$STA $(show_cmpmode)$OFF
@@ -289,7 +290,7 @@ config_parser() {
 			;;
 		w )	set_dir "$outdirstr" "outdir" outdir
 			;;
-		r )	set_remote_seek
+		u )	set_remote_seek
 			;;
 		e )	set_editor
 			;;
@@ -393,6 +394,7 @@ $MNU m$OFF  Show the list of Merge Requests and select one for review
 $MNU v$OFF  $(show_comments)
 $MNU r$OFF  Refresh the list of Merge Requests and select one for review
 $MNU a$OFF  Ack, Nack and/or Comment on a Merge Request
+$MNU H$OFF  History of MR reviews
 $MNU i$OFF  $(show_init)
 $MNU q$OFF  Quit this script
 $(show_discrete_ops)
@@ -485,6 +487,8 @@ menu_parser() {
 	# menuinput is global!
 	#
 	case "$menuinput" in
+	    H ) query_review_history
+		;;
 	    W )	set_working_repo
 		;;
 	    c )	config_parser
