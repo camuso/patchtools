@@ -14,11 +14,12 @@ declare rev=""
 declare -i optcount=0
 declare -a alist		# alternate (upstream) branch list
 declare -a blist		# current branch list
+declare -i count		# limit the number of commits to parse
 declare show_b=true
 declare notupstream="---------"
 declare cmtline=
 declare nomerges=
-declare dates="-c -d"
+declare dates="-c -d"	# These will be cleared if the user enters -m option
 declare usagestr=
 
 usagestr=$(
@@ -41,14 +42,16 @@ Description
    printed to the screen in its place, and the current branch commit
    date is printed, since there is no upstream commit.
 
-Options
+Options must have a leading hyphen
 
-   u - upstream directory
-   r - reverse order
-   b - do not show downstream branch commit
-   n - no-merges
-   m - no-dates
-   h - this help text
+   -u - upstream directory
+   -r - reverse order
+   -b - do not show downstream branch commit
+   -n - no-merges
+   -m - no-dates
+   -h - this help text
+   -<decimal integer> - limit the number of commits you want to parse to
+                        the decimal integer.
 \0
 EOF
 )
@@ -124,38 +127,44 @@ parseargs() {
 				((optcount+=2))
 				;;
 			r ) 	rev="--reverse"
-				shift
+				shift 1
 				((++optcount))
 				;;
 			b ) 	show_b=false
-				shift
+				shift 1
 				((++optcount))
 				;;
 			n ) 	nomerges="--no-merges"
-				shift
+				shift 1
 				((++optcount))
 				;;
 			m ) 	dates=
+				shift 1
 				((++optcount))
-				shift
 				;;
 			h ) 	exitme
 		esac
+		if [[ $opt =~ ^[0-9]+$ ]]; then
+			count="$opt"
+			shift
+			((++optcount))
+			continue
+		fi
 	    fi
 	done
 }
 
 parseargs "$@"
-shift "$optcount"
+shift $optcount
 commit_expr="$1"
 pathspec="$2"
 
-# Create an array of hashes from the current (rhel) branch
+# Create an array of hashes from the current (rhel) branch using the
+# options entered by the user.
 #
-blist=($(git log $nomerges --oneline $rev --pretty=format:%h "$commit_expr" $pathspec))
-# echo -e "${blist[@]}"
+blist=($(git log $nomerges -$count --oneline $rev --pretty=format:%h "$commit_expr" $pathspec))
 
-for ((i=0; i < ${#blist[@]}; ++i)); do
+for ((i=0; i < ${#blist[@]} && i < count; ++i)); do
 
 	# skip over the downstream (RHEL) commit header
 	log=$(git log -1 "${blist[$i]}" | tail -n +2)
@@ -165,9 +174,6 @@ for ((i=0; i < ${#blist[@]}; ++i)); do
 
 	# extract the first commit line we encounter
 	cmtline=$(echo "$log" | grep -E -m1 '^commit')
-
-	# cmtline="$(echo "$cmtline" | tr -dc '[:alnum:]')"
-	# [ $(echo "$cmtline" | wc -l) -gt 1 ] && cmtline=$(choose_commit "$cmtline")
 
 	# extract the commit hash from the line
 	alist[$i]=$(echo "$cmtline" | grep -E -o "\b[0-9a-f]{40}\b")
@@ -180,17 +186,17 @@ for ((i=0; i < ${#blist[@]}; ++i)); do
 
 		# get the pretty commit line with commit date for the hash
 		# extracted above.
-		astr=$(gitnice "$dates" -1 "${alist[$i]}" 2> /dev/null)
+		astr=$(gitnice $dates -1 "${alist[$i]}" 2> /dev/null)
 		stat=$?
 
 		if [ $stat -ne 0 ]; then
-			tmp="$(gitnice "$dates" -1 "${blist[$i]}" | cut -d' ' -f2-)"
+			tmp="$(gitnice $dates -1 "${blist[$i]}" | cut -d' ' -f2-)"
 			echo -e " ##\n ## Commit ${alist[$i]:0:9} identified in"\
 			        "${blist[$i]} cannot be found in any branch."
 			astr="$notupstream $tmp"
 		fi
 	else
-		tmp="$(gitnice "$dates" -1 "${blist[$i]}" | cut -d' ' -f2-)"
+		tmp="$(gitnice $dates -1 "${blist[$i]}" | cut -d" " -f2-)"
 		astr="$notupstream $tmp"
 	fi
 
