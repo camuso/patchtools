@@ -145,7 +145,7 @@ parseargs() {
 			h ) 	exitme
 		esac
 		if [[ $opt =~ ^[0-9]+$ ]]; then
-			count="$opt"
+			count="$arg" # include the '-'
 			shift
 			((++optcount))
 			continue
@@ -162,7 +162,7 @@ pathspec="$2"
 # Create an array of hashes from the current (rhel) branch using the
 # options entered by the user.
 #
-blist=($(git log $nomerges -$count --oneline $rev --pretty=format:%h "$commit_expr" $pathspec))
+blist=($(git log $nomerges $count --oneline $rev --pretty=format:%h "$commit_expr" -- $pathspec))
 
 for ((i=0; i < ${#blist[@]} && i < count; ++i)); do
 
