@@ -164,7 +164,7 @@ pathspec="$2"
 #
 blist=($(git log $nomerges $count --oneline $rev --pretty=format:%h "$commit_expr" -- $pathspec))
 
-for ((i=0; i < ${#blist[@]} && i < count; ++i)); do
+for ((i=0; i < ${#blist[@]}; ++i)); do
 
 	# skip over the downstream (RHEL) commit header
 	log=$(git log -1 "${blist[$i]}" | tail -n +2)
