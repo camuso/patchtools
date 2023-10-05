@@ -27,8 +27,8 @@ cat <<EOF
 
 $(basename "$0") [OPTIONS] commit-expr path
 
-Example
-   $(basename "$0") c68432e802b11..HEAD [drivers/char/ipmi]
+commit-expr - any valid git commit expression.
+path - any path, or a list of space-separated paths
 
 Description
 
