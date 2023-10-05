@@ -89,7 +89,6 @@ is_validpath() {
 
 	for p in ${pthary[@]}; do
 		[ -e "$p" ] || {
-			echo "$p is an invalid path"
 			return 1
 		}
 	done
