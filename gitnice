@@ -38,14 +38,19 @@ cat <<EOF
 $(basename "$0") [options] [commitexpr] [path]
 
   Displays commits in --oneline format, with options as detailed below.
-  With no options and no arguments, the most recent commit is displayed
-  as "git log --oneline -n1"
+  With no commitexpr, only the most recent commit is displayed.
+  If the commitexpr does not provide a range,  only that one commit is displayed.
+
+  commitexpr - any valid git commit expression.
+  path - any path, or a list of space-separated paths
+
+  Options and arguments can be entered in any order.
 
   commitexpr - Commit expression can be any valid commit expression, e.g.
-  1234567, or 89abcde...f0123456, or -12
-
-  If the commit expression is for a single commit, only that commit will
-  be displayed.
+     befb28f26
+     befb28f26~1..
+     9930702cfebb..e87443a5f68d
+     c5586d0f711e~1..HEAD
 
   Options
   -c        - show commit date
@@ -58,6 +63,23 @@ $(basename "$0") [options] [commitexpr] [path]
 
   Additionally, except for formatting options, any valid git log option can
   also be entered.
+
+  Examples:
+   $(basename "$0")
+       prints the most recent commit in the current repo
+
+   $(basename "$0") -d -c -5
+       prints the 5 most recent commits with the author date and the
+       actuall commit date
+
+   $(basename "$0") -d --no-merges \\\
+
+     c68432e802b11.. \\\
+
+     drivers/char/ipmi include/linux/ipmi.h
+       prints all commits with author dates, except for merges, for
+       the listed paths, starting with commit c68432e802b11.
+
 \0
 EOF
 )
@@ -75,24 +97,6 @@ usage() {
 is_validcmtexpr() {
 	git log -n1 "$1" > /dev/null 2>&1
 	return $?
-}
-
-strtok() {
-	IFS="$2" read -r -a "$3" <<< "$1"
-}
-
-is_validpath() {
-	local pth="$1"
-	local -a pthary
-
-	strtok "$pth" ", " pthary
-
-	for p in ${pthary[@]}; do
-		[ -e "$p" ] || {
-			return 1
-		}
-	done
-	return 0
 }
 
 for arg in "$@"; do
@@ -132,9 +136,14 @@ for arg in "$@"; do
 		* ) gitopt+=( "$arg" )
 			shift
 		esac
+	fi
+
+	if [ -e "$arg" ]; then
+		path="$path $arg"
+		continue
 	else
-		is_validpath "$1" && { path="$1"; shift; continue; }
-		is_validcmtexpr "$1" &&	{ cmtexpr="$1"; shift; continue; }
+		is_validcmtexpr "$arg" && cmtexpr="$arg"
+		continue
 	fi
 done
 
