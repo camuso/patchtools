@@ -111,8 +111,8 @@ Options:$OFF$MNU
 For more than one of any of the following options, use a comma-separated
 list with no spaces.
 
-  -ss ${INF}sybsys - REQUIRED one or comma separated list of subsystem directories.$MNU
-  -f  ${INF}file   - OPTIONAL one or comma separated list of file paths$MNU
+  -ss ${INF}sybsys - REQUIRED one or comma separated list of subsystem directories, no spaces.$MNU
+  -f  ${INF}file   - OPTIONAL one or comma separated list of file paths, no spaces$MNU
   -S  ${INF}string - OPTIONAL one or comma separates list of search strings
 	       A $STA$chlog$INF file will be created for each search string
 	       with the first field of the string prepended to its name.
@@ -408,7 +408,6 @@ main() {
 	[ "$optcount" -lt 8 ] && exitme $exit_invarg
 
 	shift "$optcount"
-echo "outdir: $outdir"
 
 	echo
 
@@ -429,13 +428,14 @@ echo "outdir: $outdir"
 	[ -d "$updir" ] && { cd "$updir" || exitme $exit_invdir; }
 	pwd
 	echo -e "${STA}Creating $outdir/$uplog$INF"
-	gitnice -r -c -d --no-merges "$upcmt..HEAD" $subsys $ssfile 2>&1 | tee "$outdir/$uplog"
+
+	gitnice -r -c -d --no-merges "$upcmt..HEAD" "$subsys $ssfile" 2>&1 | tee "$outdir/$uplog"
 	echo
 
 	echo -e "$STA"
 	cd - || exitme $exit_invdir
 	echo -e "${STA}Creating $outdir/$dnlog$INF"
-	extup -r -n -u "$updir" "$dncmt..HEAD" $subsys $ssfile 2>&1 | tee "$outdir/$dnlog"
+	extup -r -n -u "$updir" "$dncmt..HEAD" "$subsys $ssfile" 2>&1 | tee "$outdir/$dnlog"
 
 	echo
 	echo -e "${STA}Creating $outdir/$chlog$INF"
