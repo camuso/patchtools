@@ -77,10 +77,23 @@ is_validcmtexpr() {
 	return $?
 }
 
+strtok() {
+	IFS="$2" read -r -a "$3" <<< "$1"
+}
+
 is_validpath() {
-	[ -d "$1" ] && return 0
-	[ -f "$1" ] && return 0
-	return 1
+	local pth="$1"
+	local -a pthary
+
+	strtok "$pth" ", " pthary
+
+	for p in ${pthary[@]}; do
+		[ -e "$p" ] || {
+			echo "$p is an invalid path"
+			return 1
+		}
+	done
+	return 0
 }
 
 for arg in "$@"; do
@@ -139,8 +152,8 @@ $b_format && \
 grep -q '\-\-since' <<< "${gitopt[@]}" && number=
 grep -q '\-\-after' <<< "${gitopt[@]}" && number=
 [ -n "$number" ] && number="-$number"
-[ -n "$path" ] && path=" -- $path"
+# [ -n "$path" ] && path=" -- $path"
 
-git log --date=short --pretty=format:"$fmtstr" $reverse $number ${gitopt[@]} $cmtexpr $path
+git log --date=short --pretty=format:"$fmtstr" $reverse $number ${gitopt[@]} $cmtexpr -- $path
 
 exit $?
