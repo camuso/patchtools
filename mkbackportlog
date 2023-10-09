@@ -15,7 +15,7 @@ declare -i background=
 # Other exit codes
 declare -i exit_ok=0
 declare -i exit_invarg=1
-declare -i exit_invpath=2	# invalid file not used yet
+declare -i exit_invpath=2	# invalid path
 declare -i exit_invdir=3
 declare -i exit_disfil=4	# directory name is a file
 declare -i exit_nooutd=5	# directory name is empty
@@ -69,9 +69,8 @@ declare outdir=
 declare updir=
 declare upcmt=
 declare dncmt=
-declare subsys=
 declare searchstr=
-declare ssfile=
+declare path=
 
 usage() {
 	local usagestr
@@ -79,57 +78,48 @@ usage() {
 	usagestr=$(
 cat <<EOF
 $MNU
-$(basename "$0") -ud updir -uc upcmt -dc dncmt -o outdir [-S] [sybsys]
-$INF
-Uses scripts ${STA}gitnice$INF and ${STA}extup$INF to create a list of
-commits to backport. Commits that have already been backported will have
+$(basename "$0") -dc dncmt -o outdir [-ud updir] [path-1 path-2 ... path-n]
+$OFF
+Uses scripts ${STA}gitnice$OFF and ${STA}extup$OFF to create a list of commits
+to backport. Commits that have already been backported will have
 a leading # to effectively comment them out to processing scripts, like
 git-backport.
-This must be run in the downstream repo directory, e.g. the one for RHEL-9.
+
+This must be run in the downstream repo directory.
 
 Creates the following files in the <outdir>.
-  $STA$uplog$INF   - contains the upstream commits since <upcmt>
-  $STA$dnlog$INF - contains the downstream commits since <dncmt>
-  $STA$chlog$INF   - contains the upstream commits that have not yeat been
+  $STA$uplog$OFF   - contains the upstream commits since <upcmt>
+  $STA$dnlog$OFF - contains the downstream commits since <dncmt>
+  $STA$chlog$OFF   - contains the upstream commits that have not yeat been
                    backported downstream.
-  Optionally, if a search string was provided with the$STA -S$INF option, another
-  $STA$chlog$INF file in the same directory but with the first field in the search
+
+  Optionally, if a search string was provided with the$STA -S$OFF option, another
+  $STA$chlog$OFF file in the same directory but with the first field in the search
   string prepended to its name.
 $MNU
-Creates $STA$uplog$INF, $STA$dnlog$INF, $STA$chlog$INF, and
-        ${STA}msg_handler-$chlog$INF in ${STA}drivers/char/ipmi/$MNU$UND
 Options:$OFF$MNU
-  -h$INF         - this help text$MNU
-  -ud ${INF}updir  - directory with the upstream repo$MNU
-  -uc ${INF}upcmt  - starting upstream commit$MNU
-  -dc ${INF}dncmt  - starting downstream commit$MNU
-  -o  ${INF}outdir - Directory for ouput files.
-               Upstream file will be named $STA$uplog$INF
-               Downstrearm file will be named $STA$dnlog$INF
+  -h$OFF         - this help text$MNU
+  -ud ${OFF}updir  - OPTIONAL directory with the upstream repo, default is ./$MNU
+  -dc ${OFF}dncmt  - starting from the given downstream commit$MNU
+  -o  ${OFF}outdir - Directory for ouput files.
+               Upstream file will be named $STA$uplog$OFF
+               Downstream file will be named $STA$dnlog$OFF
                Backport file will be named $STA$chlog$MNU
 
-For more than one of any of the following options, use a comma-separated
-list with no spaces.
-
-  -ss ${INF}sybsys - REQUIRED one or comma separated list of subsystem directories, no spaces.$MNU
-  -f  ${INF}file   - OPTIONAL one or comma separated list of file paths, no spaces$MNU
-  -S  ${INF}string - OPTIONAL one or comma separates list of search strings
-	       A $STA$chlog$INF file will be created for each search string
-	       with the first field of the string prepended to its name.
-	       The file(s) will contain commit hashes that contain the
-	       string(s).$MNU
-Example:$STA
+  -p ${OFF}paths  - space separated list of subsystem directories or filenames.$MNU
+  -S ${OFF}string - comma separated list of search strings
+	      A $STA$chlog$OFF file will be created for each search string
+	      with the first field of the string prepended to its name.
+	      The file(s) will contain commit hashes that contain the
+	      string(s).$MNU
+Example:$OFF
   $(basename "$0") \\\
 
         -ud /work/upstream/kernel \\\
 
-        -uc v5.14 \\\
-
         -dc kernel-5.14.0-87.el9 \\\
 
-        -ss drivers/char/ipmi,drivers/platform \\\
-
-        -f  include/linux/ipmi.h,include/linux/ipmi_smi.h \\\
+        -p drivers/char/ipmi include/linux/ipmi.h include/linux/ipmi_smi.h \\\
 
         -o ../backport/9.2/ipmi/ \\\
 
@@ -142,29 +132,12 @@ EOF
 	exitme 0
 }
 
-chkdir() {
-	local stat=0
-
-	ui_chkdir "$1"
-	stat=$?
-
-	case $stat in
-		1 ) exitme $exit_nooutd
-		    ;;
-		2 ) exitme $exit_disfil "$1"
-		    ;;
-		3 ) ;&
-		4 ) exitme $exit_invdir "$1"
-	esac
-}
-
 get_pathopt() {
 	local path=$1
 	local -n optname="$2"
 
 	[ -e "$path" ] || exitme $exit_invpath
 	optname=$(realpath "$path")
-	((optcount += 2))
 }
 
 get_varopt() {
@@ -172,7 +145,6 @@ get_varopt() {
 	local -n varname="$2"
 
 	varname="${var//,/ }"
-	((optcount += 2))
 }
 
 test_help() {
@@ -195,16 +167,15 @@ test_help() {
 # 	dncmt
 # 	usagestr
 # 	searchstr
-# 	subsys
-# 	ssfile
+# 	path
 #
 parseops() {
 	local arg=
 	local opt=
-
-	for arg in "$@"; do
-
-	    test_help "$1"
+	local -i argc=$#
+#set -x
+	while (($# > 0)); do
+	    arg="$1"
 
 	    if [ "${arg:0:1}" == '-' ]; then
 		opt="${arg:1}"
@@ -213,26 +184,27 @@ parseops() {
 		case "$opt" in
 		    ud ) get_pathopt "$1" updir
 			 ;;
-		    uc ) get_varopt "$1" upcmt
-			 ;;
 		    dc ) get_varopt "$1" dncmt
 			 ;;
 		    S  ) get_varopt "$1" searchstr
 			 ;;
 		    o  ) get_pathopt "$1" outdir
 			 ;;
-		    ss ) get_varopt "$1" subsys
-			 ;;
-		    f  ) get_varopt "$1" ssfile
-			 ;;
 		    *  ) echo "unrecognized option -$1"
 			 echo -e "$usagestr"
 			 exit 127
 		esac
-		shift
+	    else
+		if [ -e "$arg" ]; then
+		    path="$path $arg"
+		else
+		    echo -e "$MNU$path : $WRN${exitmsgary[exit_invpath]}$OFF"
+		    echo -e "${INF}and will not be included in the search.$OFF"
+		fi
 	    fi
+	    shift
 	done
-	((optcount += 2))
+#set +x
 }
 
 # compare_strings() - compare strings
@@ -290,31 +262,6 @@ compare_strings() {
 		$b_match && echo "# $up" >> "$chpath" || echo "$up" >> "$chpath"
 		$b_match && echo "# $up" || echo "$up"
 		b_match=false
-	done
-}
-
-set_cfg_item() {
-	cfg_write_key "$1" "$2"
-}
-
-get_cfg_item() {
-	cfg_read_key "$1"
-}
-
-set_colors() {
-	local ans
-	while :; do
-		ui_use_colors
-		background=$terminal_background
-		set_cfg_item background $terminal_background
-		echo -en "${INF}You chose "
-
-		case $terminal_background in
-			1) echo -e "${STA}light$INF background$OFF\n";;
-			2) echo -e "${STA}dark$INF background$OFF\n";;
-		esac
-
-		loop_yn_ro "Is that what you want? (y/n) : " && return
 	done
 }
 
@@ -389,6 +336,7 @@ seek_str() {
 
 main() {
 	local mainbranch
+	local -a tmpary=()
 
 	init_env
 
@@ -402,12 +350,11 @@ main() {
 	}
 	mainbranch=$(get_mainbranch)
 
+	test_help "$1"
+
 	parseops "$@"
 
 	[ -n "$outdir" ] || exitme $exit_nooutd
-	[ "$optcount" -lt 8 ] && exitme $exit_invarg
-
-	shift "$optcount"
 
 	echo
 
@@ -415,10 +362,27 @@ main() {
 	check_log "$outdir/$dnlog"
 	check_log "$outdir/$chlog"
 
-	echo -e "${INF}Upstream repo     : $STA$updir origin/master $OFF"
+	# Extract the upstream commit from the submitted RHEL commit, which is
+	# the most recent RHEL commit under consideration, entered with the
+	# -dc option.
+	tmpary=($(extup -1 -r -n -u "$updir" "$dncmt"))
+	upcmt="${tmpary[1]}"
+
+	echo -e "${INF}Upstream repo     : $STA${updir}origin/master $OFF"
+	echo -e "${INF}Upstream commit   : $STA$upcmt$OFF"
 	echo -e "${INF}Downstream branch : $STA$mainbranch$INF"
-	[ -n "$subsys" ] && echo -e "${INF}subsys: $STA$subsys$OFF"
-	[ -n "$ssfile" ] && echo -e "${INF}ssfile: $STA$ssfile$OFF"
+
+	if [ -n "$path" ]; then
+		# If there's more than one path, show them all.
+		if (($(wc -w <<< "$path") > 1)); then
+			echo -e "${INF}Paths:$OFF"
+			# shellcheck complains about vars without quotes, but
+			# sometimes, it's what you really want.
+			printf "  %s\n" $path
+		else
+			echo -e "${INF}Path:$OFF $path"
+		fi
+	fi
 
 	echo
 	echo -n "Press any key to proceed or CTRL-C to exit..."
@@ -429,13 +393,15 @@ main() {
 	pwd
 	echo -e "${STA}Creating $outdir/$uplog$INF"
 
-	gitnice -r -c -d --no-merges "$upcmt..HEAD" "$subsys $ssfile" 2>&1 | tee "$outdir/$uplog"
+	# Get the list of upstream commits starting from the one extracted from
+	# the submitted RHEL commit with the -dc option.
+	gitnice -r -c -d --no-merges "$upcmt..HEAD" $path 2>&1 | tee "$outdir/$uplog"
 	echo
 
 	echo -e "$STA"
 	cd - || exitme $exit_invdir
 	echo -e "${STA}Creating $outdir/$dnlog$INF"
-	extup -r -n -u "$updir" "$dncmt..HEAD" "$subsys $ssfile" 2>&1 | tee "$outdir/$dnlog"
+	extup -r -n -u "$updir" "$dncmt..HEAD" $path 2>&1 | tee "$outdir/$dnlog"
 
 	echo
 	echo -e "${STA}Creating $outdir/$chlog$INF"
