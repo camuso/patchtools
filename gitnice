@@ -6,6 +6,7 @@
 declare arg=
 declare opt=
 declare numregex='^[0-9]+$'
+declare b_usernum=false
 declare number=
 declare cmtauth=
 declare cmtdate=
@@ -94,18 +95,35 @@ usage() {
 #
 # [ -t 1 ] && b_format=true || b_format=false
 
+# is_validcmtexpr
+#
+# Break the commit expression into separate strings, dividing on a
+# double dot elipsis, and cycle through the resulting array to
+# check each of the commits.
+#
 is_validcmtexpr() {
-	git log -n1 "$1" > /dev/null 2>&1
-	return $?
+	local tmp=$1
+	local -a cary=()
+	local c
+
+	cary=(${tmp//../ })
+
+	for c in ${cary[@]}; do
+		git rev-parse $c > /dev/null 2>&1 || return 1
+	done
+
+	return 0
 }
 
-for arg in "$@"; do
+while (($# > 0)); do
+	arg="$1"
 
 	if [ "${arg:0:1}" == '-' ]; then
 		opt="${arg:1}"
 
 		if [[ $opt =~ $numregex ]]; then
 			number=$opt;
+			b_usernum=true
 			shift
 			continue
 		fi
@@ -114,37 +132,29 @@ for arg in "$@"; do
 		s ) $gitold && continue
 			shift
 			authwid="%<($arg,mtrunc)"
-			shift
 			;;
 		c ) $b_format && cmtdate="%C(bold green)%cd " || autdate="%cd "
-			shift
 			;;
 		d ) $b_format && autdate="%C(bold green)%ad " || autdate="%ad "
-			shift
 			;;
 		a ) $b_format && cmtauth="%C(bold yellow)%ae " || cmtauth="%ae "
-			shift
 			;;
 		r ) reverse="--reverse"
-			shift
 			;;
 		w ) hashsiz="H"
-			shift
 			;;
 		h ) usage 0
 			;;
 		* ) gitopt+=( "$arg" )
-			shift
 		esac
+
+	elif [ -e "$arg" ]; then
+		path="$path $arg"
+	elif is_validcmtexpr "$arg"; then
+		cmtexpr="$arg"
 	fi
 
-	if [ -e "$arg" ]; then
-		path="$path $arg"
-		continue
-	else
-		is_validcmtexpr "$arg" && cmtexpr="$arg"
-		continue
-	fi
+	shift
 done
 
 $gitold && hashwid=
@@ -155,12 +165,13 @@ $b_format && \
 || \
 	fmtstr="$hashwid%$hashsiz $cmtdate$autdate$authwid$cmtauth %s"
 
-[ -z "$number" ] && number="1"
-[ -n "$cmtexpr" ] && [[ "$cmtexpr" = *".."* ]] && number=
+$b_usernum || {
+	number="1"
+	[ -n "$cmtexpr" ] && [[ "$cmtexpr" = *".."* ]] && number=
+}
 grep -q '\-\-since' <<< "${gitopt[@]}" && number=
 grep -q '\-\-after' <<< "${gitopt[@]}" && number=
 [ -n "$number" ] && number="-$number"
-# [ -n "$path" ] && path=" -- $path"
 
 git log --date=short --pretty=format:"$fmtstr" $reverse $number ${gitopt[@]} $cmtexpr -- $path
 
