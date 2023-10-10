@@ -11,7 +11,6 @@ source "$MYLIB"/ui.source
 
 declare -i stat
 declare rev=""
-declare -i optcount=0
 declare -a alist		# alternate (upstream) branch list
 declare -a blist		# current branch list
 declare -i count		# limit the number of commits to parse
@@ -21,6 +20,9 @@ declare cmtline=
 declare nomerges=
 declare dates="-c -d"	# These will be cleared if the user enters -m option
 declare usagestr=
+declare path=
+declare numregex='^[0-9]+$'
+declare cmtexpr
 
 usagestr=$(
 cat <<EOF
@@ -114,55 +116,78 @@ choose_commit() {
 	echo "${ary[$index]}"
 }
 
+# is_validcmtexpr
+#
+# Break the commit expression into separate strings, dividing on a
+# double dot elipsis, and cycle through the resulting array to
+# check each of the commits.
+#
+is_validcmtexpr() {
+	local tmp=$1
+	local -a cary=()
+	local c
+
+	cary=(${tmp//../ })
+
+	for c in ${cary[@]}; do
+		git rev-parse $c > /dev/null 2>&1 || return 1
+	done
+
+	return 0
+}
+
 parseargs() {
 	local arg=
 	local opt=
 
-	for arg in "$@"; do
+	while (($# > 0)); do
+	    arg="$1"
+
 	    if [ "${arg:0:1}" == '-' ]; then
 		opt="${arg:1}"
+
+		if [[ $opt =~ $numregex ]]; then
+			count=$arg;	# include the '-'
+			shift
+			continue
+		fi
+
 		case "$opt" in
-			u ) 	updir="$2"
-				shift 2
-				((optcount+=2))
+			u ) 	shift
+				updir="$1"
 				;;
 			r ) 	rev="--reverse"
-				shift 1
-				((++optcount))
 				;;
-			b ) 	show_b=false
-				shift 1
-				((++optcount))
+			b ) 	show_b=false	# don't show downstream commit
 				;;
 			n ) 	nomerges="--no-merges"
-				shift 1
-				((++optcount))
 				;;
-			m ) 	dates=
-				shift 1
-				((++optcount))
+			m ) 	dates=		# don't show dates
 				;;
 			h ) 	exitme
 		esac
-		if [[ $opt =~ ^[0-9]+$ ]]; then
-			count="$arg" # include the '-'
-			shift
-			((++optcount))
-			continue
-		fi
+
+	    elif [ -e "$arg" ]; then
+			path="$path $arg"
+	    elif is_validcmtexpr "$arg"; then
+			cmtexpr="$arg"
 	    fi
+
+	    shift
+
 	done
 }
 
 parseargs "$@"
-shift $optcount
-commit_expr="$1"
-pathspec="$2"
+
+# If the user didn't provide an upstream dir with the  -u option,
+# default to current directory.
+[ -z "$updir" ] && updir="./"
 
 # Create an array of hashes from the current (rhel) branch using the
 # options entered by the user.
 #
-blist=($(git log $nomerges $count --oneline $rev --pretty=format:%h "$commit_expr" -- $pathspec))
+blist=($(git log $nomerges $count --oneline $rev --pretty=format:%h "$cmtexpr" -- $path))
 
 for ((i=0; i < ${#blist[@]}; ++i)); do
 
