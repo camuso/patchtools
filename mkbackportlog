@@ -18,7 +18,8 @@ declare -i exit_invarg=1
 declare -i exit_invpath=2	# invalid path
 declare -i exit_invdir=3
 declare -i exit_disfil=4	# directory name is a file
-declare -i exit_nooutd=5	# directory name is empty
+declare -i exit_nodncmt=5
+declare -i exit_nooutd=6	# directory name is empty
 
 declare -a exitmsgary=
 
@@ -28,6 +29,7 @@ exitmsgary=(
 " path does not exist."
 " is an invalid directory name."
 " is a file, not a directory."
+" is not a valid downstream commit."
 "You did not provide an output directory path:$MNU -o <outdir>$OFF"
 )
 
@@ -155,6 +157,26 @@ test_help() {
 	shopt -u nocasematch
 }
 
+# is_validcmtexpr
+#
+# Break the commit expression into separate strings, dividing on a
+# double dot elipsis, and cycle through the resulting array to
+# check each of the commits.
+#
+is_validcmtexpr() {
+	local tmp=$1
+	local -a cary=()
+	local c
+
+	cary=(${tmp//../ })
+
+	for c in ${cary[@]}; do
+		git rev-parse $c > /dev/null 2>&1 || return 1
+	done
+
+	return 0
+}
+
 # parseops() - parse the input options
 #
 # Needed multicharacter optionis, but didn't want to use longopts.
@@ -172,8 +194,7 @@ test_help() {
 parseops() {
 	local arg=
 	local opt=
-	local -i argc=$#
-#set -x
+
 	while (($# > 0)); do
 	    arg="$1"
 
@@ -183,41 +204,42 @@ parseops() {
 		shift
 		case "$opt" in
 		    ud ) get_pathopt "$1" updir
-			 ;;
-		    dc ) get_varopt "$1" dncmt
+			 shift
+			 continue
 			 ;;
 		    S  ) get_varopt "$1" searchstr
 			 ;;
 		    o  ) get_pathopt "$1" outdir
+			 shift
+			 continue
 			 ;;
-		    *  ) echo "unrecognized option -$1"
+		    *  ) echo "unrecognized option $arg"
 			 echo -e "$usagestr"
 			 exit 127
 		esac
-	    else
-		if [ -e "$arg" ]; then
-		    path="$path $arg"
-		else
-		    echo -e "$MNU$path : $WRN${exitmsgary[exit_invpath]}$OFF"
-		    echo -e "${INF}and will not be included in the search.$OFF"
-		fi
+
+	    elif [ -e "$arg" ]; then
+			path="$path $arg"
+	    elif is_validcmtexpr "$arg"; then
+			dncmt="$arg"
 	    fi
+
 	    shift
 	done
-#set +x
 }
 
 # compare_strings() - compare strings
 #    Compare the commits from the upstream and downstream commit logs
-#    to identify those the ones that have already been backported.
-#    Output all commit lines to the cherp.log file, marking the ones
-#    that werre already backported with a leading #
+#    to identify those that have already been backported.
+#    Output all commit lines to the log file, marking the ones that
+#    were already backported with a leading #
 #
 # GLOBALS
 #	chlog - output commits file
 #	uplog - upstream commits file
 #	dnlog - downstream commits file
 #	outdir - directory for all the commit log files
+#	upcmt - start from this upstream commit
 #
 compare_strings() {
 	local uppath="$outdir/$uplog"
@@ -231,6 +253,7 @@ compare_strings() {
 	local b_match=false
 	local j		# upstr index
 	local k		# rhstr index
+	local rhcmt=
 
 	# Instead of reading from the file, which limmits our debug
 	# capabilites, create an array out of the lines in the file.
@@ -354,13 +377,14 @@ main() {
 
 	parseops "$@"
 
+	# Exit if no outdir
 	[ -n "$outdir" ] || exitme $exit_nooutd
 
-	echo
+	# If no updir, then used the current dir as default
+	[ -n "$updir" ] || updir="./"
 
-	check_log "$outdir/$uplog"
-	check_log "$outdir/$dnlog"
-	check_log "$outdir/$chlog"
+	# If no dncmt, then complain and exit.
+	[ -n "$dncmt" ] || exitme $exit_nodncmt "$dncmt"
 
 	# Extract the upstream commit from the submitted RHEL commit, which is
 	# the most recent RHEL commit under consideration, entered with the
@@ -368,7 +392,13 @@ main() {
 	tmpary=($(extup -1 -r -n -u "$updir" "$dncmt"))
 	upcmt="${tmpary[1]}"
 
-	echo -e "${INF}Upstream repo     : $STA${updir}origin/master $OFF"
+	echo
+
+	check_log "$outdir/$uplog"
+	check_log "$outdir/$dnlog"
+	check_log "$outdir/$chlog"
+
+	echo -e "${INF}Upstream repo     : $STA$updir$OFF"
 	echo -e "${INF}Upstream commit   : $STA$upcmt$OFF"
 	echo -e "${INF}Downstream branch : $STA$mainbranch$INF"
 
