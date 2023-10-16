@@ -46,7 +46,7 @@ exitme() {
 		echo -e "$WRN$strarg$exitmsg$OFF"
 
 		[ "$exitval" -ne 0 ] && echo -e \
-			"${INF}Type$MNU commitcmp -h$INF for help.$OFF"
+			"${INF}Type $MNU$(basename "$0") -h$INF for help.$OFF"
 	fi
 
 	exit "$exitval"
