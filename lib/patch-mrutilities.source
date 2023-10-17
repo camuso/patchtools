@@ -901,33 +901,38 @@ get_merge_request() {
 #
 # Arguments
 # 	$1 - the MR
-# 	$2 - baseline commit from which to extract the commits from this MR
 #
 # Globals
 #      origin - the baseline commit of the main branch
 #      patchcount - number of patches in the patch series
 #      bp_commits - file that will contain the backported commits
 #
+# Total number of commits analyzed
 get_mrcommits_labmr() {
-	local mr=$1
-	local bascmt=$2
+	local mr="$1"
+	local bascmt
 	local lcnt
-	local tfil=/dev/shm/tempcommitsfile
+	local origbranch
+	local newbranch
+	local -a tary=()
 
-	lab mr show "$origin" "$mr" -p --reverse | \
-		grep '^commit ' | cut -d ' ' -f2 > "$bp_commits"
+	if grep -q 'Dependencies::OK' $mrcomments; then
+		lab mr show "$origin" "$mr" -p --reverse | \
+		       grep '^commit ' | cut -d ' ' -f2 > "$bp_commits"
+	else
+		origbranch="$(git_getcurrentbranch)"
+		lab mr checkout $mr > /dev/null 2>&1
+		newbranch="$(git_getcurrentbranch)"
 
-	# If there is a base commit for a dependency, then it won't be the
-	# same as the origin commit, so remove its patches from the commits
-	# file.
-	[ "$bascmt" == "$origin" ] || {
-		lcnt=$(grep -n -m1 "$bascmt" "$bp_commits" | cut -d':' -f1)
-		[ -n "$lcnt" ] && {
-			head -$((lcnt - 1)) "$bp_commits" > "$tfil"
-			mv -f "$tfil" "$bp_commits"
-			rm -f "$tfil"
-		}
-	}
+		tary=($(git log --oneline | grep 'Merge branch' | grep -m1 "$newbranch"))
+		basecmt="${tary[0]}"
+
+		git log --reverse "$basecmt"..HEAD | \
+			grep '^commit ' | cut -d ' ' -f2 > "$bp_commits"
+
+		git checkout "$origbranch"
+		git branch -D "$newbranch"
+	fi
 
 	patchcount=$(wc -l < "$bp_commits")
 }
@@ -1039,7 +1044,7 @@ get_merge_request_patches() {
 		fi
 	fi
 
-	get_mrcommits_labmr "$mr" "$bascmt" & mypid=$!
+	get_mrcommits_labmr "$mr" & mypid=$!
 	ui_waitonproc_tty $mypid .05 "${INF}Getting patches from MR $STA$current_mr$OFF"
 	echo
 
