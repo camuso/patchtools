@@ -915,8 +915,12 @@ get_mrcommits_labmr() {
 	local origbranch
 	local newbranch
 	local -a tary=()
+	local depend=
 
-	if grep -q 'Dependencies::OK' $mrcomments; then
+	depend="$(grep -o 'Dependencies::[^,]*' "$mrcomments")"
+	basecmt="$(echo "$depend" | cut -d':' -f3)"
+
+	if [ "$basecmt" == "OK" ]; then
 		lab mr show "$origin" "$mr" -p --reverse | \
 		       grep '^commit ' | cut -d ' ' -f2 > "$bp_commits"
 	else
@@ -924,14 +928,11 @@ get_mrcommits_labmr() {
 		lab mr checkout $mr > /dev/null 2>&1
 		newbranch="$(git_getcurrentbranch)"
 
-		tary=($(git log --oneline | grep 'Merge branch' | grep -m1 "$newbranch"))
-		basecmt="${tary[0]}"
-
 		git log --reverse "$basecmt"..HEAD | \
 			grep '^commit ' | cut -d ' ' -f2 > "$bp_commits"
 
-		git checkout "$origbranch"
-		git branch -D "$newbranch"
+		git checkout "$origbranch" > /dev/null 2>&1
+		git branch -D "$newbranch" > /dev/null 2>&1
 	fi
 
 	patchcount=$(wc -l < "$bp_commits")
