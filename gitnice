@@ -171,6 +171,7 @@ $b_usernum || {
 }
 grep -q '\-\-since' <<< "${gitopt[@]}" && number=
 grep -q '\-\-after' <<< "${gitopt[@]}" && number=
+((number == 0)) && number=
 [ -n "$number" ] && number="-$number"
 
 git log --date=short --pretty=format:"$fmtstr" $reverse $number ${gitopt[@]} $cmtexpr -- $path
