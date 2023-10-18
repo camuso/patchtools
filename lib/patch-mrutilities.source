@@ -924,6 +924,11 @@ get_mrcommits_labmr() {
 		lab mr show "$origin" "$mr" -p --reverse | \
 		       grep '^commit ' | cut -d ' ' -f2 > "$bp_commits"
 	else
+		# Turn control-c response off while working on a branch
+		# created behind the user's back. Must avoid leaving
+		# stale branches active.
+		trap '' SIGINT
+
 		origbranch="$(git_getcurrentbranch)"
 		lab mr checkout $mr > /dev/null 2>&1
 		newbranch="$(git_getcurrentbranch)"
@@ -933,6 +938,10 @@ get_mrcommits_labmr() {
 
 		git checkout "$origbranch" > /dev/null 2>&1
 		git branch -D "$newbranch" > /dev/null 2>&1
+
+		# safe to enable control-c response, now that we are back
+		# on the user's original branch.
+		trap control_c SIGINT
 	fi
 
 	patchcount=$(wc -l < "$bp_commits")
