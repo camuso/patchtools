@@ -1,0 +1,6 @@
+#!/bin/bash
+#
+declare ptversion_loaded=true
+
+declare version="12.4.2"
+

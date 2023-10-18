@@ -5,7 +5,6 @@
 # This source file provides routines common to both patchreview and
 # patchdevelop scripts.
 #
-version="12.4.1"
 
 # Get the directory defaults if they don't already exist
 #
@@ -18,6 +17,7 @@ version="12.4.1"
 	MYLIB="$MYDIR"/lib
 }
 
+[ "$ptversion_loaded" ]     || source "$MYLIB"/patchtools-version.source
 [ "$ui_loaded" ]            || source "$MYLIB"/ui.source
 [ "$gitutilities_loaded" ]  || source "$MYLIB"/gitutilities.source
 [ "$patchutils_loaded" ]    || source "$MYLIB"/patch-utils.source
