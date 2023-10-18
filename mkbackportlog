@@ -30,7 +30,7 @@ exitmsgary=(
 " is an invalid directory name."
 " is a file, not a directory."
 " is not a valid downstream commit."
-"You did not provide an output directory path:$MNU -o <outdir>$OFF"
+"You did not provide an output directory path:$MNU -od <outdir>$OFF"
 )
 
 exitme() {
@@ -80,7 +80,7 @@ usage() {
 	usagestr=$(
 cat <<EOF
 $MNU
-$(basename "$0") dncmt [-od outdir] [-ud updir] [path-1 path-2 ... path-n]
+$(basename "$0") dncmt -od outdir [-ud updir] path [path-2 ... path-n]
 $OFF
 Uses scripts ${STA}gitnice$OFF and ${STA}extup$OFF to create a list of commits
 to backport. Commits that have already been backported will have
@@ -110,7 +110,7 @@ $MNU
 Options:$OFF$MNU
   -h$OFF         - this help text$MNU
   -ud ${OFF}updir  - directory with the upstream repo, default is ./$MNU
-  -od ${OFF}outdir - Directory to contain ouput files.
+  -od ${OFF}outdir - REQUIRED Directory to contain ouput files.
 $MNU
 Example:$INF
   $(basename "$0") \\\
@@ -138,7 +138,7 @@ get_pathopt() {
 	local path=$1
 	local -n optname="$2"
 
-	[ -e "$path" ] || exitme $exit_invpath
+	[ -e "$path" ] || exitme $exit_invpath "$path"
 	optname=$(realpath "$path")
 }
 
