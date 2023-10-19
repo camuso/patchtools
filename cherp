@@ -19,21 +19,26 @@ VERSION="4.1"
 # Where MYDIR is the directory in which this script and its companions
 # are located.
 #
-declare MYDIR
-MYDIR="$(dirname "$(which "$(basename "$0")")")"
-declare MYLIB="$MYDIR"/lib
+[ "$MYDIR" ] || {
+	declare MYDIR=
+	MYDIR="$(dirname "$(which "$(basename "$0")")")"
+}
+[ "$MYLIB" ] || {
+	declare MYLIB=
+	MYLIB="$MYDIR"/lib
+}
 declare MYMAN="$MYDIR"/man
-declare MYDATA
+declare MYDATA=
 MYDATA="$(realpath ./.data)"
 declare MYHLP="$MYMAN"/cherp.txt
-declare MYNAME
+declare MYNAME=
 MYNAME="$(basename "$0")"
 
 #######################################
 # External Source Files
 #######################################
-source "$MYLIB"/ui.source
-source "$MYLIB"/config-manager.source
+[ "$ui_loaded" ]            || source "$MYLIB"/ui.source
+[ "$configmanager_loaded" ] || source "$MYLIB"/config-manager.source
 
 ########################################
 # Return and Control Codes
