@@ -3,14 +3,19 @@
 # commitcmp
 #
 
-declare MYDIR=
-MYDIR="$(dirname "$(which "$(basename "$0")")")"
-declare MYLIB="$MYDIR"/lib
-
+[ "$MYDIR" ] || {
+	declare MYDIR=
+	MYDIR="$(dirname "$(which "$(basename "$0")")")"
+}
+[ "$MYLIB" ] || {
+	declare MYLIB=
+	MYLIB="$MYDIR"/lib
+}
 [ "$ui_loaded" ]            || source "$MYLIB"/ui.source
 [ "$configmanager_loaded" ] || source "$MYLIB"/config-manager.source
 
 declare -i background=
+declare b_localus=false
 
 # Other exit codes
 declare -i exit_ok=0
@@ -257,7 +262,7 @@ compare_strings() {
 
 	# Instead of reading from the file, which limmits our debug
 	# capabilites, create an array out of the lines in the file.
-	# Set IFS to newline and then restore it after createing the
+	# Set IFS to newline and then restore it after creating the
 	# string arrays.
 	#
 	IFS=$'\n'
@@ -357,9 +362,32 @@ seek_str() {
 	cd - > /dev/null 2>&1 || exitme $exit_invdir
 }
 
+select_remote() {
+	local -n gusr_cur="$1"
+	local brstr=
+	local brancharray=()
+
+	# Get all the branches into one string
+	brstr=$(git branch -r)
+
+	# Filter out lines with '-> in them, because they are not branches
+	while read -r s; do [[ $s == *"->"* ]] || brancharray+=("$s"); done <<< "$brstr"
+
+	if [ ${#brancharray[@]} -gt 1 ]; then
+		select_from_array brancharray "Remote Branches" gusr_cur
+	else
+		gusr_cur=${brancharray[0]}
+		echo -e "$INF Only one branch in this repo: $STA$cur$OFF"
+		echo -e "$INF Nothing else to choose from.$OFF"
+	fi
+
+	return 0
+}
+
 main() {
 	local mainbranch
 	local -a tmpary=()
+	local localus
 
 	init_env
 
@@ -377,14 +405,21 @@ main() {
 
 	parseops "$@"
 
+	# If no dncmt, then complain and exit.
+	[ -n "$dncmt" ] || exitme $exit_nodncmt "$dncmt"
+
 	# Exit if no outdir
 	[ -n "$outdir" ] || exitme $exit_nooutd
 
-	# If no updir, then used the current dir as default
-	[ -n "$updir" ] || updir="./"
-
-	# If no dncmt, then complain and exit.
-	[ -n "$dncmt" ] || exitme $exit_nodncmt "$dncmt"
+	# If no updir, then use the current dir as default and prompt user to
+	# select from available remotes for the upstream remote/branch.
+	if [ -z "$updir" ]; then
+		b_localus=true
+		updir="./"
+		select_remote localus
+	else
+		b_localus=false
+	fi
 
 	# Extract the upstream commit from the submitted RHEL commit, which is
 	# the most recent RHEL commit under consideration, entered with the
@@ -398,7 +433,8 @@ main() {
 	check_log "$outdir/$dnlog"
 	check_log "$outdir/$chlog"
 
-	echo -e "${INF}Upstream repo     : $STA$updir$OFF"
+	$b_localus && echo -e "${INF}Upstream repo     : $STA$localus$OFF" \
+		   || echo -e "${INF}Upstream repo     : $STA$updir$OFF"
 	echo -e "${INF}Upstream commit   : $STA$upcmt$OFF"
 	echo -e "${INF}Downstream branch : $STA$mainbranch$INF"
 
@@ -423,9 +459,24 @@ main() {
 	pwd
 	echo -e "${STA}Creating $outdir/$uplog$INF"
 
+	# If the upstream is local, checkout now.
+	if $b_localus; then
+		git checkout $localus > /dev/null 2>&1 & mypid=$!
+		ui_waitonproc_tty $mypid .05 "Checking out upstream $localus"
+	else
+		gitnice -r -c -d --no-merges "$upcmt..HEAD" $path 2>&1 | tee "$outdir/$uplog"
+	fi
+
 	# Get the list of upstream commits starting from the one extracted from
 	# the submitted RHEL commit with the -dc option.
 	gitnice -r -c -d --no-merges "$upcmt..HEAD" $path 2>&1 | tee "$outdir/$uplog"
+
+	# If we've checked out local upstream, switch back now.
+	if $b_localus; then
+		git switch - > /dev/null 2>&1 & mypid=$!
+		ui_waitonproc_tty $mypid .05 "Returning to RHEL branch"
+	fi
+
 	echo
 
 	echo -e "$STA"
