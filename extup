@@ -3,11 +3,17 @@
 #
 # Text Attributes
 #
-declare MYDIR=
-MYDIR="$(dirname "$(which "$(basename "$0")")")"
-declare MYLIB=$MYDIR/lib
+[ "$MYDIR" ] || {
+	declare MYDIR=
+	MYDIR="$(dirname "$(which "$(basename "$0")")")"
+}
+[ "$MYLIB" ] || {
+	declare MYLIB=
+	MYLIB="$MYDIR"/lib
+}
 
-source "$MYLIB"/ui.source
+[ "$ui_loaded" ]            || source "$MYLIB"/ui.source
+[ "$ptversion_loaded" ]     || source "$MYLIB"/patchtools-version.source
 
 declare -i stat
 declare rev=""
@@ -26,6 +32,7 @@ declare cmtexpr
 
 usagestr=$(
 cat <<EOF
+$MNU${UND}Patchtools v$version$OFF
 
 $(basename "$0") [OPTIONS] commit-expr path
 
@@ -177,6 +184,8 @@ parseargs() {
 
 	done
 }
+
+(($# >= 1)) || exitme
 
 parseargs "$@"
 
