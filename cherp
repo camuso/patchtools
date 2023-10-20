@@ -5,8 +5,6 @@
 # Provide some automation for cherrypicking.
 #
 
-VERSION="4.1"
-
 #######################################
 # Default file locations
 #######################################
@@ -39,6 +37,7 @@ MYNAME="$(basename "$0")"
 #######################################
 [ "$ui_loaded" ]            || source "$MYLIB"/ui.source
 [ "$configmanager_loaded" ] || source "$MYLIB"/config-manager.source
+[ "$ptversion_loaded" ]     || source "$MYLIB"/patchtools-version.source
 
 ########################################
 # Return and Control Codes
@@ -102,7 +101,7 @@ declare str_brew=
 declare str_test=
 
 init_global_strings() {
-str_herald="\n$MNU${UND}cherp $VERSION - Automates git cherry-pick$OFF\n"
+str_herald="\n${MNU}Patchtools v$version\n${UND}cherp - Automates git cherry-pick$OFF\n"
 str_conflicts="Conflicts:\n"
 }
 
@@ -1448,6 +1447,8 @@ init_newsession() {
 	echo -e "\n$UND\0init_newsession$OFF"
 
 	read_session
+	b_conflict=false
+	set_cfg_item b_conflict "$b_conflict"
 	set_working_directory
 	set_upcommitsfile
 	set_gitbranch
