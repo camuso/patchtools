@@ -13,6 +13,7 @@
 }
 [ "$ui_loaded" ]            || source "$MYLIB"/ui.source
 [ "$configmanager_loaded" ] || source "$MYLIB"/config-manager.source
+[ "$ptversion_loaded" ]     || source "$MYLIB"/patchtools-version.source
 
 declare -i background=
 declare b_localus=false
@@ -24,7 +25,8 @@ declare -i exit_invpath=2	# invalid path
 declare -i exit_invdir=3
 declare -i exit_disfil=4	# directory name is a file
 declare -i exit_nodncmt=5
-declare -i exit_nooutd=6	# directory name is empty
+declare -i exit_noupcmt=6
+declare -i exit_nooutd=7	# directory name is empty
 
 declare -a exitmsgary=
 
@@ -35,6 +37,7 @@ exitmsgary=(
 " is an invalid directory name."
 " is a file, not a directory."
 " is not a valid downstream commit."
+" does not have a valid corresponding upstream commit."
 "You did not provide an output directory path:$MNU -od <outdir>$OFF"
 )
 
@@ -85,6 +88,8 @@ usage() {
 	usagestr=$(
 cat <<EOF
 $MNU
+${UND}Patchtools v$version$OFF
+$MNU
 $(basename "$0") dncmt -od outdir [-ud updir] path [path-2 ... path-n]
 $OFF
 Uses scripts ${STA}gitnice$OFF and ${STA}extup$OFF to create a list of commits
@@ -114,8 +119,9 @@ Arguments:$OFF
 $MNU
 Options:$OFF$MNU
   -h$OFF         - this help text$MNU
-  -ud ${OFF}updir  - directory with the upstream repo, default is ./$MNU
-  -od ${OFF}outdir - REQUIRED Directory to contain ouput files.
+  -ud ${OFF}updir   - directory with the upstream repo, default is ./$MNU
+  -od ${OFF}outdir  - REQUIRED Directory to contain ouput files.$MNU
+  -V  ${OFF}version - show patchtools version and exit
 $MNU
 Example:$INF
   $(basename "$0") \\\
@@ -217,6 +223,9 @@ parseops() {
 			 continue
 			 ;;
 		    S  ) get_varopt "$1" searchstr
+			 ;;
+		    V  ) echo "Patchtools v$version"
+			 exit 0
 			 ;;
 		    *  ) echo "unrecognized option $arg"
 			 echo -e "$usagestr"
@@ -426,6 +435,7 @@ main() {
 	# -dc option.
 	tmpary=($(extup -1 -r -n -u "$updir" "$dncmt"))
 	upcmt="${tmpary[1]}"
+	[[ $upcmt =~ ^[0-9A-Fa-f]+$ ]] || exitme $exit_noupcmt "$dncmt"
 
 	echo
 
