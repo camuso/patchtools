@@ -70,7 +70,7 @@ declare b_conflict		# last attempt generated a conflict
 #########################################
 declare -i menupad=36
 declare cmtmsgfile=/dev/shm/gcpcmtmsgfile
-declare lasthashvalid=false
+declare b_lasthashvalid=false
 declare lasttagfile="/dev/shm/gcplasttag"
 
 declare b_new=false		# new session
@@ -89,6 +89,7 @@ declare upname="cp_upstream"
 # Lines starting with any of these chars will be ignored.
 # The '#' indicates a comment, and the '+' indicates already committed.
 declare ignore_str="#+"
+declare stophash=
 
 ########################################
 # Global Strings
@@ -101,7 +102,7 @@ declare str_brew=
 declare str_test=
 
 init_global_strings() {
-str_herald="\n${MNU}Patchtools v$version\n${UND}cherp - Automates git cherry-pick$OFF\n"
+str_herald="\n$MNU${UND}Patchtools v$version$OFF\n\n${MNU}cherp - Automates git cherry-pick$OFF\n"
 str_conflicts="Conflicts:\n"
 }
 
@@ -488,28 +489,27 @@ set_next_cherrypick() {
 #    PARAMETERS:  none
 #       GLOBALS:  upcommitsfile - the cherry-pick commits file containing the
 #                                 hashes of the commits to be backported.
-#                 lasthashvalid - boolean indicating last hash was valid
+#                 b_lasthashvalid - boolean indicating last hash was valid
 #       RETURNS:  nonzero if the last stored hash is not valid
 #===============================================================================
 validate_last_upstream_hash() {
-
-	lasthashvalid=true
+	$b_new && b_lasthashvalid=false || b_lasthashvalid=true
 
 	# If we don't have a commits file, show nothing
 	#
-	[[ -f $upcommitsfile ]] || lasthashvalid=false
+	[[ -f $upcommitsfile ]] || b_lasthashvalid=false
 
 	# If there is no hash saved in the config file, then show nothing.
 	#
-	[[ "$lastuphash" ]] || lasthashvalid=false
+	[[ "$lastuphash" ]] || b_lasthashvalid=false
 
 	# If the commit stored in the config file is not in the commits file
 	# then show nothing.
 	#
-	grep -m1 -n "$lastuphash" "$upcommitsfile" >/dev/null 2>&1 || lasthashvalid=false
+	grep -m1 -n "$lastuphash" "$upcommitsfile" >/dev/null 2>&1 || b_lasthashvalid=false
 
-	$lasthashvalid && lastuplog=$(git log -n1 --oneline "$lastuphash")
-	$lasthashvalid && return 0 || return 1
+	$b_lasthashvalid && lastuplog=$(git log -n1 --oneline "$lastuphash")
+	$b_lasthashvalid && return 0 || return 1
 }
 
 #===  FUNCTION  ================================================================
@@ -671,6 +671,10 @@ EOF
 #          NAME:  show_most_recent_cherrypick
 #   DESCRIPTION:  Show the Last Upstream Commit Picked, if it is valid
 #    PARAMETERS:  none
+#       GLOBALS:  lastuplog
+#                 tcols
+#                 menupad
+#                 b_lasthashvalid
 #       RETURNS:  none
 #===============================================================================
 show_most_recent_cherrypick() {
@@ -685,7 +689,7 @@ cat <<EOF
     Last Applied Commit      : $STA${lastuplog:0:$cols}$OFF
 EOF
 )
-	$lasthashvalid && echo -e "$laststr"
+	$b_lasthashvalid && echo -e "$laststr"
 }
 
 #===  FUNCTION  ================================================================
@@ -865,6 +869,7 @@ $MNU w $OFF Working directory        : $STA$workdir$OFF
 $MNU O $OFF Options menu
 $MNU
     ${UND}Control                $OFF
+$MNU S $OFF Stop before              : $STA$stophash$OFF
 $MNU N $OFF Start a New Session
 $MNU P $OFF Pop 'n' commits
 $MNU H $OFF Show History
@@ -893,6 +898,7 @@ function menu_parser {
 
 	validate_last_upstream_hash
 	show_settings
+
 	promptgetchar "${MNU}Enter one of the above: $OFF" setting
 
 	case $setting in
@@ -919,10 +925,14 @@ function menu_parser {
 		q )	exit_cherp $exit_good
 			;;
 		r )	run_me
+			b_new=false
 			;;
 		O )	options_loop
 			;;
 		I )	init_current_session
+			;;
+		S )	getuser "${MNU}Stop before this hash: $OFF" stophash
+			cfg_set_item "stophash" "$stophash"
 	esac
 	return $rc_continue
 }
@@ -967,6 +977,7 @@ edit_commit() {
 		git log -n1 > "$cmtmsgfile"
 		cat "$cmtmsgfile"
 		echo
+
 		getyn "Edit this commit message?" yup
 
 		if $yup; then git commit --amend; else break; fi
@@ -1006,6 +1017,7 @@ reset_cherp() {
 	git cherry-pick --abort 2>/dev/null
 	git reset --hard "$dnorighead"
 	b_conflict=false
+	b_lasthashvalid=false
 	upcmtstartline=0
 	get_next_cherrypick
 	exit_cherp $exit_reset
@@ -1091,6 +1103,29 @@ run_single() {
 }
 
 #===  FUNCTION  ================================================================
+#          NAME:  mark_done
+#   DESCRIPTION:  Mark the line in the upcommitsfile corresponding to the hash
+#                 with a leading + to indicate it's been processed by cherp.
+#    PARAMETERS:  uphash
+#       GLOBALS:  upcommitsfile
+#       RETURNS:  0 on success, nonzero on fail
+#===============================================================================
+mark_done() {
+	local uphash="$1"
+	local line
+	local -i lnum
+	local stat
+
+	line=$(grep -n -m1 "$uphash" "$upcommitsfile")
+	(($? == 0)) || return 1
+	lnum=$(cut -d: -f1 <<< "$line")
+	line=$(cut -d: -f2- <<< "$line")
+	line="+ $line"
+	ui_replaceline "$lnum" "$line" "$upcommitsfile"
+	return 0
+}
+
+#===  FUNCTION  ================================================================
 #          NAME:  cherrypick
 #   DESCRIPTION:  Given a commit, try to cherry pick it
 #    PARAMETERS:  none
@@ -1170,7 +1205,8 @@ EOF
 	fi
 
 	stage_commit
-	lastuphash=$uphash
+	mark_done "$uphash"
+	lastuphash="$uphash"
 
 	return 0;
 }
@@ -1193,7 +1229,7 @@ stage_commit() {
 	local commit
 
 	commit=$(git log --oneline -n1 "$uphash")
-	# echo -e "Committing: $BLD${commit:0:$wcols}$OFF"
+
 	git commit -aC "$uphash"
 
 	# Create the new commit message in a file consisting of ..
@@ -1206,6 +1242,8 @@ stage_commit() {
 	#	Signed-off-by: line
 	#
 	echo -e "\n" > "$cmtmsgfile"
+
+	set -f	# disable wildcard
 	description=$(git log -n1 "$uphash" | head -5 | tail -1)
 
 	# Trim leading whitespace from description line and append
@@ -1217,6 +1255,7 @@ stage_commit() {
 	[ -n "$str_jira" ] && echo -e "JIRA: $str_jira" >> "$cmtmsgfile"
 	[ -n "$str_upstream" ] && echo -e "Upstream status: $str_upstream" >> "$cmtmsgfile"
 	echo -e "\n" >> "$cmtmsgfile"
+	set +f	# re-enable wildcards
 
 	$b_conflict && echo -e "$str_conflicts" >> "$cmtmsgfile"
 
@@ -1236,6 +1275,7 @@ stage_commit() {
 	$b_conflict && edit_commit
 
 	b_conflict=false
+
 }
 
 #===  FUNCTION  ================================================================
@@ -1402,7 +1442,6 @@ init_common() {
 	[ -f "$upcommitsfile" ] && get_current_cherrypick
 
 	b_session_inited=true
-	b_new=false
 }
 
 #===  FUNCTION  ===============================================================
@@ -1452,6 +1491,7 @@ init_newsession() {
 	set_working_directory
 	set_upcommitsfile
 	set_gitbranch
+	b_lasthashvalid=false
 
 	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
 	set_cfg_item dnorighead "$dnorighead"
@@ -1484,6 +1524,7 @@ init_current_session() {
 #   DESCRIPTION:  Main program loop
 #       GLOBALS:  upcommitsfile
 #                 $b_cmdline
+#                 currentuphash
 #    PARAMETERS:  none
 #       RETURNS:  None
 #===============================================================================
@@ -1504,7 +1545,10 @@ run_me() {
 	fi
 
 	while :; do
-
+		if [ "$currentuphash" == "$stophash" ]; then
+			echo -e "${INF}Stopping before $MNU$stophash$OFF"
+			break
+		fi
 		cherrypick
 		get_next_cherrypick
 		stat=$?
@@ -1576,6 +1620,7 @@ declare longopts="\
 abort,\
 branch,\
 continue,\
+apply:,\
 commit,\
 directory,\
 hashlist,\
@@ -1615,6 +1660,12 @@ else
 			;;
 		"--commands" )
 			show_commands
+			;;
+		"--apply"  )
+			currentuphash="$2"
+			b_conflict=true
+			stage_commit
+			break
 			;;
 		"--commit" )
 			run_commit

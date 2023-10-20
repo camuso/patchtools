@@ -5,21 +5,24 @@ Type 'q' at any time to exit this help.
 
 Command Line
 ------------
-abort    - abort the current cherrypick
-branch   - select a different git branch
-continue - continue after resolving conflict and committing change
-commit   - continue, but let script commit changes and create commit log
-help     - display this help
-history  - show commits so far this session
-new      - start a new session
-pick <h> - cherry pick one hash specified by <h>
-pop <n>  - pop <n> commits from the current working git branch
-reset    - hard reset git HEAD to start of session
-run      - run the cherrypick automation
-select   - select the next cherrypick from the presented list
-setup    - run the cherp menu to setup the runtime environment
-status   - show the cherp session status and git status
-version  - show this version of the cherp script
+abort     - abort the current cherrypick
+branch    - select a different git branch
+continue  - continue after resolving conflict and committing change
+commit    - continue, but let script commit changes and create commit log
+apply <h> - applying a fix, let cherp create the commit log.
+            Useful for partial backports.
+            cherp apply <upstream-commit-hash>
+help      - display this help
+history   - show commits so far this session
+new       - start a new session
+pick <h>  - cherry pick one hash specified by <h>
+pop <n>   - pop <n> commits from the current working git branch
+reset     - hard reset git HEAD to start of session
+run       - run the cherrypick automation
+select    - select the next cherrypick from the presented list
+setup     - run the cherp menu to setup the runtime environment
+status    - show the cherp session status and git status
+version   - show this version of the cherp script
 
 Invoking cherp with no commands presents the cherp menu.
 
