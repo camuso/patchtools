@@ -475,8 +475,6 @@ main() {
 	if $b_localus; then
 		git checkout $localus > /dev/null 2>&1 & mypid=$!
 		ui_waitonproc_tty $mypid .05 "Checking out upstream $localus"
-	else
-		gitnice -r -c -d --no-merges "$upcmt..HEAD" $path 2>&1 | tee "$outdir/$uplog"
 	fi
 
 	# Get the list of upstream commits starting from the one extracted from
