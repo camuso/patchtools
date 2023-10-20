@@ -400,6 +400,8 @@ main() {
 
 	init_env
 
+	(($# >= 1)) || { usage; exitme $exit_ok; }
+
         # Trap for control-c
         trap control_c SIGINT
 
