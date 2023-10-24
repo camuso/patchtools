@@ -1,0 +1,106 @@
+#!/bin/bash
+#
+# gitforpat
+#
+
+declare CL1="\e["$tcols"D"	# column 1 of the current line
+declare CCR="\e[K"    		# clear line and carriage return
+declare UP1="\e[1A"		# move cursor up one line
+
+declare -i argcount=2
+declare -i optcount=0
+declare cletter="--no-cover-letter"
+declare reroll=
+declare startnumber=1
+
+declare usagestr=$(
+cat <<EOF
+
+$(basename $0) [OPTIONS] directory commitspec -- pathspec
+
+  Generate a patch set from a commit expression.
+
+  directory  - directory that will contain the patch set
+  commitspec - any commit expression, which can also be preceeded by other
+               git-format-patch options.
+  pathspec   - optional path from which to extrac the patches
+
+  OPTIONS:
+  -c      - generate a cover letter
+  -v n    - version number of the patch
+  -s n    - start patch series from number n
+
+\0
+EOF
+)
+
+usage() {
+	echo -e "$usagestr"
+	exit $1
+}
+
+show_reroll() {
+	[ -n "$reroll" ] && { echo -e "\t$reroll \\"; echo; } || echo -e "$UP1"
+}
+
+(($# >=1)) || usage
+
+while getopts :cnv:s: OPTION; do
+    case "$OPTION" in
+
+	c ) cletter="--cover-letter"
+	    optcount=$((optcount+1))
+	    ;;
+	v ) reroll="--reroll-count=$OPTARG"
+	    optcount=$((optcount+1))
+	    ;;
+	s ) startnumber=$OPTARG
+	    optcount=$((optcount+1))
+	    ;;
+	n ) numbers="--numbered"
+	    optcount=$((optcount+1))
+	    ;;
+	* ) echo "unrecognized option -$OPTION"
+	    echo -e "$usagestr"
+	    exit 127
+    esac
+done
+
+shift $optcount
+[ $# -ge  "$argcount" ] || usage 1
+
+directory="$1"
+shift
+commitspec=$@
+
+declare outstr=$(
+cat <<EOF
+git format-patch \\\
+
+	$cletter \\\
+
+$(show_reroll)
+	--signoff \\\
+
+	--stat=80 \\\
+
+	--start-number=$startnumber \\\
+
+	--output-directory $directory \\\
+
+	$commitspec
+EOF
+)
+echo -e "$outstr"
+
+echo "Press any key to continue or ctrl-c to exit..."
+read -n1
+
+git format-patch \
+	"$cletter" $reroll \
+	--signoff \
+	--stat=80 \
+	--start-number=$startnumber \
+	--output-directory "$directory" \
+	$commitspec
+
