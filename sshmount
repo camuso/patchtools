@@ -1,0 +1,122 @@
+#!/bin/bash
+#
+# sshmount
+#
+
+# Use unset in case these have been set elsewhere.
+unset BLD && declare BLD="[1m"
+unset UND && declare UND="[4m"
+unset OFF && declare OFF="[0m"
+
+# Contlol-C exit code
+# see http://www.tldp.org/LDP/abs/html/exitcodes.html
+unset CTLC_EXIT &&  declare -i CTLC_EXIT=130
+
+# Other exit codes
+declare -i EXIT_OK=0
+declare -i EXIT_INVARG=1
+declare -i EXIT_INVFIL=2
+declare -i EXIT_INVDIR=3
+declare -i EXIT_INVOPT=4
+
+declare -a exitmsgary=(
+""
+" Invalid number of arguments."
+" is an invalid filename."
+" is an invalid directory name."
+" not a valid option."
+)
+
+exitme() {
+	local exitval=$1
+	local strarg=""
+	local exitmsg
+
+	if ([ $exitval -ne $EXIT_OK ] && [ $exitval -ne $CTLC_EXIT ]); then
+		[ $# -eq 2 ] && strarg=$2
+		[ ${#exitmsgary[@]} -gt $exitval ] \
+			&& exitmsg="${exitmsgary[$exitval]}"
+
+		echo -e "$BLD$strarg$exitmsg$OFF"
+
+		[ $exitval -ne 0 ] && echo -e \
+			"Type$BLD sshmount -h$OFF for help."
+	fi
+
+	exit $exitval
+}
+
+# run if user hits control-c
+#
+control_c()
+{
+	echo -en "
+Ctrl-c detected
+Cleaning up and exiting.
+"
+	exitme $CTLC_EXIT
+}
+
+
+declare -i optcount=0
+
+declare usagestr=$(
+cat <<EOF
+
+$(basename $0) [options] remotedir localdir
+
+Arguments:
+  remotedir - formatted as "user@host:/remote/directory"
+  localdir  - formatted as "/local/directory"
+
+Use sshfs directly:
+  $ sudo sshfs -o allow_other user@host:/remote/directory /mnt/remote
+
+Use umount to un-mount the remote directory.
+  $ umount /mnt/remote
+
+Options:
+  -h  - help
+\0
+EOF
+)
+
+usage() {
+	echo -en "$usagestr"
+	exitme $EXIT_OK
+}
+
+declare remote="$1"
+declare local="$2"
+
+main() {
+        # Trap for control-c
+        trap control_c SIGINT
+
+	(($# >=1)) || usage
+
+	which sshfs > /dev/null 2>&1 || {
+		echo -e "\nYou must '${BLD}sudo dnf install sshfs${OFF}' to use this tool.\n"
+		exitme $EXIT_OK
+	}
+
+	while getopts ":h" OPTION; do
+    	    case "$OPTION" in
+		h ) usage
+		    ;;
+		* ) echo "unrecognized option -$OPTION"
+		    exitme $EXIT_INVOPT "$OPTION"
+	    esac
+	done
+
+	shift $optcount
+	[ $# -eq 2 ] || exitme $EXIT_INVARG
+
+	sshfs $@
+	exitme $EXIT_OK
+}
+
+main $@
+
+exitme $EXIT_OK
+
