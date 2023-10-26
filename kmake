@@ -1,0 +1,109 @@
+#!/bin/bash
+
+usage=$(
+cat <<EOF
+
+$0 [OPTION]
+	-l numeric level
+		1 - stop after make
+		2 - stop after make modules_install
+		3 - complete to make install
+	   Default is 3, complete to make install.
+
+	-c sparse level
+		1 - sparse only for newly compiled sources
+		2 - sparse for all sources
+
+	-j cpu cores (default is all cores)
+	-b build versioning string
+	-v verbose make
+	-k make kabitools database
+	-h this help screen
+
+	With no options, kmake will build and install the kernel
+	and kernel modules using all processors.
+EOF
+)
+
+# default settings
+#
+level=3		# set for complete build/install
+sparse=0	# no sparse
+verbose=""	# no verbose
+kabi=""		# no kabitools database
+cores=$(grep -cw processor /proc/cpuinfo)
+
+while getopts b:l:c:j:vkh OPTION; do
+    case "$OPTION" in
+	b ) echo "$OPTARG" > localversion
+		;;
+	l ) level=$OPTARG
+		;;
+	c ) sparse=$OPTARG
+		;;
+	j ) cores=$OPTARG
+		;;
+	v ) verbose="V=1"
+		;;
+	k ) kabi="K=1"
+		;;
+	h ) echo -e "$usage"
+            exit 0
+		;;
+	* ) echo -e "$usage"
+	    exit 1
+    esac
+done
+
+echo -n "building localversion: "
+cat localversion
+read -r -n1 -p "press ctrl-C to quit, any other key to continue..."
+
+START1=$(date +%s)
+
+# Assure that the option values cannot exceed the maximums
+#
+((sparse > 2)) && sparse=2
+((level > 3)) && level=3
+
+echo "make -j$cores $verbose C=$sparse 2>&1 | tee ../make.log"
+make -j$cores $verbose $kabi C=$sparse $kabi 2>&1 | tee ../make.log
+makestat=$?
+
+END=$(date +%s)
+DIFF=$(( END - START1 ))
+minutes=$(( DIFF / 60 ))
+seconds=$(( DIFF % 60 ))
+echo
+echo "Elapsed time: $minutes : $seconds"
+echo
+
+((level == 1)) && exit 0
+((makestat == 0)) || exit $makestat
+
+echo "make -j$cores $verbose C=$sparse modules_install \
+	2>&1 | tee -a ../make.log"
+make -j$cores modules_install $verbose C=$sparse 2>&1 | tee -a ../make.log
+makestat=$?
+
+END=$(date +%s)
+DIFF=$(( END - START1 ))
+minutes=$(( DIFF / 60 ))
+seconds=$(( DIFF % 60 ))
+echo
+echo "Elapsed time: $minutes : $seconds"
+echo
+
+[ $level -eq 2 ] && exit 0
+[ $makestat -eq 0 ] || exit $makestat
+
+echo "make -j$cores $verbose C=$sparse install 2>&1 | tee -a ../make.log"
+make -j$cores $verbose C=$sparse install 2>&1 | tee -a ../make.log
+
+END=$(date +%s)
+DIFF=$(( END - START1 ))
+minutes=$(( DIFF / 60 ))
+seconds=$(( DIFF % 60 ))
+echo
+echo "Elapsed time: $minutes : $seconds"
+echo
