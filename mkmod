@@ -1,0 +1,188 @@
+#!/bin/bash
+#
+# mkmod
+#
+# calls kmodsync
+
+#######################################
+# Default file locations
+#######################################
+#
+# Whatever directory this script and its companions are located in
+# must be in the executable path.
+#
+# export PATH=$PATH:MYDIR
+#
+# Where MYDIR is the directory in which this script and its companions
+# are located.
+#
+declare MYDIR=$(dirname $(which $(basename $0)))
+declare MYLIB=$MYDIR/lib
+declare MYDATA=$MYDIR/.data
+
+#######################################
+# External Source Files
+#######################################
+source $MYLIB/ui.source
+source $MYLIB/gitutilities.source
+
+#######################################
+# External Scripts
+#######################################
+alias kmodsync='$MYDIR/kmodsync'
+alias kmodorig='$MYDIR/kmodorig'
+
+#######################################
+# Global variables
+#######################################
+declare kmoddir
+declare libdir="/lib/modules"
+declare -i cpucount
+declare cmdline="$@"
+declare -i shcount=0
+declare clean=false	# boolean to run "make clean"
+declare prep=false	# boolean to run "make prepare" and "make modules_prepare"
+declare mkcfg=false	# boolean to run "make rh-configs-prep"
+declare sync=false	# boolean to rsync new kmods to /lib/modules/$(uname -r)
+declare orig=false	# boolean to return kmod directory to its original state
+declare isktree=1	# boolean to determine whether script is being called from
+			# the top of a kernel tree.
+declare usagestr=$(
+cat <<EOF
+
+$(basename $0) [options] kmod-subdir
+
+Make kmods from the top of the kernel tree given the kmod directory.
+Must be invoked from the top of a kernel build tree.
+
+  -c  - "make clean" before making the kmod. This will also cause a
+        "make modules" and "make modules_prep"
+  -m  - Will create the .config file for the system architecture using the
+        "make rh-configs" command. This will be followed by a "make clean",
+        "make modules", and "make modules_prep"
+  -p  - Initiate "make modules" and "make modules_prep" commands
+  -s  - Sync with $libdir/$(uname -r)/kernel/<kmod-subdir>
+        The existing kmods in that directory will be renamed to <kmod>.orig
+        The .orig files will not be overwritten once they are created.
+  -o  - Overwrite kmods in $libdir/$(uname -r)/kernel/<kmod-subdir> with
+        any .orig files, returning the directory to its original state.
+        If this option is set, all others will be disabled, except -h
+  -h  - Print this help.
+\0
+EOF
+)
+
+declare notktreestr=$(
+cat <<EOF
+
+$(basename $0) must be invoked from the top of a kernel tree.
+
+You are currently in $PWD
+\0
+EOF
+)
+
+usage() {
+	echo -e "$usagestr"
+	exit
+}
+
+report_mutually_exclusive_options() {
+local mutexoptstr=$(
+cat <<EOF
+
+You entered "$(basename $0) $cmdline"
+But options $1 and $2 are mutually exclusive
+\0
+EOF
+)
+	echo -e "$mutexoptstr"
+	exit 1
+}
+
+
+# iskerneltree
+#
+# Returns 0 if we're at the top of a kernel tree, else returns 1
+#
+iskerneltree() {
+	[ -e README ] && [ -e Makefile ] && [ -d kernel ] || return 1
+	local line_1="$(head -1 README)"
+	[[ "$line_1" == *"Linux kernel"* ]] && return 0 || return 1
+}
+
+mkconfig() {
+	(( $(wc -l <<< $(grep dist-configs redhat/Makefile)) > 1 )) && make dist-configs || make rh-configs
+	cp -vf redhat/configs/*-$(uname -i).config .config
+}
+
+$(iskerneltree) || { echo -e "$notktreestr"; exit 1; }
+
+while getopts chpmos OPTION; do
+    case "$OPTION" in
+
+	c ) clean=true
+	    prep=true
+	    let shcount++
+	    ;;
+	h ) echo -e "$usagestr"
+	    exit 1
+	    ;;
+	p ) prep=true
+	    let shcount++
+	    ;;
+	m ) clean=true
+	    mkcfg=true
+	    prep=true
+	    let shcount++
+	    ;;
+	s ) sync=true
+	    let shcount++
+	    ;;
+	o ) orig=true
+	    let shcount++
+	    ;;
+	* ) echo "unrecognized option -$OPTION"
+	    echo -e "$usagestr"
+	    exit 127
+    esac
+done
+
+shift $shcount
+
+[ $# -eq 0 ] && usage
+
+($orig && $sync) && report_mutually_exclusive_options "-s" "-o"
+
+$orig && { mkcfg=false; clean=false; prep=false; sync=false; }
+
+kmoddir="$1"
+
+# Get the cpu count, but don't use all the cpu. Save some for other
+# processses.
+cpucount=$(wc -l <<< $(grep processor /proc/cpuinfo))
+((cpucount > 2)) && cpucount=$((cpucount - 2)) || cpucount=1
+
+$mkcfg && { echo "making configs"; mkconfig; }
+$clean && { echo "make clean"; make clean; }
+
+# If there's no Module.symvers file, then we have to make all the modules.
+[ -f "Module.symvers" ] || make -j$cpucount modules
+
+$prep && { echo "make prepare"; make prepare; \
+	   echo "make modules_prepare"; make modules_prepare; }
+
+# The last slash must be there. If it's not, put it there.
+#
+#[ "${kmoddir: -1}" == "/" ] || kmoddir="$kmoddir"/
+
+$orig || { make M="$kmoddir" clean; make M="$kmoddir"; }
+
+# remove any trailing slashes in the directory names
+#
+kmoddir="${kmoddir%/}"
+libdir="${libdir%/}"
+
+$sync && kmodsync $kmoddir
+$orig && kmodorig $kmoddir
+
