@@ -1059,7 +1059,11 @@ EOF
 #   DESCRIPTION:  Return from resolving conflicts, but let the script commit
 #                 your changes and create the commit log.
 #    PARAMETERS:  none
-#       GLOBALS:  none
+#       GLOBALS:  currentuphash
+#                 lastuphash
+#                 b_conflict
+#                 exit_nothing
+#                 exit_good
 #       RETURNS:  none
 #===============================================================================
 run_commit() {
@@ -1074,6 +1078,7 @@ run_commit() {
 	b_conflict=true
 	currentuphash=$lastuphash
 	stage_commit
+	mark_done $currentuphash
 
 	exit_cherp $exit_good
 	# get_next_cherrypick
