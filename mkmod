@@ -112,7 +112,12 @@ iskerneltree() {
 }
 
 mkconfig() {
-	(( $(wc -l <<< $(grep dist-configs redhat/Makefile)) > 1 )) && make dist-configs || make rh-configs
+	echo "Building the .config file."
+	echo "This will overwrite your current .config file."
+	read -r -n1 -p "press ctrl-C to quit, any other key to continue..."
+
+	(( $(wc -l <<< $(grep dist-configs redhat/Makefile)) > 1 )) \
+		&& make dist-configs || make rh-configs
 	cp -vf redhat/configs/*-$(uname -i).config .config
 }
 
