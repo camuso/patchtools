@@ -16,6 +16,7 @@ $0 [OPTION]
 
 	-j cpu cores (default is all cores)
 	-b build versioning string
+	-m make RHEL config file and copy to .config before build
 	-v verbose make
 	-k make kabitools database
 	-h this help screen
@@ -25,6 +26,16 @@ $0 [OPTION]
 EOF
 )
 
+mkconfig() {
+	echo "Building the .config file."
+	echo "This will overwrite your current .config file."
+	read -r -n1 -p "press ctrl-C to quit, any other key to continue..."
+
+	(( $(wc -l <<< $(grep dist-configs redhat/Makefile)) > 1 )) \
+		&& make dist-configs || make rh-configs
+	cp -vf redhat/configs/*-$(uname -i).config .config
+}
+
 # default settings
 #
 level=3		# set for complete build/install
@@ -33,7 +44,7 @@ verbose=""	# no verbose
 kabi=""		# no kabitools database
 cores=$(grep -cw processor /proc/cpuinfo)
 
-while getopts b:l:c:j:vkh OPTION; do
+while getopts b:l:c:j:vkhm OPTION; do
     case "$OPTION" in
 	b ) echo "$OPTARG" > localversion
 		;;
@@ -46,6 +57,8 @@ while getopts b:l:c:j:vkh OPTION; do
 	v ) verbose="V=1"
 		;;
 	k ) kabi="K=1"
+		;;
+	m ) mkconfig
 		;;
 	h ) echo -e "$usage"
             exit 0
@@ -66,23 +79,23 @@ START1=$(date +%s)
 ((sparse > 2)) && sparse=2
 ((level > 3)) && level=3
 
-echo "make -j$cores $verbose C=$sparse 2>&1 | tee ../make.log"
-make -j$cores $verbose $kabi C=$sparse $kabi 2>&1 | tee ../make.log
+echo "make -j$cores $verbose C=$sparse 2>&1 | tee ../make.log" | tee ../make.log
+make -j$cores $verbose $kabi C=$sparse $kabi 2>&1 | tee -a ../make.log
 makestat=$?
 
 END=$(date +%s)
 DIFF=$(( END - START1 ))
 minutes=$(( DIFF / 60 ))
 seconds=$(( DIFF % 60 ))
-echo
-echo "Elapsed time: $minutes : $seconds"
-echo
+echo | tee -a ../make.log
+echo "Elapsed time: $minutes : $seconds" | tee -a ../make.log
+echo | tee -a ../make.log
 
 ((level == 1)) && exit 0
 ((makestat == 0)) || exit $makestat
 
-echo "make -j$cores $verbose C=$sparse modules_install \
-	2>&1 | tee -a ../make.log"
+echo "make -j$cores $verbose C=$sparse modules_install 2>&1 | tee -a ../make.log" | \
+	tee -a ../make.log
 make -j$cores modules_install $verbose C=$sparse 2>&1 | tee -a ../make.log
 makestat=$?
 
@@ -90,20 +103,21 @@ END=$(date +%s)
 DIFF=$(( END - START1 ))
 minutes=$(( DIFF / 60 ))
 seconds=$(( DIFF % 60 ))
-echo
-echo "Elapsed time: $minutes : $seconds"
-echo
+echo | tee -a ../make.log
+echo "Elapsed time: $minutes : $seconds" | tee -a ../make.log
+echo | tee -a ../make.log
 
 [ $level -eq 2 ] && exit 0
 [ $makestat -eq 0 ] || exit $makestat
 
-echo "make -j$cores $verbose C=$sparse install 2>&1 | tee -a ../make.log"
+echo "make -j$cores $verbose C=$sparse install 2>&1 | tee -a ../make.log" | \
+	tee -a ../make.log
 make -j$cores $verbose C=$sparse install 2>&1 | tee -a ../make.log
 
 END=$(date +%s)
 DIFF=$(( END - START1 ))
 minutes=$(( DIFF / 60 ))
 seconds=$(( DIFF % 60 ))
-echo
-echo "Elapsed time: $minutes : $seconds"
-echo
+echo | tee -a ../make.log
+echo "Elapsed time: $minutes : $seconds" | tee -a ../make.log
+echo | tee -a ../make.log
