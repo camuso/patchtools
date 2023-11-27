@@ -15,18 +15,17 @@
 [ "$configmanager_loaded" ] || source "$MYLIB"/config-manager.source
 [ "$ptversion_loaded" ]     || source "$MYLIB"/patchtools-version.source
 
-declare -i background=
-declare b_localus=false
-
 # Other exit codes
 declare -i exit_ok=0
 declare -i exit_invarg=1
 declare -i exit_invpath=2	# invalid path
 declare -i exit_invdir=3
 declare -i exit_disfil=4	# directory name is a file
-declare -i exit_nodncmt=5
-declare -i exit_noupcmt=6
+declare -i exit_invhash=5	# not a hex number
+declare -i exit_invcmt=6	# not a valid commit
 declare -i exit_nooutd=7	# directory name is empty
+declare -i exit_norepo=8	# not a repo directory
+declare -i exit_noupcmt=9	# can't find upcmt in dncmt log
 
 declare -a exitmsgary=
 
@@ -36,9 +35,11 @@ exitmsgary=(
 " path does not exist."
 " is an invalid directory name."
 " is a file, not a directory."
-" is not a valid downstream commit."
-" does not have a valid corresponding upstream commit."
+" is not a valid commit hash."
+" commit cannot be found in the logs"
 "You did not provide an output directory path:$MNU -od <outdir>$OFF"
+" is not a repo directory"
+" commit log does not have a valid upstream commmit"
 )
 
 exitme() {
@@ -51,7 +52,7 @@ exitme() {
 		[ ${#exitmsgary[@]} -gt "$exitval" ] \
 			&& exitmsg="${exitmsgary[$exitval]}"
 
-		echo -e "$WRN$strarg$exitmsg$OFF"
+		echo -e "$MNU$strarg$WRN$exitmsg$OFF"
 
 		[ "$exitval" -ne 0 ] && echo -e \
 			"${INF}Type $MNU$(basename "$0") -h$INF for help.$OFF"
@@ -71,6 +72,7 @@ Cleaning up and exiting.$OFF
 	exitme $CTLC_EXIT
 }
 
+declare -i background=
 declare -i optcount=0
 declare uplog="upstream.log"
 declare dnlog="downstream.log"
@@ -81,6 +83,8 @@ declare upcmt=
 declare dncmt=
 declare searchstr=
 declare path=
+declare b_localus=true	# default true, upstream is in current local dir
+
 
 usage() {
 	local usagestr
@@ -90,9 +94,9 @@ cat <<EOF
 $MNU
 ${UND}Patchtools v$version$OFF
 $MNU
-$(basename "$0") dncmt -od outdir [-ud updir] path [path-2 ... path-n]
-$OFF
-Uses scripts ${STA}gitnice$OFF and ${STA}extup$OFF to create a list of commits
+$(basename "$0") -od outdir -dc dwncmt path [path-2 path-n] [-uc upcmt] [-ud updir] $OFF
+
+Create a list of commits to be backported from an upstream repo.
 to backport. Commits that have already been backported will have
 a leading # to effectively comment them out to processing scripts, like
 git-backport.
@@ -100,33 +104,33 @@ git-backport.
 This must be run in the downstream (RHEL) repo directory.
 
 Creates the following files in the <outdir>.
-  $STA$uplog$OFF   - contains the upstream commits since <upcmt>
-  $STA$dnlog$OFF - contains the downstream commits since <dncmt>
+  $STA$uplog$OFF   - contains the upstream commits since$INF upcmt$OFF
+  $STA$dnlog$OFF - contains the downstream commits since$INF dwncmt$OFF
   $STA$chlog$OFF   - contains the upstream commits that have not yeat been
-                   backported downstream.
-$MNU
-Arguments:$OFF
-  Arguments and options can be entered in any order.
-  Arguments without a leading hyphenated option tag are:
-  $MNU
-  dncmt$OFF - This would be the last downstream (RHEL) commit that was
-          backported from upstream. The upstream commit will be extracted
-	  from this downstream commit and used as a starting point to
-	  search for new upstream commits for the given path(s).
-  $MNU
+                   backported downstream.$MNU$UND
+Arguments:$OFF$MNU
   path$OFF - A space separated list of paths and files to be searched
          for new upstream commits for the backport.
-$MNU
-Options:$OFF$MNU
-  -h$OFF         - this help text$MNU
-  -ud ${OFF}updir   - directory with the upstream repo, default is ./$MNU
-  -od ${OFF}outdir  - REQUIRED Directory to contain ouput files.$MNU
-  -V  ${OFF}version - show patchtools version and exit
-$MNU
-Example:$INF
+	 At least one path must be given.$MNU$UND
+Switches$OFF$MNU
+  ${UND}Required$OFF$MNU
+   -od$OFF - Directory to receive ouput files$MNU
+   -dc$OFF - Downstream commit, usually last RHEL commit for the given path(s).
+         Without the optional$MNU -uc$OFF switch, the upstream commit will be extracted
+         from this downstream commit and used as a starting point to search for
+         new upstream commits for the given path(s).$MNU
+  ${UND}Optional$OFF$MNU
+   -uc$OFF - Upstrream commit. Without this switch, the script will extract the
+         upstream commit from the requisite downstream commit.$MNU
+   -ud$OFF - Directory having the upstream repo, Default is \$PWD: $STA$PWD$MNU
+  ${UND}Informational$OFF$MNU
+   -V $OFF - show patchtools version and exit$MNU
+   -h $OFF - this help text$MNU
+$MNU$UND
+Example:$OFF$INF
   $(basename "$0") \\\
 
-        d7f2756787f5 \\\
+        -dc d7f2756787f5 \\\
 
         -ud /work/upstream/kernel \\\
 
@@ -175,16 +179,32 @@ test_help() {
 # check each of the commits.
 #
 is_validcmtexpr() {
-	local tmp=$1
+	local tmp="$1"
 	local -a cary=()
 	local c
 
 	cary=(${tmp//../ })
 
 	for c in ${cary[@]}; do
-		git rev-parse $c > /dev/null 2>&1 || return 1
+		[[ $c =~ ^[[:xdigit:]]+$ ]] || return "$exit_invhash"
+		git rev-parse $c > /dev/null 2>&1 || return "$exit_invcmt"
 	done
 
+	return 0
+}
+
+getcmt() {
+	local tmp="$1"
+	local op="$2"
+	local -n cmtname="$3"
+	local -i stat=0
+
+	is_validcmtexpr "$1"
+	stat=$?
+
+	((stat == 0)) || exitme $stat "$op $tmp"
+
+	cmtname="$tmp"
 	return 0
 }
 
@@ -215,12 +235,13 @@ parseops() {
 		shift
 		case "$opt" in
 		    ud ) get_pathopt "$1" updir
-			 shift
-			 continue
+			 b_localus=false
 			 ;;
 		    od ) get_pathopt "$1" outdir
-			 shift
-			 continue
+			 ;;
+		    uc ) getcmt "$1" "$arg" upcmt
+			 ;;
+		    dc ) getcmt "$1" "$arg" dncmt
 			 ;;
 		    S  ) get_varopt "$1" searchstr
 			 ;;
@@ -234,8 +255,6 @@ parseops() {
 
 	    elif [ -e "$arg" ]; then
 			path="$path $arg"
-	    elif is_validcmtexpr "$arg"; then
-			dncmt="$arg"
 	    fi
 
 	    shift
@@ -396,7 +415,7 @@ select_remote() {
 main() {
 	local mainbranch
 	local -a tmpary=()
-	local localus
+	local repobr
 
 	init_env
 
@@ -405,11 +424,8 @@ main() {
         # Trap for control-c
         trap control_c SIGINT
 
-	[ -f .git/config ] || {
-		echo -e "${WRN}Not a repo directory!"
-		echo -e "${INF}You must be in a repo directory."
-		exit 1
-	}
+	[ -f .git/config ] || exitme $exit_norepo "PWD: $PWD"
+
 	mainbranch=$(get_mainbranch)
 
 	test_help "$1"
@@ -422,22 +438,22 @@ main() {
 	# Exit if no outdir
 	[ -n "$outdir" ] || exitme $exit_nooutd
 
-	# If no updir, then use the current dir as default and prompt user to
-	# select from available remotes for the upstream remote/branch.
-	if [ -z "$updir" ]; then
-		b_localus=true
-		updir="./"
-		select_remote localus
-	else
-		b_localus=false
+	# Id using the current dir (default), set updir here.
+	if $b_localus; then
+		updir="$PWD"
 	fi
 
-	# Extract the upstream commit from the submitted RHEL commit, which is
-	# the most recent RHEL commit under consideration, entered with the
-	# -dc option.
-	tmpary=($(extup -1 -r -n -u "$updir" "$dncmt"))
-	upcmt="${tmpary[1]}"
-	[[ $upcmt =~ ^[0-9A-Fa-f]+$ ]] || exitme $exit_noupcmt "$dncmt"
+	select_remote repobr
+
+	# If the user did not input an upstream commit, then extract the
+	# upstream commit from the submitted RHEL commit, which is the most
+	# recent RHEL commit under consideration, entered with the -dc option.
+	if [ -z "$upcmt" ]; then
+		tmpary=($(extup -1 -r -n -u "$updir" "$dncmt"))
+		upcmt="${tmpary[1]}"
+		[[ $upcmt =~ ^[0-9A-Fa-f]+$ ]] || exitme $exit_noupcmt "$dncmt"
+		is_validcmtexpr "$upcmt" || exitme $exit_noupcmt "$dncmt"
+	fi
 
 	echo
 
@@ -445,8 +461,7 @@ main() {
 	check_log "$outdir/$dnlog"
 	check_log "$outdir/$chlog"
 
-	$b_localus && echo -e "${INF}Upstream repo     : $STA$localus$OFF" \
-		   || echo -e "${INF}Upstream repo     : $STA$updir$OFF"
+	echo -e "${INF}Upstream repo     : $STA$updir:$repobr$OFF"
 	echo -e "${INF}Upstream commit   : $STA$upcmt$OFF"
 	echo -e "${INF}Downstream branch : $STA$mainbranch$INF"
 
@@ -466,31 +481,25 @@ main() {
 	echo -n "Press any key to proceed or CTRL-C to exit..."
 	read -r -n1
 
-	echo -e "$STA"
-	[ -d "$updir" ] && { cd "$updir" || exitme $exit_invdir; }
-	pwd
+	ui_cd "$updir"
+	echo -e "$STA$PWD$OFF"
 	echo -e "${STA}Creating $outdir/$uplog$INF"
 
-	# If the upstream is local, checkout now.
-	if $b_localus; then
-		git checkout $localus > /dev/null 2>&1 & mypid=$!
-		ui_waitonproc_tty $mypid .05 "Checking out upstream $localus"
-	fi
+	git checkout $repobr > /dev/null 2>&1 & mypid=$!
+	ui_waitonproc_tty $mypid .05 "Checking out upstream $repobr"
 
 	# Get the list of upstream commits starting from the one extracted from
 	# the submitted RHEL commit with the -dc option.
 	gitnice -r -c -d --no-merges "$upcmt..HEAD" $path 2>&1 | tee "$outdir/$uplog"
 
-	# If we've checked out local upstream, switch back now.
-	if $b_localus; then
-		git switch - > /dev/null 2>&1 & mypid=$!
-		ui_waitonproc_tty $mypid .05 "Returning to RHEL branch"
-	fi
+	git switch - > /dev/null 2>&1 & mypid=$!
+	ui_waitonproc_tty $mypid .05 "Returning to RHEL branch"
+	ui_cd -
+	echo -e "$STA$PWD$OFF"
 
 	echo
 
 	echo -e "$STA"
-	cd - || exitme $exit_invdir
 	echo -e "${STA}Creating $outdir/$dnlog$INF"
 	extup -r -n -u "$updir" "$dncmt..HEAD" $path 2>&1 | tee "$outdir/$dnlog"
 
