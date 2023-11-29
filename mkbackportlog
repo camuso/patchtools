@@ -11,8 +11,10 @@
 	declare MYLIB=
 	MYLIB="$MYDIR"/lib
 }
+[ "$MYDATA" ] || MYDATA="$PWD"/.data
+
 [ "$ui_loaded" ]            || source "$MYLIB"/ui.source
-[ "$configmanager_loaded" ] || source "$MYLIB"/config-manager.source
+[ "$configmanager_loaded" ] || source "$MYLIB"/cfgmgr.source
 [ "$ptversion_loaded" ]     || source "$MYLIB"/patchtools-version.source
 
 # Other exit codes
@@ -26,6 +28,7 @@ declare -i exit_invcmt=6	# not a valid commit
 declare -i exit_nooutd=7	# directory name is empty
 declare -i exit_norepo=8	# not a repo directory
 declare -i exit_noupcmt=9	# can't find upcmt in dncmt log
+declare -i exit_nodncmt=10	# user did not supply a dncmt
 
 declare -a exitmsgary=
 
@@ -40,6 +43,7 @@ exitmsgary=(
 "You did not provide an output directory path:$MNU -od <outdir>$OFF"
 " is not a repo directory"
 " commit log does not have a valid upstream commmit"
+"You did not provide a -dc downstream (RHEL) commit."
 )
 
 exitme() {
@@ -57,7 +61,8 @@ exitme() {
 		[ "$exitval" -ne 0 ] && echo -e \
 			"${INF}Type $MNU$(basename "$0") -h$INF for help.$OFF"
 	fi
-
+set +x
+	cfg_write_cfgfile configtable
 	exit "$exitval"
 }
 
@@ -85,6 +90,11 @@ declare searchstr=
 declare path=
 declare b_localus=true	# default true, upstream is in current local dir
 
+# Configuration (sticky) variables
+declare configfile="$MYDATA"/mkbackportlog.config
+declare -A configtable
+configtable[repobr]="$repobr"
+configtable[background]="$background"
 
 usage() {
 	local usagestr
@@ -96,10 +106,9 @@ ${UND}Patchtools v$version$OFF
 $MNU
 $(basename "$0") -od outdir -dc dwncmt path [path-2 path-n] [-uc upcmt] [-ud updir] $OFF
 
-Create a list of commits to be backported from an upstream repo.
-to backport. Commits that have already been backported will have
-a leading # to effectively comment them out to processing scripts, like
-git-backport.
+Create a list of commits to be backported from an upstream repo
+Commits that have already been backported will have a leading$MNU #$OFF to
+comment them out for subsequent processing scripts, like git-backport.
 
 This must be run in the downstream (RHEL) repo directory.
 
@@ -324,18 +333,14 @@ compare_strings() {
 init_env() {
 	local bgtemp
 
-	ui_setbg bgtemp
-
-	MYDATA=$(realpath ./.data)
 	[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
 
-	configfile="$MYDATA/mkbackportlog.conf"
-	cfgtemplate="$MYLIB/mkbackportlog.conf"
-	[ -f "$configfile" ] || cp "$cfgtemplate" "$configfile"
-
-	cfg_start "$cfgtemplate" "$configfile"
+	ui_setbg bgtemp
 	background="$bgtemp"
-	cfg_set_item "background" "$background"
+
+	cfg_start configtable "$configfile"
+	configtable[background]="$background"
+	cfg_write_cfgfile configtable
 }
 
 check_log() {
@@ -349,21 +354,8 @@ check_log() {
 	}
 }
 
-get_mainbranch() {
-	local line=
-	local pline=
-	local ary=()
-
-	while read -r line; do
-		if [[ $line == *"remote = origin"* ]]; then
-			break
-		else
-			pline="$line"
-		fi
-	done < .git/config
-
-	ui_strtok "$pline" '"' ary
-	echo "${ary[1]}"
+get_currentbranch() {
+	git branch | grep -E '^\*' | cut -d' ' -f2
 }
 
 seek_str() {
@@ -396,24 +388,29 @@ select_remote() {
 	local brancharray=()
 
 	# Get all the branches into one string
+	ui_cd "$updir" 		# get into upstream dir first
 	brstr=$(git branch -r)
+	ui_cd -			# go back to original dir
 
 	# Filter out lines with '-> in them, because they are not branches
 	while read -r s; do [[ $s == *"->"* ]] || brancharray+=("$s"); done <<< "$brstr"
 
 	if [ ${#brancharray[@]} -gt 1 ]; then
-		select_from_array brancharray "Remote Branches" gusr_cur
+		echo -e "\n$UND${MNU}Select the upstream repo/branch$OFF"
+		select_from_array brancharray "branches" gusr_cur
 	else
 		gusr_cur=${brancharray[0]}
 		echo -e "$INF Only one branch in this repo: $STA$cur$OFF"
 		echo -e "$INF Nothing else to choose from.$OFF"
 	fi
 
+	configtable[repobr]="$repobr"
 	return 0
 }
 
 main() {
 	local mainbranch
+	local currentbranch
 	local -a tmpary=()
 	local repobr
 
@@ -426,10 +423,10 @@ main() {
 
 	[ -f .git/config ] || exitme $exit_norepo "PWD: $PWD"
 
-	mainbranch=$(get_mainbranch)
+	read -r mainbranch <<< "$(git branch -r | grep origin/HEAD | cut -d'>' -f2)"
+	currentbranch=$(get_currentbranch)
 
 	test_help "$1"
-
 	parseops "$@"
 
 	# If no dncmt, then complain and exit.
@@ -455,15 +452,14 @@ main() {
 		is_validcmtexpr "$upcmt" || exitme $exit_noupcmt "$dncmt"
 	fi
 
-	echo
-
 	check_log "$outdir/$uplog"
 	check_log "$outdir/$dnlog"
 	check_log "$outdir/$chlog"
 
-	echo -e "${INF}Upstream repo     : $STA$updir:$repobr$OFF"
-	echo -e "${INF}Upstream commit   : $STA$upcmt$OFF"
-	echo -e "${INF}Downstream branch : $STA$mainbranch$INF"
+	echo -e "${INF}Upstream repo:branch : $STA$updir:$repobr$OFF"
+	echo -e "${INF}Upstream commit      : $STA$upcmt$OFF"
+	echo -e "${INF}Downstream branch    : $STA$mainbranch$INF"
+	# echo -e "${INF}Current Downstream branch : $STA$currentbranch$INF"
 
 	if [ -n "$path" ]; then
 		# If there's more than one path, show them all.
@@ -485,15 +481,15 @@ main() {
 	echo -e "$STA$PWD$OFF"
 	echo -e "${STA}Creating $outdir/$uplog$INF"
 
-	git checkout $repobr > /dev/null 2>&1 & mypid=$!
-	ui_waitonproc_tty $mypid .05 "Checking out upstream $repobr"
+	# git checkout -b tmp $repobr > /dev/null 2>&1 & mypid=$!
+	# ui_waitonproc_tty $mypid .05 "Checking out upstream $repobr"
 
 	# Get the list of upstream commits starting from the one extracted from
 	# the submitted RHEL commit with the -dc option.
-	gitnice -r -c -d --no-merges "$upcmt..HEAD" $path 2>&1 | tee "$outdir/$uplog"
+	gitnice -r -c -d --no-merges "$upcmt..$repobr" $path 2>&1 | tee "$outdir/$uplog"
 
-	git switch - > /dev/null 2>&1 & mypid=$!
-	ui_waitonproc_tty $mypid .05 "Returning to RHEL branch"
+	# git switch - > /dev/null 2>&1 & mypid=$!
+	# ui_waitonproc_tty $mypid .05 "Returning to RHEL branch"
 	ui_cd -
 	echo -e "$STA$PWD$OFF"
 
@@ -501,7 +497,7 @@ main() {
 
 	echo -e "$STA"
 	echo -e "${STA}Creating $outdir/$dnlog$INF"
-	extup -r -n -u "$updir" "$dncmt..HEAD" $path 2>&1 | tee "$outdir/$dnlog"
+	extup -r -n -u "$updir" "$dncmt..$mainbranch" $path 2>&1 | tee "$outdir/$dnlog"
 
 	echo
 	echo -e "${STA}Creating $outdir/$chlog$INF"
