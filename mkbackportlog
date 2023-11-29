@@ -105,7 +105,7 @@ cat <<EOF
 $MNU
 ${UND}Patchtools v$version$OFF
 $MNU
-$(basename "$0") -od outdir -dc dwncmt path [path-2 path-n] [-uc upcmt] [-ud updir] $OFF
+$(basename "$0") -od -dc -ud path [path-2 path-n] [-uc] [-us] $OFF
 
 Create a list of commits to be backported from an upstream repo
 Commits that have already been backported will have a leading$MNU #$OFF to
@@ -118,22 +118,34 @@ Creates the following files in the <outdir>.
   $STA$dnlog$OFF - contains the downstream commits since$INF dwncmt$OFF
   $STA$chlog$OFF   - contains the upstream commits that have not yeat been
                    backported downstream.$MNU$UND
-Arguments:$OFF$MNU
-  path$OFF - A space separated list of paths and files to be searched
+Arguments$OFF$MNU
+  path$OFF -$WRN This argument is REQUIRED$OFF
+         A space separated list of paths and files to be searched
          for new upstream commits for the backport.
 	 At least one path must be given.$MNU$UND
-Switches$OFF$MNU
-  ${UND}Required$OFF$MNU
+Switches$OFF
+  $WRN${UND}Required$OFF$MNU
    -od$OFF - Directory to receive ouput files$MNU
    -dc$OFF - Downstream commit, usually last RHEL commit for the given path(s).
          Without the optional$MNU -uc$OFF switch, the upstream commit will be extracted
          from this downstream commit and used as a starting point to search for
          new upstream commits for the given path(s).$MNU
+  $WRN${UND}May Be Required$OFF$MNU
+   -ud$OFF - Directory having the upstream repo,
+         Without this switch, the script expects a remote upstream repo
+	 in$MNU \$PWD: $STA$PWD$OFF
+         If there is no upstream repo declared with the "${MNU}-ud$OFF" switch
+	 and no remote one in the$MNU \$PWD$OFF, then this script's behavior
+	 is$WRN UNDEFINED$OFF.$MNU
   ${UND}Optional$OFF$MNU
    -uc$OFF - Upstrream commit. Without this switch, the script will extract the
          upstream commit from the requisite downstream commit.$MNU
-   -ud$OFF - Directory having the upstream repo, Default is \$PWD: $STA$PWD$MNU
-   -us$ODD - Upstream scope will be limited to this commit expression.$MNU
+   -us$OFF - Upstream scope will be limited to before this commit.
+         This argument will usually be an upstream tag, e.g.$MNU v6.7$OFF
+	 but it can also be an upstream commit.
+	 All commits occuring after this commit, will have a leading
+	"${MNU}#+ $OFF" prepended to their lines in the backport.log to tell scripts
+	like git-backport to ignore them.
   ${UND}Informational$OFF$MNU
    -V $OFF - show patchtools version and exit$MNU
    -h $OFF - this help text$MNU
@@ -158,7 +170,7 @@ $OFF
 \0
 EOF
 )
-	echo -en "$usagestr"
+	echo -en "$usagestr" | more
 	exitme 0
 }
 
@@ -237,6 +249,9 @@ getcmt() {
 # 	usagestr
 # 	searchstr
 # 	path
+# 	upscope
+# 	outdir
+# 	version
 #
 parseops() {
 	local arg=
@@ -259,7 +274,7 @@ parseops() {
 			 ;;
 		    dc ) getcmt "$1" "$arg" dncmt
 			 ;;
-		    dc ) getcmt "$1" "$arg" upscope
+		    us ) getcmt "$1" "$arg" upscope
 			 ;;
 		    S  ) get_varopt "$1" searchstr
 			 ;;
@@ -417,11 +432,59 @@ select_remote() {
 	return 0
 }
 
+# limit_scope - backport log stops at  the supplied upstream commit
+#
+# This is done by commenting out hashes in the backport log that are
+# beyond the supplied scope commit. These comment delimiter will be a
+# leading '#+ ' on the lines of the commits that go beyond the scope.
+#
+# GLOBALS:
+#   chlog   - the backport log file
+#   upscope - the upstream limiting commit
+#             this commit will also be excluded, if it's in the
+#             backport log.
+#
+# ARGUMENTS: none
+#
+# RETURNS: none
+#
+limit_scope() {
+	local delim=
+	local line
+	local -a linary=()
+	local outfil="$outdir"/"$chlog"
+
+	mapfile -t linary < "$outfil"
+	> "$outfil"
+
+	for (( i = 0; i < ${#linary[@]}; ++i)) ; do
+		local tmpstr=
+		local -a tmpary=()
+		local cmt=
+		local line="${linary[i]}"
+
+		([ ${line:0:1} == "#" ] || [ ${line:0:1} == "+" ]) && continue
+
+		# tokenize the line on spaces by excluding double quotes inside
+		# array parens.
+		tmpary=( $line )
+		cmt="${tmpary[0]}"
+		tmpstr="$(gitnice -1 --no-merges "$upscope"^.."$cmt")"
+
+		[ -n "$tmpstr" ] && linary[i]="#+ $line"
+	done
+
+	echo -e "$INF"
+	printf "%s\n" "${linary[@]}" | tee -a "$outfil"
+	echo -e "$OFF"
+}
+
 main() {
 	local mainbranch
 	local currentbranch
 	local -a tmpary=()
 	local repobr
+	local mypid
 
 	init_env
 
@@ -486,22 +549,16 @@ main() {
 	echo -n "Press any key to proceed or CTRL-C to exit..."
 	read -r -n1
 
-	ui_cd "$updir"
 	echo -e "$STA$PWD$OFF"
 	echo -e "${STA}Creating $outdir/$uplog$INF"
 
-	# git checkout -b tmp $repobr > /dev/null 2>&1 & mypid=$!
-	# ui_waitonproc_tty $mypid .05 "Checking out upstream $repobr"
-
 	# Get the list of upstream commits starting from the one extracted from
 	# the submitted RHEL commit with the -dc option.
+	ui_cd "$updir"
 	gitnice -r -c -d --no-merges "$upcmt..$repobr" $path 2>&1 | tee "$outdir/$uplog"
-
-	# git switch - > /dev/null 2>&1 & mypid=$!
-	# ui_waitonproc_tty $mypid .05 "Returning to RHEL branch"
 	ui_cd -
-	echo -e "$STA$PWD$OFF"
 
+	echo -e "$STA$PWD$OFF"
 	echo
 
 	echo -e "$STA"
@@ -514,6 +571,11 @@ main() {
 
 	[ -n "$searchstr" ] && seek_str
 	echo -e "$OFF"
+
+	if [ -n "$upscope" ]; then
+		limit_scope & mypid=$!
+		ui_waitonproc_tty $mypid .05 "Limiting scope to $MNU$upscope$OFF. Please wait."
+	fi
 
 	exitme $exit_ok
 }
