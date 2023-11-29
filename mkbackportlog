@@ -89,6 +89,7 @@ declare dncmt=
 declare searchstr=
 declare path=
 declare b_localus=true	# default true, upstream is in current local dir
+declare upscope=	# upstream scope limited to this commit expression
 
 # Configuration (sticky) variables
 declare configfile="$MYDATA"/mkbackportlog.config
@@ -132,6 +133,7 @@ Switches$OFF$MNU
    -uc$OFF - Upstrream commit. Without this switch, the script will extract the
          upstream commit from the requisite downstream commit.$MNU
    -ud$OFF - Directory having the upstream repo, Default is \$PWD: $STA$PWD$MNU
+   -us$ODD - Upstream scope will be limited to this commit expression.$MNU
   ${UND}Informational$OFF$MNU
    -V $OFF - show patchtools version and exit$MNU
    -h $OFF - this help text$MNU
@@ -142,6 +144,8 @@ Example:$OFF$INF
         -dc d7f2756787f5 \\\
 
         -ud /work/upstream/kernel \\\
+
+	-us v6.6 \\\
 
         -od ../backport/9.4/ipmi/ \\\
 
@@ -191,12 +195,15 @@ is_validcmtexpr() {
 	local tmp="$1"
 	local -a cary=()
 	local c
+	local errstr=
+	local stat
 
 	cary=(${tmp//../ })
 
 	for c in ${cary[@]}; do
-		[[ $c =~ ^[[:xdigit:]]+$ ]] || return "$exit_invhash"
-		git rev-parse $c > /dev/null 2>&1 || return "$exit_invcmt"
+		errstr="$(git rev-parse $c 2>&1 > /dev/null)"
+		stat=$?
+		((stat == 0)) || exitme "$exit_invhash" "$errstr\n$c"
 	done
 
 	return 0
@@ -251,6 +258,8 @@ parseops() {
 		    uc ) getcmt "$1" "$arg" upcmt
 			 ;;
 		    dc ) getcmt "$1" "$arg" dncmt
+			 ;;
+		    dc ) getcmt "$1" "$arg" upscope
 			 ;;
 		    S  ) get_varopt "$1" searchstr
 			 ;;
