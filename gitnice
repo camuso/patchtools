@@ -26,6 +26,8 @@ declare gitold=
 declare gver=
 declare -i gmaj=
 declare -i gmin=
+declare -i stat
+declare errstr
 
 gver=$(git --version | cut -d' ' -f3)
 gmaj=$(echo "$gver" | cut -d'.' -f1)
@@ -109,7 +111,9 @@ is_validcmtexpr() {
 	cary=(${tmp//../ })
 
 	for c in ${cary[@]}; do
-		git rev-parse $c > /dev/null 2>&1 || return 1
+		errstr="$(git rev-parse $c 2>&1 > /dev/null)"
+		stat=$?
+		((stat == 0)) || return $stat
 	done
 
 	return 0
@@ -150,8 +154,13 @@ while (($# > 0)); do
 
 	elif [ -e "$arg" ]; then
 		path="$path $arg"
-	elif is_validcmtexpr "$arg"; then
-		cmtexpr="$arg"
+	else
+		if is_validcmtexpr "$arg"; then
+			cmtexpr="$arg"
+		else
+			echo $errstr
+			exit $stat
+		fi
 	fi
 
 	shift
