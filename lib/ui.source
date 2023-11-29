@@ -23,9 +23,9 @@ declare ui_b_debug=false
 # $UND - underline
 # $OFF - turn all attributes and colors off
 #*
-unset BLD && declare BLD='\e[1m'
-unset UND && declare UND='\e[4m'
-unset OFF && declare OFF='\e[m'
+unset BLD && declare BLD="\e[1m"
+unset UND && declare UND="\e[4m"
+unset OFF && declare OFF="\e[m"
 #
 # Text color definitions
 # For color tables see:
@@ -53,25 +53,28 @@ unset OFF && declare OFF='\e[m'
 # $BCYN
 # $BWHT
 #*
-unset BLK && declare BLK='\e[0;30m'
-unset RED && declare RED='\e[0;31m'
-unset GRN && declare GRN='\e[0;32m'
-unset YEL && declare YEL='\e[0;33m'
-unset BLU && declare BLU='\e[0;34m'
-unset MGT && declare MGT='\e[0;35m'
-unset CYN && declare CYN='\e[0;36m'
-unset WHT && declare WHT='\e[0;37m'
+unset BLK && declare BLK="\e[0;30m"
+unset RED && declare RED="\e[0;31m"
+unset GRN && declare GRN="\e[0;32m"
+unset YEL && declare YEL="\e[0;33m"
+unset BLU && declare BLU="\e[0;34m"
+unset MGT && declare MGT="\e[0;35m"
+unset CYN && declare CYN="\e[0;36m"
+unset WHT && declare WHT="\e[0;37m"
+unset LIL && declare LIL="\e[38;2;$((16#FF));$((16#99));$((16#FF))m"
+
 #
 # Bright colors
 #
-unset BBLK && declare BBLK='\e[1;90m'
-unset BRED && declare BRED='\e[1;91m'
-unset BGRN && declare BGRN='\e[1;92m'
-unset BYEL && declare BYEL='\e[1;93m'
-unset BBLU && declare BBLU='\e[1;94m'
-unset BMGT && declare BMGT='\e[1;95m'
-unset BCYN && declare BCYN='\e[1;96m'
-unset BWHT && declare BWHT='\e[1;97m'
+unset BBLK && declare BBLK="\e[1;90m"
+unset BRED && declare BRED="\e[1;91m"
+unset BGRN && declare BGRN="\e[1;92m"
+unset BYEL && declare BYEL="\e[1;93m"
+unset BBLU && declare BBLU="\e[1;94m"
+unset BMGT && declare BMGT="\e[1;95m"
+unset BCYN && declare BCYN="\e[1;96m"
+unset BWHT && declare BWHT="\e[1;97m"
+unset BPUR && declare BLIL="\e[1m$LIL"
 
 unset BWOR && declare BWOR='\e[1;37;41m'
 
@@ -227,7 +230,7 @@ ui_set_colors() {
 			     MNU=$BYEL
 			     STA=$BGRN
 			     # WRN=$BWOR
-			     WRN=$BRED
+			     WRN=$BLIL
 			     ;;
 	esac
 
@@ -775,7 +778,7 @@ select_from_array() {
 
 	echo -en "\n${MNU}Choose one of the $STA$promptstr$OFF"
 	echo -e "$MNU in the following list.$OFF"
-	echo -e "${INF}Current selection is :$STA $current$OFF"
+	[ -n "$uisfa_current" ] && echo -e "${INF}Current selection is :$STA $uisfa_current$OFF"
 
 	for ((i = 0; i < asize; ++i)); do
 		element="${array[i]}"
