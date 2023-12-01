@@ -597,7 +597,7 @@ getuser() {
 	local -n uigu_var="$2"
 
 	echo -ne "$INF$promptstring$OFF"
-	read -r uigu_var
+	read -e -r uigu_var
 }
 
 #** getch(): reads one char user input without echoing the char
