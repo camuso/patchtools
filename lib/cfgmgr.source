@@ -256,8 +256,10 @@ cfg_read_cfgfile() {
 	local key
 	local value
 
-	while IFS+="=" read -r key val; do
+	while IFS="= " read -r key val; do
+		key=${key// /}
 		cfgtbl["$key"]=$val
+		eval "$key"="\"$val\""
 	done < "$cfgfile"
 }
 
@@ -272,11 +274,14 @@ cfg_read_cfgfile() {
 cfg_write_cfgfile() {
 	local -n cfgtbl="$1"
 	local key
+	local val
 
 	> "$cfgfile"
 
 	for key in "${!cfgtbl[@]}"; do
-		echo "$key = ${cfgtbl["$key"]}" >> "$cfgfile"
+		key=${key// /}
+		val="${cfgtbl["$key"]}"
+		echo "$key = $val" >> "$cfgfile"
 	done
 }
 
