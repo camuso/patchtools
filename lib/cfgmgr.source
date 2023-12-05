@@ -247,9 +247,11 @@ cfg_dump_cfgtbl() {
 #    cfgfile; either passed by user or created by cfg_check_cfgfile above.
 #
 # Arguments
-#    $1 - cfgtbl : reference to the user's config table
+#    $1 - cfgtbl : REQUIRED reference to the user's config table
 #                  When used in calls initiated by cfg_start, the cfgtbl
-#                  was inited in cfgtbl and is inherited from that func.
+#                  was inited in cfg_start and is inherited from that func.
+#                  However, it goes OUT OF SCOPE at the end of that func,
+#                  so it must be provided by external calls to this func.
 #
 cfg_read_cfgfile() {
 	(($# == 1)) && local -n cfgtbl="$1"
