@@ -209,6 +209,9 @@ for ((i=0; i < ${#blist[@]}; ++i)); do
 	# extract the first commit line we encounter
 	cmtline=$(echo "$log" | grep -E -m1 '^commit')
 
+	# if we didn't find one, then see if it's in cherry-picked format.
+	[ -z "$cmtline" ] && cmtline=$(echo "$log" | grep -m1 'cherry.picked')
+
 	# extract the commit hash from the line
 	alist[$i]=$(echo "$cmtline" | grep -E -o "\b[0-9a-f]{40}\b")
 	stat=$?
