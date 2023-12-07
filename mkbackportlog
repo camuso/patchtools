@@ -29,6 +29,8 @@ declare -i exit_nooutd=7	# directory name is empty
 declare -i exit_norepo=8	# not a repo directory
 declare -i exit_noupcmt=9	# can't find upcmt in dncmt log
 declare -i exit_nodncmt=10	# user did not supply a dncmt
+declare -i exit_nopath=11	# user did not supply a path to search
+declare -i exit_norepobr=12	# user did not supply an upstream repo/branch
 
 declare -a exitmsgary=
 
@@ -40,10 +42,12 @@ exitmsgary=(
 " is a file, not a directory."
 " is not a valid commit hash."
 " commit cannot be found in the logs"
-"You did not provide an output directory path:$MNU -od <outdir>$OFF"
+"You did not provide an output directory path"
 " is not a repo directory"
 " commit log does not have a valid upstream commmit"
-"You did not provide a -dc downstream (RHEL) commit."
+"You did not provide a downstream (RHEL) commit."
+"You did not provide any paths to search, e.g. drivers/perf"
+"You did not provide an upstream repo/branch to search"
 )
 
 exitme() {
@@ -61,8 +65,10 @@ exitme() {
 		[ "$exitval" -ne 0 ] && echo -e \
 			"${INF}Type $MNU$(basename "$0") -h$INF for help.$OFF"
 	fi
-set +x
-	cfg_write_cfgfile configtable
+
+	$b_interactive && return
+
+	cfg_write
 	exit "$exitval"
 }
 
@@ -83,19 +89,38 @@ declare uplog="upstream.log"
 declare dnlog="downstream.log"
 declare chlog="backport.log"
 declare outdir=
-declare updir=
+declare updir="$PWD"
 declare upcmt=
 declare dncmt=
 declare searchstr=
 declare path=
-declare b_localus=true	# default true, upstream is in current local dir
+declare repobr=
 declare upscope=	# upstream scope limited to this commit expression
+declare b_localus=true	# default true, upstream is in current local dir
+declare b_ready=false
+declare b_interactive=false
 
 # Configuration (sticky) variables
-declare configfile="$MYDATA"/mkbackportlog.config
+declare configfile="$MYDATA"/mkbackportlog.conf
 declare -A configtable
-configtable[repobr]="$repobr"
-configtable[background]="$background"
+configtable[repobr]=
+configtable[background]=
+configtable[outdir]=
+configtable[updir]=
+configtable[upcmt]=
+configtable[dncmt]=
+configtable[searchstr]=
+configtable[path]=
+configtable[upscope]=
+configtable[currentbranch]=
+
+cfg_write() {
+	cfg_write_cfgfile configtable
+}
+
+cfg_read() {
+	cfg_read_cfgfile configtable
+}
 
 usage() {
 	local usagestr
@@ -159,7 +184,7 @@ Example:$OFF$INF
 
 	-us v6.6 \\\
 
-        -od ../backport/9.4/ipmi/ \\\
+        -od ../backports/9.4/ipmi/ \\\
 
         drivers/char/ipmi include/linux/ipmi.h include/linux/ipmi_smi.h
 $OFF
@@ -171,17 +196,28 @@ $OFF
 EOF
 )
 	echo -en "$usagestr" | more
-	exitme 0
 }
 
+#** get_pathopt - validate and return a pathname
+#
+# Arguments:
+#   $1 - path to be verified
+#   $2 - receives the realpath name of path
+#*
 get_pathopt() {
-	local path=$1
+	local path="$1"
 	local -n optname="$2"
 
 	[ -e "$path" ] || exitme $exit_invpath "$path"
 	optname=$(realpath "$path")
 }
 
+#** get_varopt - replace commas with spaces
+#
+# Arguments:
+#   $1 - variables separated by commas
+#   $2 - receives variables as space separated string
+#*
 get_varopt() {
 	local var="$1"
 	local -n varname="$2"
@@ -189,6 +225,11 @@ get_varopt() {
 	varname="${var//,/ }"
 }
 
+#** test_help - determines whether the string invokes help
+#
+# Arguments:
+#   $1 - string to be parsed for whether it is asking for help
+#*
 test_help() {
 	local opt="$1"
 
@@ -197,12 +238,15 @@ test_help() {
 	shopt -u nocasematch
 }
 
-# is_validcmtexpr
+#** is_validcmtexpr - validate a commit expression
 #
 # Break the commit expression into separate strings, dividing on a
 # double dot elipsis, and cycle through the resulting array to
 # check each of the commits.
 #
+# Arguments:
+#    $1 - commit expression
+#*
 is_validcmtexpr() {
 	local tmp="$1"
 	local -a cary=()
@@ -221,6 +265,13 @@ is_validcmtexpr() {
 	return 0
 }
 
+#** getcmt - validate a commit expression supplied at the cmd line
+#
+# ArgumentsL
+#   $1 - commit expression passed by user
+#   $2 - the switch name used to pass the commit expression
+#   $3 - receives the commit expression after validation
+#*
 getcmt() {
 	local tmp="$1"
 	local op="$2"
@@ -236,11 +287,9 @@ getcmt() {
 	return 0
 }
 
-# parseops() - parse the input options
+#** parseops - parse the input options
 #
-# Needed multicharacter optionis, but didn't want to use longopts.
-#
-# Inputs: $@, the whole command line
+# Arguments: $@, the whole command line
 #
 # Globals:
 # 	optcount
@@ -252,10 +301,13 @@ getcmt() {
 # 	upscope
 # 	outdir
 # 	version
-#
+#	configtable[]
+#	version
+#*
 parseops() {
 	local arg=
 	local opt=
+	path=	# must init the path var, because it is aggregated.
 
 	while (($# > 0)); do
 	    arg="$1"
@@ -268,15 +320,15 @@ parseops() {
 		    ud ) get_pathopt "$1" updir
 			 b_localus=false
 			 ;;
-		    od ) get_pathopt "$1" outdir
+		    od ) get_pathopt "$1" configtable[outdir]
+			;;
+		    uc ) getcmt "$1" "$arg" configtable[upcmt]
 			 ;;
-		    uc ) getcmt "$1" "$arg" upcmt
+		    dc ) getcmt "$1" "$arg" configtable[dncmt]
 			 ;;
-		    dc ) getcmt "$1" "$arg" dncmt
+		    us ) getcmt "$1" "$arg" configtable[upscope]
 			 ;;
-		    us ) getcmt "$1" "$arg" upscope
-			 ;;
-		    S  ) get_varopt "$1" searchstr
+		    S  ) get_varopt "$1" configtable[searchstr]
 			 ;;
 		    V  ) echo "Patchtools v$version"
 			 exit 0
@@ -292,9 +344,13 @@ parseops() {
 
 	    shift
 	done
+
+	configtable[path]="${path##*( )}"
+	cfg_write
 }
 
-# compare_strings() - compare strings
+#** compare_strings() - create the backport.log
+#
 #    Compare the commits from the upstream and downstream commit logs
 #    to identify those that have already been backported.
 #    Output all commit lines to the log file, marking the ones that
@@ -306,7 +362,7 @@ parseops() {
 #	dnlog - downstream commits file
 #	outdir - directory for all the commit log files
 #	upcmt - start from this upstream commit
-#
+#*
 compare_strings() {
 	local uppath="$outdir/$uplog"
 	local dnpath="$outdir/$dnlog"
@@ -354,6 +410,16 @@ compare_strings() {
 	done
 }
 
+#** init_env - initialize the sticky variables and other env stuff
+#
+#  Arguments: none
+#
+#  Globals:
+#    configfile
+#    configtable
+#    backgrouond
+#    MYDATA
+#*
 init_env() {
 	local bgtemp
 
@@ -364,9 +430,13 @@ init_env() {
 
 	cfg_start configtable "$configfile"
 	configtable[background]="$background"
-	cfg_write_cfgfile configtable
 }
 
+#** check_log - notify user if logfile already exists
+#
+# Arguments:
+#   $1 - the logfile to check
+#*
 check_log() {
 	log="$1"
 
@@ -378,18 +448,26 @@ check_log() {
 	}
 }
 
+#** get_currentbranch - echo the current git branch
+#*
 get_currentbranch() {
 	git branch | grep -E '^\*' | cut -d' ' -f2
 }
 
+#** seek_str - look for a string in the commits in the upstream.log
+#
+# Globals:
+#   updir
+#   outdir
+#   chlog
+#*
 seek_str() {
 	local prepend=
 	local outfile=
 	local commit
 	local str
 
-	[ -d "$updir" ] && { cd "$updir" || exitme $exit_invdir; }
-
+	ui_cd "$updir"
 	for str in $searchstr; do
 		prepend=$(echo "$str" | cut -d' ' -f1)
 		outfile="$outdir/$prepend-$chlog"
@@ -403,28 +481,51 @@ seek_str() {
 			echo "$line" | tee -a "$outfile"
 		done < "$outdir/$chlog"
 	done
-	cd - > /dev/null 2>&1 || exitme $exit_invdir
+	ui_cd -
 }
 
+#** select_remote - choose from available repo/branches in current dir
+#
+# Provides the upstream reference for searching for upstream commits.
+#
+# Arguments: none
+#
+# Globals:
+#   updir
+#   repobr
+#   configtable
+#*
 select_remote() {
-	local -n gusr_cur="$1"
 	local brstr=
 	local brancharray=()
 
 	# Get all the branches into one string
-	ui_cd "$updir" 		# get into upstream dir first
-	brstr=$(git branch -r)
-	ui_cd -			# go back to original dir
+
+	if [[ "$updir" != "$PWD" ]]; then
+		ui_cd "$updir"
+		brstr=$(git branch -r)
+		ui_cd -
+	else
+		# We have a remote in PWD
+		# Skip all the remotes that are from the origin or $USER.
+		# We are only interested in upstream remotes in PWD
+		brstr=$(git branch -r | grep -E -v "origin|$USER")
+	fi
 
 	# Filter out lines with '-> in them, because they are not branches
 	while read -r s; do [[ $s == *"->"* ]] || brancharray+=("$s"); done <<< "$brstr"
 
+	if [ -z "$brstr" ]; then
+		echo -e "${WRN}There is no remote upstream repo in directory: $STA$updir$OFF"
+		return 1
+	fi
+
 	if [ ${#brancharray[@]} -gt 1 ]; then
 		echo -e "\n$UND${MNU}Select the upstream repo/branch$OFF"
-		select_from_array brancharray "branches" gusr_cur
+		select_from_array brancharray "branches" repobr
 	else
-		gusr_cur=${brancharray[0]}
-		echo -e "$INF Only one branch in this repo: $STA$cur$OFF"
+		repobr=${brancharray[0]}
+		echo -e "$INF Only one upstream branch in this repo: $STA$repobr$OFF"
 		echo -e "$INF Nothing else to choose from.$OFF"
 	fi
 
@@ -432,22 +533,49 @@ select_remote() {
 	return 0
 }
 
-# limit_scope - backport log stops at  the supplied upstream commit
+#** select_localbr - choose from available local branches in current dir
+#
+# Provides the upstream reference for searching for upstream commits.
+#
+# Arguments: none
+#
+# Globals:
+#   updir
+#   currentbranch
+#   configtable
+#*
+select_localbr() {
+	local -a branches=()
+
+	# This git command prints the branches without decoration, since
+	# there is no porcelain switch for git branch.
+	mapfile -t branches <<< $(git for-each-ref --format='%(refname:short)' refs/heads/)
+
+	if ((${#branches[@]} > 1)); then
+		echo -e "\n$UND${MNU}Select the lcal branch$OFF"
+		select_from_array branches "branches" currentbranch
+	else
+		echo -e "$INF Only one branch in this repo: $STA$currentbranch$OFF"
+		echo -e "$INF Nothing else to choose from.$OFF"
+	fi
+
+	git checkout "$currentbranch"
+	configtable[currentbranch]="$currentbranch"
+}
+
+#** limit_scope - backport log stops at  the supplied upstream commit
 #
 # This is done by commenting out hashes in the backport log that are
 # beyond the supplied scope commit. These comment delimiter will be a
 # leading '#+ ' on the lines of the commits that go beyond the scope.
 #
 # GLOBALS:
+#   outdir  - destination directory for files output by this script
 #   chlog   - the backport log file
 #   upscope - the upstream limiting commit
 #             this commit will also be excluded, if it's in the
 #             backport log.
-#
-# ARGUMENTS: none
-#
-# RETURNS: none
-#
+#*
 limit_scope() {
 	local delim=
 	local line
@@ -479,16 +607,167 @@ limit_scope() {
 	echo -e "$OFF"
 }
 
+#** show_paths - show the current user supplied paths
+#
+# Globals:
+#   path - the aggregate path provided by user
+#
+show_paths() {
+	local -a pthary=()
+	local -i pad=32
+	local padstr
+	local path="${configtable[path]}"
+
+	[ -z "$path" ] && { echo -e "\n "; return; }
+
+	padstr="$(ui_rptchr ' ' $pad)"
+	pthary=( $path )
+
+	echo -e "$STA${pthary[0]}"
+	printf "$padstr%s\n" "${pthary[@]:1}"
+}
+
+#** test_reqparms() - see if all the required params have been entered
+#
+# Globals:
+#   configtable
+#   exitmsgary
+#   exit_nodncmt
+#   exit_nooutd
+#   exit_nopath
+#   exit_norepobr
+#
+# Returns:
+#   0 if all required parameters are present
+#   1 if there are any missing
+#
+test_reqparms() {
+	local -i stat=0
+	[ -n "${configtable[outdir]}" ] || { stat=1; echo -e "$WRN${exitmsgary[exit_nooutd]}"; }
+	[ -n "${configtable[dncmt]}"  ] || { stat=1; echo -e "$WRN${exitmsgary[exit_nodncmt]}"; }
+	[ -n "${configtable[path]}"   ] || { stat=1; echo -e "$WRN${exitmsgary[exit_nopath]}"; }
+	[ -n "${configtable[repobr]}" ] || { stat=1; echo -e "$WRN${exitmsgary[exit_norepobr]}"; }
+	((stat == 0)) || ui_press_any
+	return $stat
+}
+
+#** clear_parms - zero the parameters
+#
+# Globlals:
+#   configtable
+#
+clear_parms() {
+	local key
+
+	for key in "${!configtable[@]}"; do
+		key=${key// /}
+		configtable["$key"]=
+	done
+}
+
+show_upstreamdir() {
+	$b_localus && echo -n -e "${INF}default is PWD: "
+	echo -e -n $STA${configtable[updir]}$OFF
+}
+
+#** show_menu - display the user menu in ui mode
+#
+# Globals:
+#
+show_menu() {
+	local mbl_menu
+
+	local mbl_menu=$(
+cat <<EOF
+$MNU$UND
+mkbackportlog - patchtools: $STA$version$OFF
+$MNU$UND
+Required$OFF
+$MNU o$OFF - Output Directory         : $STA${configtable[outdir]}$OFF
+$MNU d$OFF - Downstream RHEL commit   : $STA${configtable[dncmt]}$OFF
+$MNU b$OFF - Upstream repo/branch     : $STA${configtable[repobr]}$OFF
+$MNU p$OFF - Path(s) to  search       : $(show_paths)\
+$MNU$UND
+Optional$OFF
+$MNU u$OFF - Upstream repo directory  : $(show_upstreamdir)
+$MNU s$OFF - Start at upstream commit : $STA${configtable[upcmt]}$OFF
+$MNU e$OFF - End at upstream commit   : $STA${configtable[upscope]}$OFF
+$MNU B$OFF - Current Downstream Branch: $STA$currentbranch$OFF
+$MNU$UND
+Functional$OFF
+$MNU r$OFF - Run with the above parameters
+$MNU C$OFF - Clear all parameters
+$MNU q$OFF - Quit this script
+$MNU h$OFF - Help
+\0
+EOF
+)
+	echo -e "$mbl_menu"
+}
+
+menu_parser() {
+	local mp_in="$1"
+
+	case "$mp_in" in
+		q ) b_interactive=false
+		    exitme $exit_ok
+		    ;;
+		d ) getuser "Downstream RHEL commit: " dncmt
+		    is_validcmtexpr && configtable[dncmt]="$dncmt"
+		    ;;
+		p ) getuser "Path(s) to be searched: " path
+		    configtable[path]="$path"
+		    ;;
+		o ) getuser "Directory to receive output files: " outdir
+		    get_pathopt "$outdir" outdir && configtable[outdir]="$outdir"
+		    ;;
+		u ) getuser "Upstream repo directory: " updir
+		    get_pathopt "$updir" updir && configtable[updir]="$updir"
+		    b_localus=false
+		    ;;
+		s ) getuser "Start at this upstream commit: " upcmt
+		    is_validcmtexpr "$upcmt" && configtable[upcmt]="$upcmt"
+		    ;;
+		e ) getuser "End at this upstream commit: " upscope
+		    is_validcmtexpr "$upscope" && configtable[upscope]="$upscope"
+		    ;;
+		b ) select_remote
+		    ;;
+		B ) select_localbr
+		    ;;
+		C ) clear_parms
+		    ;;
+		r ) test_reqparms && return 1
+		    ;;
+		h ) usage
+	esac
+
+	return 0
+}
+
+menu_loop() {
+	local menuin
+
+	while :; do
+		cfg_read
+		show_menu
+		promptgetchar "${MNU}Enter one of the above: $OFF" menuin
+		# If all required params are there and user pressed 'r',
+		# then break and run
+		menu_parser $menuin || break
+		cfg_write
+	done
+}
+
+#** main
+#*
 main() {
 	local mainbranch
 	local currentbranch
 	local -a tmpary=()
-	local repobr
 	local mypid
 
 	init_env
-
-	(($# >= 1)) || { usage; exitme $exit_ok; }
 
         # Trap for control-c
         trap control_c SIGINT
@@ -497,22 +776,36 @@ main() {
 
 	read -r mainbranch <<< "$(git branch -r | grep origin/HEAD | cut -d'>' -f2)"
 	currentbranch=$(get_currentbranch)
+	configtable[currentbranch]="$currentbranch"
 
-	test_help "$1"
-	parseops "$@"
+	# If using the current dir (default), set updir here.
+	if [ -z "$updir" ]; then
+		updir="$PWD"
+		configtable[updir]="$PWD"
+	fi
+
+	[[ "$updir" == "$PWD" ]] && b_localus=true || b_localus=false
+
+	# update the configfile before going any further
+	cfg_write
+
+	if (( $# == 0 )); then
+		b_interactive=true
+		menu_loop
+	else
+		b_interactive=false
+		test_help "$1"
+		parseops "$@"
+		select_remote repobr
+	fi
+
+	b_interactive=false
 
 	# If no dncmt, then complain and exit.
 	[ -n "$dncmt" ] || exitme $exit_nodncmt "$dncmt"
 
 	# Exit if no outdir
 	[ -n "$outdir" ] || exitme $exit_nooutd
-
-	# Id using the current dir (default), set updir here.
-	if $b_localus; then
-		updir="$PWD"
-	fi
-
-	select_remote repobr
 
 	# If the user did not input an upstream commit, then extract the
 	# upstream commit from the submitted RHEL commit, which is the most
@@ -528,9 +821,9 @@ main() {
 	check_log "$outdir/$dnlog"
 	check_log "$outdir/$chlog"
 
-	echo -e "${INF}Upstream repo:branch : $STA$updir:$repobr$OFF"
-	echo -e "${INF}Upstream commit      : $STA$upcmt$OFF"
-	echo -e "${INF}Downstream branch    : $STA$mainbranch$INF"
+	echo -e "${INF}Upstream branch   : $STA$repobr$OFF"
+	echo -e "${INF}Upstream commit   : $STA$upcmt$OFF"
+	echo -e "${INF}Downstream branch : $STA$mainbranch$INF"
 	# echo -e "${INF}Current Downstream branch : $STA$currentbranch$INF"
 
 	if [ -n "$path" ]; then
@@ -555,7 +848,7 @@ main() {
 	# Get the list of upstream commits starting from the one extracted from
 	# the submitted RHEL commit with the -dc option.
 	ui_cd "$updir"
-	gitnice -r -c -d --no-merges "$upcmt..$repobr" $path 2>&1 | tee "$outdir/$uplog"
+	gitnice -r -c -d --no-merges "$upcmt^..$repobr" $path 2>&1 | tee "$outdir/$uplog"
 	ui_cd -
 
 	echo -e "$STA$PWD$OFF"
@@ -563,7 +856,7 @@ main() {
 
 	echo -e "$STA"
 	echo -e "${STA}Creating $outdir/$dnlog$INF"
-	extup -r -n -u "$updir" "$dncmt..$mainbranch" $path 2>&1 | tee "$outdir/$dnlog"
+	extup -r -n -u "$updir" "$dncmt^..$mainbranch" $path 2>&1 | tee "$outdir/$dnlog"
 
 	echo
 	echo -e "${STA}Creating $outdir/$chlog$INF"
