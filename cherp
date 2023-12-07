@@ -58,12 +58,19 @@ declare b_cmdline=false		# boolean indicating a comman line call
 #########################################
 # Config Variables
 #########################################
+declare configfile=
 declare upcmtstartline		# Line in upcommitsfile to start cherrypick
 declare dnorighead		# original downstream head at new session
 declare lastuphash		# most recently applied upstream commit hash
 declare workdir			# scratch directory for the session
 declare upcommitsfile		# File of upstream commits to cherry-pick
 declare b_conflict		# last attempt generated a conflict
+declare str_jira=
+declare str_upstream=
+declare str_brew=
+declare str_test=
+declare stophash=
+declare lastgoodcommit		# last commit with no errors
 
 #########################################
 # Global Variables
@@ -72,6 +79,7 @@ declare -i menupad=36
 declare cmtmsgfile=/dev/shm/gcpcmtmsgfile
 declare b_lasthashvalid=false
 declare lasttagfile="/dev/shm/gcplasttag"
+declare lastuplog
 
 declare b_new=false		# new session
 declare b_single=false		# only perform single cherrypick
@@ -96,10 +104,6 @@ declare stophash=
 ########################################
 declare str_herald=
 declare str_conflicts=
-declare str_jira=
-declare str_upstream=
-declare str_brew=
-declare str_test=
 
 init_global_strings() {
 str_herald="\n$MNU${UND}Patchtools v$version$OFF\n\n${MNU}cherp - Automates git cherry-pick$OFF\n"
@@ -844,6 +848,7 @@ function show_settings {
 	local lastbrcmt
 	local orighead
 	local settings
+	local lgc=$(gitnice "$lastgoodcommit")
 
 	subjectprefix="$(git config format.subjectprefix)"
 	lasttag=$(cat $lasttagfile)
@@ -862,7 +867,7 @@ $MNU
     ${UND}Downstream Environment  $OFF
     Most recent tag          : $STA$lasttag$OFF
     Original Head            : $STA${orighead:0:cols}$OFF
-    Current Head             : $STA${lastbrcmt:0:cols}$OFF
+    Last Good Commit         : $STA${lgc:0:cols}$OFF
 $MNU B $OFF Current git branch       : $STA$(get_gitbranch)$OFF
 $MNU b $OFF Backport File            : $STA$upcommitsfile$OFF
 $MNU w $OFF Working directory        : $STA$workdir$OFF
@@ -992,10 +997,29 @@ edit_commit() {
 #       RETURNS:  none
 #===============================================================================
 abort_cherp() {
+	local cmt
+
 	init_cmdline_call
 	git cherry-pick --abort 2>/dev/null
+	# Get the last succesful commit and git reset to it.
+	cmt="$(gitnice | cut -d' ' -f1)"
+	git reset --hard "$cmt"
 	b_conflict=false
 	exit_cherp $exit_good
+}
+
+#===  FUNCTION  ================================================================
+#          NAME:  skip
+#   DESCRIPTION:  Exit the script in an orderly fashion.
+#    PARAMETERS:  $1 - true if command line call
+#       GLOBALS:  none
+#       RETURNS:  none
+#===============================================================================
+skip() {
+	init_cmdline_call
+	b_conflict=false
+	mark_done "$uphash" "#"
+	get_next_cherrypick
 }
 
 #===  FUNCTION  ================================================================
@@ -1079,6 +1103,8 @@ run_commit() {
 	currentuphash=$lastuphash
 	stage_commit
 	mark_done $currentuphash
+	lastgoodcommit="$(gitnice | cut -d' ' -f1)"
+	set_cfg_item "lastgoodcommit" "$lastgoodcommit"
 
 	exit_cherp $exit_good
 	# get_next_cherrypick
@@ -1110,22 +1136,57 @@ run_single() {
 #===  FUNCTION  ================================================================
 #          NAME:  mark_done
 #   DESCRIPTION:  Mark the line in the upcommitsfile corresponding to the hash
-#                 with a leading + to indicate it's been processed by cherp.
-#    PARAMETERS:  uphash
+#                 with a leading char to indicate it's been processed by cherp.
+#    PARAMETERS:  $1 - uphash
+#    		  $2 - optional user supplied mark
 #       GLOBALS:  upcommitsfile
 #       RETURNS:  0 on success, nonzero on fail
 #===============================================================================
 mark_done() {
 	local uphash="$1"
+	local mark='+'		# the default leading char
 	local line
 	local -i lnum
 	local stat
+
+	# If user passed a char in $2, then it means user wants to apply a
+	# different leading mark.
+	[ -n "$2" ] && mark="$2"
 
 	line=$(grep -n -m1 "$uphash" "$upcommitsfile")
 	(($? == 0)) || return 1
 	lnum=$(cut -d: -f1 <<< "$line")
 	line=$(cut -d: -f2- <<< "$line")
-	line="+ $line"
+	line="$mark $line"
+	ui_replaceline "$lnum" "$line" "$upcommitsfile"
+	return 0
+}
+
+#===  FUNCTION  ================================================================
+#          NAME:  clear_done
+#   DESCRIPTION:  Mark the line in the upcommitsfile corresponding to the hash
+#                 with a leading char to indicate it's been processed by cherp.
+#    PARAMETERS:  $1 - uphash
+#    		  $2 - optional user supplied mark
+#       GLOBALS:  upcommitsfile
+#       RETURNS:  0 on success, nonzero on fail
+#===============================================================================
+clear_done() {
+	local uphash="$1"
+	local mark='+'		# the default leading char
+	local line
+	local -i lnum
+	local stat
+
+	# If user passed a char in $2, then it means user wants to apply a
+	# different leading mark.
+	[ -n "$2" ] && mark="$2"
+
+	line=$(grep -n -m1 "$uphash" "$upcommitsfile")
+	(($? == 0)) || return 1
+	lnum=$(cut -d: -f1 <<< "$line")
+	line=$(cut -d: -f2- <<< "$line")
+	line="$mark $line"
 	ui_replaceline "$lnum" "$line" "$upcommitsfile"
 	return 0
 }
@@ -1173,14 +1234,17 @@ Make sure the hashes in $STA$upcommitsfile$INF are all valid.$OFF
 \0
 EOF
 )
+	lastgoodcommit=$(gitnice | cut -d' ' -f1)
+	set_cfg_item "lastgoodcommit" "$lastgoodcommit"
+
 	commit=$(git log --oneline -n1 "$uphash")
-	# echo "commit: $commit"
 	echo -e "${INF}Processing : $STA${commit:0:$wcols}$OFF"
 
 	if $b_nit; then
 		git cherry-pick -n "$uphash"
 	else
-		git cherry-pick "$uphash"
+		git -c merge.renameLimit=1 cherry-pick -x "$uphash"
+		# err=$(git show "$uphash" | git apply -3 --index 2>&1 > /dev/null)
 	fi
 
 	gitstat=$?
@@ -1205,6 +1269,7 @@ EOF
 			lastuphash=$uphash
 			# echo -e "Saving: $BLD${commit:0:$wcols}$OFF"
 			show_status internal
+			[ -n "$err" ] && echo -e "$WRN$err$OFF"
 			exit_cherp $exit_conflict
 		}
 	fi
@@ -1373,17 +1438,15 @@ get_cfg_item() {
 #===============================================================================
 save_session() {
 	# echo -e "$UND\0save_session$OFF"
+	local -a keys=()
+	local fd
 
-	set_cfg_item "upcmtstartline" "$upcmtstartline"
-	set_cfg_item "dnorighead"     "$dnorighead"
-	set_cfg_item "lastuphash"     "$lastuphash"
-	set_cfg_item "workdir"        "$workdir"
-	set_cfg_item "upcommitsfile"  "$upcommitsfile"
-	set_cfg_item "b_conflict"     $b_conflict
-	set_cfg_item "str_jira"       "$str_jira"
-	set_cfg_item "str_upstream"   "$str_upstream"
-	set_cfg_item "str_brew"       "$str_brew"
-	set_cfg_item "str_test"       "$str_test"
+	exec {fd}< "$configfile"
+	while IFS+="=" read -ru $fd key; do
+		key="$(echo "$key" | cut -d' ' -f1)"
+		set_cfg_item "$key" "${!key}"
+	done
+	exec {fd}<&-
 }
 
 #===  FUNCTION  ================================================================
@@ -1401,7 +1464,6 @@ save_session() {
 #===============================================================================
 read_session() {
 	# echo -e "$UND\0read_session$OFF"
-	local configfile=
 	local cfgtemplate=
 	local temp
 
@@ -1521,6 +1583,9 @@ init_current_session() {
 	set_cfg_item "upcmtstartline" "$upcmtstartline"
 	set_cfg_item "b_conflict"     $b_conflict
 	git cherry-pick --abort > /dev/null 2>&1
+	lastuphash=
+	set_cfg_item "lastuphash" "$lastuphash"
+#	[ -n "$lastgoodcommit" ] && git reset --hard "$lastgoodcommit"
 	init_session
 }
 
@@ -1659,6 +1724,9 @@ else
 	    case "$checked_cmd" in
 		"--abort" )
 			abort_cherp
+			;;
+		"--skip" )
+			skip
 			;;
 		"--branch" )
 			set_gitbranch
