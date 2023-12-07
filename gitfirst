@@ -1,0 +1,31 @@
+#!/bin/bash
+#
+# gitfirst
+
+declare usagestr=$(
+cat <<EOF
+
+$(basename $0) file
+
+Description:
+	Find the git commit that created the file.
+
+Arguments:
+	File - the file you want the first commit from
+\0
+EOF
+)
+
+usage() {
+	echo -en $usagestr
+	exit 1
+}
+
+main() {
+	git log --diff-filter=A -- "$1"
+}
+
+main $@
+
+exit 0
+

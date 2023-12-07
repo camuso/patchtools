@@ -1,0 +1,40 @@
+#!/bin/bash
+#
+# gitfor1pat
+#
+
+declare directory=$1
+declare currentnumber="$2"
+declare commitspec=$3
+declare reroll_count=0
+
+function usage() {
+	echo
+	echo "usage: gitfor1pat <directory> <patch-number> <commitspec>"
+#	echo "usage: gitfor1pat <options> <directory> <patch-number> <commit>"
+#	echo -e "\toptions      - any valid optons for \"git format-patch\""
+	echo -e "\tdirectory    - destination of patch"
+	echo -e "\tpatch-number - number of the patch"
+	echo -e "\tcommitspec   - commit specification of patch to be formatted"
+	echo
+	echo -e "\tPatch will be named: \"number-summary.patch\""
+	echo
+	exit 1
+}
+
+([ "$1" == "h" ] || [ "$1" == "-h" ]) && usage
+[ $# -lt 3 ] && usage
+
+[ "$4" ] && reroll_count=$4
+
+set -x
+git format-patch \
+	-1 \
+	--reroll-count=$reroll_count \
+	--no-renames \
+	--signoff \
+	--stat=80 \
+	--start-number="$currentnumber" \
+	--output-directory "$directory" \
+	"$commitspec"
+
