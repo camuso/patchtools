@@ -151,7 +151,6 @@ cfg_set_item() {
 	local key="$1"
 	local item="$2"
 
-
 	cfg_write_key "$key" "$item"
 }
 
