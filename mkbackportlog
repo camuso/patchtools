@@ -80,6 +80,7 @@ control_c()
 	${WRN}Ctrl-c detected$INF
 Cleaning up and exiting.$OFF
 "
+	b_interactive=false
 	exitme $CTLC_EXIT
 }
 
@@ -206,10 +207,16 @@ EOF
 #*
 get_pathopt() {
 	local path="$1"
+	local -a pathary=( $path )
+	local -a  pary=()
 	local -n optname="$2"
 
-	[ -e "$path" ] || exitme $exit_invpath "$path"
-	optname=$(realpath "$path")
+	for p in ${pathary[@]}; do
+		[ -e "$p" ] || exitme $exit_invpath "$path"
+		pary+=( "$p" )
+	done
+
+	optname="${pary[@]}"
 }
 
 #** get_varopt - replace commas with spaces
@@ -624,7 +631,7 @@ show_paths() {
 	pthary=( $path )
 
 	echo -e "$STA${pthary[0]}"
-	printf "$padstr%s\n" "${pthary[@]:1}"
+	printf "$padstr%s\n" ${pthary[@]:1}
 }
 
 #** test_reqparms() - see if all the required params have been entered
@@ -644,9 +651,10 @@ show_paths() {
 test_reqparms() {
 	local -i stat=0
 	[ -n "${configtable[outdir]}" ] || { stat=1; echo -e "$WRN${exitmsgary[exit_nooutd]}"; }
-	[ -n "${configtable[dncmt]}"  ] || { stat=1; echo -e "$WRN${exitmsgary[exit_nodncmt]}"; }
 	[ -n "${configtable[path]}"   ] || { stat=1; echo -e "$WRN${exitmsgary[exit_nopath]}"; }
 	[ -n "${configtable[repobr]}" ] || { stat=1; echo -e "$WRN${exitmsgary[exit_norepobr]}"; }
+	([ -n "${configtable[dncmt]}"  ] || [ -n "${configtable[upcmt]}"  ]) ||
+		{ stat=1; echo -e "$WRN${exitmsgary[exit_nodncmt]}"; }
 	((stat == 0)) || ui_press_any
 	return $stat
 }
@@ -676,6 +684,7 @@ show_upstreamdir() {
 #
 show_menu() {
 	local mbl_menu
+	local addpath=
 
 	local mbl_menu=$(
 cat <<EOF
@@ -684,14 +693,17 @@ mkbackportlog - patchtools: $STA$version$OFF
 $MNU$UND
 Required$OFF
 $MNU o$OFF - Output Directory         : $STA${configtable[outdir]}$OFF
-$MNU d$OFF - Downstream RHEL commit   : $STA${configtable[dncmt]}$OFF
 $MNU b$OFF - Upstream repo/branch     : $STA${configtable[repobr]}$OFF
-$MNU p$OFF - Path(s) to  search       : $(show_paths)\
+$MNU p$OFF - Path(s) to  search       : $(show_paths)
+$MNU P$OFF - Add to search path
+$MNU$UND
+One of the following:$OFF
+$MNU d$OFF - Downstream RHEL commit   : $STA${configtable[dncmt]}$OFF
+$MNU s$OFF - Start at upstream commit : $STA${configtable[upcmt]}$OFF
 $MNU$UND
 Optional$OFF
-$MNU u$OFF - Upstream repo directory  : $(show_upstreamdir)
-$MNU s$OFF - Start at upstream commit : $STA${configtable[upcmt]}$OFF
 $MNU e$OFF - End at upstream commit   : $STA${configtable[upscope]}$OFF
+$MNU u$OFF - Upstream repo directory  : $(show_upstreamdir)
 $MNU B$OFF - Current Downstream Branch: $STA$currentbranch$OFF
 $MNU$UND
 Functional$OFF
@@ -716,7 +728,17 @@ menu_parser() {
 		    is_validcmtexpr && configtable[dncmt]="$dncmt"
 		    ;;
 		p ) getuser "Path(s) to be searched: " path
-		    configtable[path]="$path"
+		    get_pathopt "$path" path && {
+			path=$(echo "$path" | tr '\n' ' ')
+			configtable[path]="$path"
+		    }
+		    ;;
+		P ) getuser "Additional Path(s) to be searched: " addpath
+		    get_pathopt "$addpath" addpath && {
+			addpath=$(echo "$addpath" | tr '\n' ' ')
+			path="$path $addpath"
+			configtable[path]="$path"
+		    }
 		    ;;
 		o ) getuser "Directory to receive output files: " outdir
 		    get_pathopt "$outdir" outdir && configtable[outdir]="$outdir"
@@ -797,15 +819,10 @@ main() {
 		test_help "$1"
 		parseops "$@"
 		select_remote repobr
+		test_reqparms
 	fi
 
 	b_interactive=false
-
-	# If no dncmt, then complain and exit.
-	[ -n "$dncmt" ] || exitme $exit_nodncmt "$dncmt"
-
-	# Exit if no outdir
-	[ -n "$outdir" ] || exitme $exit_nooutd
 
 	# If the user did not input an upstream commit, then extract the
 	# upstream commit from the submitted RHEL commit, which is the most
@@ -845,8 +862,9 @@ main() {
 	echo -e "$STA$PWD$OFF"
 	echo -e "${STA}Creating $outdir/$uplog$INF"
 
-	# Get the list of upstream commits starting from the one extracted from
-	# the submitted RHEL commit with the -dc option.
+	# Get the list of upstream commits starting from the one provided
+	# as the upstream start or the one extracted from the submitted
+	# RHEL commit with the -dc option.
 	ui_cd "$updir"
 	gitnice -r -c -d --no-merges "$upcmt^..$repobr" $path 2>&1 | tee "$outdir/$uplog"
 	ui_cd -
