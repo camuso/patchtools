@@ -70,7 +70,6 @@ declare str_upstream=
 declare str_brew=
 declare str_test=
 declare stophash=
-declare lastgoodcommit		# last commit with no errors
 
 #########################################
 # Global Variables
@@ -564,7 +563,8 @@ get_next_cherrypick() {
 		[ "$(ui_strindex "$ignore_str" "${line:0:1}")" -ge 0 ] || break
 	done
 
-	if [ "$idx" -gt "$count" ]; then
+	if [ "$idx" -gt "$count" ] ; then
+	# if [ "$idx" -gt "$count" ] && [ -n "$currentupcommit" ]; then
 		echo -en "$STA${currentupcommit:0:$tcols}$OFF "
 		echo -e "${INF}was the last upstream commit in file: $STA$upcommitsfile$OFF"
 		return 1
@@ -789,7 +789,7 @@ $MNU
     $MNU j $OFF JIRA link                : $STA$str_jira$OFF
     $MNU b $OFF Brew or build info       : $STA$str_brew$OFF
     $MNU t $OFF Test information         : $STA$str_test$OFF
-    $MNU p $OFF Current subject prefix   : $STA$subjectprefix$OFF
+    $MNU p $OFF Current subject prefix   : $STA$(git config format.subjectprefix)$OFF
     $MNU q $OFF Quit to main menu
 \0
 EOF
@@ -866,7 +866,7 @@ $(show_next_cherrypick)
 $MNU
     ${UND}Downstream Environment  $OFF
     Most recent tag          : $STA$lasttag$OFF
-    Original Head            : $STA${orighead:0:cols}$OFF
+    Head at Session Start    : $STA${orighead:0:cols}$OFF
     Last Good Commit         : $STA${lgc:0:cols}$OFF
 $MNU B $OFF Current git branch       : $STA$(get_gitbranch)$OFF
 $MNU b $OFF Backport File            : $STA$upcommitsfile$OFF
@@ -1103,8 +1103,6 @@ run_commit() {
 	currentuphash=$lastuphash
 	stage_commit
 	mark_done $currentuphash
-	lastgoodcommit="$(gitnice | cut -d' ' -f1)"
-	set_cfg_item "lastgoodcommit" "$lastgoodcommit"
 
 	exit_cherp $exit_good
 	# get_next_cherrypick
@@ -1124,8 +1122,6 @@ run_single() {
 	echo -e "$UND\0run_single$OFF"
 	b_single=true
 
-	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
-	set_cfg_item "dnorighead" "$dnorighead"
 	set_cfg_item "lastuphash" "$currentuphash"
 
 	cherrypick
@@ -1234,9 +1230,6 @@ Make sure the hashes in $STA$upcommitsfile$INF are all valid.$OFF
 \0
 EOF
 )
-	lastgoodcommit=$(gitnice | cut -d' ' -f1)
-	set_cfg_item "lastgoodcommit" "$lastgoodcommit"
-
 	commit=$(git log --oneline -n1 "$uphash")
 	echo -e "${INF}Processing : $STA${commit:0:$wcols}$OFF"
 
@@ -1488,7 +1481,7 @@ read_session() {
 		fetch_upstream_repo
 	fi
 
-	cfg_get_item "dnorighead" dnorighead
+	# cfg_get_item "dnorighead" dnorighead
 	[ "$dnorighead" ]     || dnorighead="HEAD"
 	[ "$upcmtstartline" ] || return 1
 	[ "$workdir" ]        || set_working_directory
@@ -1576,16 +1569,13 @@ init_newsession() {
 #       RETURNS:  none
 #===============================================================================
 init_current_session() {
-	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
 	upcmtstartline=1
 	b_conflict=false
-	set_cfg_item dnorighead "$dnorighead"
 	set_cfg_item "upcmtstartline" "$upcmtstartline"
 	set_cfg_item "b_conflict"     $b_conflict
 	git cherry-pick --abort > /dev/null 2>&1
 	lastuphash=
 	set_cfg_item "lastuphash" "$lastuphash"
-#	[ -n "$lastgoodcommit" ] && git reset --hard "$lastgoodcommit"
 	init_session
 }
 
