@@ -260,7 +260,7 @@ cfg_read_cfgfile() {
 
 	while IFS="= " read -r key val; do
 		key=${key// /}
-		cfgtbl["$key"]=$val
+		cfgtbl["$key"]="$val"
 		eval "$key"="\"$val\""
 	done < "$cfgfile"
 }
