@@ -607,7 +607,7 @@ getuser() {
     while read -e -r input_line && [[ $input_line == *\\ ]]; do
         input_line="$(echo "$input_line" | sed 's/\\$//')"  # Remove backslash
         uigu_var+="$(eval "echo $input_line")"
-	uigu_var+=" "
+        uigu_var+=" "
         echo -ne "$INF> $OFF"  # Add a continuation prompt
     done
 
@@ -616,7 +616,7 @@ getuser() {
 }
 
 getuser_noslash() {
- 	local promptstring="$1"
+	local promptstring="$1"
 	local -n uigu_var="$2"
 
 	echo -ne "$INF$promptstring$OFF"
