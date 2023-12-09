@@ -865,9 +865,9 @@ $(show_most_recent_cherrypick)\
 $(show_next_cherrypick)
 $MNU
     ${UND}Downstream Environment  $OFF
-    Most recent tag          : $STA$lasttag$OFF
+    Last Good RHEL Commit    : $STA${lgc:0:cols}$OFF
     Head at Session Start    : $STA${orighead:0:cols}$OFF
-    Last Good Commit         : $STA${lgc:0:cols}$OFF
+    Most recent tag          : $STA$lasttag$OFF
 $MNU B $OFF Current git branch       : $STA$(get_gitbranch)$OFF
 $MNU b $OFF Backport File            : $STA$upcommitsfile$OFF
 $MNU w $OFF Working directory        : $STA$workdir$OFF
