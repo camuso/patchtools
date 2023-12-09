@@ -706,6 +706,44 @@ show_upstreamdir() {
 	echo -e -n $STA${configtable[updir]}$OFF
 }
 
+delete_paths() {
+	local -n dp_path="$1"
+	local -a pathary=()
+	local -i patharysiz=
+	local sel=
+
+	pathary=( $dp_path )
+	patharysiz=${#pathary[@]}
+
+	if ((patharysiz >= 1)); then
+		echo -e "\n$UND${MNU}Select the path(s) to delete$OFF"
+		echo -e "${MNU}Press $qstr when you're done.$OFF"
+
+		while ((patharysiz >=1)); do
+			for((i = 0; i < $patharysiz; ++i)); do
+				printf "$MNU%2s. $OFF" "$((i + 1))"
+				echo "${pathary[i]}"
+			done
+
+			if loop_range_q 1 "$patharysiz" sel; then
+				((--sel))
+				unset pathary[sel]
+				pathary=( ${pathary[@]} )
+				patharysiz=${#pathary[@]}
+				((patharysiz < 1)) && {
+					echo -e "${WRN}No more paths to delete!$OFF"
+					break
+				}
+			else
+				break
+			fi
+		done
+	else
+		echo -e "${INF}There are no paths to delete.$OFF"
+	fi
+	dp_path="${pathary[@]}"
+}
+
 #** show_menu - display the user menu in ui mode
 #
 # Globals:
@@ -722,14 +760,13 @@ $MNU$UND
 Required$OFF
 $MNU o$OFF - Output Directory         : $STA${configtable[outdir]}$OFF
 $MNU b$OFF - Upstream repo/branch     : $STA${configtable[repobr]}$OFF
-$MNU p$OFF - Path(s) to  search       : $(show_paths)
-$MNU P$OFF - Add to search path
-$MNU$UND
-One of the following:$OFF
 $MNU d$OFF - Downstream RHEL commit   : $STA${configtable[dncmt]}$OFF
-$MNU s$OFF - Start at upstream commit : $STA${configtable[upcmt]}$OFF
+$MNU p$OFF - Path(s) to  search       : $(show_paths)
+$MNU A$OFF - Add to search path
+$MNU D$OFF - Delete from search path
 $MNU$UND
 Optional$OFF
+$MNU s$OFF - Start at upstream commit : $STA${configtable[upcmt]}$OFF
 $MNU e$OFF - End at upstream commit   : $STA${configtable[upscope]}$OFF
 $MNU u$OFF - Upstream repo directory  : $(show_upstreamdir)
 $MNU B$OFF - Current Downstream Branch: $STA$currentbranch$OFF
@@ -761,12 +798,15 @@ menu_parser() {
 			configtable[path]="$path"
 		    }
 		    ;;
-		P ) getuser "Additional Path(s) to be searched: " addpath
+		A ) getuser "Additional Path(s) to be searched: " addpath
 		    get_pathopt "$addpath" addpath && {
 			addpath=$(echo "$addpath" | tr '\n' ' ')
 			path="$path $addpath"
 			configtable[path]="$path"
 		    }
+		    ;;
+		D ) delete_paths path
+		    configtable[path]="$path"
 		    ;;
 		o ) getuser "Directory to receive output files: " outdir
 		    get_pathopt -r "$outdir" outdir && configtable[outdir]="$outdir"
