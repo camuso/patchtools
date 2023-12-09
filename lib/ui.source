@@ -587,13 +587,36 @@ doyn() {
 #** getuser: reads user input
 #
 # Read multi char input terminated by RETURN/ENTER.
-# Input is returned in the reference variable
+# Lines ending in a backslash will be continued, as from
+# the command line.
+# Command strings will be expanded, e.g. $(find ..).
+# Input is returned in the reference variable.
 #
 # $1 - prompt string
 # $2 - reference variable to receive user input
 #*
 getuser() {
-	local promptstring="$1"
+    local promptstring="$1"
+    local -n uigu_var="$2"
+    local input_line
+
+    uigu_var=
+    echo -ne "$INF$promptstring$OFF"
+
+    # Read lines until the input doesn't end with a backslash
+    while read -e -r input_line && [[ $input_line == *\\ ]]; do
+        input_line="$(echo "$input_line" | sed 's/\\$//')"  # Remove backslash
+        uigu_var+="$(eval "echo $input_line")"
+	uigu_var+=" "
+        echo -ne "$INF> $OFF"  # Add a continuation prompt
+    done
+
+    # Add the last line without the backslash
+    uigu_var+="$(eval "echo $input_line" | sed 's/\\$//')"
+}
+
+getuser_noslash() {
+ 	local promptstring="$1"
 	local -n uigu_var="$2"
 
 	echo -ne "$INF$promptstring$OFF"
