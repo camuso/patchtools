@@ -31,6 +31,7 @@ declare -i exit_noupcmt=9	# can't find upcmt in dncmt log
 declare -i exit_nodncmt=10	# user did not supply a dncmt
 declare -i exit_nopath=11	# user did not supply a path to search
 declare -i exit_norepobr=12	# user did not supply an upstream repo/branch
+declare -i exit_noupstream=13	# PWD does not have an upstream repo
 
 declare -a exitmsgary=
 
@@ -48,6 +49,7 @@ exitmsgary=(
 "You did not provide a downstream (RHEL) commit."
 "You did not provide any paths to search, e.g. drivers/perf"
 "You did not provide an upstream repo/branch to search"
+" does not have an upstream repo."
 )
 
 exitme() {
@@ -143,55 +145,77 @@ Creates the following files in the <outdir>.
   $STA$uplog$OFF   - contains the upstream commits since$INF upcmt$OFF
   $STA$dnlog$OFF - contains the downstream commits since$INF dwncmt$OFF
   $STA$chlog$OFF   - contains the upstream commits that have not yeat been
-                   backported downstream.$MNU$UND
+                   backported downstream.
+
+If all the required inputs are satisfied, you will be prompted to select an
+upstream repo/branch from the list of upstream repo/branches found in your
+upstream directory (see$MNU -ud$OFF switch below).$MNU$UND
+
 Arguments$OFF$MNU
   path$OFF -$WRN This argument is REQUIRED$OFF
          A space separated list of paths and files to be searched
          for new upstream commits for the backport.
-	 At least one path must be given.$MNU$UND
-Switches$OFF
-  $WRN${UND}Required$OFF$MNU
-   -od$OFF - Directory to receive ouput files$MNU
-   -dc$OFF - Downstream commit, usually last RHEL commit for the given path(s).
-         Without the optional$MNU -uc$OFF switch, the upstream commit will be extracted
-         from this downstream commit and used as a starting point to search for
-         new upstream commits for the given path(s).$MNU
-  $WRN${UND}May Be Required$OFF$MNU
-   -ud$OFF - Directory having the upstream repo,
-         Without this switch, the script expects a remote upstream repo
-	 in$MNU \$PWD: $STA$PWD$OFF
-         If there is no upstream repo declared with the "${MNU}-ud$OFF" switch
-	 and no remote one in the$MNU \$PWD$OFF, then this script's behavior
-	 is$WRN UNDEFINED$OFF.$MNU
-  ${UND}Optional$OFF$MNU
-   -uc$OFF - Upstrream commit. Without this switch, the script will extract the
-         upstream commit from the requisite downstream commit.$MNU
-   -us$OFF - Upstream scope will be limited to before this commit.
+	 Can also have a$STA find$OFF expression, see example below.
+	 At least one path must be given.
+$MNU${UND}Switches$OFF
+  $WRN${UND}Required$OFF
+$MNU   -od$OFF - Directory to receive ouput files
+$MNU   -dc$OFF - Downstream commit, usually the most recent RHEL commit for the
+         given path(s).
+         This can be a commit hash or a tag, such as$MNU RHEL-9.3.0${OFF}.
+	 Required, because the script needs to now where to search in RHEL for
+	 commits that have already been backported.
+         The upstream commit will be extracted from this downstream commit and
+	 used as the upstream start commit, unless the upstream start commit is
+	 explicitly entered with the$MNU -us$OFF option below.
+$MNU  ${UND}Optional$OFF
+$MNU   -us$OFF - Upstream start commit. Without this switch, the script will extract the
+         upstream commit from the downstream commit provided by$MNU -dc$OFF above.
+	 This can be a tag, such as$MNU v6.4$OFF.
+$MNU   -ue$OFF - The upstream commit where you want to end the search.
          This argument will usually be an upstream tag, e.g.$MNU v6.7$OFF
-	 but it can also be an upstream commit.
-	 All commits occuring after this commit, will have a leading
-	"${MNU}#+ $OFF" prepended to their lines in the backport.log to tell scripts
-	like git-backport to ignore them.
-  ${UND}Informational$OFF$MNU
-   -V $OFF - show patchtools version and exit$MNU
-   -h $OFF - this help text$MNU
-$MNU$UND
-Example:$OFF$INF
-  $(basename "$0") \\\
+	 but it can also be an upstream commit hash.
+	 All commits occuring after this commit will have a leading
+	 "${MNU}#+ $OFF" prepended to their lines in the backport.log. Scripts like
+	 like git-backport will ignore lines with a leading "${MNU}#$OFF", and the
+	 "${MNU}+ $OFF" is added to inform that this commit is outside the scope of
+	 the search.
+$MNU   -ud$OFF - Directory having the upstream repo,
+         Without this switch, the script expects a remote upstream repo
+	 in the current$MNU \$PWD: $STA$PWD$OFF
+         If there is no upstream repo declared with the "${MNU}-ud$OFF" switch
+	 and no remote one in the current$MNU \$PWD$OFF, then this script will exit
+	 with an error message.
+  $MNU${UND}Informational$OFF
+  $MNU -V $OFF - show patchtools version and exit
+  $MNU -h $OFF - this help text
 
-        -dc d7f2756787f5 \\\
+$MNU${UND}Example:$OFF
+$INF  $(basename "$0") \\\
 
-        -ud /work/upstream/kernel \\\
+	-dc 975a8302ed36 \\\
 
-	-us v6.6 \\\
+        -us v6.4 \\\
 
-        -od ../backports/9.4/ipmi/ \\\
+	-ue v6.6 \\\
 
-        drivers/char/ipmi include/linux/ipmi.h include/linux/ipmi_smi.h
+        -od ../backports/perf \\\
+
+        -ud /work/linux/kernel \\\
+
+        drivers/perf arch/arm64/include/asm/apple_m1_pmu.h \\\
+
+	\$(find arch/arm64/kernel | grep perf) \\\
+
+	\$(find include/linux | grep perf)
 $OFF
-	Extract the upstream commit from RHEL commit d7f2756787f5 and
-	search the upstream repo in /work/upstream/kernel for newer
-	commits to the given paths.
+Output files will be written to$INF ../backports/perf$OFF.
+${INF}975a8302ed36$OFF is the hash for RHEL-9.3.0 in centos-9-stream. Commits
+involving the listed files are written to the$INF downstream.log$OFF file.
+Upstream commits, starting from$INF v6.4$OFF ending at$INF v6.6$OFF in $INF/work/linux/kernel$OFF,
+are written to the$INF upstream.log$OFF file.
+The$INF backports.log$OFF file will have the upstream commits, but with those already
+downstream having a leading$INF #$OFF. Commits beyond$INF v6.6$OFF will have a leading$INF #+$OFF.
 $OFF
 \0
 EOF
@@ -206,6 +230,8 @@ EOF
 #   $2 - receives the realpath name of path
 #*
 get_pathopt() {
+	local b_real=false
+	[[ "$1" == "-r" ]] && b_real=true && shift
 	local path="$1"
 	local -a pathary=( $path )
 	local -a  pary=()
@@ -213,6 +239,7 @@ get_pathopt() {
 
 	for p in ${pathary[@]}; do
 		[ -e "$p" ] || exitme $exit_invpath "$path"
+		$b_real && p="$(realpath "$p")"
 		pary+=( "$p" )
 	done
 
@@ -324,16 +351,18 @@ parseops() {
 
 		shift
 		case "$opt" in
-		    ud ) get_pathopt "$1" updir
+		    ud ) get_pathopt -r "$1" updir
 			 b_localus=false
 			 ;;
-		    od ) get_pathopt "$1" configtable[outdir]
+		    od ) get_pathopt -r "$1" configtable[outdir]
 			;;
-		    uc ) getcmt "$1" "$arg" configtable[upcmt]
-			 ;;
 		    dc ) getcmt "$1" "$arg" configtable[dncmt]
 			 ;;
-		    us ) getcmt "$1" "$arg" configtable[upscope]
+		    us ) getcmt "$1" "$arg" configtable[upcmt]
+			 ;;
+		    ue ) getcmt "$1" "$arg" configtable[upscope]
+			 ;;
+		    ub ) select_remote
 			 ;;
 		    S  ) get_varopt "$1" configtable[searchstr]
 			 ;;
@@ -653,8 +682,7 @@ test_reqparms() {
 	[ -n "${configtable[outdir]}" ] || { stat=1; echo -e "$WRN${exitmsgary[exit_nooutd]}"; }
 	[ -n "${configtable[path]}"   ] || { stat=1; echo -e "$WRN${exitmsgary[exit_nopath]}"; }
 	[ -n "${configtable[repobr]}" ] || { stat=1; echo -e "$WRN${exitmsgary[exit_norepobr]}"; }
-	([ -n "${configtable[dncmt]}"  ] || [ -n "${configtable[upcmt]}"  ]) ||
-		{ stat=1; echo -e "$WRN${exitmsgary[exit_nodncmt]}"; }
+	[ -n "${configtable[dncmt]}"  ] || { stat=1; echo -e "$WRN${exitmsgary[exit_nodncmt]}"; }
 	((stat == 0)) || ui_press_any
 	return $stat
 }
@@ -741,10 +769,10 @@ menu_parser() {
 		    }
 		    ;;
 		o ) getuser "Directory to receive output files: " outdir
-		    get_pathopt "$outdir" outdir && configtable[outdir]="$outdir"
+		    get_pathopt -r "$outdir" outdir && configtable[outdir]="$outdir"
 		    ;;
 		u ) getuser "Upstream repo directory: " updir
-		    get_pathopt "$updir" updir && configtable[updir]="$updir"
+		    get_pathopt -r "$updir" updir && configtable[updir]="$updir"
 		    b_localus=false
 		    ;;
 		s ) getuser "Start at this upstream commit: " upcmt
@@ -802,6 +830,8 @@ main() {
 
 	# If using the current dir (default), set updir here.
 	if [ -z "$updir" ]; then
+		git branch -r | grep -E -v "origin|$USER" ||
+			exitme $exit_noupstream "PWD: $PWD"
 		updir="$PWD"
 		configtable[updir]="$PWD"
 	fi
@@ -838,9 +868,10 @@ main() {
 	check_log "$outdir/$dnlog"
 	check_log "$outdir/$chlog"
 
-	echo -e "${INF}Upstream branch   : $STA$repobr$OFF"
-	echo -e "${INF}Upstream commit   : $STA$upcmt$OFF"
-	echo -e "${INF}Downstream branch : $STA$mainbranch$INF"
+	echo -e "${INF}Upstream branch       : $STA$repobr$OFF"
+	echo -e "${INF}Upstream Start commit : $STA$upcmt$OFF"
+	[ -n "$upscope" ] && 	echo -e "${INF}Upstream End Commit   : $STA$upscope$OFF"
+	echo -e "${INF}Downstream branch     : $STA$mainbranch$INF"
 	# echo -e "${INF}Current Downstream branch : $STA$currentbranch$INF"
 
 	if [ -n "$path" ]; then
