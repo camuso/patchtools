@@ -761,7 +761,7 @@ Required$OFF
 $MNU o$OFF - Output Directory         : $STA${configtable[outdir]}$OFF
 $MNU b$OFF - Upstream repo/branch     : $STA${configtable[repobr]}$OFF
 $MNU d$OFF - Downstream RHEL commit   : $STA${configtable[dncmt]}$OFF
-$MNU p$OFF - Path(s) to  search       : $(show_paths)
+$MNU p$OFF - Path(s) to search        : $(show_paths)
 $MNU A$OFF - Add to search path
 $MNU D$OFF - Delete from search path
 $MNU$UND
