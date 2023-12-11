@@ -1,0 +1,121 @@
+#!/bin/bash
+#
+# insertbzbrewfile
+
+declare usagestr=$(
+cat <<EOF
+
+$(basename $0) patchdir insertfile
+
+Description:
+  Inserts a file after the subject line in each patch file in the patchdir.
+
+Arguments:
+  patchdir   - directory containing the patchfiles
+  insertfile - file to be inserted after the subject line
+               No leading blank line, but must have a
+	       trailing blank line.
+
+\0
+EOF
+)
+
+usage() {
+	echo -en "$usagestr"
+	exit 1
+}
+
+declare index
+
+# getchar()
+#
+# Returns character in $1 followed by echo
+#
+function getchar {
+	local char
+	read -n1 char
+	echo
+
+	# In order to receive special characters, like '>', pass quotes
+	# to eval by escaping them on the command line.
+	#
+	[ $# -gt 0 ] && eval $1=\"$char\"
+}
+
+# promptgetchar()
+#
+# Prints a prompt passed in $1 and returns the char in $2
+#
+function promptgetchar {
+	local prompt=$1
+	echo -ne "$prompt"
+	getchar $2
+}
+
+# loop_yn()
+#
+# Loop until user gives either a y or n answer.
+# Simpler than the getyn() routine above.
+#
+# $1 - prompt string
+# $2 - the character to be returned
+#
+loop_yn() {
+	local ans
+	local x
+	while true; do
+		promptgetchar "$1" ans
+		for x in {y,Y,n,N}; do
+			[[ $x == $ans ]] && eval $2=$ans && return
+		done
+		echo -e "Please enter 'y' or 'n'."
+	done
+}
+
+main() {
+	declare dir="$1"	# directory containing the patch files
+	declare fins="$2"	# the file to insert into each of the patchfiles
+	declare filelist=/dev/shm/inscmtinfo.list
+	declare tempfile=/dev/shm/tempfile
+	local answer
+	local prompt
+	local sidx
+
+	[ $# -eq 2 ] || usage
+
+	ls -1 "$dir"/*.patch > $filelist
+
+	[ -s "$filelist" ] || {
+		echo -e "\n\tNo patch files detected in directory: $dir\n"
+		exit 1
+	}
+
+	printf "Inserting %s into %d patch files\n" \
+		"$fins" $(cat $filelist | wc -l)
+	loop_yn "Is this ok? [y/n] " answer
+	[ "$answer" == "n" ] && { echo -e "Exiting ...\n"; exit 1; }
+
+	while read pfile; do
+		echo "$pfile"
+		mv $pfile $tempfile
+
+		# Turn bash history off to prevent expansion of the !
+		set +H
+
+		# For the explanation of this command, see ...
+		# https://stackoverflow.com/questions/45105935/sed-to-find-the-first-empty-line-after-match-and-replace
+		sed "/^Subject:/!b;:a;n;/./ba;r "$fins"" $tempfile > $pfile
+
+		# Turn bash history back on
+		set -H
+	done < $filelist
+
+	rm -f $filelist
+	rm -f $tempfile
+	exit 0
+}
+
+main $@
+
+exit 0
+
