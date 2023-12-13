@@ -130,6 +130,13 @@ declare -a ui_err_msg=(
 )
 #*
 
+#** Special Char handling
+declare b_python3
+declare b_ncurses
+which python3 > /dev/null 2>&1 && b_python3=true || b_python3=false
+rpm -ql ncurses > /dev/null 2>&1 && b_ncurses=true || b_ncurses=false
+#*
+
 # Contlol-C exit code
 # see http://www.tldp.org/LDP/abs/html/exitcodes.html
 #
