@@ -17,7 +17,8 @@
 declare ui_loaded=true
 declare ui_b_debug=false
 
-declare ui_b_keypress=false	# True if keypress.c is compiled and ready
+declare EXEDIR=$(dirname "${0}")
+declare SRCLIB="$EXEDIR/lib"
 
 #** Text Attributes
 #
@@ -182,82 +183,6 @@ EOF
 	((${verstr:0:1} >= 4)) && return
 	echo -e "$warnstr"
 	ui_exit $ui_err_bashver
-}
-
-declare keypress_info=$(
-cat <<EOF
-There are some options in this script that require Alt-Shift keystrokes
-to execute. These options won't be available without the natively compiled
-keypress utility in this repo. These options can do things like delete
-files or reset git heads, etc. The alt-shift keystrokes provide a level
-of safety from inadvertent keystrokes modifying your development state.
-\0
-EOF
-)
-declare gcc_info=$(
-cat <<EOF
-If you want to enable the extended function keystroke options, exit this
-script and install gcc and ncurses.
-
-    sudo dnf install -y gcc ncurses
-
-Meanwhile, the script will run without the extended functionality.
-\0
-EOF
-)
-#** ui_testkeypress: Special Char handling
-#
-# GLOBALS
-#     ui_b_keypress: set if keypress is compiled and ready
-#
-ui_testkeypress() {
-	local b_ready
-	local err
-
-	if ([ -f "./keypress" ] && [ -x "./keypress" ]); then
-		ui_b_keypress=true
-		return 0
-	fi
-
-	[ -f "./keypress.c" ] || { ui_b_keypress=false; return 1; }
-
-	if which gcc > /dev/null 2>&1; then
-		b_ready=true
-	else
-		echo -e "$keypress_info"
-		echo -e "$gcc_info"
-		ui_b_keypress=false
-		return 1
-	fi
-
-	if rpm -ql ncurses > /dev/null 2>&1; then
-		b_ready=true
-	else
-		echo -e "$keypress_info"
-		echo -e "$gcc_info"
-		ui_b_keypress=false
-		return 1
-	fi
-
-	if $b_ready; then
-		echo -e "$keypress_info"
-		if ! loop_yn "Do you want to compile the keypress extension now? y/n : "; then
-			ui_b_keypress=false
-			echo "The script will run without the extended functionality."
-			return 1
-		fi
-	fi
-
-	if $b_ready && gcc keypress.c -o keypress -lncurses > /dev/null 2>&1; then
-		ui_b_keypress=true
-		return 0
-	else
-		echo -e "${WRN}Could not compile keypress.$OFF"
-		echo -e "${INF}Running without keypress features.$OFF"
-		return 1
-	fi
-
-	return 0
 }
 
 # ui_popterm
@@ -695,6 +620,14 @@ getuser() {
     uigu_var+="$(eval "echo $input_line" | sed 's/\\$//')"
 }
 
+#** getuser: reads user input
+#
+# Read multi char input terminated by RETURN/ENTER.
+# Does not support backslash continuation lines.
+#
+# $1 - prompt string
+# $2 - reference variable to receive user input
+#*
 getuser_noslash() {
 	local promptstring="$1"
 	local -n uigu_var="$2"
@@ -704,6 +637,15 @@ getuser_noslash() {
 	eval "uigu_var=\"$uigu_var\""
 }
 
+#** get_keypress: get Alt-Shift keypresses
+#
+# GLOBALS: ui_b_keypress
+#
+# $1 - reference var receives the char
+#
+# RETURNS: 0 if no mod keys, 1 if Alt-key is pressed
+#
+#*
 get_keypress() {
 	local -n gkp_char="$1"
 	local b_alt

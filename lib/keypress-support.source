@@ -1,0 +1,93 @@
+#!/bin/bash
+#
+# keypress-support.source
+#
+
+declare keysupport_loaded=true
+
+[ -n "$EXIDIR" ] && declare EXEDIR=$(dirname "${0}")
+[ -n "$SRCLIB" ] && declare SRCLIB="$EXEDIR/lib"
+
+declare keypress_exe="$EXEDIR/keypress"
+declare keypress_src="$keypress_exe"".c"
+
+declare ui_b_keypress=false	# True if keypress.c is compiled and ready
+
+declare keypress_info=$(
+cat <<EOF
+There are some options in this script that require Alt-Shift keystrokes
+to execute. These options won't be available without the natively compiled
+keypress utility in this repo. These options can do things like delete
+files or reset git heads, etc. The alt-shift keystrokes provide a level
+of safety from inadvertent keystrokes modifying your development state.
+\0
+EOF
+)
+declare gcc_info=$(
+cat <<EOF
+If you want to enable the extended function keystroke options, exit this
+script and install gcc and ncurses.
+
+    sudo dnf install -y gcc ncurses
+
+Meanwhile, the script will run without the extended functionality.
+\0
+EOF
+)
+#** ui_testkeypress: Detect Special Char handling
+#
+# GLOBALS
+#     ui_b_keypress: set if keypress is compiled and ready.
+#
+#     If keypress executable is not in the directory
+#
+#*
+ui_testkeypress() {
+	local b_ready
+	local err
+
+	if ([ -f "$keypress_exe" ] && [ -x "$keypress_exe" ]); then
+		ui_b_keypress=true
+		return 0
+	fi
+
+	[ -f "$keypress_src" ] || { ui_b_keypress=false; return 1; }
+
+	if which gcc > /dev/null 2>&1; then
+		b_ready=true
+	else
+		echo -e "$keypress_info"
+		echo -e "$gcc_info"
+		ui_b_keypress=false
+		return 1
+	fi
+
+	if rpm -ql ncurses > /dev/null 2>&1; then
+		b_ready=true
+	else
+		echo -e "$keypress_info"
+		echo -e "$gcc_info"
+		ui_b_keypress=false
+		return 1
+	fi
+
+	if $b_ready; then
+		echo -e "$keypress_info"
+		if ! loop_yn "Do you want to compile the keypress extension now? y/n : "; then
+			ui_b_keypress=false
+			echo -e "${WRN}The script will run without the extended functionality.$OFF"
+			return 1
+		fi
+	fi
+
+	if $b_ready && gcc "$keyprese_src" -o keypress -lncurses > /dev/null 2>&1; then
+		ui_b_keypress=true
+		return 0
+	else
+		echo -e "${WRN}Could not compile keypress.$OFF"
+		echo -e "${INF}Running without keypress features.$OFF"
+		return 1
+	fi
+
+	return 0
+}
