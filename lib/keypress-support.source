@@ -43,20 +43,6 @@ EOF
 # ui_testkeypress and sets up the promptgetkey_cmd and getkey_cmd aliases
 # accordingly. In C, these would be function pointers.
 #*
-set_keycmd(){
-	local state="$1"
-
-	if "$state"; then
-		ui_b_keypress=true
-		promptgetkey_cmd="promptgetkey"
-		getkey_cmd="getkey"
-	else
-		ui_b_keypress=false
-		promptgetkey_cmd="promptgetchar"
-		getkey_cmd="getchar"
-	fi
-}
-
 #** ui_testkeypress: Detect Special Char handling
 #
 # GLOBALS
@@ -66,6 +52,20 @@ set_keycmd(){
 #*
 ui_testkeypress() {
 	local b_ready
+
+	set_keycmd(){
+		local state="$1"
+
+		if "$state"; then
+			ui_b_keypress=true
+			promptgetkey_cmd="promptgetkey"
+			getkey_cmd="getkey"
+		else
+			ui_b_keypress=false
+			promptgetkey_cmd="promptgetchar"
+			getkey_cmd="getchar"
+		fi
+	}
 
 	if [ -f "$keypress_exe" ] && [ -x "$keypress_exe" ]; then
 		set_keycmd "true"
