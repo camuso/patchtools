@@ -802,7 +802,7 @@ get_options() {
 	local opt=
 
 	show_options
-	promptgetchar "${MNU}    Enter one of the above: $OFF" opt
+	"$promptgetkey_cmd" "${MNU}    Enter one of the above: $OFF" opt
 
 	case $opt in
 		j )	getuser "${MNU}JIRA link: $OFF" str_jira
@@ -831,7 +831,13 @@ options_loop() {
 	done
 }
 
-
+show_altopt() {
+	local opt="$1"
+	local str="$2"
+	$ui_b_keypress || return 1
+	echo -e "$WRN Alt-Shift-$opt $OFF$str"
+	return 0
+}
 
 #===  FUNCTION  ===============================================================
 #          NAME:  show_settings
@@ -876,11 +882,13 @@ $MNU O $OFF Options menu
 $MNU
     ${UND}Control                $OFF
 $MNU S $OFF Stop before              : $STA$stophash$OFF
+$MNU P $OFF Create a patch series
 $MNU N $OFF Start a New Session
-$MNU P $OFF Pop 'n' commits
 $MNU H $OFF Show History
-$MNU I $OFF Init or restart session
 $MNU r $OFF Run cherp
+$(show_altopt "P" "Pop n commits")
+$(show_altopt "I" "Init or restart session")
+$(show_altopt "R" "RESET branch to original state")
 $MNU q $OFF Quit this script
 $MNU h $OFF Help
 $OFF
@@ -901,11 +909,13 @@ function menu_parser {
 
 	local pops
 	local setting=
+	local -i retval
 
 	validate_last_upstream_hash
 	show_settings
 
-	promptgetchar "${MNU}Enter one of the above: $OFF" setting
+	"$promptgetkey_cmd" "${MNU}Enter one of the above: $OFF" setting
+	retval=$?
 
 	case $setting in
 
@@ -923,9 +933,6 @@ function menu_parser {
 			;;
 		H )	show_history
 			;;
-		P )     getuser "${MNU}Pop how many commits: $OFF" pops
-			pop_commits "$pops"
-			;;
 		h )	less "$MYHLP"
 			;;
 		q )	exit_cherp $exit_good
@@ -935,10 +942,20 @@ function menu_parser {
 			;;
 		O )	options_loop
 			;;
-		I )	init_current_session
-			;;
 		S )	getuser "${MNU}Stop before this hash: $OFF" stophash
 			cfg_set_item "stophash" "$stophash"
+			;;
+		P )	create_patches
+			;;
+		P )     ((retval == 1)) || return $rc_continue
+			getuser "${MNU}Pop how many commits: $OFF" pops
+			pop_commits "$pops"
+			;;
+		I )	((retval == 1)) || return $rc_continue
+			init_current_session
+			;;
+		R )	((retval == 1)) || return $rc_continue
+			reset_cherp
 	esac
 	return $rc_continue
 }
@@ -1037,7 +1054,17 @@ reset_cherp() {
 	local cols=$((tcols - 12))
 	local orighead
 
+	echo -e "${WRN}RESET$OFF will reset your git HEAD and Backport File"\
+		"to their New Session state.$OFF"
+	loop_yn "Do you want to$WRN RESET$OFF now? y/n : " || return
 	orighead=$(git log --oneline -n1 "$dnorighead")
+	clear_alldone
+	line=$(grep -n -m1 "$uphash" "$upcommitsfile")
+	(($? == 0)) || return 1
+	lnum=$(cut -d: -f1 <<< "$line")
+	line=$(cut -d: -f2- <<< "$line")
+	line="${line:2}"
+	ui_replaceline "$lnum" "$line" "$upcommitsfile"
 	init_cmdline_call
 	git cherry-pick --abort 2>/dev/null
 	git reset --hard "$dnorighead"
@@ -1045,7 +1072,7 @@ reset_cherp() {
 	b_lasthashvalid=false
 	upcmtstartline=0
 	get_next_cherrypick
-	exit_cherp $exit_reset
+	$b_cmdline && exit_cherp $exit_reset || return
 }
 
 #===  FUNCTION  ================================================================
@@ -1161,8 +1188,8 @@ mark_done() {
 
 #===  FUNCTION  ================================================================
 #          NAME:  clear_done
-#   DESCRIPTION:  Mark the line in the upcommitsfile corresponding to the hash
-#                 with a leading char to indicate it's been processed by cherp.
+#   DESCRIPTION:  Clear the "done" mark for the line in the upcommitsfile
+#                 corresponding to the hash passed.
 #    PARAMETERS:  $1 - uphash
 #    		  $2 - optional user supplied mark
 #       GLOBALS:  upcommitsfile
@@ -1183,8 +1210,30 @@ clear_done() {
 	(($? == 0)) || return 1
 	lnum=$(cut -d: -f1 <<< "$line")
 	line=$(cut -d: -f2- <<< "$line")
-	line="$mark $line"
+	line="${line:2}"
 	ui_replaceline "$lnum" "$line" "$upcommitsfile"
+	return 0
+}
+
+#===  FUNCTION  ================================================================
+#          NAME:  clear_alldone
+#   DESCRIPTION:  Clear the "done" mark for the line in the upcommitsfile
+#                 corresponding to the hash passed.
+#    PARAMETERS:  $1 - optional user supplied mark
+#       GLOBALS:  upcommitsfile
+#       RETURNS:  0 on success, nonzero on fail
+#===============================================================================
+clear_alldone() {
+	local mark='+'		# the default leading char
+	local markstr=
+
+	# If user passed a char in $1, then it means user wants to remove  a
+	# different leading mark.
+	[ -n "$1" ] && mark="$1"
+	markstr="$mark "	# add the trailing space
+
+	sed -i "s|^$markstr||g" "$upcommitsfile"
+
 	return 0
 }
 
@@ -1760,9 +1809,9 @@ else
 			pops=$2
 			pop_commits "$pops"
 			;;
-		# "--reset" )
-		#	reset_cherp
-		#	;;
+		"--reset" )
+			reset_cherp
+			;;
 		-r | "--run" )
 			run_me
 			;;
