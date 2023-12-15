@@ -5,7 +5,7 @@
 
 declare keysupport_loaded=true
 
-[ -n "$EXIDIR" ] && declare EXEDIR=$(dirname "${0}")
+[ -n "$EXIDIR" ] && declare EXEDIR="$(dirname "${0}")"
 [ -n "$SRCLIB" ] && declare SRCLIB="$EXEDIR/lib"
 
 declare keypress_exe="$EXEDIR/keypress"
@@ -44,9 +44,8 @@ EOF
 #*
 ui_testkeypress() {
 	local b_ready
-	local err
 
-	if ([ -f "$keypress_exe" ] && [ -x "$keypress_exe" ]); then
+	if [ -f "$keypress_exe" ] && [ -x "$keypress_exe" ]; then
 		ui_b_keypress=true
 		return 0
 	fi
@@ -80,7 +79,7 @@ ui_testkeypress() {
 		fi
 	fi
 
-	if $b_ready && gcc "$keyprese_src" -o keypress -lncurses > /dev/null 2>&1; then
+	if $b_ready && gcc "$keypress_src" -o $keypress_exe -lncurses > /dev/null 2>&1; then
 		ui_b_keypress=true
 		return 0
 	else
