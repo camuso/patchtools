@@ -38,6 +38,7 @@ MYNAME="$(basename "$0")"
 [ "$ui_loaded" ]            || source "$MYLIB"/ui.source
 [ "$configmanager_loaded" ] || source "$MYLIB"/config-manager.source
 [ "$ptversion_loaded" ]     || source "$MYLIB"/patchtools-version.source
+[ "$keypsupport_loaded" ]   || source "$MYLIB"/keypress-support.source
 
 ########################################
 # Return and Control Codes
@@ -1500,6 +1501,7 @@ init_common() {
 
 	$b_new && upcmtstartline=1
 	[ -f "$upcommitsfile" ] && get_current_cherrypick
+	ui_testkeypress
 
 	b_session_inited=true
 }
