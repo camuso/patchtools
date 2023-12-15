@@ -34,19 +34,41 @@ Meanwhile, the script will run without the extended functionality.
 \0
 EOF
 )
+
+#** set_keycmd: sets the command for acquiring single characters
+#
+# NOTE: THIS IS NOT INTENDED TO BE CALLED EXTERNALLY FROM THIS SOURCE FILE
+#
+# Sets the ui_b_keypress state true/false as determined by calling function
+# ui_testkeypress and sets up the promptgetkey_cmd and getkey_cmd aliases
+# accordingly. In C, these would be function pointers.
+#*
+set_keycmd(){
+	local state="$1"
+
+	if "$state"; then
+		ui_b_keypress=true
+		promptgetkey_cmd="promptgetkey"
+		getkey_cmd="getkey"
+	else
+		ui_b_keypress=false
+		promptgetkey_cmd="promptgetchar"
+		getkey_cmd="getchar"
+	fi
+}
+
 #** ui_testkeypress: Detect Special Char handling
 #
 # GLOBALS
 #     ui_b_keypress: set if keypress is compiled and ready.
 #
 #     If keypress executable is not in the directory
-#
 #*
 ui_testkeypress() {
 	local b_ready
 
 	if [ -f "$keypress_exe" ] && [ -x "$keypress_exe" ]; then
-		ui_b_keypress=true
+		set_keycmd "true"
 		return 0
 	fi
 
@@ -57,7 +79,7 @@ ui_testkeypress() {
 	else
 		echo -e "$keypress_info"
 		echo -e "$gcc_info"
-		ui_b_keypress=false
+		set_keycmd "false"
 		return 1
 	fi
 
@@ -66,14 +88,16 @@ ui_testkeypress() {
 	else
 		echo -e "$keypress_info"
 		echo -e "$gcc_info"
-		ui_b_keypress=false
+		set_keycmd "false"
 		return 1
 	fi
 
 	if $b_ready && gcc "$keypress_src" -o $keypress_exe -lncurses > /dev/null 2>&1; then
-		ui_b_keypress=true
+		set_keycmd "true"
 		return 0
 	else
+		set_keycmd "false"
+
 		echo -e "${WRN}Could not compile keypress.$OFF"
 		echo -e "${INF}Running without keypress features.$OFF"
 		return 1
