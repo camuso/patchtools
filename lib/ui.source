@@ -637,28 +637,41 @@ getuser_noslash() {
 	eval "uigu_var=\"$uigu_var\""
 }
 
-#** get_keypress: get Alt-Shift keypresses
+#** getkey: get Alt-Shift key strokes
 #
 # GLOBALS: ui_b_keypress
 #
 # $1 - reference var receives the char
 #
 # RETURNS: 0 if no mod keys, 1 if Alt-key is pressed
-#
 #*
-get_keypress() {
+getkey() {
 	local -n gkp_char="$1"
 	local b_alt
 	local foo
-	local -i st
-	if ! $ui_b_keypress; then
-		getchar gkp_char
-		return 0
-	fi
+	local -i sts
+
 	foo=$(keypress)
-	st=$?
+	sts=$?
 	gkp_char=${foo: -1}
-	return $st
+	echo
+	return $sts
+}
+
+#** promptgetkey(): print a prompt and call getkey
+#
+# Returns the character in the reference variable
+# User does not need to press RETURN/ENTER
+#
+# $1 - prompt, may include escape chars
+# $2 - reference variable to receive the char
+#
+# Returns: 0 if normal key, 1 if Alt-key
+#*
+promptgetkey() {
+	echo -en "$1"
+	getkey "$2"
+	return $?
 }
 
 #** getch(): reads one char user input without echoing the char
