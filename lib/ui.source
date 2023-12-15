@@ -684,6 +684,7 @@ promptgetkey() {
 getch() {
 	local -n uichar="$1"
 	read -r -n1 uichar
+	return 0
 }
 
 #** getchar(): reads one char and echoes it to the screen
@@ -697,6 +698,7 @@ getchar() {
 	local -n uigc_char="$1"
 	read -r -n1 uigc_char
 	echo
+	return 0
 }
 
 #** promptgetchar(): print a prompt and get a char with echo
@@ -712,6 +714,7 @@ getchar() {
 promptgetchar() {
 	echo -en "$1"
 	getchar "$2"
+	return 0
 }
 
 #** loop_yn(): loop until we get y or n from user
