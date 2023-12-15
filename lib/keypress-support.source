@@ -70,15 +70,6 @@ ui_testkeypress() {
 		return 1
 	fi
 
-	if $b_ready; then
-		echo -e "$keypress_info"
-		if ! loop_yn "Do you want to compile the keypress extension now? y/n : "; then
-			ui_b_keypress=false
-			echo -e "${WRN}The script will run without the extended functionality.$OFF"
-			return 1
-		fi
-	fi
-
 	if $b_ready && gcc "$keypress_src" -o $keypress_exe -lncurses > /dev/null 2>&1; then
 		ui_b_keypress=true
 		return 0
