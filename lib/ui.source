@@ -870,7 +870,7 @@ select_from_array() {
 
 	while true; do
 		if loop_range_q 1 "$asize" selection; then
-			eval "$3"="${array[$((selection-1))]}"
+			eval "$3=\"${array[$((selection-1))]}\""
 		else
 			return 1
 		fi
