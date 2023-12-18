@@ -310,7 +310,7 @@ set_upstream_url() {
 	getuser "New upstream URL: " temp
 	[ -n "$temp" ] || return
 	upurl="$temp"
-	git remote remove "$upname"
+	git remote remove "$upname"		# no errors if it doesn't exist
 	git remote add "$upname" "$upurl"
 	fetch_upstream_repo
 }
@@ -461,7 +461,7 @@ set_next_cherrypick() {
 	local cols=$((tcols - 2 - numwid))
 	local selected
 
-	linecount=$(iwc -l "$upcommitsfile")
+	linecount=$(wc -l "$upcommitsfile")
 	echo -e "\n${INF}Contents of upstream commits file: $STA$upcommitsfile$OFF"
 	echo -e "$MNU\0NOTE:$INF Not showing lines starting with any of these chars:"\
 	        "$STA$ignore_str$OFF\n"
@@ -511,7 +511,6 @@ validate_last_upstream_hash() {
 	# then show nothing.
 	#
 	grep -m1 -n "$lastuphash" "$upcommitsfile" >/dev/null 2>&1 || b_lasthashvalid=false
-
 	$b_lasthashvalid && lastuplog=$(git log -n1 --oneline "$lastuphash")
 	$b_lasthashvalid && return 0 || return 1
 }
@@ -530,6 +529,26 @@ getlasttag() {
 	_mypid_=$!
 	ui_waitonproc $_mypid_ .1
 	echo
+}
+
+#** get_lastuplog: gitnice of most recent, successfully applied upstream commit
+#
+# Globals:
+# 	lastuplog
+# 	lastuphash
+# 	upcommitsfile
+#*
+get_lastuplog() {
+	local ch="+"
+
+	lastuplog="$(grep "^$ch" $upcommitsfile | tail -n1)"
+
+	if [ -n "$lastuplog" ]; then
+		lastuphash="$(cut -d' ' -f2 <<< "$lastuplog")"
+		lastuplog="$(gitnice "$lastuphash")"
+	fi
+
+	cfg_set_item "lastuphash" "$lastuphas"
 }
 
 #===  FUNCTION  ================================================================
@@ -571,9 +590,10 @@ get_next_cherrypick() {
 		return 1
 	fi
 
-	upcmtstartline=$idx
+	upcmtstartline="$idx"
 	currentupcommit="$line"
-	currentuphash=$(echo "$line" | cut -d' ' -f1)
+	currentuphash="$(echo "$line" | cut -d' ' -f1)"
+	currentupcommit="$(gitnice "$currentuphash")"
 	set_cfg_item "upcmtstartline" "$upcmtstartline"
 
 	return 0
@@ -872,7 +892,7 @@ $(show_most_recent_cherrypick)\
 $(show_next_cherrypick)
 $MNU
     ${UND}Downstream Environment  $OFF
-    Last Good RHEL Commit    : $STA${lgc:0:cols}$OFF
+    Current Head             : $STA$(gitnice -1)$OFF
     Head at Session Start    : $STA${orighead:0:cols}$OFF
     Most recent tag          : $STA$lasttag$OFF
 $MNU B $OFF Current git branch       : $STA$(get_gitbranch)$OFF
@@ -886,9 +906,8 @@ $MNU P $OFF Create a patch series
 $MNU N $OFF Start a New Session
 $MNU H $OFF Show History
 $MNU r $OFF Run cherp
-$(show_altopt "P" "Pop n commits")
 $(show_altopt "I" "Init or restart session")
-$(show_altopt "R" "RESET branch to original state")
+$(show_altopt "R" "RESET to an earlier commit in this session ")
 $MNU q $OFF Quit this script
 $MNU h $OFF Help
 $OFF
@@ -1011,7 +1030,8 @@ edit_commit() {
 #          NAME:  abort_cherp
 #   DESCRIPTION:  Exit the script in an orderly fashion.
 #    PARAMETERS:  $1 - true if command line call
-#       GLOBALS:  none
+#       GLOBALS:  b_conflict
+#                 upcmtstartline
 #       RETURNS:  none
 #===============================================================================
 abort_cherp() {
@@ -1022,7 +1042,13 @@ abort_cherp() {
 	# Get the last succesful commit and git reset to it.
 	cmt="$(gitnice | cut -d' ' -f1)"
 	git reset --hard "$cmt"
+
 	b_conflict=false
+	upcmtstartline=1
+	cfg_set_item "b_conflict" "$b_conflict"
+	cfg_set_item "upcmtstartline" "$upcmtstartline"
+	get_current_cherrypick
+
 	exit_cherp $exit_good
 }
 
@@ -1040,34 +1066,55 @@ skip() {
 	get_next_cherrypick
 }
 
+#** select_newhead: choose from the heads since dnorighead
+#
+# Globals:
+#   currentuphash
+#   lastuphash
+#   dnorighead
+#*
+select_newhead() {
+	local -n snh_dnhash="$1"
+	local upary=()
+	local new
+
+	lastuphash="$(extup -1 -b -m "$snh_dnhash" | cut -d' ' -f1)"
+echo "snh_dnhash: $snh_dnhash"
+	mapfile -t upary < <(gitnice "$dnorighead"^..)
+	select_from_array upary "HEADs" new
+
+	snh_dnhash="$(cut -d' ' -f1 <<< "$new")"
+echo "new snh_dnhash: $snh_dnhash"
+	lastuphash="$(extup -1 -b "$snh_dnhash" | cut -d' ' -f1)"
+echo "new lastuphash: $lastuphash"
+	set_cfg_item "lastuphash" "$lastuphash"
+read
+}
+
 #===  FUNCTION  ================================================================
 #          NAME:  reset_cherp
 #   DESCRIPTION:  Exit the script in an orderly fashion.
 #    PARAMETERS:  $1 - exit code
 #       GLOBALS:  dnorighead
+#                 currentuphash
 #                 upcommitsfile
-#                 dnappliedfile
-#                 lastuplog
 #       RETURNS:  none
 #===============================================================================
 reset_cherp() {
 	local cols=$((tcols - 12))
-	local orighead
+	local dnhash="$(gitnice -1 | cut -d' ' -f1)"
+	local -a clrary=()
 
 	echo -e "${WRN}RESET$OFF will reset your git HEAD and Backport File"\
-		"to their New Session state.$OFF"
+		"to the selected commit.$OFF"
+
 	loop_yn "Do you want to$WRN RESET$OFF now? y/n : " || return
-	orighead=$(git log --oneline -n1 "$dnorighead")
-	clear_alldone
-	line=$(grep -n -m1 "$uphash" "$upcommitsfile")
-	(($? == 0)) || return 1
-	lnum=$(cut -d: -f1 <<< "$line")
-	line=$(cut -d: -f2- <<< "$line")
-	line="${line:2}"
-	ui_replaceline "$lnum" "$line" "$upcommitsfile"
-	init_cmdline_call
-	git cherry-pick --abort 2>/dev/null
-	git reset --hard "$dnorighead"
+
+	select_newhead dnhash
+
+	# clrary=( $(extup -m -b 
+	clear_donerange dnhash
+	# git reset --hard "$dnhash"
 	b_conflict=false
 	b_lasthashvalid=false
 	upcmtstartline=0
@@ -1212,6 +1259,16 @@ clear_done() {
 	line=$(cut -d: -f2- <<< "$line")
 	line="${line:2}"
 	ui_replaceline "$lnum" "$line" "$upcommitsfile"
+	return 0
+}
+
+clear_donerange() {
+	local -n cdr_upcmts="$1"
+
+	for ((i = o; i < ${#cdr_upcmts[@]}; ++1)); do
+		clear_done "${cdr_upcmts[i]}"
+	done
+
 	return 0
 }
 
@@ -1550,8 +1607,10 @@ init_common() {
 
 	$b_new && upcmtstartline=1
 	[ -f "$upcommitsfile" ] && get_current_cherrypick
-	ui_testkeypress
 
+	git branch -r | grep -q 'cp_upstream' || fetch_upstream_repo
+
+	get_lastuplog
 	b_session_inited=true
 }
 
@@ -1621,12 +1680,14 @@ init_newsession() {
 #===============================================================================
 init_current_session() {
 	upcmtstartline=1
-	b_conflict=false
-	set_cfg_item "upcmtstartline" "$upcmtstartline"
-	set_cfg_item "b_conflict"     $b_conflict
-	git cherry-pick --abort > /dev/null 2>&1
 	lastuphash=
-	set_cfg_item "lastuphash" "$lastuphash"
+	b_conflict=false
+	set_cfg_item "upcmtstartline"	"$upcmtstartline"
+	set_cfg_item "b_conflict"	"$b_conflict"
+	set_cfg_item "lastuphash"	"$lastuphash"
+
+	b_lasthashvalid=false
+	git cherry-pick --abort 2>/dev/null
 	init_session
 }
 
@@ -1704,6 +1765,7 @@ check_command() {
 #
 trap ctrl_c SIGINT
 
+ui_testkeypress		# set the getchar input command
 init_session
 
 # Determine if we're at the top of a git tree. If not, exit.
