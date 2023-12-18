@@ -242,7 +242,7 @@ for ((i=0; i < ${#blist[@]}; ++i)); do
 		as=$(echo "$astr" | cut -d' ' -f2-)	# upstream cmt date & desc
 		printf "%-9.9s %-9.9s %s\n" "${blist[$i]}" "$uc" "$as"
 	else
-		echo " $astr "
+		echo "$astr"
 	fi
 
 	[ -d "$updir" ] && { cd - > /dev/null 2>&1 || exit; }
