@@ -79,7 +79,6 @@ declare -i menupad=36
 declare cmtmsgfile=/dev/shm/gcpcmtmsgfile
 declare b_lasthashvalid=false
 declare lasttagfile="/dev/shm/gcplasttag"
-declare lastuplog
 
 declare b_new=false		# new session
 declare b_single=false		# only perform single cherrypick
@@ -89,6 +88,8 @@ declare gitbranch
 
 declare currentuphash
 declare currentupcommit
+declare lastuplog
+declare dncurrenthead
 
 # Default upstream repo
 declare upurl=
@@ -106,7 +107,7 @@ declare str_herald=
 declare str_conflicts=
 
 init_global_strings() {
-str_herald="\n$MNU${UND}Patchtools v$version$OFF\n\n${MNU}cherp - Automates git cherry-pick$OFF\n"
+str_herald="\n$MNU${UND}Patchtools v$version$OFF\n\n${MNU}cherp - Automates git cherry-pick$OFF"
 str_conflicts="Conflicts:\n"
 }
 
@@ -524,10 +525,9 @@ validate_last_upstream_hash() {
 #===============================================================================
 getlasttag() {
 	local _mypid_
-	echo -ne "$INF\0Getting last git tag..$OFF"
 	git describe --tags --abbrev=0 > "$lasttagfile" &
 	_mypid_=$!
-	ui_waitonproc $_mypid_ .1
+	ui_waitonproc $_mypid_ .05
 	echo
 }
 
@@ -711,7 +711,7 @@ show_most_recent_cherrypick() {
 	laststr=$(
 cat <<EOF
 
-    Last Applied Commit      : $STA${lastuplog:0:$cols}$OFF
+    Last cherrypicked commit : $STA${lastuplog:0:$cols}$OFF
 EOF
 )
 	$b_lasthashvalid && echo -e "$laststr"
@@ -878,9 +878,10 @@ function show_settings {
 	local lgc=$(gitnice "$lastgoodcommit")
 
 	subjectprefix="$(git config format.subjectprefix)"
-	lasttag=$(cat $lasttagfile)
-	lastbrcmt=$(git log -n1 --oneline)
-	orighead=$(git log --oneline -n1 "$dnorighead")
+	lasttag="$(cat $lasttagfile)"
+	lastbrcmt="$(git log -n1 --oneline)"
+	orighead="$(git log --oneline -n1 "$dnorighead")"
+	dncurrenthead="$(cut -d' ' -f1 <<< "$lastbrcmt")"
 
 	settings=$(
 cat <<EOF
@@ -892,7 +893,7 @@ $(show_most_recent_cherrypick)\
 $(show_next_cherrypick)
 $MNU
     ${UND}Downstream Environment  $OFF
-    Current Head             : $STA$(gitnice -1)$OFF
+    Current Head             : $STA${lastbrcmt:0:cols}$OFF
     Head at Session Start    : $STA${orighead:0:cols}$OFF
     Most recent tag          : $STA$lasttag$OFF
 $MNU B $OFF Current git branch       : $STA$(get_gitbranch)$OFF
@@ -920,6 +921,7 @@ EOF
 #          NAME:  menu_parser
 #   DESCRIPTION:  parse the user input at the menu prompt
 #    PARAMETERS:  none, but lots of side effects
+#       GLOBALS:  dncurrenthead
 #       RETURNS:  rc_continue, used by menu_loop to determine whether to
 #       	  continue looping.
 #===============================================================================
@@ -931,6 +933,7 @@ function menu_parser {
 	local -i retval
 
 	validate_last_upstream_hash
+	dncurrenthead="$(gitnice | cut -d' ' -f1)"
 	show_settings
 
 	"$promptgetkey_cmd" "${MNU}Enter one of the above: $OFF" setting
@@ -1072,11 +1075,13 @@ skip() {
 #   currentuphash
 #   lastuphash
 #   dnorighead
+#   dncurrenthead
 #*
 select_newhead() {
 	local -n snh_dnhash="$1"
 	local upary=()
 	local new
+	local -a clrary=()
 
 	lastuphash="$(extup -1 -b -m "$snh_dnhash" | cut -d' ' -f1)"
 echo "snh_dnhash: $snh_dnhash"
@@ -1088,6 +1093,7 @@ echo "new snh_dnhash: $snh_dnhash"
 	lastuphash="$(extup -1 -b "$snh_dnhash" | cut -d' ' -f1)"
 echo "new lastuphash: $lastuphash"
 	set_cfg_item "lastuphash" "$lastuphash"
+	clrary=
 read
 }
 
@@ -1103,7 +1109,11 @@ read
 reset_cherp() {
 	local cols=$((tcols - 12))
 	local dnhash="$(gitnice -1 | cut -d' ' -f1)"
-	local -a clrary=()
+
+	if [ "$dncurrenthead" == "$dnorighead" ]; then
+		echo -e "${WRN}No cherrypicked commits to choose from."
+		ui_press_any
+	fi
 
 	echo -e "${WRN}RESET$OFF will reset your git HEAD and Backport File"\
 		"to the selected commit.$OFF"
@@ -1566,6 +1576,9 @@ read_session() {
 	# echo -e "$UND\0read_session$OFF"
 	local cfgtemplate=
 	local temp
+	local origin_brname
+	local mypid
+	local tempfile
 
 	ui_setbg temp
 
@@ -1588,8 +1601,21 @@ read_session() {
 		fetch_upstream_repo
 	fi
 
-	# cfg_get_item "dnorighead" dnorighead
-	[ "$dnorighead" ]     || dnorighead="HEAD"
+	# Get the name of the origin main or master branch and clear any spaces
+	tempfile="$(mktemp)"
+	echo -en "Initing"
+	git remote show origin | grep HEAD | cut -d: -f2 > "$tempfile" 2>&1 & mypid=$!
+	ui_waitonproc $mypid .05
+	origin_brname="$(cat "$tempfile")"
+	origin_brname="${origin_brname// /}"
+	rm -vf "$tempfile" > /dev/null 2>&1
+
+	# Get the original head by getting the commit where the current
+	# branch diverged from main
+	dnorighead="$(git merge-base HEAD "$origin_brname")"
+	dnorighead="$(cut -d' ' -f1 <<< "$(gitnice -1 "$dnorighead")")"
+	set_cfg_item dnorighead "$dnorighead"
+
 	[ "$upcmtstartline" ] || return 1
 	[ "$workdir" ]        || set_working_directory
 	[ "$upcommitsfile" ]  || set_upcommitsfile
@@ -1608,7 +1634,7 @@ init_common() {
 	$b_new && upcmtstartline=1
 	[ -f "$upcommitsfile" ] && get_current_cherrypick
 
-	git branch -r | grep -q 'cp_upstream' || fetch_upstream_repo
+	git branch -r | grep -q "$upname" || fetch_upstream_repo
 
 	get_lastuplog
 	b_session_inited=true
@@ -1662,10 +1688,6 @@ init_newsession() {
 	set_upcommitsfile
 	set_gitbranch
 	b_lasthashvalid=false
-
-	dnorighead=$(git log --oneline -1 | cut -d' ' -f1)
-	set_cfg_item dnorighead "$dnorighead"
-
 	b_new=true
 	init_common
 	$b_cmdline && exit_cherp $exit_good
@@ -1908,11 +1930,11 @@ fi
 
 # Print the herald
 #
+getlasttag
 print_herald
 
 # Present the ui and get the parameters for the cherry-picks.
 #
-getlasttag
 menu_loop
 
 echo
