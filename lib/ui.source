@@ -17,7 +17,7 @@
 declare ui_loaded=true
 declare ui_b_debug=false
 
-declare EXEDIR=$(dirname "${0}")
+declare EXEDIR="$(dirname -- "${0}")"
 declare SRCLIB="$EXEDIR/lib"
 
 #** Text Attributes
@@ -837,6 +837,7 @@ loop_range_q() {
 # $1 - array name, passed without the leading '$'
 # $2 - prompt string
 # $3 - reference variable that receives the user's selected number
+# $4 - Optional second line of prompt
 #
 # An enumerated list of the contents of the array is presented for
 # the user to choose one of the numbered items.
@@ -853,8 +854,11 @@ select_from_array() {
 	local element
 	local selection
 
+	(($# == 4)) && addlprompt="$4"
+
 	echo -en "\n${MNU}Choose one of the $STA$promptstr$OFF"
 	echo -e "$MNU in the following list.$OFF"
+	[ -n "$addlprompt" ] && echo -e "$addlprompt"
 	[ -n "$uisfa_current" ] && echo -e "${INF}Current selection is :$STA $uisfa_current$OFF"
 
 	for ((i = 0; i < asize; ++i)); do
