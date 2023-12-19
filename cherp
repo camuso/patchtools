@@ -114,49 +114,44 @@ str_conflicts="Conflicts:\n"
 # Functions
 #########################################
 
-#===  FUNCTION  ================================================================
-#          NAME:  print_herald
-#   DESCRIPTION:  Simply print the script's herald defined above
+#** print_herald: print the script's herald defined above
+#===============================================================================
 #    PARAMETERS:  Implicit global, str_herald
 #       RETURNS:  None
-#===============================================================================
-function print_herald {
+#*==============================================================================
+print_herald() {
 	echo -e "$str_herald"
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  exit_cherp
-#   DESCRIPTION:  exit this script
+#** exit_cherp: exit in an orderly manner
+#===============================================================================
 #    PARAMETERS:  None
 #       RETURNS:  None
 #===============================================================================
-function exit_cherp {
+exit_cherp() {
 	# echo -e "$UND\0exit_cherp $1$OFF"
 	$b_session_inited && save_session
 	exit "$1"
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  get_gitbranch
-#   DESCRIPTION:  Echos the name of the current git branch
+#** get_gitbranch: prints the name of the current git branch
+#===============================================================================
 #    PARAMETERS:  None
 #       RETURNS:  None
-#===============================================================================
-function get_gitbranch {
+#*==============================================================================
+get_gitbranch() {
 	git branch | grep '\*' | cut -d' ' -f2
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  set_gitbranch
-#   DESCRIPTION:  Set the branch of the git tree. Presents the user with a list
-#                 of numbered git branches from which to choose.
+#** set_gitbranch: list the available branches for the user to choose one
+#===============================================================================
 #    PARAMETERS:  None
 #       GLOBALS:  workdir
 #                 gitbranch
 #       RETURNS:  0 if new branch selected, 1 if user did not make a selection
 #                 or if the selected branch could not be checked out.
-#===============================================================================
-function set_gitbranch {
+#*==============================================================================
+set_gitbranch() {
 	local index=1
 	local linenumber
 	local line
@@ -193,12 +188,11 @@ function set_gitbranch {
 	$b_cmdline && exit_cherp $exit_good || return 0
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  git_set_subjectprefix
-#   DESCRIPTION:  Set the subject prefix in .git/config
+#** git_set_subjectprefix: Set the subject prefix in .git/config
+#===============================================================================
 #    PARAMETERS:  none
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 git_set_subjectprefix() {
 	local newpfx
 	newpfx="$(git config format.subjectprefix)"
@@ -210,14 +204,14 @@ git_set_subjectprefix() {
 	git config format.subjectprefix "$newpfx"
 }
 
-# set_dir - set a directory variable and save it in the config file
+#** set_dir - set a directory variable and save it in the config file
 #
 # Arguments
 #   $1 - string to be used in the prompt describing the directory
 #   $2 - the config file key for the directory variable name
 #   $3 - the current value of the directory variable. Will be updated
 #        if the user changes the directory name.
-#
+#*
 set_dir() {
 	local dirstr="$1"
 	local dircfgkey="$2"
@@ -260,13 +254,12 @@ EOF
 	eval "$3"="$dir"
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  set_working_directory
-#   DESCRIPTION:  Set the working directory for the script's output.
+#** set_working_directory: for the script's output
+#===============================================================================
 #    PARAMETERS:  none
 #       GLOBALS:  workdir
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 set_working_directory() {
 	# echo -e "$UND\0set_working_directory$OFF"
 
@@ -275,14 +268,13 @@ set_working_directory() {
 	set_dir "working" "workdir" workdir
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  fetch_upstream_repo
-#   DESCRIPTION:  git fetch $upname $upurl and wait
+#** fetch_upstream_repo: spawn git fetch $upname $upurl and wait on proc
+#===============================================================================
 #    PARAMETERS:  none
 #       GLOBALS:  upurl
 #                 upname
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 fetch_upstream_repo() {
 	local mypid
 
@@ -296,14 +288,13 @@ fetch_upstream_repo() {
 	ui_waitonproc_tty $mypid 1
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  set_upstream_url
-#   DESCRIPTION:  Set the upstream url
+#** set_upstream_url: user inputs the url to use for upstream repo
+#===============================================================================
 #    PARAMETERS:  none
 #       GLOBALS:  upurl
 #                 upname
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 set_upstream_url() {
 	local temp=
 	echo -e "${INF}Change the upstream url. Press ENTER to quit without changing.$OFF"
@@ -315,15 +306,13 @@ set_upstream_url() {
 	fetch_upstream_repo
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  set_upcommitsfile
-#   DESCRIPTION:  Sets the name of the file that contains the commits to
-#                 be cherrypicked.
-#    PARAMETERS:  none
-#       GLOBALS:  upcommitsfile - file containing the commits to be cherrypicked
-#       RETURNS:  status of call to ui_getfilespec()
+#** set_upcommitsfile: user enters file containing commits to backport
 #===============================================================================
-function set_upcommitsfile {
+#    PARAMETERS:  none
+#       GLOBALS:  upcommitsfile - file containing the commits to be backported
+#       RETURNS:  status of call to ui_getfilespec()
+#*==============================================================================
+set_upcommitsfile() {
 	local stat
 	local prstr
 	local commitsfilemsg
@@ -386,14 +375,12 @@ EOF
 	return $stat
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  pr_nohash_msg
-#   DESCRIPTION:  Prints message indicating the hash can't be found in the file
-#                 containing the upstream commits.
+#** pr_nohash_msg: message for hash not among commits in backport file
+#===============================================================================
 #    PARAMETERS:  $1 - hash
 #       GLOBALS:  upcommitsfile - file of upstream commits to cherrypick
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 pr_nohash_msg () {
 	local hash="$1"
 	local nohash_msg
@@ -409,15 +396,14 @@ EOF
 	echo -e "$nohash_msg"
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  lookup_hash
-#   DESCRIPTION:  Find the given hash in the commits file
+#** lookup_hash: Find the given hash in the backport commits file
+#===============================================================================
 #    PARAMETERS:  $1 - hash
 #                 $2 - will return the number of the line in the commits file
 #                      that has the hash.
 #       GLOBALS:  upcommitsfile - file of upstream commits to cherrypick
 #       RETURNS:  nonzero if lookup fails
-#===============================================================================
+#*==============================================================================
 lookup_hash() {
 	local hash=$1
 	local counter
@@ -433,9 +419,8 @@ lookup_hash() {
 	return 0
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  set_next_cherrypick
-#   DESCRIPTION:  Select the starting commit from the upcommitsfile.
+#** set_next_cherrypick: Select the starting commit from the upcommitsfile
+#===============================================================================
 #    PARAMETERS:  none
 #       GLOBALS:  upcommitsfile - file of upstream commits to cherrypick
 #                 upcmtstartline- starting line for upcommitsfile
@@ -444,8 +429,9 @@ lookup_hash() {
 #                 tlines        - number of lines in the terminal window
 #                 tcols         - number of columns in the terminal window
 #                 qstr          - string with a boldfaced 'q'
+#                 ignore_str    - string of comment chars in commits log
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 set_next_cherrypick() {
 
 	# echo -e "$UND\0set_next_cherrypick$OFF"
@@ -486,16 +472,17 @@ set_next_cherrypick() {
 	$b_cmdline && exit_cherp $exit_good
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  validate_last_upstream_hash
-#   DESCRIPTION:  validates whether the hash stored in the project file is
-#                 valid for this instance of cherp
+#** validate_last_upstream_hash: assure commit hash is valid
+#===============================================================================
+#   Validates whether the hash stored in the project file is valid for this
+#   instance of cherp
+#
 #    PARAMETERS:  none
 #       GLOBALS:  upcommitsfile - the cherry-pick commits file containing the
 #                                 hashes of the commits to be backported.
 #                 b_lasthashvalid - boolean indicating last hash was valid
 #       RETURNS:  nonzero if the last stored hash is not valid
-#===============================================================================
+#*==============================================================================
 validate_last_upstream_hash() {
 	$b_new && b_lasthashvalid=false || b_lasthashvalid=true
 
@@ -515,13 +502,12 @@ validate_last_upstream_hash() {
 	$b_lasthashvalid && return 0 || return 1
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  getlasttag
-#   DESCRIPTION:  Show dots while obtaining the latest git tag
+#** getlasttag: sow dots while obtaining the latest git tag
+#===============================================================================
 #    PARAMETERS:  none
 #       GLOBALS:  lasttagfile
 #       RETURNS:  none
-#===============================================================================
+#*===============================================================================
 getlasttag() {
 	local _mypid_
 	git describe --tags --abbrev=0 > "$lasttagfile" &
@@ -550,10 +536,13 @@ get_lastuplog() {
 	cfg_set_item "lastuphash" "$lastuphash"
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  get_next_cherrypick
-#   DESCRIPTION:  Gets the next commit in the commits file that doesn't have a
-#                 leading hash.
+#** get_next_cherrypick: gets the next commit in the backport commits file
+#===============================================================================
+#
+#  Ignores lines with leading *, indicating the commit is to be skipped, and
+#  leading +, indicating the commit has already been applied to the downstream
+#  branch.
+#
 #    PARAMETERS:  none
 #       GLOBALS:  upcommitsfile
 #                 upcmtstartline
@@ -561,7 +550,7 @@ get_lastuplog() {
 #                 ignore_str
 #       OUTPUTS:  echoes the hash of next upstream commit in the commits file
 #       RETURNS:  1 if there are no more cherries to pick, else 0
-#===============================================================================
+#*==============================================================================
 get_next_cherrypick() {
 	# local myname="get_next_cherrypick: "
 	# echo -e "\n$UND$myname$OFF start line: $upcmtstartline"
@@ -598,20 +587,20 @@ get_next_cherrypick() {
 	return 0
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  get_current_cherrypick
-#   DESCRIPTION:  Gets the current commit in the commits file indicated by the
-#                 current upcmtstartline.
+#** get_current_cherrypick: gets the current commit to backport
+#===============================================================================
 #
-#                 Because get_next_cherrypick always pre-increments the
-#                 upcmtstartline, this routine will decrement the upcmtstartline
-#                 before calling get_next_cherrypick.
+#  Gets the current commit in the commits file indicated by the current
+#  upcmtstartline.
+#
+#  Because get_next_cherrypick always pre-increments the upcmtstartline, this
+#  routine will decrement the upcmtstartline before calling get_next_cherrypick/
 #
 #    PARAMETERS:  none
 #       GLOBALS:  upcmtstartline
 #       OUTPUTS:  echoes the hash of next upstream commit in the commits file
 #       RETURNS:  status of call to get_next_cherrypick
-#===============================================================================
+#*===============================================================================
 get_current_cherrypick() {
 	# local myname="get_current_cherrypick:"
 	# echo -e "$OFF\n$UND$myname upcmtstartline: $upcmtstartline$OFF"
@@ -622,9 +611,8 @@ get_current_cherrypick() {
 	return $?
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  show_next_cherrypick
-#   DESCRIPTION:  Show the upstream commit we will be starting from
+#** show_next_cherrypick: show the next upstream commit to backport
+#===============================================================================
 #    PARAMETERS:  None
 #       GLOBALS:  upcommitsfile
 #                 currentupcommit
@@ -632,7 +620,7 @@ get_current_cherrypick() {
 #                 b_conflict
 #                 b_cmdline
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 show_next_cherrypick() {
 	# echo "\n${UND}show_next_cherrypick$OFF"
 
@@ -668,13 +656,12 @@ EOF
 	return 0
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  show_select_next_cherrypick
-#   DESCRIPTION:  Show option to select a commit from the upstream commits file.
+#** show_select_next_cherrypick: let user select next commit to backport
+#===============================================================================
 #    PARAMETERS:  none
 #       GLOBALS:  upcommitsfile
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 show_select_next_cherrypick() {
 	# echo -e "${UND}show_select_next_cherrypick$OFF"
 
@@ -691,16 +678,15 @@ EOF
 	return 0
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  show_most_recent_cherrypick
-#   DESCRIPTION:  Show the Last Upstream Commit Picked, if it is valid
+#** show_most_recent_cherrypick: show the last upstream commit backported
+#===============================================================================
 #    PARAMETERS:  none
 #       GLOBALS:  lastuplog
 #                 tcols
 #                 menupad
 #                 b_lasthashvalid
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 show_most_recent_cherrypick() {
 	# echo -e "\n${UND}show_most_recent_cherrypick$OFF"
 
@@ -716,12 +702,12 @@ EOF
 	$b_lasthashvalid && echo -e "$laststr"
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  show_upsteam_commits_file
-#   DESCRIPTION:  Show the Upstream Commit File
-#    PARAMETERS:  none
-#       RETURNS:  none
+#** show_upsteam_commits_file: print the filename of the upstream commmits file
 #===============================================================================
+#    PARAMETERS:  none
+#       GLOBALS:  upcommitsfile
+#       RETURNS:  none
+#*==============================================================================
 show_upsteam_commits_file() {
 	# echo -e "${UND}show_upsteam_commits_file$OFF"
 
@@ -737,14 +723,13 @@ EOF
 	[ -f "$upcommitsfile" ] && echo -e "$cmtfilestr"
 }
 
-#===  FUNCTION  ===============================================================
-#          NAME:  show_history
-#   DESCRIPTION:  show history of applied patches in downstream branch
+#** show_history: history of applied patches in downstream branch
+#==============================================================================
 #    PARAMETERS:  none
 #       GLOBALS:  tcols - number of columns in the current terminal
 #                 menupad - number of to the dynamic menu items
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 show_history() {
 	$b_cmdline && init_cmdline_call
 	echo -en "$INF$(git log --oneline "$dnorighead"..HEAD)$OFF"
@@ -752,15 +737,14 @@ show_history() {
 	return 0
 }
 
-#===  FUNCTION  ===============================================================
-#          NAME:  show_status
-#   DESCRIPTION:  show the current status
+#** show_status: prints the current status to the screen
+#==============================================================================
 #    PARAMETERS:  $1 - If this argument is not empty, then forego the
 #                      init_cmdline_call
 #       GLOBALS:  tcols - number of columns in the current terminal
 #                 menupad - number of to the dynamic menu items
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 show_status() {
 	# echo -e "$UND\0show_status$OFF"
 
@@ -798,6 +782,14 @@ EOF
 	$b_internal || exit 0
 }
 
+#** show_options: display the options menu
+#
+#  Globals:
+#    str_upstream
+#    str_brew
+#    str_test
+#    str_jira
+#*
 show_options() {
 	local options
 
@@ -817,6 +809,16 @@ EOF
 	echo -e "$options"
 }
 
+#** get_options: parse the user's option entry
+#
+#  Globals:
+#    str_upstream
+#    str_brew
+#    str_test
+#    str_jira
+#
+#  Returns 1 when user types 'q', else returns 0
+#*
 get_options() {
 	local opt=
 
@@ -844,12 +846,23 @@ get_options() {
 	return 0
 }
 
+#** options_looop: get the options until user types 'q'
+#
+#  Nothing complicated here. Basically an infinite loop with an
+#  exit condition.
+#*
 options_loop() {
 	while :; do
 		get_options || return
 	done
 }
 
+#** show_altopt: displays the Alt-Shift options
+#
+#  Arguments:
+#    $1 - The option letter
+#    $2 - The string that goes with it.
+#*
 show_altopt() {
 	local opt="$1"
 	local str="$2"
@@ -858,15 +871,14 @@ show_altopt() {
 	return 0
 }
 
-#===  FUNCTION  ===============================================================
-#          NAME:  show_settings
-#   DESCRIPTION:  show the current settings and present the menu options
+#** show_settings: display current settings and the main menu
+#==============================================================================
 #    PARAMETERS:  none
 #       GLOBALS:  tcols - number of columns in the current terminal
 #                 menupad - number of to the dynamic menu items
 #       RETURNS:  none
-#===============================================================================
-function show_settings {
+#*==============================================================================
+show_settings() {
 	# echo -e "$UND\0show_settings$OFF"
 	local cols=$((tcols - menupad))
 	local subjectprefix
@@ -913,18 +925,20 @@ $MNU h $OFF Help
 $OFF
 EOF
 )
+# save for later
+# $MNU V $OFF vim $STA$upcommitsfile$OFF in a popup window
+
 	echo -e "$settings"
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  menu_parser
-#   DESCRIPTION:  parse the user input at the menu prompt
+#** menu_parser: parse the user input at the main menu
+#===============================================================================
 #    PARAMETERS:  none, but lots of side effects
 #       GLOBALS:  dncurrenthead
 #       RETURNS:  rc_continue, used by menu_loop to determine whether to
 #       	  continue looping.
-#===============================================================================
-function menu_parser {
+#*==============================================================================
+menu_parser() {
 	# echo -e "$UND\0menu_parser$OFF"
 
 	local pops
@@ -946,7 +960,7 @@ function menu_parser {
 			;;
 		b )	set_upcommitsfile
 			;;
-		u )     set_upstream_url
+		u )	set_upstream_url
 			;;
 		c )	set_next_cherrypick
 			;;
@@ -968,10 +982,8 @@ function menu_parser {
 			;;
 		P )	create_patches
 			;;
-		P )     ((retval == 1)) || return $rc_continue
-			getuser "${MNU}Pop how many commits: $OFF" pops
-			pop_commits "$pops"
-			;;
+#		V )	ui_popterm "vim $upcommitsfile"
+#			;;
 		I )	((retval == 1)) || return $rc_continue
 			init_current_session
 			;;
@@ -981,16 +993,15 @@ function menu_parser {
 	return $rc_continue
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  menu_loop
-#   DESCRIPTION:  Infinite loop presenting the menu until user quits
+#** menu_loop: present the menu until user quits
+#===============================================================================
 #    PARAMETERS:  none, but lots of side effects
 #       GLOBALS:  workdir
 #                 cmtmsgfile
 #                 upcommitsfile
 #       RETURNS:  stat, which is the value returned by the call to menu_parser
-#===============================================================================
-function menu_loop {
+#*==============================================================================
+menu_loop() {
 
 	local stat=0
 
@@ -1004,13 +1015,12 @@ function menu_loop {
 	return $stat
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  edit_commit
-#   DESCRIPTION:  Loop through process to edit commit message until done
+#** edit_commit: Loop through process to edit commit message until done
+#===============================================================================
 #    PARAMETERS:  none
 #       GLOBALS:  cmtmsgfile
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 edit_commit() {
 	local yup
 
@@ -1028,14 +1038,16 @@ edit_commit() {
 	done
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  abort_cherp
-#   DESCRIPTION:  Exit the script in an orderly fashion.
+#** abort_cherp: abort the current cherrypick/apply and exit
+#===============================================================================
+#
+#  This will clear conflicts flag and abort the pending cherrypick
+#
 #    PARAMETERS:  $1 - true if command line call
 #       GLOBALS:  b_conflict
 #                 upcmtstartline
 #       RETURNS:  none
-#===============================================================================
+#*===============================================================================
 abort_cherp() {
 	local cmt
 
@@ -1144,14 +1156,15 @@ reset_cherp() {
 	$b_cmdline && exit_cherp $exit_reset || return
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  run_continue
-#   DESCRIPTION:  Continue the cherrypick loop after resolving conflicts and
-#                 committing the changes externally to this script.
-#    PARAMETERS:  none
-#       GLOBALS:  none
-#       RETURNS:  none
+#** run_continue: continue backporting after resolving conflicts
 #===============================================================================
+#
+#  Assumes that changes were made and committed externally to this script.
+#
+#    PARAMETERS:  none
+#       GLOBALS:  b_conflict
+#       RETURNS:  none
+#*==============================================================================
 run_continue() {
 	# echo -e "$UND\0run_continue$OFF"
 
@@ -1175,10 +1188,11 @@ EOF
 	run_me
 }
 
+#** run_commit: return from resolving conflicts, but let the script commit
 #===  FUNCTION  ================================================================
-#          NAME:  run_commit
-#   DESCRIPTION:  Return from resolving conflicts, but let the script commit
-#                 your changes and create the commit log.
+#
+#  Script will commit and create the commit log.
+#
 #    PARAMETERS:  none
 #       GLOBALS:  currentuphash
 #                 lastuphash
@@ -1186,7 +1200,7 @@ EOF
 #                 exit_nothing
 #                 exit_good
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 run_commit() {
 	# echo -e "$UND\0run_commit$OFF"
 
@@ -1206,13 +1220,13 @@ run_commit() {
 	# run_me
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  run_single
-#   DESCRIPTION:  Just cherrypick one commit
-#    PARAMETERS:  none
-#       GLOBALS:  none
-#       RETURNS:  none
+#** run_single: just backport one commit
 #===============================================================================
+#    PARAMETERS:  none
+#       GLOBALS:  currentuphash
+#                 b_single
+#       RETURNS:  none
+#*==============================================================================
 run_single() {
 	local stat
 
@@ -1226,15 +1240,17 @@ run_single() {
 	exit $stat
 }
 
+#** mark_done: mark the line with a leading +
 #===  FUNCTION  ================================================================
-#          NAME:  mark_done
-#   DESCRIPTION:  Mark the line in the upcommitsfile corresponding to the hash
-#                 with a leading char to indicate it's been processed by cherp.
+#
+#  Indicates the upstream hash in this line of the backport commits file has
+#  been backported.
+#
 #    PARAMETERS:  $1 - uphash
 #    		  $2 - optional user supplied mark
 #       GLOBALS:  upcommitsfile
 #       RETURNS:  0 on success, nonzero on fail
-#===============================================================================
+#*==============================================================================
 mark_done() {
 	local uphash="$1"
 	local mark='+'		# the default leading char
@@ -1255,15 +1271,13 @@ mark_done() {
 	return 0
 }
 
+#** clear_done: clear "done" mark for line having given hash in upcommitsfile
 #===  FUNCTION  ================================================================
-#          NAME:  clear_done
-#   DESCRIPTION:  Clear the "done" mark for the line in the upcommitsfile
-#                 corresponding to the hash passed.
 #    PARAMETERS:  $1 - uphash
 #    		  $2 - optional user supplied mark
 #       GLOBALS:  upcommitsfile
 #       RETURNS:  0 on success, nonzero on fail
-#===============================================================================
+#*==============================================================================
 clear_done() {
 	local uphash="$1"
 	local mark='+'		# the default leading char
@@ -1284,24 +1298,15 @@ clear_done() {
 	return 0
 }
 
-clear_donerange() {
-	local -n cdr_upcmts="$1"
-
-	for ((i = o; i < ${#cdr_upcmts[@]}; ++1)); do
-		clear_done "${cdr_upcmts[i]}"
-	done
-
-	return 0
-}
-
-#===  FUNCTION  ================================================================
+#** clear_alldone: clear all the done marks in the upcommitsfile
+#===============================================================================
 #          NAME:  clear_alldone
 #   DESCRIPTION:  Clear the "done" mark for the line in the upcommitsfile
 #                 corresponding to the hash passed.
 #    PARAMETERS:  $1 - optional user supplied mark
 #       GLOBALS:  upcommitsfile
 #       RETURNS:  0 on success, nonzero on fail
-#===============================================================================
+#*==============================================================================
 clear_alldone() {
 	local mark='+'		# the default leading char
 	local markstr=
@@ -1316,9 +1321,8 @@ clear_alldone() {
 	return 0
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  cherrypick
-#   DESCRIPTION:  Given a commit, try to cherry pick it
+#** cherrypick: backport the upstream commit in uphash
+#===============================================================================
 #    PARAMETERS:  none
 #       GLOBALS:  upcommitsfile
 #                 commit
@@ -1328,7 +1332,7 @@ clear_alldone() {
 #                 b_conflict
 #                 b_single
 #       RETURNS:  non-zero if something went wrong
-#===============================================================================
+#*==============================================================================
 cherrypick() {
 	# echo -e "$UND\0cherrypick$OFF"
 
@@ -1403,9 +1407,13 @@ EOF
 	return 0;
 }
 
+#** stage_commit: process the commit that was backported
 #===  FUNCTION  ================================================================
-#          NAME:  stage_commit
-#   DESCRIPTION:  Given a commit, process it using the global variables
+#
+#  Create the git log for the backported commit, including JIRA number, upstream
+#  and brew info, if any.
+#  Query the user to see if editing the commit is warranted, for conflicts, etc.
+#
 #    PARAMETERS:  none
 #       GLOBALS:  b_conflict
 #		  cmtmsgfile
@@ -1413,7 +1421,7 @@ EOF
 #		  str_upstream
 #		  str_conflicts
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 stage_commit() {
 
 	local description
@@ -1470,86 +1478,27 @@ stage_commit() {
 
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  pop_upcmtstartline
-#   DESCRIPTION:  Backup the starting line in the upstream commits file
-#       GLOBALS:  upcmtstartline
-#    PARAMETERS:  $1 - number of commits to pop
-#       RETURNS:  status from call to ui_readline
-#===============================================================================
-pop_upcmtstartline() {
-	local -i pops=$1
-	local line
-	local stat
-
-	while ((pops > 0 && upcmtstartline > 0)); do
-		((--upcmtstartline))
-		line="$(ui_readline $upcmtstartline "$upcommitsfile")"
-		stat=$?
-		[ $stat -ne 0 ] && return $stat
-		[ "${line:0:1}" = "#" ] && continue
-		((--pops))
-	done
-
-	return $stat
-}
-
-#===  FUNCTION  ================================================================
-#          NAME:  pop_commits
-#   DESCRIPTION:  Backup the current head of the downstream branch and modify
-#                 the upcmtstartline accordingly
-#       GLOBALS:  upcmtstartline
-#                 b_cmdline
-#    PARAMETERS:  $1 - number of commits to pop
-#       RETURNS:  nonzero if attempting to pop more than has been committed
-#===============================================================================
-pop_commits() {
-	$b_cmdline && init_cmdline_call
-
-	local -i pops=$1
-	local commits
-	local popmsg
-
-	commits=$(git log --oneline "$dnorighead"..HEAD | wc -l)
-	popmsg=$(
-cat <<EOF
-${WRN}The number of pops you requested is greater than the number of commits that you
-have made in this session.$INF
-Commits this session : $STA$commits$INF
-      Pops requested : $STA$pops$OFF
-
-EOF
-)
-	((commits >= pops)) || {
-		echo -e "$popmsg"
-		$b_cmdline && exit_cherp $exit_bad
-		ui_press_any
-		return 1
-	}
-
-	pop_upcmtstartline "$pops"
-	git reset --hard HEAD~"$pops"
-	$b_cmdline && exit_cherp $exit_good
-	return 0
-}
-
-# set_cfg_item key value
+#** set_cfg_item key value: writes the value to the key in the .conf file
 #
-# Writes the value to the key offset in the .conf file
-#
+# Arguments:
+#   $1 - key
+#   $2 - value
+#*
 set_cfg_item() {
 	cfg_write_key "$1" "$2"
 }
 
-# get_cfg_item key
+#** get_cfg_item key: echoes the value at the key offset in the .conf file
 #
-# Echoes the value at the key offset in the .conf file
+# Arguments:
+#   $1 - the key in the config file to read
 #
 get_cfg_item() {
 	cfg_read_key "$1"
 }
 
-#===  FUNCTION  ================================================================
+#** save_session: save session's config variables to the .conf file
+#===============================================================================
 #          NAME:  save_session
 #   DESCRIPTION:  Save session's project variables to the project file.
 #    PARAMETERS:  $1 is not empty if this is an status call
@@ -1557,7 +1506,7 @@ get_cfg_item() {
 #                 upcmtstartline
 #                 All the sticky project variables
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 save_session() {
 	# echo -e "$UND\0save_session$OFF"
 	local -a keys=()
@@ -1571,11 +1520,13 @@ save_session() {
 	exec {fd}<&-
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  read_session
-#   DESCRIPTION:  Read the variables stored in the .conf file
-#                 Some project variables are updated elsewhere, and only need
-#                 to be retrieved at init time and saved at exit time.
+#** read_session: read the config variables out of the .conf file
+#===============================================================================
+#
+#  Read the variables stored in the .conf file Some project variables are
+#  updated elsewhere, and only need to be retrieved at init time and saved at
+#  exit time.
+#
 #    PARAMETERS:  none
 #       GLOBALS:  workdir
 #                 upcommitsfile
@@ -1583,7 +1534,7 @@ save_session() {
 #                 upname
 #       RETURNS:  1 if any of the important conf values are missing
 #                 0 otherwise
-#===============================================================================
+#*==============================================================================
 read_session() {
 	# echo -e "$UND\0read_session$OFF"
 	local cfgtemplate=
@@ -1634,12 +1585,14 @@ read_session() {
 	return 0
 }
 
-#===  FUNCTION  ===============================================================
-#          NAME:  init_common
-#   DESCRIPTION:  initialization common to all inits
+#** init_common: common to all init calls
+#==============================================================================
 #    PARAMETERS:  none
+#       GLOBALS:  upcmtstartline
+#                 upcommitsfile
+#                 upname
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 init_common() {
 	# echo -e "$UND\0init_common$OFF"
 
@@ -1652,12 +1605,11 @@ init_common() {
 	b_session_inited=true
 }
 
-#===  FUNCTION  ===============================================================
-#          NAME:  init_cmdline_call
-#   DESCRIPTION:  Check integrity of system if calling from the command line
+#** init_cmdline_call: for command line invocations
+#==============================================================================
 #    PARAMETERS:  none
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 init_cmdline_call() {
 	# echo -e "$UND\0init_cmdline_call$OFF"
 
@@ -1668,13 +1620,12 @@ init_cmdline_call() {
 	init_common
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  init_session
-#   DESCRIPTION:  Init the continuing session from the saved project variables
+#** init_session: init config variables from the .conf file
+#===============================================================================
 #    PARAMETERS:  none
 #       GLOBALS:  All sesson variables are affected
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 init_session() {
 	# echo -e "$UND\0init_session$OFF"
 
@@ -1683,13 +1634,12 @@ init_session() {
 	# $b_cmdline && exit_cherp $exit_good
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  init_newsession
-#   DESCRIPTION:  initialize a new session
+#** init_newsession: initialize a new session from scratch
+#===============================================================================
 #       GLOBALS:  All session variables are affected
 #    PARAMETERS:  none
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 init_newsession() {
 	echo -e "\n$UND\0init_newsession$OFF"
 
@@ -1705,13 +1655,12 @@ init_newsession() {
 	$b_cmdline && exit_cherp $exit_good
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  init_current_session
-#   DESCRIPTION:  initialize the current session to start from scratch
+#* init_current_session: recover last good conf and internal variables
+#===============================================================================
 #       GLOBALS:  All session variables are affected
 #    PARAMETERS:  none
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 init_current_session() {
 	upcmtstartline=1
 	lastuphash=
@@ -1725,15 +1674,18 @@ init_current_session() {
 	init_session
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  run_me
-#   DESCRIPTION:  Main program loop
+#** run_me: main program loop
+#===============================================================================
 #       GLOBALS:  upcommitsfile
-#                 $b_cmdline
 #                 currentuphash
+#                 stophash
+#                 exit_good
+#                 b_cmdline
+#                 b_conflict
+#                 b_session_inited
 #    PARAMETERS:  none
 #       RETURNS:  None
-#===============================================================================
+#*==============================================================================
 run_me() {
 	# echo -e "$UND\0run_me$OFF"
 
@@ -1771,14 +1723,22 @@ run_me() {
 	if $b_cmdline; then exit_cherp $exit_good; else menu_loop; fi
 }
 
-# run if user hits control-c
+#** ctrl_c: handler for user interrupt
 #
+# run if user hits control-c
+#*
 ctrl_c() {
 	echo
 	validate_last_upstream_hash
 	exit_cherp $CTLC_EXIT         # defined in lib/ui.source
 }
 
+#** check_command: checks the command line command
+#
+# Arguments:
+#   $1 - command from command line
+#   $2 - receives the validated command from the command line
+#*
 check_command() {
 	local cmd="$1"
 	local lead="--"
@@ -1791,9 +1751,9 @@ check_command() {
 	return 1
 }
 
-#############################
+#**############################
 # Start of Script Execution
-#############################
+#*#############################
 
 # trap keyboard interrupt (control-c)
 #
@@ -1813,9 +1773,9 @@ if ! [ -d .git ]; then
 	exit 1
 fi
 
-###########################################
+#########################################
 # Command Line Options
-###########################################
+#########################################
 
 declare checked_cmd
 declare infostr
@@ -1835,7 +1795,6 @@ help,\
 history,\
 new,\
 pick:,\
-pop:,\
 run,\
 select,\
 setup,\
@@ -1897,10 +1856,6 @@ else
 			currentuphash=$2
 			[ "$currentuphash" ] || { echo -e "$needcmtstr"; exit 1; }
 			run_single
-			;;
-		"--pop" )
-			pops=$2
-			pop_commits "$pops"
 			;;
 		"--reset" )
 			reset_cherp
