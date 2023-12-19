@@ -61,16 +61,16 @@ declare b_cmdline=false		# boolean indicating a comman line call
 #########################################
 declare configfile=
 declare upcmtstartline		# Line in upcommitsfile to start cherrypick
-declare dnorighead		# original downstream head at new session
+declare dnorighead		# original downstream head at session start
 declare lastuphash		# most recently applied upstream commit hash
 declare workdir			# scratch directory for the session
 declare upcommitsfile		# File of upstream commits to cherry-pick
 declare b_conflict		# last attempt generated a conflict
-declare str_jira=
-declare str_upstream=
-declare str_brew=
-declare str_test=
-declare stophash=
+declare str_jira=		# Options: JIRA link
+declare str_upstream=		# Options: upstream version, e.g, v6.7
+declare str_brew=		# Options: brew link
+declare str_test=		# Options: string containing test info
+declare stophash=		# stop backporting when this currentuphash
 
 #########################################
 # Global Variables
@@ -84,21 +84,20 @@ declare b_new=false		# new session
 declare b_single=false		# only perform single cherrypick
 declare b_nit=false		# selective cherrypick
 
-declare gitbranch
+declare gitbranch		# current downstream branch
 
-declare currentuphash
-declare currentupcommit
-declare lastuplog
-declare dncurrenthead
+declare currentuphash	# next hash in the upcommitsfile
+declare currentupcommit # oneline gitlog of next hash in the upcommitsfile
+declare lastuplog	# oneline gitlog of last committed upstream hash
+declare dncurrenthead	# hash of current downstread head
 
 # Default upstream repo
-declare upurl=
-declare upname="cp_upstream"
+declare upurl=			# url of upstream repo
+declare upname="cp_upstream"	# Name of remote upstream repo
 
 # Lines starting with any of these chars will be ignored.
 # The '#' indicates a comment, and the '+' indicates already committed.
 declare ignore_str="#+"
-declare stophash=
 
 ########################################
 # Global Strings
@@ -548,7 +547,7 @@ get_lastuplog() {
 		lastuplog="$(gitnice "$lastuphash")"
 	fi
 
-	cfg_set_item "lastuphash" "$lastuphas"
+	cfg_set_item "lastuphash" "$lastuphash"
 }
 
 #===  FUNCTION  ================================================================
@@ -1055,60 +1054,59 @@ abort_cherp() {
 	exit_cherp $exit_good
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  skip
-#   DESCRIPTION:  Exit the script in an orderly fashion.
-#    PARAMETERS:  $1 - true if command line call
-#       GLOBALS:  none
-#       RETURNS:  none
-#===============================================================================
-skip() {
-	init_cmdline_call
-	b_conflict=false
-	mark_done "$uphash" "#"
-	get_next_cherrypick
-}
-
-#** select_newhead: choose from the heads since dnorighead
+#** get_newhead: choose from the heads since dnorighead
 #
 # Globals:
-#   currentuphash
-#   lastuphash
-#   dnorighead
-#   dncurrenthead
+#   dnorighead    - result of 'git merge-base HEAD <origin-branch-name>'
+#   dncurrenthead - this will be modified if caller selects different head
 #*
-select_newhead() {
-	local -n snh_dnhash="$1"
-	local upary=()
+get_newhead() {
+	local dncmtary=()
 	local new
-	local -a clrary=()
+	local hashsize
+	local addlprompt
+	local tmp
+	local spc
 
-	lastuphash="$(extup -1 -b -m "$snh_dnhash" | cut -d' ' -f1)"
-echo "snh_dnhash: $snh_dnhash"
-	mapfile -t upary < <(gitnice "$dnorighead"^..)
-	select_from_array upary "HEADs" new
+	mapfile -t dncmtary < <(extup -m "$dnorighead"^..)
 
-	snh_dnhash="$(cut -d' ' -f1 <<< "$new")"
-echo "new snh_dnhash: $snh_dnhash"
-	lastuphash="$(extup -1 -b "$snh_dnhash" | cut -d' ' -f1)"
-echo "new lastuphash: $lastuphash"
-	set_cfg_item "lastuphash" "$lastuphash"
-	clrary=
-read
+	# Create space strings based on the sizes of the hashes.
+	# These will be used to correctly align the column headings in the
+	# selection menu.
+	tmp="$(cut -d' ' -f1 <<< "${dncmtary[0]}")"
+	hashsize="${#tmp}"
+	spc="$(printf "%*c" $((hashsize - 6)) " ")"
+
+	select_from_array dncmtary "HEADs" new \
+		"      ${UND}Dn Cmt$spc$OFF ${UND}Up Cmt$spc$OFF" || return 1
+
+	# Set the new downstream current head global
+	dncurrenthead="$(cut -d' ' -f1 <<< "$new")"
+	return 0
 }
 
-#===  FUNCTION  ================================================================
-#          NAME:  reset_cherp
-#   DESCRIPTION:  Exit the script in an orderly fashion.
+#** reset_cherp: reset the current downstream HEAD to an earlier commit
+#=============================================================================
+# If the current downstream HEAD is not at the original downstream HEAD, then
+# the user is presented with a list of downstream commits and corresponding
+# upstream commits. If the user chooses an earlier commit from the list, the
+# downstream commit will be reset to that point, and the upstreamcommitsfile
+# will be updated. It will appear as if those later commits have not yet been
+# made.
+# This is useful if things go over the edge, and you need to backtrack.
+#
 #    PARAMETERS:  $1 - exit code
 #       GLOBALS:  dnorighead
+#                 dncurrenthead
 #                 currentuphash
 #                 upcommitsfile
+#                 lastuphash -  will be modified if caller selects new dncurrenthead
 #       RETURNS:  none
-#===============================================================================
+#*==============================================================================
 reset_cherp() {
 	local cols=$((tcols - 12))
-	local dnhash="$(gitnice -1 | cut -d' ' -f1)"
+	local -a clrary=()
+	local linenumber
 
 	if [ "$dncurrenthead" == "$dnorighead" ]; then
 		echo -e "${WRN}No cherrypicked commits to choose from."
@@ -1120,11 +1118,25 @@ reset_cherp() {
 
 	loop_yn "Do you want to$WRN RESET$OFF now? y/n : " || return
 
-	select_newhead dnhash
+	get_newhead || return
 
-	# clrary=( $(extup -m -b 
-	clear_donerange dnhash
-	# git reset --hard "$dnhash"
+	# User selected a new head, so clear the leading "+ " from the lines in
+	# the upstreamcommitsfile to indicate that the corresponding upstream
+	# commits are not applied. We are backtracking.
+	# If the user chose the original head, resetting it back to the beginning,
+	# then clear all the done markers, else just clear the ones that we're
+	# retreating from.
+	if [ "$dncurrenthead" == "$dnorighead" ]; then
+		linenumber=1
+	else
+		mapfile -t clrary < <(extup -m -b "$dncurrenthead".. | cut -d' ' -f1)
+		linenumber=$(grep -n -m1 "${clrary[-1]}" "$upcommitsfile" | cut -d: -f1)
+	fi
+
+	sed -i "${linenumber},\$s|^+ ||" "$upcommitsfile"
+
+	# Reset to the new head, and get the next cherrypick.
+	git reset --hard "$dncurrenthead"
 	b_conflict=false
 	b_lasthashvalid=false
 	upcmtstartline=0
@@ -1849,9 +1861,6 @@ else
 	    case "$checked_cmd" in
 		"--abort" )
 			abort_cherp
-			;;
-		"--skip" )
-			skip
 			;;
 		"--branch" )
 			set_gitbranch
