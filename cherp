@@ -526,6 +526,7 @@ getlasttag() {
 get_lastuplog() {
 	local ch="+"
 
+	[ -n "$upcommitsfile" ] || return
 	lastuplog="$(grep "^$ch" $upcommitsfile | tail -n1)"
 
 	if [ -n "$lastuplog" ]; then
@@ -1538,12 +1539,25 @@ save_session() {
 read_session() {
 	# echo -e "$UND\0read_session$OFF"
 	local cfgtemplate=
-	local temp
+	local tbg		# terminal background
 	local origin_brname
-	local mypid
-	local tempfile
+	local br
+	local -a bary=()
+	local tmx
 
-	ui_setbg temp
+	# If we're running in a tmux window, we will have to ask for colors
+	# Else we can use the automated terminal background color routine.
+	tmx="$(echo "$TMUX")"
+	if [ -n "$tmx" ]; then
+		tbg="$(cut -d= -f2 < <(grep 'tbackground' "$MYDATA/cherp.conf"))"
+		tbg="${tbg// /}"
+		if [ -z "$tbg" ]; then
+			ui_use_colors
+			tbg="$terminal_background"
+		fi
+	else
+		ui_setbg tbg
+	fi
 
 	# Initialize the paths for the current working directory
 	#
@@ -1552,6 +1566,8 @@ read_session() {
 	cfgtemplate="$MYLIB/cherp.conf"
 
 	cfg_start "$cfgtemplate" "$configfile"
+	cfg_set_item "tbackground" "$tbg"
+
 	init_global_strings
 
 	if grep -q "$upname" .git/config; then
@@ -1564,14 +1580,10 @@ read_session() {
 		fetch_upstream_repo
 	fi
 
-	# Get the name of the origin main or master branch and clear any spaces
-	tempfile="$(mktemp)"
-	echo -en "Initing"
-	git remote show origin | grep HEAD | cut -d: -f2 > "$tempfile" 2>&1 & mypid=$!
-	ui_waitonproc $mypid .05
-	origin_brname="$(cat "$tempfile")"
-	origin_brname="${origin_brname// /}"
-	rm -vf "$tempfile" > /dev/null 2>&1
+	# Let's use the .git/config file to get the name of the origin branch
+	br=$(grep origin -B2 .git/config | grep branch | sed 's/[]//g; s/["\]/ /g')
+	IFS=" " read -r -a bary <<< "$br"
+	origin_brname=${bary[1]}
 
 	# Get the original head by getting the commit where the current
 	# branch diverged from main
@@ -1582,6 +1594,7 @@ read_session() {
 	[ "$upcmtstartline" ] || return 1
 	[ "$workdir" ]        || set_working_directory
 	[ "$upcommitsfile" ]  || set_upcommitsfile
+
 	return 0
 }
 
