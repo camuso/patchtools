@@ -13,8 +13,16 @@
 	MYLIB="$MYDIR"/lib
 }
 
-[ "$ui_loaded" ]        || source "$MYLIB"/ui.source
-[ "$ptversion_loaded" ] || source "$MYLIB"/patchtools-version.source
+declare MYMAN="$MYDIR"/man
+declare MYDATA=
+MYDATA="$(realpath ./.data)"
+declare MYHLP="$MYMAN"/cherp.txt
+declare MYNAME=
+MYNAME="$(basename "$0")"
+
+[ "$ui_loaded" ]            || source "$MYLIB"/ui.source
+[ "$ptversion_loaded" ]     || source "$MYLIB"/patchtools-version.source
+[ "$configmanager_loaded" ] || source "$MYLIB"/config-manager.source
 
 declare usagestr=
 usagestr="$(
@@ -36,14 +44,6 @@ The required screen splitter is tmux. If it is not installed,
 you will be prompted whether you want to install it. The
 script will exit if tmux is not installed and you don't want
 to install it.
-\0
-EOF
-)"
-
-declare intro
-intro="$(
-cat <<EOF
-
 \0
 EOF
 )"
@@ -94,12 +94,24 @@ parseops() {
 	done
 }
 
-main() {
+init() {
 	local myb
+
+	configfile="$MYDATA/cherp.conf"
+	cfgtemplate="$MYLIB/cherp.conf"
+set -x
+	cfg_start "$cfgtemplate" "$configfile"
+set +x
+	ui_setbg mybg
+
+}
+
+main() {
 	local errstr
 
 	[[ $1 =~ (-h|^help) ]] && usage
-	ui_setbg mybg
+
+	init
 
 	errstr=$(rpm -q tmux) || {
 		echo -e	"\n$WRN$errstr$OFF\n"
@@ -127,14 +139,20 @@ main() {
 	# Start tmux session with vertically split window
 	tmux new-session -d -s mysession
 
-	# Split the window vertically
-	tmux split-window -h
+	# Split the window
+	$b_vertical && tmux split-window -h || tmux split-window -v
 
-	# Run your script in the left pane
-	tmux send-keys -t mysession:0.0 'your_script.sh' Enter
+	# Run your script in the first pane
+	tmux send-keys -t mysession:0.0 'bash -x cherp' C-m
 
-	# Display a text file in the right pane (replace 'your_text_file.txt' with your file)
-	tmux send-keys -t mysession:0.1 'cat your_text_file.txt' Enter
+	# get the backports commit file from the cherp.conf file
+	upcommitsfile="$(cfg_get_item "upcommitsfile")"
+
+	# If the file exists, then spawn vim to edit it.
+	if [ -n "$upcommitsfile" ]; then
+		# Vim the backport commits file in the second pane
+		tmux send-keys -t mysession:0.1 'vim  "+set autoread" "$upcommitsfile"' C-m
+	fi
 
 	# Attach to the session
 	tmux attach-session -t mysession
