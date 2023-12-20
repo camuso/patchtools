@@ -116,7 +116,7 @@ str_conflicts="Conflicts:\n"
 
 #** print_herald: print the script's herald defined above
 #===============================================================================
-#    PARAMETERS:  Implicit global, str_herald
+#     ARGUMENTS:  Implicit global, str_herald
 #       RETURNS:  None
 #*==============================================================================
 print_herald() {
@@ -125,7 +125,7 @@ print_herald() {
 
 #** exit_cherp: exit in an orderly manner
 #===============================================================================
-#    PARAMETERS:  None
+#     ARGUMENTS:  None
 #       RETURNS:  None
 #===============================================================================
 exit_cherp() {
@@ -136,7 +136,7 @@ exit_cherp() {
 
 #** get_gitbranch: prints the name of the current git branch
 #===============================================================================
-#    PARAMETERS:  None
+#     ARGUMENTS:  None
 #       RETURNS:  None
 #*==============================================================================
 get_gitbranch() {
@@ -145,7 +145,7 @@ get_gitbranch() {
 
 #** set_gitbranch: list the available branches for the user to choose one
 #===============================================================================
-#    PARAMETERS:  None
+#     ARGUMENTS:  None
 #       GLOBALS:  workdir
 #                 gitbranch
 #       RETURNS:  0 if new branch selected, 1 if user did not make a selection
@@ -190,7 +190,7 @@ set_gitbranch() {
 
 #** git_set_subjectprefix: Set the subject prefix in .git/config
 #===============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       RETURNS:  none
 #*==============================================================================
 git_set_subjectprefix() {
@@ -256,7 +256,7 @@ EOF
 
 #** set_working_directory: for the script's output
 #===============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  workdir
 #       RETURNS:  none
 #*==============================================================================
@@ -270,7 +270,7 @@ set_working_directory() {
 
 #** fetch_upstream_repo: spawn git fetch $upname $upurl and wait on proc
 #===============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  upurl
 #                 upname
 #       RETURNS:  none
@@ -290,7 +290,7 @@ fetch_upstream_repo() {
 
 #** set_upstream_url: user inputs the url to use for upstream repo
 #===============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  upurl
 #                 upname
 #       RETURNS:  none
@@ -308,7 +308,7 @@ set_upstream_url() {
 
 #** set_upcommitsfile: user enters file containing commits to backport
 #===============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  upcommitsfile - file containing the commits to be backported
 #       RETURNS:  status of call to ui_getfilespec()
 #*==============================================================================
@@ -377,7 +377,7 @@ EOF
 
 #** pr_nohash_msg: message for hash not among commits in backport file
 #===============================================================================
-#    PARAMETERS:  $1 - hash
+#     ARGUMENTS:  $1 - hash
 #       GLOBALS:  upcommitsfile - file of upstream commits to cherrypick
 #       RETURNS:  none
 #*==============================================================================
@@ -398,7 +398,7 @@ EOF
 
 #** lookup_hash: Find the given hash in the backport commits file
 #===============================================================================
-#    PARAMETERS:  $1 - hash
+#     ARGUMENTS:  $1 - hash
 #                 $2 - will return the number of the line in the commits file
 #                      that has the hash.
 #       GLOBALS:  upcommitsfile - file of upstream commits to cherrypick
@@ -421,7 +421,7 @@ lookup_hash() {
 
 #** set_next_cherrypick: Select the starting commit from the upcommitsfile
 #===============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  upcommitsfile - file of upstream commits to cherrypick
 #                 upcmtstartline- starting line for upcommitsfile
 #                 currentupcommit - global storage for current upstream commit
@@ -477,7 +477,7 @@ set_next_cherrypick() {
 #   Validates whether the hash stored in the project file is valid for this
 #   instance of cherp
 #
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  upcommitsfile - the cherry-pick commits file containing the
 #                                 hashes of the commits to be backported.
 #                 b_lasthashvalid - boolean indicating last hash was valid
@@ -502,9 +502,9 @@ validate_last_upstream_hash() {
 	$b_lasthashvalid && return 0 || return 1
 }
 
-#** getlasttag: sow dots while obtaining the latest git tag
+#** getlasttag: show dots while obtaining the latest git tag
 #===============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  lasttagfile
 #       RETURNS:  none
 #*===============================================================================
@@ -543,7 +543,7 @@ get_lastuplog() {
 #  leading +, indicating the commit has already been applied to the downstream
 #  branch.
 #
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  upcommitsfile
 #                 upcmtstartline
 #                 currentuphash
@@ -596,7 +596,7 @@ get_next_cherrypick() {
 #  Because get_next_cherrypick always pre-increments the upcmtstartline, this
 #  routine will decrement the upcmtstartline before calling get_next_cherrypick/
 #
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  upcmtstartline
 #       OUTPUTS:  echoes the hash of next upstream commit in the commits file
 #       RETURNS:  status of call to get_next_cherrypick
@@ -613,7 +613,7 @@ get_current_cherrypick() {
 
 #** show_next_cherrypick: show the next upstream commit to backport
 #===============================================================================
-#    PARAMETERS:  None
+#     ARGUMENTS:  None
 #       GLOBALS:  upcommitsfile
 #                 currentupcommit
 #                 currentuphash
@@ -658,7 +658,7 @@ EOF
 
 #** show_select_next_cherrypick: let user select next commit to backport
 #===============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  upcommitsfile
 #       RETURNS:  none
 #*==============================================================================
@@ -680,7 +680,7 @@ EOF
 
 #** show_most_recent_cherrypick: show the last upstream commit backported
 #===============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  lastuplog
 #                 tcols
 #                 menupad
@@ -704,7 +704,7 @@ EOF
 
 #** show_upsteam_commits_file: print the filename of the upstream commmits file
 #===============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  upcommitsfile
 #       RETURNS:  none
 #*==============================================================================
@@ -725,7 +725,7 @@ EOF
 
 #** show_history: history of applied patches in downstream branch
 #==============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  tcols - number of columns in the current terminal
 #                 menupad - number of to the dynamic menu items
 #       RETURNS:  none
@@ -739,7 +739,7 @@ show_history() {
 
 #** show_status: prints the current status to the screen
 #==============================================================================
-#    PARAMETERS:  $1 - If this argument is not empty, then forego the
+#     ARGUMENTS:  $1 - If this argument is not empty, then forego the
 #                      init_cmdline_call
 #       GLOBALS:  tcols - number of columns in the current terminal
 #                 menupad - number of to the dynamic menu items
@@ -873,7 +873,7 @@ show_altopt() {
 
 #** show_settings: display current settings and the main menu
 #==============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  tcols - number of columns in the current terminal
 #                 menupad - number of to the dynamic menu items
 #       RETURNS:  none
@@ -933,7 +933,7 @@ EOF
 
 #** menu_parser: parse the user input at the main menu
 #===============================================================================
-#    PARAMETERS:  none, but lots of side effects
+#     ARGUMENTS:  none, but lots of side effects
 #       GLOBALS:  dncurrenthead
 #       RETURNS:  rc_continue, used by menu_loop to determine whether to
 #       	  continue looping.
@@ -995,7 +995,7 @@ menu_parser() {
 
 #** menu_loop: present the menu until user quits
 #===============================================================================
-#    PARAMETERS:  none, but lots of side effects
+#     ARGUMENTS:  none, but lots of side effects
 #       GLOBALS:  workdir
 #                 cmtmsgfile
 #                 upcommitsfile
@@ -1017,7 +1017,7 @@ menu_loop() {
 
 #** edit_commit: Loop through process to edit commit message until done
 #===============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  cmtmsgfile
 #       RETURNS:  none
 #*==============================================================================
@@ -1043,7 +1043,7 @@ edit_commit() {
 #
 #  This will clear conflicts flag and abort the pending cherrypick
 #
-#    PARAMETERS:  $1 - true if command line call
+#     ARGUMENTS:  $1 - true if command line call
 #       GLOBALS:  b_conflict
 #                 upcmtstartline
 #       RETURNS:  none
@@ -1107,7 +1107,7 @@ get_newhead() {
 # made.
 # This is useful if things go over the edge, and you need to backtrack.
 #
-#    PARAMETERS:  $1 - exit code
+#     ARGUMENTS:  $1 - exit code
 #       GLOBALS:  dnorighead
 #                 dncurrenthead
 #                 currentuphash
@@ -1161,7 +1161,7 @@ reset_cherp() {
 #
 #  Assumes that changes were made and committed externally to this script.
 #
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  b_conflict
 #       RETURNS:  none
 #*==============================================================================
@@ -1193,7 +1193,7 @@ EOF
 #
 #  Script will commit and create the commit log.
 #
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  currentuphash
 #                 lastuphash
 #                 b_conflict
@@ -1222,7 +1222,7 @@ run_commit() {
 
 #** run_single: just backport one commit
 #===============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  currentuphash
 #                 b_single
 #       RETURNS:  none
@@ -1246,7 +1246,7 @@ run_single() {
 #  Indicates the upstream hash in this line of the backport commits file has
 #  been backported.
 #
-#    PARAMETERS:  $1 - uphash
+#     ARGUMENTS:  $1 - uphash
 #    		  $2 - optional user supplied mark
 #       GLOBALS:  upcommitsfile
 #       RETURNS:  0 on success, nonzero on fail
@@ -1273,7 +1273,7 @@ mark_done() {
 
 #** clear_done: clear "done" mark for line having given hash in upcommitsfile
 #===  FUNCTION  ================================================================
-#    PARAMETERS:  $1 - uphash
+#     ARGUMENTS:  $1 - uphash
 #    		  $2 - optional user supplied mark
 #       GLOBALS:  upcommitsfile
 #       RETURNS:  0 on success, nonzero on fail
@@ -1303,7 +1303,7 @@ clear_done() {
 #          NAME:  clear_alldone
 #   DESCRIPTION:  Clear the "done" mark for the line in the upcommitsfile
 #                 corresponding to the hash passed.
-#    PARAMETERS:  $1 - optional user supplied mark
+#     ARGUMENTS:  $1 - optional user supplied mark
 #       GLOBALS:  upcommitsfile
 #       RETURNS:  0 on success, nonzero on fail
 #*==============================================================================
@@ -1323,7 +1323,7 @@ clear_alldone() {
 
 #** cherrypick: backport the upstream commit in uphash
 #===============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  upcommitsfile
 #                 commit
 #                 tcols
@@ -1414,7 +1414,7 @@ EOF
 #  and brew info, if any.
 #  Query the user to see if editing the commit is warranted, for conflicts, etc.
 #
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  b_conflict
 #		  cmtmsgfile
 #		  str_jira
@@ -1501,7 +1501,7 @@ get_cfg_item() {
 #===============================================================================
 #          NAME:  save_session
 #   DESCRIPTION:  Save session's project variables to the project file.
-#    PARAMETERS:  $1 is not empty if this is an status call
+#     ARGUMENTS:  $1 is not empty if this is an status call
 #       GLOBALS:  upcommitsfile
 #                 upcmtstartline
 #                 All the sticky project variables
@@ -1527,7 +1527,7 @@ save_session() {
 #  updated elsewhere, and only need to be retrieved at init time and saved at
 #  exit time.
 #
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  workdir
 #                 upcommitsfile
 #                 upurl
@@ -1587,7 +1587,7 @@ read_session() {
 
 #** init_common: common to all init calls
 #==============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  upcmtstartline
 #                 upcommitsfile
 #                 upname
@@ -1607,7 +1607,7 @@ init_common() {
 
 #** init_cmdline_call: for command line invocations
 #==============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       RETURNS:  none
 #*==============================================================================
 init_cmdline_call() {
@@ -1622,7 +1622,7 @@ init_cmdline_call() {
 
 #** init_session: init config variables from the .conf file
 #===============================================================================
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       GLOBALS:  All sesson variables are affected
 #       RETURNS:  none
 #*==============================================================================
@@ -1637,7 +1637,7 @@ init_session() {
 #** init_newsession: initialize a new session from scratch
 #===============================================================================
 #       GLOBALS:  All session variables are affected
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       RETURNS:  none
 #*==============================================================================
 init_newsession() {
@@ -1658,7 +1658,7 @@ init_newsession() {
 #* init_current_session: recover last good conf and internal variables
 #===============================================================================
 #       GLOBALS:  All session variables are affected
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       RETURNS:  none
 #*==============================================================================
 init_current_session() {
@@ -1683,7 +1683,7 @@ init_current_session() {
 #                 b_cmdline
 #                 b_conflict
 #                 b_session_inited
-#    PARAMETERS:  none
+#     ARGUMENTS:  none
 #       RETURNS:  None
 #*==============================================================================
 run_me() {
