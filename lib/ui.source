@@ -81,10 +81,10 @@ unset BPUR && declare BLIL="\e[1m$LIL"
 
 unset BWOR && declare BWOR='\e[1;37;41m'
 
-declare -i terminal_background=0
-declare -i tb_lite=0
-declare -i tb_dark=1
-declare b_color=
+declare -i tb_lite=1
+declare -i tb_dark=2
+declare -i terminal_background=$tb_dark # default is dark terminal
+declare b_color=true                    # default is colors on
 
 # Terminal magic
 #
@@ -255,7 +255,8 @@ ui_isdarkbg() {
 	local -a bga=()
 	local -i sum=0
 
-	read -rs -d \\ -p $'\e]11;?\e\\' bgraw
+	# read -rs -d \\ -p $'\e]11;?\e\\' bgraw
+	bgraw=$(printf "\e]11;?\a")
 	bg=$(echo "$bgraw" | xxd -c 32 | cut -d':' -f3)
 	ui_strtok "$bg" "/." bga
 
@@ -1140,20 +1141,9 @@ ui_catoneline() {
 # Returns 1 if the line number exceeds the number of lines in the file.
 #*
 ui_replaceline() {
-	local -i line
-	local new_content
-
 	(($# != 3)) && return "$ui_err_invargc"
 	check_lineargs "$1" "$3" || return $?
-
-	awk -v line="$1" -v new_content="$2" '{
-		if (NR == line) {
-			print new_content;
-		} else {
-			print $0;
-		}
-	}' "$3" > "$ui_tempfile"
-	[ -f "$ui_tempfile" ] && mv -f "$ui_tempfile" "$3"
+	sed -i "${1}s|.*$|${2}|" "${3}"
 	return 0
 }
 
@@ -1172,13 +1162,7 @@ ui_replaceline() {
 # $3 - File
 #*
 ui_replaceline_raw() {
-	local -i linenum
-	local newtext
-
-	awk -v linenum="$1" -v newtext="$2" \
-		'NR==linenum {$0=newtext} {print}' \
-		"$3" > "$ui_tempfile"
-	[ -f "$ui_tempfile" ] && mv -f "$ui_tempfile" "$3"
+	sed -i "${1}s|.*$|${2}|" "${3}"
 	return 0
 }
 
