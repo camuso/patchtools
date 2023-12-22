@@ -71,11 +71,13 @@ declare str_upstream=		# Options: upstream version, e.g, v6.7
 declare str_brew=		# Options: brew link
 declare str_test=		# Options: string containing test info
 declare stophash=		# stop backporting when this currentuphash
+declare tbackground		# terminal background, light(1) or dark(2)
 
 #########################################
 # Global Variables
 #########################################
-declare -i menupad=36
+declare finaluphash
+declare -i menupad=30
 declare cmtmsgfile=/dev/shm/gcpcmtmsgfile
 declare b_lasthashvalid=false
 declare lasttagfile="/dev/shm/gcplasttag"
@@ -184,7 +186,7 @@ set_gitbranch() {
 	}
 
 	git log --oneline -1
-	getlasttag
+	get_originhead
 	$b_cmdline && exit_cherp $exit_good || return 0
 }
 
@@ -278,30 +280,71 @@ set_working_directory() {
 fetch_upstream_repo() {
 	local mypid
 
-	echo -e "${INF}Adding url: $UND$STA$upurl$OFF"
-	echo -e "${INF}as \"$upname\""
-	echo -e "${INF}Type: ${MNU}git branch -r | grep $upname$OFF"
-	echo -e "${INF}to see the $upname remote and its branches$OFF"
+	echo -e "${INF}Adding url: $UND$CYN$upurl$OFF"
+	echo -e "${INF}as \"$STA$upname\""
+	echo -e "${INF}Type: ${MNU}git branch -r | grep $upname$OFF" \
+		"${INF}to see the $upname remote and its branches$OFF"
 	echo -e "${INF}Fetching the upstream repo.$OFF"
 	echo -e "${INF}This could take some time, so please be patient.$OFF"
-	git fetch "$upname" & mypid=$!
+
+	git fetch -p "$upname" & mypid=$!
 	ui_waitonproc_tty $mypid 1
 }
 
 #** set_upstream_url: user inputs the url to use for upstream repo
 #===============================================================================
-#     ARGUMENTS:  none
+#     ARGUMENTS:  $1="NEW" if there is no upurl stored in the .conf file
 #       GLOBALS:  upurl
 #                 upname
 #       RETURNS:  none
 #*==============================================================================
 set_upstream_url() {
+	local new="$1"	# if == "new", then there is no upurl yet, so ge it
 	local temp=
-	echo -e "${INF}Change the upstream url. Press ENTER to quit without changing.$OFF"
-	getuser "New upstream URL: " temp
-	[ -n "$temp" ] || return
-	upurl="$temp"
-	git remote remove "$upname"		# no errors if it doesn't exist
+	local b_new=
+	local defurl="git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git"
+
+	if [ "$new" == "NEW" ]; then
+		b_new=true
+		echo -e  "$UND${INF}Enter the upstream url.$OFF"
+		echo -e "${INF}The default upstream url is ..."
+		echo -e "${LNK}$defurl$OFF"
+		echo -e "${INF}Press $qstr$INF to accept the default.$OFF"
+	else
+		b_new=false
+		echo -e "$UND${INF}Change the upstream url.$OFF"
+		echo -e "${INF}The current upstream url is ...$OFF"
+		echo -e "$LNK$upurl$OFF"
+		echo -e "${INF}Press$qstr$INF to leave it unchanged.$OFF"
+	fi
+
+	while :; do
+		getuser "Upstream URL: " temp
+
+		if [ -z "$temp" ]; then
+			echo -en "${CAU}Enter an upstream url or $qstr$CAU to "
+			if $b_new; then
+				echo -e "accept the default.$OFF"
+			else
+				echo -e "leave the upstream url unchanged.$OFF"
+			fi
+			continue
+		fi
+
+		if [ "$temp" == "q" ]; then
+			if $b_new; then
+				upurl="$defurl"
+				break;
+			else
+				return
+			fi
+		else
+			$b_new || git remote remove "$upname"
+			upurl="$temp"
+			break;
+		fi
+	done
+
 	git remote add "$upname" "$upurl"
 	fetch_upstream_repo
 }
@@ -447,6 +490,7 @@ set_next_cherrypick() {
 	local cols=$((tcols - 2 - numwid))
 	local selected
 
+	[ -f "$upcommitsfile" ] || return
 	linecount=$(wc -l "$upcommitsfile")
 	echo -e "\n${INF}Contents of upstream commits file: $STA$upcommitsfile$OFF"
 	echo -e "$MNU\0NOTE:$INF Not showing lines starting with any of these chars:"\
@@ -518,6 +562,8 @@ getlasttag() {
 
 #** get_lastuplog: gitnice of most recent, successfully applied upstream commit
 #
+#  Also inits the lastuphash
+#
 # Globals:
 # 	lastuplog
 # 	lastuphash
@@ -526,7 +572,7 @@ getlasttag() {
 get_lastuplog() {
 	local ch="+"
 
-	[ -n "$upcommitsfile" ] || return
+	[ -f "$upcommitsfile" ] || return
 	lastuplog="$(grep "^$ch" $upcommitsfile | tail -n1)"
 
 	if [ -n "$lastuplog" ]; then
@@ -535,6 +581,19 @@ get_lastuplog() {
 	fi
 
 	cfg_set_item "lastuphash" "$lastuphash"
+}
+
+#** get_finaluphash: find the last commit in the backport commits file
+#
+# Globals
+#   upcommitsfile
+#   finaluphash
+#*
+get_finaluphash() {
+	local -a lary=()
+
+	mapfile -t lary < <(grep -v "^[${ignore_str}]" "$upcommitsfile" | grep -v '^$')
+	finaluphash="$(cut -d' ' -f1 <<< "${lary[-1]}")"
 }
 
 #** get_next_cherrypick: gets the next commit in the backport commits file
@@ -548,7 +607,9 @@ get_lastuplog() {
 #       GLOBALS:  upcommitsfile
 #                 upcmtstartline
 #                 currentuphash
+#                 currentupcommit
 #                 ignore_str
+#                 menupad
 #       OUTPUTS:  echoes the hash of next upstream commit in the commits file
 #       RETURNS:  1 if there are no more cherries to pick, else 0
 #*==============================================================================
@@ -560,32 +621,26 @@ get_next_cherrypick() {
 
 	local idx
 	local line
-	local count
-
-	count=$(wc -l < "$upcommitsfile")
+	local -a lary=()
+	local sts=0
 
 	# Find the first line that does NOT begin with one of the characters in the
 	# string of characters indicating the line is to be ignored.
 	#
-	for ((idx=(upcmtstartline + 1); idx <= count; ++idx)); do
-		line="$(ui_readline "$idx" "$upcommitsfile")"
-		[ "$(ui_strindex "$ignore_str" "${line:0:1}")" -ge 0 ] || break
-	done
-
-	if [ "$idx" -gt "$count" ] ; then
-	# if [ "$idx" -gt "$count" ] && [ -n "$currentupcommit" ]; then
-		echo -en "$STA${currentupcommit:0:$tcols}$OFF "
-		echo -e "${INF}was the last upstream commit in file: $STA$upcommitsfile$OFF"
-		return 1
+	mapfile -t lary < <(grep -v "^[${ignore_str}]" "$upcommitsfile" | grep -v '^$')
+	if ((${#lary} > 0)); then
+		currentuphash="$(cut -d' ' -f1 <<< "${lary[0]}")"
+		upcmtstartline="$(grep -n "$currentuphash" "$upcommitsfile" | cut -d: -f1)"
+		currentupcommit="$(gitnice -1 "$currentuphash")"
+		sts=0
+	else
+		currentuphash=
+		upcmtstartline="$(($(wc -l < "$upcommitsfile") + 1))"
+		sts=1
 	fi
 
-	upcmtstartline="$idx"
-	currentupcommit="$line"
-	currentuphash="$(echo "$line" | cut -d' ' -f1)"
-	currentupcommit="$(gitnice "$currentuphash")"
 	set_cfg_item "upcmtstartline" "$upcmtstartline"
-
-	return 0
+	return $sts
 }
 
 #** get_current_cherrypick: gets the current commit to backport
@@ -620,32 +675,25 @@ get_current_cherrypick() {
 #                 currentuphash
 #                 b_conflict
 #                 b_cmdline
+#                 menupad
 #       RETURNS:  none
 #*==============================================================================
 show_next_cherrypick() {
 	# echo "\n${UND}show_next_cherrypick$OFF"
 
 	local linecount
-	local prstr
+	local prstr=
 	local statstr
 	local leadstr
 	local cols=$((tcols - menupad))
 	local show_next_cherrypick_str
-	local eofstr
+	local padstr="$(printf "%*c" "$menupad" " ")"
 
-	eofstr=$(
-cat <<EOF
-$STA$currentuphash ${INF}was the last commit in file: $STA$upcommitsfile$OFF
-
-EOF
-)
 	($b_cmdline || $b_conflict) && leadstr="    " || leadstr="$MNU c$OFF  "
-	$b_conflict && statstr="${WRN}Current conflict         ${OFF}:" \
+	$b_conflict && statstr="${CAU}Current conflict         ${OFF}:" \
 		    || statstr="Next cherrypick          :$OFF"
 
-	get_current_cherrypick	&& prstr="$STA${currentupcommit:0:$cols}$OFF" \
-				|| prstr="$eofstr"
-
+	get_current_cherrypick	&& prstr="$STA${currentupcommit:0:$cols}$OFF"
 
 	show_next_cherrypick_str=$(
 cat <<EOF
@@ -693,14 +741,12 @@ show_most_recent_cherrypick() {
 
 	local cols=$((tcols - menupad))
 	local laststr
+	local padstr="$(printf "%*c" "$menupad" " ")"
+	local eofstr="$CAU$padstr was the last commit in backport file$OFF"
 
-	laststr=$(
-cat <<EOF
-
-    Last cherrypicked commit : $STA${lastuplog:0:$cols}$OFF
-EOF
-)
+	laststr="\n    Last cherrypicked commit : $STA${lastuplog:0:$cols}$OFF"
 	$b_lasthashvalid && echo -e "$laststr"
+	((upcmtstartline > $(wc -l < "$upcommitsfile"))) && echo -e "$eofstr"
 }
 
 #** show_upsteam_commits_file: print the filename of the upstream commmits file
@@ -733,7 +779,9 @@ EOF
 #*==============================================================================
 show_history() {
 	$b_cmdline && init_cmdline_call
+	echo
 	echo -en "$INF$(git log --oneline "$dnorighead"..HEAD)$OFF"
+	echo
 	$b_cmdline && exit 0
 	return 0
 }
@@ -783,6 +831,18 @@ EOF
 	$b_internal || exit 0
 }
 
+#** show_tbackground
+#
+#  Globals:
+#    tbackground
+#    tb_light
+#    tb_dark
+#*
+show_tbackground() {
+	((tbackground == tb_dark)) && echo -n "Dark" ||
+		                      echo -n "Light"
+}
+
 #** show_options: display the options menu
 #
 #  Globals:
@@ -803,6 +863,7 @@ $MNU
     $MNU b $OFF Brew or build info       : $STA$str_brew$OFF
     $MNU t $OFF Test information         : $STA$str_test$OFF
     $MNU p $OFF Current subject prefix   : $STA$(git config format.subjectprefix)$OFF
+    $MNU c $OFF Change Terminal Color    : $STA$(show_tbackground)$OFF
     $MNU q $OFF Quit to main menu
 \0
 EOF
@@ -841,6 +902,10 @@ get_options() {
 			;;
 		p )	git_set_subjectprefix
 			;;
+		c )     ui_use_colors
+			tbackground="$terminal_background"
+			set_cfg_item "tbackground" "$tbackground"
+			;;
 		q )	return 1
 	esac
 
@@ -868,7 +933,7 @@ show_altopt() {
 	local opt="$1"
 	local str="$2"
 	$ui_b_keypress || return 1
-	echo -e "$WRN Alt-Shift-$opt $OFF$str"
+	echo -e "$CAU Alt-Shift-$opt $OFF$str"
 	return 0
 }
 
@@ -899,17 +964,15 @@ show_settings() {
 cat <<EOF
 $MNU
     ${UND}Upstream Environment    $OFF
-$MNU b $OFF File of Backport Commits : $STA$upcommitsfile$OFF
-$MNU u $OFF Upstream url             : $STA$upurl$OFF\
+$MNU f $OFF Backport File            : $STA$upcommitsfile$OFF
+$MNU u $OFF Upstream url             : $LNK$upurl$OFF\
 $(show_most_recent_cherrypick)\
 $(show_next_cherrypick)
 $MNU
     ${UND}Downstream Environment  $OFF
     Current Head             : $STA${lastbrcmt:0:cols}$OFF
     Head at Session Start    : $STA${orighead:0:cols}$OFF
-    Most recent tag          : $STA$lasttag$OFF
-$MNU B $OFF Current git branch       : $STA$(get_gitbranch)$OFF
-$MNU b $OFF Backport File            : $STA$upcommitsfile$OFF
+$MNU b $OFF Current git branch       : $STA$(get_gitbranch)$OFF
 $MNU w $OFF Working directory        : $STA$workdir$OFF
 $MNU O $OFF Options menu
 $MNU
@@ -955,11 +1018,11 @@ menu_parser() {
 
 	case $setting in
 
-		B )	set_gitbranch
+		b )	set_gitbranch
 			;;
 		w )	set_working_directory
 			;;
-		b )	set_upcommitsfile
+		f )	set_upcommitsfile
 			;;
 		u )	set_upstream_url
 			;;
@@ -1194,7 +1257,7 @@ EOF
 #
 #  Script will commit and create the commit log.
 #
-#     ARGUMENTS:  none
+#     ARGUMENTS:  $1 if == "ONE" run one and exit
 #       GLOBALS:  currentuphash
 #                 lastuphash
 #                 b_conflict
@@ -1205,20 +1268,18 @@ EOF
 run_commit() {
 	# echo -e "$UND\0run_commit$OFF"
 
-	local gitstat
-
-	gitstat=$(git status --porcelain)
-	[ "$gitstat" ] || { git status && exit $exit_nothing; }
+	local b_one=$([ "$1" == "ONE" ] && echo true || echo false)
 
 	init_cmdline_call
 	b_conflict=true
 	currentuphash=$lastuphash
 	stage_commit
 	mark_done $currentuphash
+	b_conflict=false
 
-	exit_cherp $exit_good
-	# get_next_cherrypick
-	# run_me
+	$b_one && exit_cherp $exit_good
+	get_next_cherrypick
+	run_me
 }
 
 #** run_single: just backport one commit
@@ -1373,7 +1434,6 @@ EOF
 		git -c merge.renameLimit=1 cherry-pick -x "$uphash"
 		# err=$(git show "$uphash" | git apply -3 --index 2>&1 > /dev/null)
 	fi
-
 	gitstat=$?
 
 	# If cherry-pick returns with 128, the commit was invalid or
@@ -1403,7 +1463,8 @@ EOF
 
 	stage_commit
 	mark_done "$uphash"
-	lastuphash="$uphash"
+	set_cfg_item "lastuphash" "$lastuphash"
+	get_lastuplog
 
 	return 0;
 }
@@ -1430,7 +1491,6 @@ stage_commit() {
 	local commit
 
 	commit=$(git log --oneline -n1 "$uphash")
-
 	git commit -aC "$uphash"
 
 	# Create the new commit message in a file consisting of ..
@@ -1476,7 +1536,6 @@ stage_commit() {
 	$b_conflict && edit_commit
 
 	b_conflict=false
-
 }
 
 #** set_cfg_item key value: writes the value to the key in the .conf file
@@ -1496,6 +1555,29 @@ set_cfg_item() {
 #
 get_cfg_item() {
 	cfg_read_key "$1"
+}
+
+#** get_originhead: get the HEAD of the downstream origin
+#
+# Get the original head by getting the commit where the current
+# branch diverged from main
+#
+# Globals
+#   dnorighead
+#*
+get_originhead() {
+	local br
+
+	# Let's use the .git/config file to get the name of the origin branch
+	br="$(grep origin -B2 .git/config | grep -m1 branch | tr -d '["\[\]]')"
+	br="${br#* }"
+
+	# Get the original head by getting the commit where the current
+	# branch diverged from main
+	dnorighead="$(git merge-base HEAD "$br")"
+	dnorighead="$(cut -d' ' -f1 <<< "$(gitnice -1 "$dnorighead")")"
+
+	set_cfg_item dnorighead "$dnorighead"
 }
 
 #** save_session: save session's config variables to the .conf file
@@ -1539,25 +1621,8 @@ save_session() {
 read_session() {
 	# echo -e "$UND\0read_session$OFF"
 	local cfgtemplate=
-	local tbg		# terminal background
 	local origin_brname
 	local br
-	local -a bary=()
-	local tmx
-
-	# If we're running in a tmux window, we will have to ask for colors
-	# Else we can use the automated terminal background color routine.
-	tmx="$(echo "$TMUX")"
-	if [ -n "$tmx" ]; then
-		tbg="$(cut -d= -f2 < <(grep 'tbackground' "$MYDATA/cherp.conf"))"
-		tbg="${tbg// /}"
-		if [ -z "$tbg" ]; then
-			ui_use_colors
-			tbg="$terminal_background"
-		fi
-	else
-		ui_setbg tbg
-	fi
 
 	# Initialize the paths for the current working directory
 	#
@@ -1566,7 +1631,19 @@ read_session() {
 	cfgtemplate="$MYLIB/cherp.conf"
 
 	cfg_start "$cfgtemplate" "$configfile"
-	cfg_set_item "tbackground" "$tbg"
+
+	# There's just no easy way to determine terminal background color
+	# without user interaction. If the user hasn't already been queried
+	# for the color and set it, then do it now.
+	#
+	tbackground="$(get_cfg_item "tbackground")"
+	if [ -z "$tbackground" ]; then
+		ui_use_colors
+		tbackground="$terminal_background"
+		set_cfg_item "tbackground" "$tbackground"
+	else
+		ui_do_colors "$tbackground"
+	fi
 
 	init_global_strings
 
@@ -1575,21 +1652,10 @@ read_session() {
 		# Trim spaces
 		upurl="${upurl// /}"
 	else
-		upurl="git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git"
-		git remote add "$upname" "$upurl"
-		fetch_upstream_repo
+		set_upstream_url "NEW"
 	fi
 
-	# Let's use the .git/config file to get the name of the origin branch
-	br=$(grep origin -B2 .git/config | grep branch | sed 's/[]//g; s/["\]/ /g')
-	IFS=" " read -r -a bary <<< "$br"
-	origin_brname=${bary[1]}
-
-	# Get the original head by getting the commit where the current
-	# branch diverged from main
-	dnorighead="$(git merge-base HEAD "$origin_brname")"
-	dnorighead="$(cut -d' ' -f1 <<< "$(gitnice -1 "$dnorighead")")"
-	set_cfg_item dnorighead "$dnorighead"
+	get_originhead
 
 	[ "$upcmtstartline" ] || return 1
 	[ "$workdir" ]        || set_working_directory
@@ -1614,7 +1680,7 @@ init_common() {
 
 	git branch -r | grep -q "$upname" || fetch_upstream_repo
 
-	get_lastuplog
+	$b_conflict || get_lastuplog
 	b_session_inited=true
 }
 
@@ -1741,6 +1807,7 @@ run_me() {
 # run if user hits control-c
 #*
 ctrl_c() {
+	set +x
 	echo
 	validate_last_upstream_hash
 	exit_cherp $CTLC_EXIT         # defined in lib/ui.source
@@ -1907,7 +1974,6 @@ fi
 
 # Print the herald
 #
-getlasttag
 print_herald
 
 # Present the ui and get the parameters for the cherry-picks.
