@@ -56,18 +56,19 @@ unset OFF && declare OFF="\e[m"
 # $BCYN
 # $BWHT
 #*
-unset BLK && declare BLK="\e[0;30m"
-unset RED && declare RED="\e[0;31m"
-unset GRN && declare GRN="\e[0;32m"
-unset YEL && declare YEL="\e[0;33m"
-unset BLU && declare BLU="\e[0;34m"
-unset MGT && declare MGT="\e[0;35m"
-unset CYN && declare CYN="\e[0;36m"
-unset WHT && declare WHT="\e[0;37m"
-unset LIL && declare LIL="\e[38;2;$((16#FF));$((16#99));$((16#FF))m"
+unset BLK && declare BLK="\e[0;90m"
+unset RED && declare RED="\e[0;91m"
+unset GRN && declare GRN="\e[0;92m"
+unset YEL && declare YEL="\e[0;93m"
+unset BLU && declare BLU="\e[0;94m"
+unset MGT && declare MGT="\e[0;95m"
+unset CYN && declare CYN="\e[0;96m"
+unset WHT && declare WHT="\e[0;97m"
+unset LIL && declare LIL="$CYN"
+unset LNK && declare LNK="$UND\e[1;96m"
 
 #
-# Bright colors
+# Bold colors
 #
 unset BBLK && declare BBLK="\e[1;90m"
 unset BRED && declare BRED="\e[1;91m"
@@ -77,9 +78,16 @@ unset BBLU && declare BBLU="\e[1;94m"
 unset BMGT && declare BMGT="\e[1;95m"
 unset BCYN && declare BCYN="\e[1;96m"
 unset BWHT && declare BWHT="\e[1;97m"
-unset BPUR && declare BLIL="\e[1m$LIL"
-
+unset BLIL && declare BLIL="\e[1m$LIL"
 unset BWOR && declare BWOR='\e[1;37;41m'
+
+declare b_256color=false
+if (($(tput colors) >= 256)); then
+	b_256color=true
+	unset LIL && declare LIL="\e[38;2;$((16#FF));$((16#99));$((16#FF))m"
+	unset BLIL && declare BLIL="$BLD$LIL"
+	unset LNK && declare LNK="$UND\e[1;38;5;39m"
+fi
 
 declare -i tb_lite=1
 declare -i tb_dark=2
@@ -231,11 +239,12 @@ ui_set_colors() {
 			     STA="\033[1;38;5;28m"
 			     WRN=$BRED
 			     ;;
-		"$tb_dark" ) INF=$OFF$YEL
+		"$tb_dark" ) INF=$YEL
 			     MNU=$BYEL
 			     STA=$BGRN
 			     # WRN=$BWOR
-			     WRN=$BLIL
+			     $b_256color && WRN=$BRED || WRN=$BRED
+			     CAU=$BLIL
 			     ;;
 	esac
 
