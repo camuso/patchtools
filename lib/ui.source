@@ -1159,9 +1159,20 @@ ui_catoneline() {
 # Returns 1 if the line number exceeds the number of lines in the file.
 #*
 ui_replaceline() {
+	local -i line
+	local new_content
+
 	(($# != 3)) && return "$ui_err_invargc"
 	check_lineargs "$1" "$3" || return $?
-	sed -i "${1}s|.*$|${2}|" "${3}"
+	awk -v line="$1" -v new_content="$2" '{
+		if (NR == line) {
+			print new_content;
+		} else {
+			print $0;
+		}
+	}' "$3" > "$ui_tempfile"
+	[ -f "$ui_tempfile" ] && mv -f "$ui_tempfile" "$3"
+
 	return 0
 }
 
@@ -1180,7 +1191,14 @@ ui_replaceline() {
 # $3 - File
 #*
 ui_replaceline_raw() {
-	sed -i "${1}s|.*$|${2}|" "${3}"
+	local -i line
+	local new_content
+
+	awk -v linenum="$1" -v newtext="$2" \
+		'NR==linenum {$0=newtext} {print}' \
+		"$3" > "$ui_tempfile"
+	[ -f "$ui_tempfile" ] && mv -f "$ui_tempfile" "$3"
+
 	return 0
 }
 
