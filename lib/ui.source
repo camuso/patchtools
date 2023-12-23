@@ -265,7 +265,6 @@ ui_isdarkbg() {
 	local -i sum=0
 
 	# read -rs -d \\ -p $'\e]11;?\e\\' bgraw
-	bgraw=$(printf "\e]11;?\a")
 	bg=$(echo "$bgraw" | xxd -c 32 | cut -d':' -f3)
 	ui_strtok "$bg" "/." bga
 
@@ -278,24 +277,34 @@ ui_isdarkbg() {
 	fi
 }
 
-#** ui_setbg: Automatically sets colors according to background color
+#** ui_setbg: Automatically sets colors for xterm, queries for others
+#
+# Globals:
+#   b_color              : whether we are in color mode, true or false
+#   terminal_background  : tb_light or tb_dark
+#   TERM                 : env global
 #*
 ui_setbg() {
 	local -n uibg="$1"
 
 	b_color=true
 
-	if ui_isdarkbg; then
-		uibg=$tb_dark
-		terminal_background=$tb_dark
+	# If this is an xterm, we can automatically determine the
+	# background color
+	if [[ $TERM =~ "xterm" ]]; then
+		if ui_isdarkbg; then
+			uibg=$tb_dark
+			terminal_background=$tb_dark
+		else
+			uibg=$tb_lite
+			terminal_background=$tb_lite
+		fi
+		ui_set_colors
 	else
-		uibg=$tb_lite
-		terminal_background=$tb_lite
+		ui_use_colors
+		uibg="$terminal_background"
 	fi
-
-	ui_set_colors
 }
-
 
 ui_query_colors() {
 	[ -z $b_color ] &&loop_yn "Do you want color text? y/n : " b_color
