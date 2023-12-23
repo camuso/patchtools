@@ -691,7 +691,7 @@ show_next_cherrypick() {
 
 	($b_cmdline || $b_conflict) && leadstr="    " || leadstr="$MNU c$OFF  "
 	$b_conflict && statstr="${CAU}Current conflict         ${OFF}:" \
-		    || statstr="Next cherrypick          :$OFF"
+		    || statstr="Next backport commit     :$OFF"
 
 	get_current_cherrypick	&& prstr="$STA${currentupcommit:0:$cols}$OFF"
 
@@ -734,8 +734,10 @@ get_lastbackport() {
 	local bp
 	local hash="$( cut -d' ' -f1 <<< $(gitnice -1) )"
 
+	[ "$hash" == "$dnorighead" ] && return 1
 	extup -1 -m -b "$hash"
-	return
+	return 0
+
 	bp="$(grep "^[+]" ../backports/94/perf/backport.log | grep -v '^$' | tail -1)"
 	echo "${bp:2}"
 }
@@ -756,7 +758,9 @@ show_most_recent_cherrypick() {
 	local laststr
 	local padstr="$(printf "%*c" "$menupad" " ")"
 	local eofstr="$CAU$padstr was the last commit in backport file$OFF"
-	local lastbackport="$(get_lastbackport)"
+	local lastbackport=
+
+	lastbackport="$(get_lastbackport)" || { echo -n; return; }
 
 	laststr="\n    Last backported commit   : $STA${lastbackport:0:$cols}$OFF"
 	$b_lasthashvalid && echo -e "$laststr"
@@ -1174,7 +1178,7 @@ get_newhead() {
 	spc="$(printf "%*c" $((hashsize - 6)) " ")"
 
 	select_from_array dncmtary "HEADs" new \
-		"      ${UND}Dn Cmt$spc$OFF ${UND}Up Cmt$spc$OFF" || return 1
+		"      $MNU${UND}Dn Cmt$spc$OFF $MNU${UND}Up Cmt$spc$OFF" || return 1
 
 	# Set the new downstream current head global
 	dncurrenthead="$(cut -d' ' -f1 <<< "$new")"
@@ -1209,10 +1213,10 @@ reset_cherp() {
 		ui_press_any
 	fi
 
-	echo -e "${WRN}RESET$OFF will reset your git HEAD and Backport File"\
+	echo -e "${CAU}RESET$LIL will reset your git HEAD and Backport File"\
 		"to the selected commit.$OFF"
 
-	loop_yn "Do you want to$WRN RESET$OFF now? y/n : " || return
+	loop_yn "${LIL}Do you want to$CAU RESET$LIL now? y/n : $OFF" || return
 
 	get_newhead || return
 
@@ -1808,7 +1812,7 @@ run_me() {
 		stat=$?
 
 		if [ $stat -ne 0 ];then
-			echo -e "No more commits in $BLD$upcommitsfile$OFF"
+			echo -e "${CAU}No more commits in $STA$upcommitsfile$OFF"
 			break
 		fi
 
