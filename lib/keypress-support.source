@@ -12,6 +12,7 @@ declare keypress_exe="$EXEDIR/keypress"
 declare keypress_src="$keypress_exe"".c"
 
 declare ui_b_keypress=false	# True if keypress.c is compiled and ready
+declare promptgetkey_cmd=
 
 declare keypress_info=$(
 cat <<EOF
@@ -66,6 +67,9 @@ ui_testkeypress() {
 			getkey_cmd="getchar"
 		fi
 	}
+
+	# If user called with bash -x, don't use keypress(), use getchar()
+	[[ $- == *x* ]] && set_keycmd "false" && return 1
 
 	if [ -f "$keypress_exe" ] && [ -x "$keypress_exe" ]; then
 		set_keycmd "true"
