@@ -727,6 +727,19 @@ EOF
 	return 0
 }
 
+#** get_lastbackport: get the last successfully applied upstream commit
+#
+#*
+get_lastbackport() {
+	local bp
+	local hash="$( cut -d' ' -f1 <<< $(gitnice -1) )"
+
+	extup -1 -m -b "$hash"
+	return
+	bp="$(grep "^[+]" ../backports/94/perf/backport.log | grep -v '^$' | tail -1)"
+	echo "${bp:2}"
+}
+
 #** show_most_recent_cherrypick: show the last upstream commit backported
 #===============================================================================
 #     ARGUMENTS:  none
@@ -743,8 +756,9 @@ show_most_recent_cherrypick() {
 	local laststr
 	local padstr="$(printf "%*c" "$menupad" " ")"
 	local eofstr="$CAU$padstr was the last commit in backport file$OFF"
+	local lastbackport="$(get_lastbackport)"
 
-	laststr="\n    Last cherrypicked commit : $STA${lastuplog:0:$cols}$OFF"
+	laststr="\n    Last backported commit   : $STA${lastbackport:0:$cols}$OFF"
 	$b_lasthashvalid && echo -e "$laststr"
 	((upcmtstartline > $(wc -l < "$upcommitsfile"))) && echo -e "$eofstr"
 }
@@ -1016,6 +1030,10 @@ menu_parser() {
 	"$promptgetkey_cmd" "${MNU}Enter one of the above: $OFF" setting
 	retval=$?
 
+	# keypress.c does not invoke SIGINT on ctrl-c, so test for it explicitly
+	# when using keypress.
+	$ui_b_keypress && [ "$setting" == $'\003' ] && ctrl_c
+
 	case $setting in
 
 		b )	set_gitbranch
@@ -1071,7 +1089,9 @@ menu_loop() {
 
 	cmtmsgfile="$workdir/.gcpgitlog"
 
+
 	while :; do
+
 		menu_parser
 		stat=$?
 		# echo "menu_parser_stat: $stat"
@@ -1615,14 +1635,13 @@ save_session() {
 #                 upcommitsfile
 #                 upurl
 #                 upname
+#                 tbackground
 #       RETURNS:  1 if any of the important conf values are missing
 #                 0 otherwise
 #*==============================================================================
 read_session() {
 	# echo -e "$UND\0read_session$OFF"
 	local cfgtemplate=
-	local origin_brname
-	local br
 
 	# Initialize the paths for the current working directory
 	#
@@ -1630,17 +1649,15 @@ read_session() {
 	configfile="$MYDATA/cherp.conf"
 	cfgtemplate="$MYLIB/cherp.conf"
 
+	# This call will init all the global variables with the values stored
+	# in .data/cherp.conf
 	cfg_start "$cfgtemplate" "$configfile"
 
-	# There's just no easy way to determine terminal background color
-	# without user interaction. If the user hasn't already been queried
-	# for the color and set it, then do it now.
-	#
-	tbackground="$(get_cfg_item "tbackground")"
-	if [ -z "$tbackground" ]; then
-		ui_use_colors
-		tbackground="$terminal_background"
-		set_cfg_item "tbackground" "$tbackground"
+	# If the background value saved in the conf file is not valid, then
+	# call to determine the background color
+	if (( (tbackground < tb_light) && (tbackground > tb_dark) )); then
+		ui_setbg tbackground
+		cfg_set_item "tbackground" "$tbackground"
 	else
 		ui_do_colors "$tbackground"
 	fi
@@ -1838,7 +1855,6 @@ check_command() {
 # trap keyboard interrupt (control-c)
 #
 trap ctrl_c SIGINT
-
 ui_testkeypress		# set the getchar input command
 init_session
 
