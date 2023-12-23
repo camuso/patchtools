@@ -172,7 +172,7 @@ cfg_read_configfile() {
 
 	exec {fd_cfgfile}< "$cfg_file"
 	while IFS+="=" read -ru "$fd_cfgfile" item value; do
-		[ -n "$value" ] && eval "$item"="$value"
+		[ -n "$value" ] && eval "$item"="\"$value\""
 	done
 	exec {fd_cfgfile}<&-
 }
