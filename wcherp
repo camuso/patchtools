@@ -49,6 +49,7 @@ EOF
 )"
 
 declare b_vertical=true
+declare upcommitsfile=
 
 usage() {
 	echo -e "$usagestr"
@@ -99,11 +100,10 @@ init() {
 
 	configfile="$MYDATA/cherp.conf"
 	cfgtemplate="$MYLIB/cherp.conf"
-set -x
-	cfg_start "$cfgtemplate" "$configfile"
-set +x
-	ui_setbg mybg
 
+	cfg_start "$cfgtemplate" "$configfile"
+
+	# ui_setbg mybg
 }
 
 main() {
@@ -112,7 +112,6 @@ main() {
 	[[ $1 =~ (-h|^help) ]] && usage
 
 	init
-
 	errstr=$(rpm -q tmux) || {
 		echo -e	"\n$WRN$errstr$OFF\n"
 		loop_yn "${MNU}Would you like to install tmux now? y/n : $OFF" || exitme 1
@@ -143,17 +142,23 @@ main() {
 	$b_vertical && tmux split-window -h || tmux split-window -v
 
 	# Run your script in the first pane
-	tmux send-keys -t mysession:0.0 'bash -x cherp' C-m
-
-	# get the backports commit file from the cherp.conf file
-	upcommitsfile="$(cfg_get_item "upcommitsfile")"
+	tmux select-pane -t 0
+	tmux set-buffer -b cherpbuf "reset; <&0;  cherp
+"
+	tmux paste-buffer -b cherpbuf
 
 	# If the file exists, then spawn vim to edit it.
-	if [ -n "$upcommitsfile" ]; then
+	if [ -f "$upcommitsfile" ]; then
 		# Vim the backport commits file in the second pane
-		tmux send-keys -t mysession:0.1 'vim  "+set autoread" "$upcommitsfile"' C-m
+		tmux select-pane -t 1
+		tmux set-buffer -b vimbuf \
+			"reset; vim '+1' '+set autoread' '+checktime' $upcommitsfile
+"
+		tmux paste-buffer -b vimbuf
+		# tmux send-keys -t mysession:0.1 C-m
 	fi
 
+	tmux select-pane -t 0
 	# Attach to the session
 	tmux attach-session -t mysession
 
