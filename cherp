@@ -59,19 +59,21 @@ declare b_cmdline=false		# boolean indicating a comman line call
 #########################################
 # Config Variables
 #########################################
+#** These variables will be initialized by the call to cfg_start
 declare configfile=
-declare upcmtstartline		# Line in upcommitsfile to start cherrypick
-declare dnorighead		# original downstream head at session start
-declare lastuphash		# most recently applied upstream commit hash
-declare workdir			# scratch directory for the session
-declare upcommitsfile		# File of upstream commits to cherry-pick
-declare b_conflict		# last attempt generated a conflict
+declare upcmtstartline=		# Line in upcommitsfile to start cherrypick
+declare dnorighead=		# original downstream head at session start
+declare lastuphash=		# most recently applied upstream commit hash
+declare workdir=		# scratch directory for the session
+declare upcommitsfile=		# File of upstream commits to cherry-pick
+declare b_conflict=		# last attempt generated a conflict
 declare str_jira=		# Options: JIRA link
 declare str_upstream=		# Options: upstream version, e.g, v6.7
 declare str_brew=		# Options: brew link
 declare str_test=		# Options: string containing test info
 declare stophash=		# stop backporting when this currentuphash
-declare tbackground		# terminal background, light(1) or dark(2)
+declare tbackground=		# terminal background, light(1) or dark(2)
+#*
 
 #########################################
 # Global Variables
@@ -817,7 +819,6 @@ show_status() {
 
 	local cols=$((tcols - menupad))
 	local subjectprefix
-	local lasttag
 	local lastbrcmt
 	local orighead
 	local statstr
@@ -828,8 +829,6 @@ show_status() {
 
 	$b_internal || init_cmdline_call
 
-	# [ -f lasttagfile ] || git describe --tags --abbrev=0 > $lasttagfile
-	# lasttag=$(cat $lasttagfile)
 	lastbrcmt=$(git log -n1 --oneline)
 	orighead=$(git log --oneline -n1 "$dnorighead")
 
@@ -973,7 +972,6 @@ show_settings() {
 	local lgc=$(gitnice "$lastgoodcommit")
 
 	subjectprefix="$(git config format.subjectprefix)"
-	lasttag="$(cat $lasttagfile)"
 	lastbrcmt="$(git log -n1 --oneline)"
 	orighead="$(git log --oneline -n1 "$dnorighead")"
 	dncurrenthead="$(cut -d' ' -f1 <<< "$lastbrcmt")"
@@ -1659,7 +1657,8 @@ read_session() {
 
 	# If the background value saved in the conf file is not valid, then
 	# call to determine the background color
-	if (( (tbackground < tb_light) && (tbackground > tb_dark) )); then
+
+	if ((tbackground < tb_lite || tbackground > tb_dark)); then
 		ui_setbg tbackground
 		cfg_set_item "tbackground" "$tbackground"
 	else
