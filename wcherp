@@ -151,10 +151,10 @@ main() {
 	if [ -f "$upcommitsfile" ]; then
 		# Vim the backport commits file in the second pane
 		tmux select-pane -t 1
-		tmux set-buffer -b vimbuf \
-			"reset; vim '+1' '+set autoread' '+checktime' $upcommitsfile
+		tmux set-buffer -b tailbuf \
+			"reset; watch -n 1 'tail --retry -f -n +1 $upcommitsfile'
 "
-		tmux paste-buffer -b vimbuf
+		tmux paste-buffer -b tailbuf
 		# tmux send-keys -t mysession:0.1 C-m
 	fi
 
