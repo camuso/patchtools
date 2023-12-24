@@ -1207,8 +1207,9 @@ reset_cherp() {
 	local linenumber
 
 	if [ "$dncurrenthead" == "$dnorighead" ]; then
-		echo -e "${WRN}No cherrypicked commits to choose from."
+		echo -e "${WRN}No backported commits to choose from."
 		ui_press_any
+		return
 	fi
 
 	echo -e "${CAU}RESET$LIL will reset your git HEAD and Backport File"\
