@@ -178,8 +178,8 @@ $b_usernum || {
 	number="1"
 	[ -n "$cmtexpr" ] && [[ "$cmtexpr" = *".."* ]] && number=
 }
-grep -q '\-\-since' <<< "${gitopt[@]}" && number=
-grep -q '\-\-after' <<< "${gitopt[@]}" && number=
+grep -qe '--since' <<< "${gitopt[@]}" && number=
+grep -qe '--after' <<< "${gitopt[@]}" && number=
 ((number == 0)) && number=
 [ -n "$number" ] && number="-$number"
 
