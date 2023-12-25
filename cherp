@@ -779,6 +779,14 @@ show_upsteam_commits_file() {
 	# echo -e "${UND}show_upsteam_commits_file$OFF"
 
 	local cmtfilestr
+	local dary	# array of backported commits
+	local bary	# array of commits to be backported
+	local -i nd	# number of commits to do
+	local -i nb	# number of commits done
+	local -i nc	# number of commits remaining to be done
+	local lastupcmt	# last upstream commit backported in file
+	local lastdncmt # last upstream commit in current downstream branch
+	local padstr="$(printf "%*c" "$menupad" " ")"
 
 	cmtfilestr=$(
 cat <<EOF
@@ -786,8 +794,41 @@ cat <<EOF
     File of upstream commits : $STA$upcommitsfile$OFF
 EOF
 )
+
 	[ "$upcommitsfile" ] || return
+
 	[ -f "$upcommitsfile" ] && echo -e "$cmtfilestr"
+
+	# Get the total backports in the file that have not been hashed out.
+	mapfile -t dary < <(grep -v "^[#]" "$upcommitsfile" | grep -v '^$')
+	nd="${#dary[@]}"
+
+	# Get the backports in the file that indicate they have been committed.
+	mapfile -t bary < <(grep "^[+]" "$upcommitsfile" | grep -v '^$')
+	nb="${#bary[@]}"
+
+	# If the last one in the file that indicates it was committed is not
+	# at the top of the current downstream branch, then notify inconsistent
+	# state.
+	lastupcmt="$(cut -d' ' -f2 <<< "${bary[-1]}")"
+	lastdncmt="$(gitnice -1 | cut -d' ' -f1)"
+	lastdncmt="$(extup -1 -m -b "$lastdncmt" | cut -d' ' -f1)"
+	if [ "$lastdncmt" != "$lastupcmt" ]; then
+		echo -e "$padstr$WRN Inconsistent State"
+		echo -e "$padstr$CAU Last upstream commit in current downstream branch"
+		echo -e "$padstr not same as last upstream commit in backports file."
+		echo -e "$padstr$INF Wrong branch or backport file?$OFF"
+		return 1
+	fi
+
+	nc=$((nd - nb))
+	if ((nc == 0)); then
+		echo -e "$padstr$INF It appears all upstream commits have been applied.$OFF"
+	else
+		echo -e "$padstr$INF Commits backported: $nb Commits remaining: $nc"
+	fi
+
+	return 0
 }
 
 #** show_history: history of applied patches in downstream branch
@@ -980,7 +1021,7 @@ show_settings() {
 cat <<EOF
 $MNU
     ${UND}Upstream Environment    $OFF
-$MNU f $OFF Backport File            : $STA$upcommitsfile$OFF
+$MNU f $OFF Backport File            : $(show_upsteam_commits_file)
 $MNU u $OFF Upstream url             : $LNK$upurl$OFF\
 $(show_most_recent_cherrypick)\
 $(show_next_cherrypick)
