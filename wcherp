@@ -36,9 +36,8 @@ Options
 -H : split screen horizontally
 
 This script spawns the cherp backport script as a split screen.
-One pane has cherp running in it, the other has vim with the
-backport commits file containing commits to be backported
-from upstream,
+One pane has cherp running in it, the other tails the Backport
+Commits file containing commits to be backported from upstream,
 
 The required screen splitter is tmux. If it is not installed,
 you will be prompted whether you want to install it. The
@@ -49,7 +48,9 @@ EOF
 )"
 
 declare b_vertical=true
+declare b_256=false
 declare upcommitsfile=
+declare -i tbackground=
 
 usage() {
 	echo -e "$usagestr"
@@ -103,7 +104,14 @@ init() {
 
 	cfg_start "$cfgtemplate" "$configfile"
 
-	# ui_setbg mybg
+	if ((tbackground < tb_lite || tbackground > tb_dark)); then
+		ui_setbg tbackground
+		cfg_set_item "tbackground" "$tbackground"
+	else
+		ui_do_colors "$tbackground"
+	fi
+
+	[[ $TERM =~ "256" ]] && b_256=true
 }
 
 main() {
@@ -112,6 +120,12 @@ main() {
 	[[ $1 =~ (-h|^help) ]] && usage
 
 	init
+
+	echo -e "$MNU$UND"
+	echo -e "Patchtools $version: wcherp$OFF"
+	echo -e "$INF A tmux wrapper for cherp, invokes tmux with two panes:\n" \
+		"One to run cherp and another to tail the Backports File.$OFF"
+
 	errstr=$(rpm -q tmux) || {
 		echo -e	"\n$WRN$errstr$OFF\n"
 		loop_yn "${MNU}Would you like to install tmux now? y/n : $OFF" || exitme 1
@@ -132,9 +146,6 @@ main() {
 		exitme 1
 	fi
 
-	echo -e "$MNU$UND"
-	echo -e "Patchtools $version$OFF"
-
 	# Start tmux session with vertically split window
 	tmux new-session -d -s mysession
 
@@ -143,7 +154,7 @@ main() {
 
 	# Run your script in the first pane
 	tmux select-pane -t 0
-	tmux set-buffer -b cherpbuf "reset; <&0;  cherp
+	tmux set-buffer -b cherpbuf "export TERM=$TERM; reset; <&0; cherp
 "
 	tmux paste-buffer -b cherpbuf
 
@@ -152,7 +163,7 @@ main() {
 		# Vim the backport commits file in the second pane
 		tmux select-pane -t 1
 		tmux set-buffer -b tailbuf \
-			"reset; watch -n 1 'tail --retry -f -n +1 $upcommitsfile'
+			"export term=$TERM; reset; watch -n 1 'tail --retry -f -n +1 $upcommitsfile'
 "
 		tmux paste-buffer -b tailbuf
 		# tmux send-keys -t mysession:0.1 C-m
