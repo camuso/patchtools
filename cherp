@@ -711,7 +711,7 @@ EOF
 #===============================================================================
 #     ARGUMENTS:  none
 #       GLOBALS:  upcommitsfile
-#       RETURNS:  none
+#       RETURNS:  0
 #*==============================================================================
 show_select_next_cherrypick() {
 	# echo -e "${UND}show_select_next_cherrypick$OFF"
@@ -731,17 +731,22 @@ EOF
 
 #** get_lastbackport: get the last successfully applied upstream commit
 #
+# Globals:
+#   dnorighead
+#
+# Returns:
+#   0 extracted upstream hash is not dnorighead and is an actual hash
+#   1 extracted upstream hash is the same as the dnorighead
+#   2 extracted upstream hash field is not a hash
 #*
 get_lastbackport() {
 	local bp
 	local hash="$( cut -d' ' -f1 <<< $(gitnice -1) )"
 
 	[ "$hash" == "$dnorighead" ] && return 1
-	extup -1 -m -b "$hash"
-	return 0
 
-	bp="$(grep "^[+]" ../backports/94/perf/backport.log | grep -v '^$' | tail -1)"
-	echo "${bp:2}"
+	extup -1 -m -b "$hash"
+	[[ $hash =~ ^[0-9a-fA-F]+$ ]] && return 0 || return 2
 }
 
 #** show_most_recent_cherrypick: show the last upstream commit backported
@@ -759,13 +764,13 @@ show_most_recent_cherrypick() {
 	local cols=$((tcols - menupad))
 	local laststr
 	local padstr="$(printf "%*c" "$menupad" " ")"
-	local eofstr="$CAU$padstr was the last commit in backport file$OFF"
+	local eofstr="$CAU$padstr was the last commit in Backports File$OFF"
 	local lastbackport=
 
 	lastbackport="$(get_lastbackport)" || { echo -n; return; }
 
 	laststr="\n    Last backported commit   : $STA${lastbackport:0:$cols}$OFF"
-	$b_lasthashvalid && echo -e "$laststr"
+	echo -e "$laststr"
 	((upcmtstartline > $(wc -l < "$upcommitsfile"))) && echo -e "$eofstr"
 }
 
@@ -773,6 +778,7 @@ show_most_recent_cherrypick() {
 #===============================================================================
 #     ARGUMENTS:  none
 #       GLOBALS:  upcommitsfile
+#                 b_cmdline
 #       RETURNS:  none
 #*==============================================================================
 show_upsteam_commits_file() {
@@ -788,12 +794,9 @@ show_upsteam_commits_file() {
 	local lastdncmt # last upstream commit in current downstream branch
 	local padstr="$(printf "%*c" "$menupad" " ")"
 
-	cmtfilestr=$(
-cat <<EOF
-
-    File of upstream commits : $STA$upcommitsfile$OFF
-EOF
-)
+	$b_cmdline && \
+		cmtfilestr="    Backports File           : $STA$upcommitsfile$OFF" || \
+		cmtfilestr="$MNU f$OFF  File of upstream commits : $STA$upcommitsfile$OFF"
 
 	[ "$upcommitsfile" ] || return
 
@@ -817,15 +820,15 @@ EOF
 		echo -e "$padstr$WRN Inconsistent State"
 		echo -e "$padstr$CAU Last upstream commit in current downstream branch"
 		echo -e "$padstr not same as last upstream commit in backports file."
-		echo -e "$padstr$INF Wrong branch or backport file?$OFF"
+		echo -e "$padstr$CAU Wrong branch or backport file?$OFF"
 		return 1
 	fi
 
 	nc=$((nd - nb))
 	if ((nc == 0)); then
-		echo -e "$padstr$INF It appears all upstream commits have been applied.$OFF"
+		echo -e "$padstr$CAU It appears all upstream commits have been applied.$OFF"
 	else
-		echo -e "$padstr$INF Commits backported: $nb Commits remaining: $nc"
+		echo -e "$padstr$INF Commits backported: $STA$nb$OFF Commits remaining: $STA$nc$OFF"
 	fi
 
 	return 0
@@ -1021,10 +1024,10 @@ show_settings() {
 cat <<EOF
 $MNU
     ${UND}Upstream Environment    $OFF
-$MNU f $OFF Backport File            : $(show_upsteam_commits_file)
-$MNU u $OFF Upstream url             : $LNK$upurl$OFF\
+$(show_upsteam_commits_file)\
 $(show_most_recent_cherrypick)\
 $(show_next_cherrypick)
+$MNU u $OFF Upstream url             : $LNK$upurl$OFF
 $MNU
     ${UND}Downstream Environment  $OFF
     Current Head             : $STA${lastbrcmt:0:cols}$OFF
