@@ -306,18 +306,22 @@ set_upstream_url() {
 	local b_new=
 	local defurl="git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git"
 
+	echo
+
 	if [ "$new" == "NEW" ]; then
 		b_new=true
-		echo -e  "$UND${INF}Enter the upstream url.$OFF"
+		echo -e  "${UND}${MNU}Enter the upstream url$OFF"
 		echo -e "${INF}The default upstream url is ..."
 		echo -e "${LNK}$defurl$OFF"
-		echo -e "${INF}Press $qstr$INF to accept the default.$OFF"
+		echo
+		echo -e "${INF}Enter $qstr$inf to accept the default.$OFF"
 	else
 		b_new=false
-		echo -e "$UND${INF}Change the upstream url.$OFF"
+		echo -e "${UND}${MNU}Change the upstream url$OFF"
 		echo -e "${INF}The current upstream url is ...$OFF"
 		echo -e "$LNK$upurl$OFF"
-		echo -e "${INF}Press$qstr$INF to leave it unchanged.$OFF"
+		echo
+		echo -e "${INF}Enter $qstr$INF to leave it unchanged.$OFF"
 	fi
 
 	while :; do
@@ -791,12 +795,13 @@ show_upsteam_commits_file() {
 	local -i nb	# number of commits done
 	local -i nc	# number of commits remaining to be done
 	local lastupcmt	# last upstream commit backported in file
-	local lastdncmt # last upstream commit in current downstream branch
+	local lastdncmt # last downstream commit in current downstream branch
+	local lastdnup  # last upstream commit referenced in last downstream commit
 	local padstr="$(printf "%*c" "$menupad" " ")"
 
 	$b_cmdline && \
 		cmtfilestr="    Backports File           : $STA$upcommitsfile$OFF" || \
-		cmtfilestr="$MNU f$OFF  File of upstream commits : $STA$upcommitsfile$OFF"
+		cmtfilestr="$MNU f$OFF  Backports File           : $STA$upcommitsfile$OFF"
 
 	[ "$upcommitsfile" ] || return
 
@@ -810,11 +815,29 @@ show_upsteam_commits_file() {
 	mapfile -t bary < <(grep "^[+]" "$upcommitsfile" | grep -v '^$')
 	nb="${#bary[@]}"
 
+	# If none of the upstream commits has been applied to downstream, and
+	# the current head is same as the dnorighead, then just return, else
+	# report an inconsistent state.
+	lastdncmt="$(gitnice -1 | cut -d' ' -f1)"
+
+	if ((${#bary[@]} == 0)); then
+		if [ "$lastdncmt" == "$dnorighead" ]; then
+			return
+		else
+			echo -e "$padstr$WRN Inconsistent State$OFF\n"\
+			"$padstr$INF None of the commits in the Backports File\n"\
+			"$padstr has been applied, but the current head is\n"\
+			"$padstr not the same as \"$OFF${BLD}Head at Session Start\"$INF.\n"\
+			"$padstr$CAU Alt-Shift-R$INF to reset to the original head\n"\
+			"$padstr or press$MNU N$INF to start a new session.$OFF"
+			return 1
+		fi
+	fi
+
 	# If the last one in the file that indicates it was committed is not
 	# at the top of the current downstream branch, then notify inconsistent
 	# state.
 	lastupcmt="$(cut -d' ' -f2 <<< "${bary[-1]}")"
-	lastdncmt="$(gitnice -1 | cut -d' ' -f1)"
 	lastdncmt="$(extup -1 -m -b "$lastdncmt" | cut -d' ' -f1)"
 	if [ "$lastdncmt" != "$lastupcmt" ]; then
 		echo -e "$padstr$WRN Inconsistent State"
@@ -828,7 +851,7 @@ show_upsteam_commits_file() {
 	if ((nc == 0)); then
 		echo -e "$padstr$CAU It appears all upstream commits have been applied.$OFF"
 	else
-		echo -e "$padstr$INF Commits backported: $STA$nb$OFF Commits remaining: $STA$nc$OFF"
+		echo -e "$padstr$INF Commits backported: $STA$nb$INF Commits remaining: $STA$nc$OFF"
 	fi
 
 	return 0
