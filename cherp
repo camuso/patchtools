@@ -73,6 +73,7 @@ declare str_brew=		# Options: brew link
 declare str_test=		# Options: string containing test info
 declare stophash=		# stop backporting when this currentuphash
 declare tbackground=		# terminal background, light(1) or dark(2)
+declare patchdir=		# directory that gets the patches
 #*
 
 #########################################
@@ -915,6 +916,62 @@ EOF
 	$b_internal || exit 0
 }
 
+#** get_patchdir: get the directory to receive the patches
+#
+# Globals
+#   patchdir
+#
+# Returns:
+#   0 if new patchdir
+#   1 if user quit without entering a new patchdir
+#*
+get_patchdir() {
+	local pdir=
+	local prstr="${MNU}Put patches in this directory: $OFF"
+
+	ui_getnewdir "$prstr" pdir || return 1
+	patchdir="$pdir"
+	set_cfg_item "patchdir" "$patchdir"
+	return 0
+}
+
+#** create_patches: create a patch series from the backported commits
+#
+# Globals:
+#  patchdir - directory for the patch series files
+#  dnorighead - head when New session was started
+#
+#*
+create_patches() {
+	local dirstr="${MNU}Do you want to use$STA $patchdir$MNU y/n :$OFF "
+	local pdir="$patchdir"
+	local findargs="-maxdepth 1 -type f -name "*.patch" -print -quit"
+	local delprompt="$(
+cat <<EOF
+${CAU}There are .patch files in$STA $patchdir$CAU.
+${INF}They will be erased if you continue.
+Do you want to proceed?$MNU y/n : $OFF
+EOF
+)"
+
+	echo -e "\n${INF}Create a patch series from the applied commits.$OFF"
+
+	[ -d "$pdir" ] && {
+		loop_yn "$dirstr" || pdir=
+	}
+
+	[ -d "$pdir" ] || {
+		get_patchdir || return
+	}
+
+	[ -n "$(find "$patchdir" $findargs)" ] && {
+		loop_yn "$delprompt" && rm -f "$patchdir"/*.patch || return
+	}
+
+	gitforpat -n "$patchdir" "$dnorighead"..
+	return
+}
+
 #** show_tbackground
 #
 #  Globals:
@@ -947,6 +1004,7 @@ $MNU
     $MNU b $OFF Brew or build info       : $STA$str_brew$OFF
     $MNU t $OFF Test information         : $STA$str_test$OFF
     $MNU p $OFF Current subject prefix   : $STA$(git config format.subjectprefix)$OFF
+    $MNU d $OFF Patch Directory          : $STA$patchdir$OFF
     $MNU c $OFF Change Terminal Color    : $STA$(show_tbackground)$OFF
     $MNU q $OFF Quit to main menu
 \0
@@ -989,6 +1047,8 @@ get_options() {
 		c )     ui_use_colors
 			tbackground="$terminal_background"
 			set_cfg_item "tbackground" "$tbackground"
+			;;
+		d )	get_patchdir
 			;;
 		q )	return 1
 	esac
@@ -1076,7 +1136,6 @@ EOF
 
 	echo -e "$settings"
 }
-
 ## Deprecated menu items
 ## $(show_altopt "I" "Init or restart session")
 
