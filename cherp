@@ -1065,7 +1065,6 @@ $MNU P $OFF Create a patch series
 $MNU N $OFF Start a New Session
 $MNU H $OFF Show History
 $MNU r $OFF Run cherp
-$(show_altopt "I" "Init or restart session")
 $(show_altopt "R" "RESET to an earlier commit in this session ")
 $MNU q $OFF Quit this script
 $MNU h $OFF Help
@@ -1077,6 +1076,9 @@ EOF
 
 	echo -e "$settings"
 }
+
+## Deprecated menu items
+## $(show_altopt "I" "Init or restart session")
 
 #** menu_parser: parse the user input at the main menu
 #===============================================================================
@@ -1135,9 +1137,9 @@ menu_parser() {
 			;;
 #		V )	ui_popterm "vim $upcommitsfile"
 #			;;
-		I )	((retval == 1)) || return $rc_continue
-			init_current_session
-			;;
+#		I )	((retval == 1)) || return $rc_continue
+#			init_current_session
+#			;;
 		R )	((retval == 1)) || return $rc_continue
 			reset_cherp
 	esac
@@ -1278,11 +1280,6 @@ reset_cherp() {
 		ui_press_any
 		return
 	fi
-
-	echo -e "${CAU}RESET$LIL will reset your git HEAD and Backport File"\
-		"to the selected commit.$OFF"
-
-	loop_yn "${LIL}Do you want to$CAU RESET$LIL now? y/n : $OFF" || return
 
 	get_newhead || return
 
