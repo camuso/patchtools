@@ -927,7 +927,10 @@ EOF
 #*
 get_patchdir() {
 	local pdir=
-	local prstr="${MNU}Put patches in this directory: $OFF"
+	local prstr
+
+	prstr="\n${MNU}Directory path for patchfiles. $OFF\n"
+	prstr+="${INF}Enter $qstr$INF to leave it as it is.$MNU\n : $OFF"
 
 	ui_getnewdir "$prstr" pdir || return 1
 	patchdir="$pdir"
@@ -1013,6 +1016,29 @@ EOF
 	echo -e "$options"
 }
 
+#** get_oneopt: get one of the string options
+#
+# Arguments:
+#   $1 - prompt string
+#   $2 - option name by reference, so no leading $
+#*
+get_oneopt() {
+	local prompt="$1"
+	local -n getone_str="$2"
+	local item="$2"
+	local str
+	local pstr
+
+	pstr="\n${INF}Press $qstr$INF to leave unchanged.\n"
+	pstr+="Press$STA RETURN$INF with nothing to blank.\n"
+	pstr+="Current value:$STA $getone_str$OFF\n$prompt"
+	getuser "$pstr" str
+	[ "$str" == "q" ] && return 1
+	set_cfg_item "$item" "$str"
+	getone_str="$str"
+	return 0
+}
+
 #** get_options: parse the user's option entry
 #
 #  Globals:
@@ -1030,17 +1056,13 @@ get_options() {
 	"$promptgetkey_cmd" "${MNU}    Enter one of the above: $OFF" opt
 
 	case $opt in
-		j )	getuser "${MNU}JIRA link: $OFF" str_jira
-			set_cfg_item "str_jira"  "$str_jira"
+		j )	get_oneopt "${MNU}JIRA link: $OFF" "str_jira"
 			;;
-		u )     getuser "${MNU}Upstream status: $OFF" str_upstream
-			set_cfg_item "str_upstream"  "$str_upstream"
+		u )     get_oneopt "${MNU}Upstream status: $OFF" "str_upstream"
 			;;
-		b )	getuser "${MNU}Brew or build info: $OFF" str_brew
-			set_cfg_item "str_brew"      "$str_brew"
+		b )	get_oneopt "${MNU}Brew or build info: $OFF" "str_brew"
 			;;
-		t )	getuser "${MNU}Testing info: $OFF" str_test
-			set_cfg_item "str_test"      "$str_test"
+		t )	get_oneopt "${MNU}Testing info: $OFF" "str_test"
 			;;
 		p )	git_set_subjectprefix
 			;;
@@ -1872,6 +1894,9 @@ init_newsession() {
 	set_working_directory
 	set_upcommitsfile
 	set_gitbranch
+	echo -e "\n${CAU}The following will be in the Options Menu.$OFF"
+	get_oneopt "${MNU}JIRA link: $OFF" "str_jira"
+	get_oneopt "${MNU}Upstream status: $OFF" "str_upstream"
 	b_lasthashvalid=false
 	b_new=true
 	init_common
