@@ -74,11 +74,19 @@ declare str_test=		# Options: string containing test info
 declare stophash=		# stop backporting when this currentuphash
 declare tbackground=		# terminal background, light(1) or dark(2)
 declare patchdir=		# directory that gets the patches
+declare backport_mode=          # user's choice of backport mode
 #*
 
 #########################################
 # Global Variables
 #########################################
+
+# backport modes
+declare -i m_lower=0	# lower boundary of backport modes
+declare -i m_cherry=1	# git cherry-pick
+declare -i m_apply=2	# git apply
+declare -i m_upper=3	# upper boundary of backport modes
+
 declare finaluphash
 declare -i menupad=30
 declare cmtmsgfile=/dev/shm/gcpcmtmsgfile
@@ -987,6 +995,22 @@ show_tbackground() {
 		                      echo -n "Light"
 }
 
+#** show_backport_mode: display the current backport mode
+#
+#  Globals:
+#    backport_mode
+#    m_cherry
+#    m_apply
+#*
+show_backport_mode() {
+	case "$backport_mode" in
+	    "$m_cherry" ) echo "git cherry-pick"
+		    	  ;;
+	    "$m_apply" )  echo "git apply -3"
+		    	  ;;
+	esac
+}
+
 #** show_options: display the options menu
 #
 #  Globals:
@@ -1008,6 +1032,7 @@ $MNU
     $MNU t $OFF Test information         : $STA$str_test$OFF
     $MNU p $OFF Current subject prefix   : $STA$(git config format.subjectprefix)$OFF
     $MNU d $OFF Patch Directory          : $STA$patchdir$OFF
+    $MNU B $OFF Backport Mode            : $STA$(show_backport_mode)$OFF
     $MNU c $OFF Change Terminal Color    : $STA$(show_tbackground)$OFF
     $MNU q $OFF Quit to main menu
 \0
@@ -1071,6 +1096,8 @@ get_options() {
 			set_cfg_item "tbackground" "$tbackground"
 			;;
 		d )	get_patchdir
+			;;
+		B )	get_backport_mode
 			;;
 		q )	return 1
 	esac
@@ -1596,16 +1623,23 @@ EOF
 	commit=$(git log --oneline -n1 "$uphash")
 	echo -e "${INF}Processing : $STA${commit:0:$wcols}$OFF"
 
-	if $b_nit; then
-		git cherry-pick -n "$uphash"
-	else
-		git -c merge.renameLimit=1 cherry-pick -x "$uphash"
-		# err=$(git show "$uphash" | git apply -3 --index 2>&1 > /dev/null)
-	fi
+	case "$backport_mode" in
+	    "$m_cherry" ) 
+		if $b_nit; then
+			git cherry-pick -n "$uphash"
+		else
+			git -c merge.renameLimit=1 cherry-pick -x "$uphash"
+		fi
+		;;
+	    "$m_apply" )
+		err=$(git show "$uphash" | git apply -3 --index --reject 2>&1 > /dev/null)
+		;;
+	esac
+	
 	gitstat=$?
 
-	# If cherry-pick returns with 128, the commit was invalid or
-	# ambiguous.
+	# If cherry-pick or git-apply returns with 128, the commit was invalid
+	# or ambiguous.
 	#
 	[ $gitstat -eq 128 ] && { echo -e "$bogusmsg"; exit_cherp $exit_bogus; }
 
@@ -1614,8 +1648,8 @@ EOF
 		git add -p	# select the hunks you want.
 		b_nit=false
 	else
-		# If cherry-pick returns with nonzero other than 128, then a
-		# conflict is indicated.
+		# If the backport returns with nonzero other than 128, then
+		# a conflict is indicated.
 		#
 		[ $gitstat -eq 0 ] || {
 			b_conflict=true
@@ -1748,6 +1782,24 @@ get_originhead() {
 	set_cfg_item dnorighead "$dnorighead"
 }
 
+#** get_backport_mode: choose which of the availiable backport modes to use
+#
+# Globals
+#   backport_mode
+#   m_cherry
+#   m_apply
+#*
+get_backport_mode() {
+	echo
+	echo -e "    ${INF}Which backport mode do you want to use?$MNU"
+	echo -e "      1.$OFF git cherry-pick$MNU"
+	echo -e "      2.$OFF git apply -3"
+
+	loop_range 1 2 backport_mode
+
+	set_cfg_item "backport_mode" "$backport_mode"
+}
+
 #** save_session: save session's config variables to the .conf file
 #===============================================================================
 #          NAME:  save_session
@@ -1820,6 +1872,10 @@ read_session() {
 	else
 		set_upstream_url "NEW"
 	fi
+
+	((backport_mode > m_lower && backport_mode < m_upper)) || {
+		get_backport_mode
+	}
 
 	get_originhead
 
@@ -1943,8 +1999,8 @@ run_me() {
 	$b_session_inited || { $b_cmdline && init_cmdline_call; }
 
 	if $b_conflict; then
-		echo -e "$BLD\0There is an unresolved conflict" \
-			"cherrypicking: $OFF$currentuphash"
+		echo -e "${CAU}There is an unresolved conflict" \
+			"backporting: $STA$currentuphash$OFF"
 		show_status
 		ui_press_any
 		return
