@@ -1005,9 +1005,9 @@ show_tbackground() {
 show_backport_mode() {
 	case "$backport_mode" in
 	    "$m_cherry" ) echo "git cherry-pick"
-		    	  ;;
+			  ;;
 	    "$m_apply" )  echo "git apply -3"
-		    	  ;;
+			  ;;
 	esac
 }
 
@@ -1624,7 +1624,7 @@ EOF
 	echo -e "${INF}Processing : $STA${commit:0:$wcols}$OFF"
 
 	case "$backport_mode" in
-	    "$m_cherry" ) 
+	    "$m_cherry" )
 		if $b_nit; then
 			git cherry-pick -n "$uphash"
 		else
@@ -1635,7 +1635,7 @@ EOF
 		err=$(git show "$uphash" | git apply -3 --index --reject 2>&1 > /dev/null)
 		;;
 	esac
-	
+
 	gitstat=$?
 
 	# If cherry-pick or git-apply returns with 128, the commit was invalid
