@@ -1041,7 +1041,6 @@ ui_getnewdir() {
 	local noexist="${INF}: does not exist.$OFF"
 	local fail="${WRN}Could not create directory: $newdir$OFF"
 
-	echo -e "${INF}Enter $qstr$INF to quit$OFF"
 	while true; do
 		getuser "$prompt" newdir
 
