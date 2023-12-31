@@ -756,10 +756,13 @@ get_lastbackport() {
 	local bp
 	local hash="$( cut -d' ' -f1 <<< $(gitnice -1) )"
 
+	echo "$hash"
+
 	[ "$hash" == "$dnorighead" ] && return 1
 
 	extup -1 -m -b "$hash"
-	[[ $hash =~ ^[0-9a-fA-F]+$ ]] && return 0 || return 2
+	[[ $hash =~ ^[0-9a-fA-F]+$ ]] || return 2
+	return 0
 }
 
 #** show_most_recent_cherrypick: show the last upstream commit backported
@@ -1474,7 +1477,8 @@ run_commit() {
 
 	$b_one && exit_cherp $exit_good
 	get_next_cherrypick
-	run_me
+	b_cmdline=false
+	menu_loop
 }
 
 #** run_single: just backport one commit
@@ -1596,6 +1600,8 @@ cherrypick() {
 	local uphash=$currentuphash
 	local gitstat
 	local wcols=$((tcols - 10))
+	local untracked
+	local b_setexit=false
 	local conflictmsg
 	local bogusmsg
 	conflictmsg=$(
@@ -1648,19 +1654,22 @@ EOF
 		git add -p	# select the hunks you want.
 		b_nit=false
 	else
-		# If the backport returns with nonzero other than 128, then
-		# a conflict is indicated.
-		#
-		[ $gitstat -eq 0 ] || {
+		# If the backport wants to add a new file to the index, or if the
+		# backport exited with a nonzero status other than 128, then we
+		# must report the conflict and stop.
+		untracked="$(git ls-files --others --exclude-standard)"
+
+		if [ -n "$untracked" ] || ((gitstat != 0)); then
+			b_setexit=true
 			b_conflict=true
 			$b_single && git status && exit $exit_conflict
 			echo -e "$conflictmsg"
 			lastuphash=$uphash
 			# echo -e "Saving: $BLD${commit:0:$wcols}$OFF"
 			show_status internal
-			[ -n "$err" ] && echo -e "$WRN$err$OFF"
+			[ -n "$err" ] && echo -e "$INF$err$OFF"
 			exit_cherp $exit_conflict
-		}
+		fi
 	fi
 
 	stage_commit
