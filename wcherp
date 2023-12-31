@@ -147,10 +147,12 @@ main() {
 	fi
 
 	# Start tmux session with vertically split window
-	tmux new-session -d -s mysession
+	tmux -f "$MYLIB"/tmux.cherp.conf new-session -d -s mysession
 
 	# Split the window
 	$b_vertical && tmux split-window -h || tmux split-window -v
+	# tmux split-window -h "watch -n 1 'tail --retry -f -n +1 $upcommitsfile'"
+
 
 	# Run your script in the first pane
 	tmux select-pane -t 0
