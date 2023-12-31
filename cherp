@@ -75,6 +75,7 @@ declare stophash=		# stop backporting when this currentuphash
 declare tbackground=		# terminal background, light(1) or dark(2)
 declare patchdir=		# directory that gets the patches
 declare backport_mode=          # user's choice of backport mode
+declare conflicthash=		# upstream hash that introduced a conflict
 #*
 
 #########################################
@@ -586,6 +587,7 @@ getlasttag() {
 #*
 get_lastuplog() {
 	local ch="+"
+	lastuphash=
 
 	[ -f "$upcommitsfile" ] || return
 	lastuplog="$(grep "^$ch" $upcommitsfile | tail -n1)"
@@ -756,13 +758,10 @@ get_lastbackport() {
 	local bp
 	local hash="$( cut -d' ' -f1 <<< $(gitnice -1) )"
 
-	echo "$hash"
-
 	[ "$hash" == "$dnorighead" ] && return 1
 
 	extup -1 -m -b "$hash"
-	[[ $hash =~ ^[0-9a-fA-F]+$ ]] || return 2
-	return 0
+	[[ $hash =~ ^[0-9a-fA-F]+$ ]] && return 0 || return 2
 }
 
 #** show_most_recent_cherrypick: show the last upstream commit backported
@@ -1453,11 +1452,11 @@ EOF
 #** run_commit: return from resolving conflicts, but let the script commit
 #===  FUNCTION  ================================================================
 #
-#  Script will commit and create the commit log.
+#  Script will commit and create the commit log from the conflicthash.
 #
 #     ARGUMENTS:  $1 if == "ONE" run one and exit
 #       GLOBALS:  currentuphash
-#                 lastuphash
+#                 conflicthash
 #                 b_conflict
 #                 exit_nothing
 #                 exit_good
@@ -1469,12 +1468,21 @@ run_commit() {
 	local b_one=$([ "$1" == "ONE" ] && echo true || echo false)
 
 	init_cmdline_call
-	b_conflict=true
-	currentuphash=$lastuphash
-	stage_commit
-	mark_done $currentuphash
-	b_conflict=false
+	currentuphash="$conflicthash"	# get the stored conflict hash
 
+	# If there was no conflict hash, let the user know there's nothing
+	# to commit, else stage the commit and continue.
+	if [ -z "$conflicthash" ]; then
+		echo -e "\n${CAU}There is nothing to commit.$OFF"
+	else
+		conflicthash=		# null out the stored conflict hash
+		set_cfg_item "conflicthash" "$conflicthash"
+		b_conflict=true
+		stage_commit
+		mark_done $currentuphash
+	fi
+
+	b_conflict=false
 	$b_one && exit_cherp $exit_good
 	get_next_cherrypick
 	b_cmdline=false
@@ -1664,7 +1672,8 @@ EOF
 			b_conflict=true
 			$b_single && git status && exit $exit_conflict
 			echo -e "$conflictmsg"
-			lastuphash=$uphash
+			conflicthash=$uphash
+			set_cfg_item "conflicthash" "$conflicthash"
 			# echo -e "Saving: $BLD${commit:0:$wcols}$OFF"
 			show_status internal
 			[ -n "$err" ] && echo -e "$INF$err$OFF"
