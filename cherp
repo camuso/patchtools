@@ -120,7 +120,8 @@ declare str_herald=
 declare str_conflicts=
 
 init_global_strings() {
-str_herald="\n$MNU${UND}Patchtools v$version$OFF\n\n${MNU}cherp - Automates git cherry-pick$OFF"
+str_herald="\n$MNU${UND}Patchtools v$version$OFF\n\n${MNU}cherp - Automates \
+Backporting$OFF"
 str_conflicts="Conflicts:\n"
 }
 
@@ -1177,7 +1178,7 @@ $MNU N $OFF Start a New Session
 $MNU H $OFF Show History
 $MNU r $OFF Run cherp
 $(show_altopt "R" "RESET to an earlier commit in this session ")
-$MNU q $OFF Quit this script
+$MNU q $OFF Quit this tool
 $MNU h $OFF Help
 $OFF
 EOF
