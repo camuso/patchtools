@@ -83,10 +83,10 @@ declare conflicthash=		# upstream hash that introduced a conflict
 #########################################
 
 # backport modes
-declare -i m_lower=0	# lower boundary of backport modes
+declare -i bm_lower=1	# lower boundary of backport modes
 declare -i bm_cherry=1	# git cherry-pick
 declare -i bm_patch=2	# git apply
-declare -i m_upper=3	# upper boundary of backport modes
+declare -i bm_upper=2	# upper boundary of backport modes
 
 declare finaluphash
 declare -i menupad=30
@@ -1352,10 +1352,10 @@ get_newhead() {
 	# selection menu.
 	tmp="$(cut -d' ' -f1 <<< "${dncmtary[0]}")"
 	hashsize="${#tmp}"
-	spc="$(printf "%*c" $((hashsize - 6)) " ")"
+	spc="$(printf "%*c" $((hashsize - 7)) " ")"
 
-	select_from_array dncmtary "HEADs" new \
-		"      $MNU${UND}Dn Cmt$spc$OFF $MNU${UND}Up Cmt$spc$OFF" || return 1
+	select_from_array dncmtary "Dn Cmts" new \
+		"      $MNU${UND}Dn Cmts$spc$OFF $MNU${UND}Up Cmts$spc$OFF" || return 1
 
 	# Set the new downstream current head global
 	dncurrenthead="$(cut -d' ' -f1 <<< "$new")"
@@ -1465,8 +1465,6 @@ EOF
 run_commit() {
 	# echo -e "$UND\0run_commit$OFF"
 
-	local b_one=$([ "$1" == "ONE" ] && echo true || echo false)
-
 	init_cmdline_call
 	currentuphash="$conflicthash"	# get the stored conflict hash
 
@@ -1527,6 +1525,8 @@ mark_done() {
 	local -i lnum
 	local stat
 
+	[ -f "$upcommitsfile" ] || return 1
+
 	# If user passed a char in $2, then it means user wants to apply a
 	# different leading mark.
 	[ -n "$2" ] && mark="$2"
@@ -1554,6 +1554,8 @@ clear_done() {
 	local -i lnum
 	local stat
 
+	[ -f "$upcommitsfile" ] || return 1
+
 	# If user passed a char in $2, then it means user wants to apply a
 	# different leading mark.
 	[ -n "$2" ] && mark="$2"
@@ -1579,6 +1581,8 @@ clear_done() {
 clear_alldone() {
 	local mark='+'		# the default leading char
 	local markstr=
+
+	[ -f "$upcommitsfile" ] || return 1
 
 	# If user passed a char in $1, then it means user wants to remove  a
 	# different leading mark.
@@ -1891,7 +1895,7 @@ read_session() {
 		set_upstream_url "NEW"
 	fi
 
-	((backport_mode > m_lower && backport_mode < m_upper)) || {
+	((backport_mode >= bm_lower && backport_mode <= bm_upper)) || {
 		get_backport_mode
 	}
 
@@ -2108,7 +2112,6 @@ declare shortopts="sp:h"
 declare longopts="\
 abort,\
 branch,\
-continue,\
 apply:,\
 commit,\
 directory,\
@@ -2116,6 +2119,7 @@ hashlist,\
 help,\
 history,\
 new,\
+nit,\
 pick:,\
 run,\
 select,\
@@ -2146,20 +2150,9 @@ else
 		"--branch" )
 			set_gitbranch
 			;;
-		"--commands" )
-			show_commands
-			;;
-		"--apply"  )
-			currentuphash="$2"
-			b_conflict=true
-			stage_commit
-			break
-			;;
 		"--commit" )
+			[ "$2" == "1" ] && b_one=true || b_one=false
 			run_commit
-			;;
-		"--continue" )
-			run_continue
 			;;
 		-h | "--help" 	)
 			less "$MYHLP"
