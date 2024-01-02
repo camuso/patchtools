@@ -2,13 +2,6 @@
 #
 # ui.source
 #
-# v0.1
-#
-# bash library
-#
-# when adding routines to this library, be sure to declare local variables
-# as local. You may otherwise experience behavior that is difficult to debug.
-#
 
 ##############################
 # Global Variables and Consts
@@ -30,10 +23,6 @@ unset BLD && declare BLD="\e[1m"
 unset UND && declare UND="\e[4m"
 unset OFF && declare OFF="\e[m"
 #
-# Text color definitions
-# For color tables see:
-# http://bitmote.com/index.php?post/2012/11/19/Using-ANSI-Color-Codes-to-Colorize-Your-Bash-Prompt-on-Linux
-
 #** Color Attributes
 #
 # Plain colors
