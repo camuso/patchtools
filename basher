@@ -1,0 +1,419 @@
+#!/bin/bash
+#
+# Create an empty bash script with placeholders for help text and
+# a usage function
+#
+
+declare MYDIR=
+declare MYLIB=
+declare usagestr=
+
+MYDIR="$(dirname "$(which "$(basename "$0")")")"
+MYLIB="$MYDIR"/lib
+
+source "$MYLIB"/ui.source
+
+declare b_opts=false
+declare b_args=false
+declare b_answer=false
+declare b_source=false
+declare b_cmds=false
+declare b_ui=false
+declare b_color=false
+declare opts=
+declare args=
+declare optstr=
+declare cmds=
+declare -i argcount=0
+declare -i optcount=0
+declare -i index
+declare -i width
+declare -i widest
+declare spacer="  "
+declare ofile
+declare b_cfgmgr=false
+
+usagestr="$(
+cat <<EOF
+
+$(basename $0) [ options ] <bashscript>
+
+Create an empty bash script with placeholders for help text and
+a usage function
+
+  -c Include config-manager. This will also include the ui source file.
+
+  -u Include ui functions, see lib/ui.source or run "docscript lib/ui.source"
+
+  -k include colors, see lib/ui.source
+
+  -o options, a quote enclosed string containing a list of space separated
+     option flags with optional corresponding arguments.
+
+     Example: -o "n:number f:file d:directory x h" -a "arg1 arg2"
+
+     Creates options for -n number,  -f file, -d directory, -x and -h
+     with no arguments.
+
+  -a arguments, double quote enclosed string of arguments that follow
+     the options for the new script being created.
+     If the number of arguments following the options is not exactly
+     this number, then the newly created script will print its usage
+     message and exit.
+
+     Example: -a "arg1 arg2"
+
+  -C commands, a quote enclosed string of command verbs for a command
+     oriented script
+
+  -s source only for a library of functions
+\0
+EOF
+)"
+
+usage() {
+	echo -e "$usagestr"
+	exit
+}
+
+test_help() {
+	local opt="$1"
+
+	shopt -s nocasematch
+	( [ -z "$opt" ] || [[ $opt =~ (\bh\b|^help) ]] ) && { usage; exitme $exit_ok; }
+	shopt -u nocasematch
+}
+
+# print_pad() - echo n chars to the screen
+#
+# Arguments
+#   $1 - number of chars
+#   $2 - the char
+#   $3 - send "crlf" to get crlf at end of string
+#
+print_pad() {
+	local -i num=$1
+	local char="$2"
+	local crlf="$3"
+	local tstr=
+
+	((num <= 0)) && return
+	[ -n "$crlf" ] && crlf="\n" || crlf=""
+	tstr=$(printf "%*c%s" $num "$char" "$crlf")
+	echo -en "${tstr// /"$char"}"
+}
+
+# print_usagearts - usage artifacts args, opts, cmds into usagestr
+#
+# Globals
+#    ofile the output file
+#
+# Arguments
+#    $1 - cmd, arg, or opt list as a string
+#    $2 - name of usage artifact
+#
+print_usagearts() {
+	local arts="$1"		# string of artifacts
+	local artname="$2"	# name of the artifacts
+	local -i artwid=0
+	local -i padwid=0
+
+	for art in $arts; do
+		((${#art} > artwid)) && artwid=${#art}
+	done
+
+	echo -e "$artname">> "$ofile"
+	print_pad ${#artname} "-" "crlf" >> "$ofile"
+
+	for art in $arts; do
+		echo -en "   $art" >> "$ofile"
+		padwid=$((artwid - ${#art}))
+		print_pad $padwid " " >> "$ofile"
+		echo " : " >> "$ofile"
+	done
+	echo >> "$ofile"
+}
+
+#############################
+# Start execution
+#############################
+
+declare arg=
+declare opt=
+
+test_help "$1"
+
+for arg in "$@"; do
+
+    if [ "${arg:0:1}" == '-' ]; then
+	opt="${arg:1}"
+	shift
+
+	case "$opt" in
+	o ) opts="$1"
+	    b_opts=true
+	    shift
+	    ;;
+	a ) args="$1"
+	    b_args=true
+	    shift
+	    ;;
+	C ) cmds="$1"
+	    b_cmds=true
+	    shift
+	    ;;
+	k ) b_color=true
+	    b_ui=true
+	    ;;
+	c ) b_cfgmgr=true
+	    ;;
+	u ) b_ui=true
+	    ;;
+	s ) b_source=true
+	    ;;
+	h ) usage
+	    ;;
+	* ) echo "unrecognized option"
+	    echo -e "$usagestr"
+	    exit 127
+	esac
+    fi
+done
+
+ofile=$1
+
+if [ -f "$ofile" ]; then
+# set -x
+	echo
+	echo "File: $ofile already exists!"
+	loop_yn "Do you want to overwrite?" || exit 1
+	echo "Overwriting file: $ofile"
+# set +x
+fi
+
+> "$ofile"
+
+$b_opts && optstr="[options]"
+
+echo -en '#!/bin/bash
+#
+# '$ofile'
+#
+' >> "$ofile"
+
+$b_source && echo -en '
+'$ofile'_loaded=true
+' >> "$ofile"
+
+echo -en '
+[ -n "$MYDIR" ] || {
+	declare MYDIR=
+	MYDIR="$(dirname -- "${0}")"
+}
+' >> "$ofile"
+
+$b_ui || $b_cfgmgr && echo -en '
+[ -n "$MYLIB" ] || {
+	declare MYLIB=
+	MYLIB="$MYDIR"/lib
+}
+' >> "$ofile"
+
+$b_cfgmgr && echo -en '
+[ -n "$MYDATA" ] || {
+	declare MYDATA=
+	MYDATA=$(realpath ./.data)
+}
+[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
+' >> "$ofile"
+
+$b_ui && echo -en '
+[ "$ui_loaded" ] || source "$MYLIB"/ui.source
+' >> "$ofile"
+
+$b_cfgmgr && echo -en '
+[ "$cfgmgr_loaded" ] || source "$MYLIB"/cfgmgr.source
+declare -A configtable
+
+' >> "$ofile"
+
+$b_opts && echo "declare optcount=0" >> "$ofile"
+$b_args && {
+	for arg in $args; do
+		echo "declare $arg" >> "$ofile"
+	done
+}
+
+echo -en '
+declare usagestr=
+usagestr="$(
+cat <<EOF
+
+$(basename "$0")' >> "$ofile"
+
+$b_opts && echo -en ' [options]' >> "$ofile"
+$b_args && echo -e " $args\n" >> "$ofile"
+
+$b_args && print_usagearts "$args" "Arguments"
+$b_opts && print_usagearts "$opts" "Options"
+$b_cmds && print_usagearts "$cmds" "Commands"
+
+echo -en '\\0
+EOF
+)"
+
+# control_c: run if user hits control-c
+#
+# Global
+#   CTLC_EXIT - bash environment variable
+#
+control_c() {
+	echo -e "\\nCtrl-c detected\\nCleaning up and exiting."
+' >> "$ofile"
+
+$b_cfgmgr && echo -e "\tcfg_write_cfgfile configtable" >> "$ofile"
+
+echo -en '	exit $CTLC_EXIT
+}
+' >> "$ofile"
+
+if $b_cfgmgr && $b_ui; then echo -en '
+# exitme
+#
+# Globals
+#   configfile
+#   All vars in configfile
+exitme() {
+	local -i code=$1
+	local artifact="$2"
+
+	cfg_write_cfgfile configtable
+	ui_exit $code "$artifact"
+}
+'>> "$ofile"
+elif $b_cfgmgr; then echo -en '
+# exitme
+#
+# Globals
+#   configfile
+#   All vars in configfile
+exitme() {
+	local -i code=$1
+
+	cfg_write_cfgfile configtable
+	exit $code
+}
+'>> "$ofile"
+fi
+
+$b_color || $b_cfgmgr && echo -en '
+# init
+#
+# GLOBALS
+' >> "$ofile"
+
+$b_cfgmgr && echo -e "#   configtable" >> "$ofile"
+
+$b_color || $b_cfgmgr && echo -en '#
+init() {
+' >> "$ofile"
+
+$b_color && echo -en '	local -i bgtemp
+
+	ui_setbg bgtemp
+' >> "$ofile"
+
+$b_cfgmgr && echo -e "\tcfg_start configtable" >> "$ofile"
+
+$b_color || $b_cfgmgr && echo -en '}
+' >> "$ofile"
+
+$b_opts && echo -en '
+# parseopts
+#
+# Globals
+#
+parseopts() {
+	local arg=
+	local opt=
+
+	for arg in $@; do
+
+	    if [ "${arg:0:1}" == "-" ]; then
+		opt="${arg:1}"
+		shift
+		((optcount++))
+
+		case "$opt" in
+' >> "$ofile"
+
+$b_opts && {
+	declare var
+	declare -a optary=()
+
+	for opt in $opts; do
+		[ "$opt" == "h" ] && continue
+		var=
+		optary=()
+
+		[[ "$opt" == *:* ]] && {
+			IFS=":" read -ra optary <<< "$opt"
+			opt="${optary[0]}"
+			var="${optary[1]}"
+		}
+		echo -en "\t\t$opt ) " >> "$ofile"
+
+		if [ -n "$var" ]; then
+			echo -e "$var"'=$1' >> "$ofile"
+			echo -e "\t\t    shift" >> "$ofile"
+			echo -e "\t\t    ((optcount++))" >> "$ofile"
+		else
+			echo >> "$ofile"
+		fi
+		echo -e "\t\t    ;;" >> "$ofile"
+	done
+	echo -en \
+'		h ) echo -e "$usagestr"
+		    exit 0
+		esac
+	    fi
+	done
+}
+
+' >> "$ofile"
+} || echo >> "$ofile"
+
+echo -en 'main() {
+' >> "$ofile"
+
+$b_cfgmgr || $b_color && echo -e "\tinit" >> "$ofile"
+$b_opts && echo -e "\tparseopts "'"$@"' >> "$ofile"
+$b_opts && $b_args && echo -e "\n\tshift "'"$optcount"' >> "$ofile"
+
+$b_args && {
+	declare -a argary=()
+	declare -i idx
+
+	IFS=" " read -ra argary <<< "$args"
+	for ((idx = 0; idx < ${#argary[@]}; idx++)); do
+		echo -e "\t${argary[idx]}=\""'$'"$((idx+1))\"" >> "$ofile"
+	done
+	echo >> "$ofile"
+} || echo >> "$ofile"
+
+
+if $b_cfgmgr && $b_ui; then
+	echo -e "\texitme "'$ui_exit_ok' >> "$ofile"
+elif $b_ui; then
+	echo -e "\tui_exit "'ui_exit_ok' >> "$ofile"
+else
+	echo -e "\texit 0" >> "$ofile"
+fi
+
+echo -en '}
+
+main "$@"
+' >> "$ofile"
+
+chmod +x "$ofile"
+
