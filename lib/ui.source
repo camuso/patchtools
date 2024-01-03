@@ -220,21 +220,23 @@ ui_set_colors() {
 		MNU="$BLD"
 		STA="$BLD"
 		WRN="$BLD"
+		CAU="$BLD"
 		qstr="${STA}q${OFF}"
 		return 1
 	}
 
 	case "$terminal_background" in
-		"$tb_lite" ) INF="$OFF""\033[38;5;90m"
+		"$tb_lite" ) INF="\033[38;5;90m"
 			     MNU="\033[1;38;5;21m"
 			     STA="\033[1;38;5;28m"
 			     WRN=$BRED
+			     CAU=$BMGT
 			     ;;
 		"$tb_dark" ) INF=$YEL
 			     MNU=$BYEL
 			     STA=$BGRN
 			     # WRN=$BWOR
-			     $b_256color && WRN=$BRED || WRN=$BRED
+			     WRN=$BRED
 			     CAU=$BLIL
 			     ;;
 	esac
