@@ -110,7 +110,8 @@ declare -i ui_err_norepo=9
 declare -i ui_err_invcmd=10
 declare -i ui_err_invcmd_arg=11
 declare -i ui_err_missing_exec=12
-declare -i ui_err_boundary="$ui_err_missing_exec"
+declare -i ui_err_invargval=13
+declare -i ui_err_boundary="$ui_err_invargval"
 
 declare -a ui_err_msg=(
 ""
@@ -126,6 +127,7 @@ declare -a ui_err_msg=(
 "not a valid command"
 "not a valid command argument"
 "missing executable"
+"invalid argument value"
 ""
 )
 #*
@@ -253,7 +255,7 @@ ui_isdarkbg() {
 	local -a bga=()
 	local -i sum=0
 
-	# read -rs -d \\ -p $'\e]11;?\e\\' bgraw
+	read -rs -d \\ -p $'\e]11;?\e\\' bgraw
 	bg=$(echo "$bgraw" | xxd -c 32 | cut -d':' -f3)
 	ui_strtok "$bg" "/." bga
 
