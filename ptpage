@@ -1,0 +1,163 @@
+#!/bin/bash
+#
+# ptpage
+#
+
+[ -n "$MYDIR" ] || {
+	declare MYDIR=
+	MYDIR="$(dirname -- "${0}")"
+}
+
+[ -n "$MYLIB" ] || {
+	declare MYLIB=
+	MYLIB="$MYDIR"/lib
+}
+
+[ "$ui_loaded" ] || source "$MYLIB"/ui.source
+
+declare srctxt=		# passed by user
+declare tbg=
+declare pager
+
+usage() {
+	local usagestr=
+	usagestr="$(
+cat <<EOF
+
+$MNU$(basename "$0")$OFF [options]$INF srctxt
+$OFF
+This tool is a pager for large texts formatted with color and text
+attributes defined in:
+    $INF$MYLIB/ui.source$OFF
+If neither '${INF}bat${OFF}' nor '${INF}highlight${OFF}' advanced \
+feature pager is installed,
+then the '${INF}more${OFF}' pager will be used as default.
+
+$MNU${UND}Arguments${OFF}
+${MNU}
+   srctxt${OFF} : Name of the file containing the source text to display.
+
+$MNU${UND}Options${OFF}
+
+$MNU  -b ${STA}background${OFF} : number 1 for lighter screen backgrounds
+                  number 2 for darker screan backgrounds
+$MNU  -h ${OFF}: this help text
+EOF
+)"
+	echo -e "$usagestr"
+	ui_exit "$ui_exit_ok"
+}
+
+# control_c: run if user hits control-c
+#
+# Global
+#   CTLC_EXIT - bash environment variable
+#
+control_c() {
+	echo -e "\nCtrl-c detected\nCleaning up and exiting."
+	exit $CTLC_EXIT
+}
+
+# find_pager
+#
+# GLOBALS
+#
+# ARGUMENTS
+#   $1 - pager to lookup
+#
+# RETURNS
+#    0 - pager installed and ready
+#    1 - pager is available for install
+#   -1 - no pager installed or available
+#
+lookup_pager() {
+	local pgr="$1"
+
+	which "$pgr" > /dev/null 2>&1 && return 0 || return 1
+}
+
+# set_pager
+#
+# GLOBALS
+#   pager
+#
+set_pager() {
+	local batsts=
+	local hilsts=
+
+	lookup_pager "bat" && pager="bat" && return
+	lookup_pager "highlight" && pager="highlight" && return
+
+	pager="more"
+}
+
+# init
+#
+# GLOBALS
+#   tbg - terminal background tb_lite or tb_dark, see lib/ui.source
+#   b_color - global from lib/ui.source
+#
+init() {
+	if [ -n "$tbg" ]; then
+		ui_do_colors "$tbg"
+	elif grep 256 > /dev/null 2>&1 <<< "$TERM"; then
+		ui_setbg tbg
+	else
+		b_color=false
+		ui_set_colors
+	fi
+}
+
+get_txtname() {
+	local txt="$1"
+	grep -m1 'declare' "$txt" | cut -d' ' -f2 | cut -d= -f1
+}
+
+# parseopts
+#
+# Globals
+#
+parseopts() {
+	local switches
+	local -a arglist=()
+
+	while (($# > 0)); do
+		case "$1" in
+		-b ) tbg="$2"
+		     ((tbg >= tb_lite && tbg <= tb_dark)) ||
+		         ui_exit "$ui_err_invargval" "$tbg"
+		     shift 2
+		     ;;
+	        -h | --help | help )
+		     return 1
+		     ;;
+		* )  arglist+=("$1")
+		     shift
+		esac
+	done
+
+	echo "${arglist[@]}"
+	return 0
+}
+
+main() {
+	local txtname
+	local -a argv=()
+	local sts
+
+	argv=($(parseopts "$@"))
+	sts=$?
+	init
+
+	( ((sts == 1 )) || ((${#argv[@]} == 0)) ) && usage
+
+	srctxt="${argv[0]}"
+	source "$srctxt"
+	txtname="$(get_txtname "$srctxt")"
+	set_pager
+	echo -e "${!txtname}" | "$pager"
+
+	ui_exit ui_exit_ok
+}
+
+main "$@"
