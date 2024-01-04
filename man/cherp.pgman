@@ -1,0 +1,162 @@
+#!/bin/bash
+#
+declare cherpman="$(
+cat <<EOF
+$UND${MNU}
+cherp - backporting tool
+$INF
+Type 'q' at any time to exit this help.
+$OFF
+cherp is a backporting tool that can use either git cherry-pick or
+patch --merge. These are presented as options when cherp is started
+for the very first time. They are also available as options from the
+upper-case O item in the main menu.
+
+When invoked without arguments, cherp will present a text mode menu.
+
+This tool can be run in text menu mode or from the command line with
+the commands listed below. In command line mode, it can be used to
+backport single commits at a time or automate backporting from a list
+of upstream commits created with the mkbackportlog tool in this suite.
+
+$MNU abort$OFF     - abort the current backport
+$MNU branch$OFF    - select a different downstream git branch
+$MNU commit [1]$OFF- commit changes after conflict resolution and create commit log
+             The optional '1' will return to the command line after the
+             commit, otherwise the cherp menu will be presented.
+$MNU help$OFF      - display this help
+$MNU history$OFF   - show commits so far this session
+$MNU new$OFF       - start a new session
+$MNU nit$OFF       - select the hunks you wish to backport from the upstream commit
+             Available in cherry-pick mode only
+$MNU pick <h>$OFF  - backport one hash specified by <h>
+$MNU reset$OFF     - choose from a list of commits to reset to
+$MNU run$OFF       - run the backport automation
+$MNU select$OFF    - select the next upstream has to backport from a list
+$MNU setup$OFF     - run the cherp menu to setup the runtime environment
+             This is easier and simpler than having a different command
+             for every parameter.
+$MNU status$OFF    - show the cherp session status and git status
+$MNU version$OFF   - show this version of the cherp tool
+$INF
+Invoking cherp with no commands presents the cherp menu.
+$UND$MNU
+Main Menu$OFF
+$MNU
+Upstream Environment options
+$OFF
+$MNU f$OFF Backports File $OFF
+   This is a file containing a sequential list of upstream commits to be
+   backported into the current downstream [origin] index.
+
+$MNU c$OFF Next Backport Commit $OFF
+   Shows the next commit in the Backport File that will be committed. The
+   user can press$MNU c$OFF to choose a different commit in the file.
+
+$MNU u$OFF Upstream url$OFF
+   This is the url of the remote upstream repository. The defaul is the
+   Linus tree. Press$MNU u$OFF to change it.
+
+$MNU
+Downstream Environment options
+$OFF
+$MNU b$OFF Current git branch $OFF
+   Presents a list of the downstream branches n the current downstream
+   index.
+
+$MNU w$OFF Working directory $OFF
+   Provides a scratch directory for the tool to use.
+
+$MNU O$OFF Options $OFF
+   Presents the Options Menu
+$MNU
+Control options
+$OFF
+$MNU S$OFF Stop Before $OFF
+   Presents a prompt to enter one of the commits from the Backports File.
+   Useful for stopping the automated backport in order build and test the
+   applied backports before proceeding.
+
+$MNU P$OFF Create a patchseries $OFF
+   Creates a patch series starting from the$INF Head at Session Start$OFF
+   up to the current HEAD.
+
+$MNU N$OFF Start a New Sesssion
+   The current HEAD becomes the$INF Head at Session Start$OFF, and prompts
+   are presented to provide the following:
+
+   ${INF}Backport Mode$OFF
+      Currently only$INF git cherry-pick$OFF and$INF patch --merge$OFF \
+      are supported.
+
+   ${INF}New working directory$OFF
+      Scratch directory for the tool to use. It's good to know where the
+      tool will leave traces so they can be reviewed when needed.
+
+   ${INF}Backports File$OFF
+      Enter file containing a sequential list of upstream commits to
+      backport.
+
+   ${INF}JIRA link$OFF
+      This link will be embedded in the generated git logs.
+
+   ${INF}Upstream Status$OFF
+      For example, v6.7 or Linux-Next.
+
+$MNU H$OFF History
+   Shows a history of the backports to the current point.
+
+$MNU r$OFF Run cherp$OFF
+   Runs the automation. The automatic backport will stop if any conflicts
+   are encountered when backporting.
+
+   When a conflict stops the process, the conflicts must be resolved.
+   Conflicts within files can be found by seeking the$INF <<<<<<$OFF markers
+   in the files.
+
+   New files should be added with$INF git add$OFF if they are required by the
+   backport, and deleted files should be removed with$INF git rm$OFF.
+
+   If the$INF Stop Before$OFF commit has been entered, the automation will
+   stop before that commit. This is useful for building and testing the
+   backport along the way, especially for larger backports.
+
+$CAU Alt-Shift-Reset$OFF Reset to an earlier commit in this session$OFF
+   Presents a list of the backported commits to this point. Choosing one
+   of those commits resets the downstream head to where the corresponding
+   upstream commit was backported
+
+$MNU q$OFF Quit this tool
+
+$MNU h$OFF Help
+
+$MNU$UND
+Options Menu$OFF
+
+$MNU u$OFF Upstream Status${OFF}, e.g. v6.7, will be entered into commit logs
+$MNU j$OFF Jira Link$OFF will be entered into commit logs
+$MNU b$OFF Brew of build info$OFF will be entered into commit logs
+$MNU t$OFF Test information$OFF will be entered into commit logs
+$MNU p$OFF Patch subject prefix$OFF used in patch series creation
+$MNU d$OFF Patch directory$OFF to be used to receive the patch series
+$MNU B$OFF Backport mode$OFF,$STA git cherry-pick$OFF or$STA patch --merge$OFF
+$MNU c$OFF Change Terminal colors$OFF for light or dark terminal backgrounds
+$MNU q$OFF Quit to Main Menu
+
+Commits may be entered one at a time or from a Backport Commits file"
+most easily created using the mkbackportlog tool in this suite.
+
+You can edit the resulting file to put a leading # on the upstream
+commits that you want to skip over.
+
+Commit logs are automatically generated.
+
+The user can type control-c at anytime to exit the tool, and a best
+effort will be made to assure the user's tree is left in a coherent
+state.
+
+All Environmental variables and options are sticky across invocations
+of this tool.
+\0
+EOF
+)"

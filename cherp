@@ -28,7 +28,7 @@
 declare MYMAN="$MYDIR"/man
 declare MYDATA=
 MYDATA="$(realpath ./.data)"
-declare MYHLP="$MYMAN"/cherp.txt
+declare MYHLP="$MYMAN"/cherp.pgman
 declare MYNAME=
 MYNAME="$(basename "$0")"
 
@@ -175,8 +175,9 @@ set_gitbranch() {
 	local branchlistfile="$workdir"/branchlist
 
 	echo
-	echo -e "${MNU}Select the number of the branch you want to use or press $qstr$INF"
-	echo -e "to leave the current selection highlighted below.$OFF"
+	echo -e "${MNU}Select the Downstrean Branch or press $qstr$INF to leave" \
+		"the current "
+	echo -e "selection marked with the leading *.$OFF"
 
 	git branch > "$branchlistfile"
 
@@ -381,31 +382,19 @@ set_upcommitsfile() {
 
 	prstr=$(
 cat <<EOF
-$INF
-Set the file containing the upstream commits to be cherry-picked$OFF
+${INF}Backports File$OFF
 EOF
 )
 	commitsfilemsg=$(
 cat <<EOF
-$INF
-You can create a file containing the upstream commits to be cherry-picked
-using the following command.
-
-  git log --oneline --reverse <commit-expression> [-- path] > <commits-file>
-
-  Example:
-
-  git log --oneline --reverse v4.12..HEAD -- drivers/usb/host > usb-commits.log
-$OFF
-\0
+${OFF}You can create a file containing the upstream commits to be backported
+using the$INF mkbackportlog$OFF tool.
 EOF
 )
 	exitmsg=$(
 cat <<EOF
-$INF
-You pressed $qstr$INF without providing a file containing the upstream commits
-to be cherry-picked, so we must exit.$OFF
-\0
+${INF}
+You pressed $qstr$INF without providing a Backports File, so we must exit.$OFF
 EOF
 )
 	currentfile=$(
@@ -1033,10 +1022,10 @@ $MNU
     $MNU j $OFF JIRA link                : $STA$str_jira$OFF
     $MNU b $OFF Brew or build info       : $STA$str_brew$OFF
     $MNU t $OFF Test information         : $STA$str_test$OFF
-    $MNU p $OFF Current subject prefix   : $STA$(git config format.subjectprefix)$OFF
+    $MNU p $OFF Patch subject prefix     : $STA$(git config format.subjectprefix)$OFF
     $MNU d $OFF Patch Directory          : $STA$patchdir$OFF
     $MNU B $OFF Backport Mode            : $STA$(show_backport_mode)$OFF
-    $MNU c $OFF Change Terminal Color    : $STA$(show_tbackground)$OFF
+    $MNU c $OFF Change Terminal Colors   : $STA$(show_tbackground)$OFF
     $MNU q $OFF Quit to main menu
 \0
 EOF
@@ -1232,7 +1221,7 @@ menu_parser() {
 			;;
 		H )	show_history
 			;;
-		h )	less "$MYHLP"
+		h )	ptpage -b "$tbackground" "$MYHLP"
 			;;
 		q )	exit_cherp $exit_good
 			;;
@@ -1965,7 +1954,7 @@ init_session() {
 #       RETURNS:  none
 #*==============================================================================
 init_newsession() {
-	echo -e "\n$UND\0init_newsession$OFF"
+	# echo -e "\n$UND\0init_newsession$OFF"
 
 	read_session
 	b_conflict=false
@@ -2156,7 +2145,7 @@ else
 			run_commit
 			;;
 		-h | "--help" 	)
-			less "$MYHLP"
+			ptpage -b "$tbackground" "$MYHLP"
 			exit 0
 			;;
 		"--history" )
