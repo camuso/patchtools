@@ -68,6 +68,7 @@ declare workdir=		# scratch directory for the session
 declare upcommitsfile=		# File of upstream commits to cherry-pick
 declare b_conflict=		# last attempt generated a conflict
 declare str_jira=		# Options: JIRA link
+declare str_cve			# Options: CVE
 declare str_upstream=		# Options: upstream version, e.g, v6.7
 declare str_brew=		# Options: brew link
 declare str_test=		# Options: string containing test info
@@ -1010,6 +1011,7 @@ show_backport_mode() {
 #    str_brew
 #    str_test
 #    str_jira
+#    str_cve
 #*
 show_options() {
 	local options
@@ -1019,7 +1021,8 @@ cat <<EOF
 $MNU
         ${UND}Options          $OFF
     $MNU u $OFF Upstream status          : $STA$str_upstream$OFF
-    $MNU j $OFF JIRA link                : $STA$str_jira$OFF
+    $MNU J $OFF JIRA link                : $STA$str_jira$OFF
+    $MNU C $OFF CVE                      : $STA$str_cve
     $MNU b $OFF Brew or build info       : $STA$str_brew$OFF
     $MNU t $OFF Test information         : $STA$str_test$OFF
     $MNU p $OFF Patch subject prefix     : $STA$(git config format.subjectprefix)$OFF
@@ -1063,6 +1066,7 @@ get_oneopt() {
 #    str_brew
 #    str_test
 #    str_jira
+#    str_cve
 #
 #  Returns 1 when user types 'q', else returns 0
 #*
@@ -1073,7 +1077,9 @@ get_options() {
 	"$promptgetkey_cmd" "${MNU}    Enter one of the above: $OFF" opt
 
 	case $opt in
-		j )	get_oneopt "${MNU}JIRA link: $OFF" "str_jira"
+		J )	get_oneopt "${MNU}JIRA link: $OFF" "str_jira"
+			;;
+		C )	get_oneopt "${MNU}CVE: $OFF" "str_cve"
 			;;
 		u )     get_oneopt "${MNU}Upstream status: $OFF" "str_upstream"
 			;;
@@ -1694,6 +1700,7 @@ EOF
 #       GLOBALS:  b_conflict
 #		  cmtmsgfile
 #		  str_jira
+#		  str_cve
 #		  str_upstream
 #		  str_conflicts
 #       RETURNS:  none
@@ -1728,6 +1735,7 @@ stage_commit() {
 	description=$(echo -e $description)
 	echo -e "$description\n\n" >> "$cmtmsgfile"
 	[ -n "$str_jira" ] && echo -e "JIRA: $str_jira" >> "$cmtmsgfile"
+	[ -n "$str_cve" ] && echo -e "CVE: $str_cve" >> "$cmtmsgfile"
 	[ -n "$str_upstream" ] && echo -e "Upstream status: $str_upstream" >> "$cmtmsgfile"
 	echo -e "\n" >> "$cmtmsgfile"
 	set +f	# re-enable wildcards
@@ -1964,6 +1972,7 @@ init_newsession() {
 	set_gitbranch
 	echo -e "\n${CAU}The following will be in the Options Menu.$OFF"
 	get_oneopt "${MNU}JIRA link: $OFF" "str_jira"
+	get_oneopt "${MNU}CVE: $OFF" "str_cve"
 	get_oneopt "${MNU}Upstream status: $OFF" "str_upstream"
 	b_lasthashvalid=false
 	b_new=true
