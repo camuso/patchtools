@@ -100,6 +100,9 @@ $MNU N$OFF Start a New Sesssion
    ${INF}JIRA link$OFF
       This link will be embedded in the generated git logs.
 
+   ${INF}CVE$OFF
+      If there is a CVE, then put its ID here.
+
    ${INF}Upstream Status$OFF
       For example, v6.7 or Linux-Next.
 
@@ -135,6 +138,7 @@ Options Menu$OFF
 
 $MNU u$OFF Upstream Status${OFF}, e.g. v6.7, will be entered into commit logs
 $MNU j$OFF Jira Link$OFF will be entered into commit logs
+$MNU j$OFF CVE$OFF will be entered into commit logs
 $MNU b$OFF Brew of build info$OFF will be entered into commit logs
 $MNU t$OFF Test information$OFF will be entered into commit logs
 $MNU p$OFF Patch subject prefix$OFF used in patch series creation
