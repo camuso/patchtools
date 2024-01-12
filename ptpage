@@ -118,7 +118,6 @@ get_txtname() {
 # Globals
 #
 parseopts() {
-	local switches
 	local -a arglist=()
 
 	while (($# > 0)); do
