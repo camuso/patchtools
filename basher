@@ -29,9 +29,11 @@ declare -i optcount=0
 declare -i index
 declare -i width
 declare -i widest
+declare -i argc=0
 declare spacer="  "
 declare ofile
 declare b_cfgmgr=false
+declare b_nolib=false
 
 usagestr="$(
 cat <<EOF
@@ -46,6 +48,9 @@ a usage function
   -u Include ui functions, see lib/ui.source or run "docscript lib/ui.source"
 
   -k include colors, see lib/ui.source
+
+  -n no library functions. If this flag is present, no library functions
+     will be included, regardless of any other flags.
 
   -o options, a quote enclosed string containing a list of space separated
      option flags with optional corresponding arguments.
@@ -73,8 +78,31 @@ EOF
 
 usage() {
 	echo -e "$usagestr"
-	exit
 }
+
+#* exit_me() - exit with messages and help
+#
+# Globals:
+#   ui_err_* indexes into err msg array declared in lib/ui.source
+#
+# Arguments:
+#   $1 - index into the err msg array
+#   $2 - optional string to send to ui_print_clierr
+#
+exit_me() {
+	local erridx="$1"
+
+	if (($# == 2)); then
+		local errstr="$2"
+		ui_print_clierr "$erridx" "$errstr"
+	else
+		ui_print_clierr "$erridx"
+	fi
+
+	usage
+	exit "$erridx"
+}
+
 
 test_help() {
 	local opt="$1"
@@ -171,6 +199,8 @@ for arg in "$@"; do
 	    ;;
 	s ) b_source=true
 	    ;;
+	n ) b_nolib=true
+	    ;;
 	h ) usage
 	    ;;
 	* ) echo "unrecognized option"
@@ -181,6 +211,8 @@ for arg in "$@"; do
 done
 
 ofile=$1
+
+[ -n "$ofile" ] || exit_me "$ui_err_missingarg"
 
 if [ -f "$ofile" ]; then
 # set -x
@@ -215,33 +247,39 @@ echo -en '
 $b_ui || $b_cfgmgr && echo -en '
 [ -n "$MYLIB" ] || {
 	declare MYLIB=
-	MYLIB="$MYDIR"/lib
+	MYLIB="${MYDIR}/lib"
 }
 ' >> "$ofile"
 
 $b_cfgmgr && echo -en '
 [ -n "$MYDATA" ] || {
 	declare MYDATA=
-	MYDATA=$(realpath ./.data)
+	MYDATA="$(realpath ./.data)"
 }
 [ -d "$MYDATA" ] || mkdir -p "$MYDATA"
 ' >> "$ofile"
 
 $b_ui && echo -en '
-[ "$ui_loaded" ] || source "$MYLIB"/ui.source
-' >> "$ofile"
+[ "$ui_loaded" ] || source "${MYLIB}/ui.source"' >> "$ofile"
 
 $b_cfgmgr && echo -en '
-[ "$cfgmgr_loaded" ] || source "$MYLIB"/cfgmgr.source
+[ "$cfgmgr_loaded" ] || source "${MYLIB}/cfgmgr.source"
+
+# Configuration (sticky) variables
+declare configfile="${MYDATA}/$(basename "$0").conf"
 declare -A configtable
+configtable[var]=	# Rename and add new conf vars as needed
 
 ' >> "$ofile"
 
-$b_opts && echo "declare optcount=0" >> "$ofile"
 $b_args && {
+	argc=0
 	for arg in $args; do
 		echo "declare $arg" >> "$ofile"
+		let ++argc
 	done
+	echo "declare -a argv=()" >> "$ofile"
+	echo "declare -i argc=$argc" >> "$ofile"
 }
 
 echo -en '
@@ -262,6 +300,10 @@ echo -en '\\0
 EOF
 )"
 
+usage() {
+	echo -e "$usagestr"
+}
+
 # control_c: run if user hits control-c
 #
 # Global
@@ -277,31 +319,102 @@ echo -en '	exit $CTLC_EXIT
 }
 ' >> "$ofile"
 
-if $b_cfgmgr && $b_ui; then echo -en '
+if $b_cfgmgr; then echo -en '
+# cfg_write - write the configtable into the configfile
+#
+# See lib/cfgmgr.source for details
+#
+# Globals
+#   configtable
+#   configfile
+#
+cfg_write() {
+	cfg_write_cfgfile configtable
+}
+
+# cfg_read - read the configfile into the configtable
+#
+# see lib/cfgmgr.cource for details
+#
+# Globals:
+#   configtable
+#   configfile
+#
+cfg_read() {
+	cfg_read_cfgfile configtable
+}
+' >> "$ofile"
+fi
+
+# There will be two different exitme functions. One for if lib/ui
+# is inclided, and one if not.
+# Additionally, each of the exitme functions will have to add
+# cfg_write if b_cfgmgr is true.
+
+# For the lib/ui case ...
+if $b_ui; then echo -en '
 # exitme
 #
 # Globals
-#   configfile
-#   All vars in configfile
+#  ui exit codes - see lib/ui.source
+#  ui_err_msg array
+' >> "$ofile"
+
+	if $b_cfgmgr; then echo -en '
+#   configfile - these are implicit in the call to cfg_write
+#   configtable
+' >> "$ofile"
+	fi
+	echo -en '
+#
+# Arguments
+#   $1 - exit code
+#   $2 - optional string to precede cli message
+#
 exitme() {
 	local -i code=$1
-	local artifact="$2"
+	local str="$2"
 
-	cfg_write_cfgfile configtable
-	ui_exit $code "$artifact"
+' >> "$ofile"
+	$b_cfgmgr && echo -e "\tcfg_write" >> "$ofile"
+	echo -en '
+	((code == ui_exit_ok)) && exit "$code"
+
+	ui_print_climsg "$code" "$str"
+	usage
+	exit "$cpde"
 }
 '>> "$ofile"
-elif $b_cfgmgr; then echo -en '
-# exitme
-#
-# Globals
-#   configfile
-#   All vars in configfile
-exitme() {
-	local -i code=$1
 
-	cfg_write_cfgfile configtable
-	exit $code
+# For the case without lib/ui
+else echo -en '
+# exitme
+#' >> "$ofile"
+
+	if $b_cfgmgr; then echo -en '
+# Globals
+#   configfile - these are implicit in the call to cfg_write
+#   configtable
+#' >> "$ofile"
+	fi
+
+	echo -en '
+# Arguments
+#   $1 - exit code
+#   $2 - optional message
+#
+exitme() {
+	local -i code="$1"
+	local msg="$2"
+
+' >> "$ofile"
+	$b_cfgmgr && echo -e "\tcfg_write" >> "$ofile"
+	echo -en '
+	((code == 0)) exit "$code"
+
+	echo -e "$msg"
+	usage
+	exit "$code"
 }
 '>> "$ofile"
 fi
@@ -328,26 +441,35 @@ $b_cfgmgr && echo -e "\tcfg_start configtable" >> "$ofile"
 $b_color || $b_cfgmgr && echo -en '}
 ' >> "$ofile"
 
-$b_opts && echo -en '
+($b_args || $b_opts) && echo -en '
+# check_arg
+#
+# Globals:
+#   argv - array containing command line arguments
+#
+check_arg() {
+        local arg="$1"
+
+        # If 1st char is a hyphen, then invalid switch
+        [ "${arg:0:1}" == "-" ] && return 1
+
+        # Otherwise, add the arg to the argary
+        argv+=("$arg")
+        return 0
+}
+
 # parseopts
 #
 # Globals
+#   argv
+#   argc
 #
 parseopts() {
-	local arg=
-	local opt=
-
-	for arg in $@; do
-
-	    if [ "${arg:0:1}" == "-" ]; then
-		opt="${arg:1}"
-		shift
-		((optcount++))
-
-		case "$opt" in
+	while (($# > 0)); do
+	    case "$1" in
 ' >> "$ofile"
 
-$b_opts && {
+if ($b_args || $b_opts); then
 	declare var
 	declare -a optary=()
 
@@ -356,39 +478,49 @@ $b_opts && {
 		var=
 		optary=()
 
+		# If there's a colon in the opt string, then it has a value
+		# associated with it.
 		[[ "$opt" == *:* ]] && {
 			IFS=":" read -ra optary <<< "$opt"
 			opt="${optary[0]}"
 			var="${optary[1]}"
 		}
-		echo -en "\t\t$opt ) " >> "$ofile"
+		echo -en "\t\t-$opt ) " >> "$ofile"
 
 		if [ -n "$var" ]; then
-			echo -e "$var"'=$1' >> "$ofile"
-			echo -e "\t\t    shift" >> "$ofile"
-			echo -e "\t\t    ((optcount++))" >> "$ofile"
+			echo -e "shift" >> "$ofile"
+			echo -e "\t\t     var"'="$1"' >> "$ofile"
 		else
 			echo >> "$ofile"
 		fi
-		echo -e "\t\t    ;;" >> "$ofile"
+		echo -e "\t\t     ;;" >> "$ofile"
 	done
 	echo -en \
-'		h ) echo -e "$usagestr"
-		    exit 0
-		esac
-	    fi
+'		-h | --help )
+		     echo -e "$usagestr"
+		     exit 0
+		     ;;
+		* )  argv+=("$1")
+		     ;;
+	    esac
+	    shift
 	done
 }
 
 ' >> "$ofile"
-} || echo >> "$ofile"
+else
+	echo >> "$ofile"
+fi
 
 echo -en 'main() {
+
+        # Trap for control-c
+        trap control_c SIGINT
+
 ' >> "$ofile"
 
 $b_cfgmgr || $b_color && echo -e "\tinit" >> "$ofile"
-$b_opts && echo -e "\tparseopts "'"$@"' >> "$ofile"
-$b_opts && $b_args && echo -e "\n\tshift "'"$optcount"' >> "$ofile"
+($b_args|| $b_opts) && echo -e "\tparseopts "'"$@"' >> "$ofile"
 
 $b_args && {
 	declare -a argary=()
@@ -396,7 +528,7 @@ $b_args && {
 
 	IFS=" " read -ra argary <<< "$args"
 	for ((idx = 0; idx < ${#argary[@]}; idx++)); do
-		echo -e "\t${argary[idx]}=\""'$'"$((idx+1))\"" >> "$ofile"
+		echo -e "\t${argary[idx]}="'"${argv['"$idx"']}"' >> "$ofile"
 	done
 	echo >> "$ofile"
 } || echo >> "$ofile"
