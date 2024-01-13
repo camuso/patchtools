@@ -111,7 +111,8 @@ declare -i ui_err_invcmd=10
 declare -i ui_err_invcmd_arg=11
 declare -i ui_err_missing_exec=12
 declare -i ui_err_invargval=13
-declare -i ui_err_boundary="$ui_err_invargval"
+declare -i ui_err_missingarg=14
+declare -i ui_err_boundary="$ui_err_missingarg"
 
 declare -a ui_err_msg=(
 ""
@@ -128,6 +129,7 @@ declare -a ui_err_msg=(
 "not a valid command argument"
 "missing executable"
 "invalid argument value"
+"Argument missing."
 ""
 )
 #*
@@ -160,6 +162,27 @@ ui_exit() {
 	[ -n "$artifact" ] && msg="$MNU$artifact $msg"
 	echo -e "$msg"
 	exit "$msgindex"
+}
+
+#* ui_print_climsg - print the command line interface message
+#
+# Globals
+#   ui_err_msg - array of exit messages
+#   ui_err*    - integer indexes into the array
+#
+# Arguments:
+#   $1 - ui_err* index into the error messages
+#   $2 - optional string to preceede error message
+#
+ui_print_climsg() {
+	local -i msgindex="$1"
+	local str="$2"
+	local msg
+
+	echo
+	msg="$WRN${ui_err_msg[msgindex]}$OFF"
+	[ -n "$str" ] && msg="$MNU$str $msg"
+	echo -e "$msg"
 }
 
 #** ui_testbash: test for bash 4.0+
