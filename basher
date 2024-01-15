@@ -37,7 +37,6 @@ declare b_nolib=false
 
 usagestr="$(
 cat <<EOF
-
 $(basename $0) [ options ] <bashscript>
 
 Create an empty bash script with placeholders for help text and
@@ -94,9 +93,9 @@ exit_me() {
 
 	if (($# == 2)); then
 		local errstr="$2"
-		ui_print_clierr "$erridx" "$errstr"
+		ui_print_climsg "$erridx" "$errstr"
 	else
-		ui_print_clierr "$erridx"
+		ui_print_climsg "$erridx"
 	fi
 
 	usage
@@ -108,7 +107,7 @@ test_help() {
 	local opt="$1"
 
 	shopt -s nocasematch
-	( [ -z "$opt" ] || [[ $opt =~ (\bh\b|^help) ]] ) && { usage; exitme $exit_ok; }
+	( [ -z "$opt" ] || [[ $opt =~ (\bh\b|^help) ]] ) && exit_me $ui_exit_ok
 	shopt -u nocasematch
 }
 
@@ -254,13 +253,14 @@ $b_ui || $b_cfgmgr && echo -en '
 $b_cfgmgr && echo -en '
 [ -n "$MYDATA" ] || {
 	declare MYDATA=
-	MYDATA="$(realpath ./.data)"
+	MYDATA="${PWD}/.data"
 }
 [ -d "$MYDATA" ] || mkdir -p "$MYDATA"
 ' >> "$ofile"
 
 $b_ui && echo -en '
-[ "$ui_loaded" ] || source "${MYLIB}/ui.source"' >> "$ofile"
+[ "$ui_loaded" ] || source "${MYLIB}/ui.source"
+' >> "$ofile"
 
 $b_cfgmgr && echo -en '
 [ "$cfgmgr_loaded" ] || source "${MYLIB}/cfgmgr.source"
@@ -269,8 +269,10 @@ $b_cfgmgr && echo -en '
 declare configfile="${MYDATA}/$(basename "$0").conf"
 declare -A configtable
 configtable[var]=	# Rename and add new conf vars as needed
-
 ' >> "$ofile"
+
+$b_color && echo -en '
+declare -i termbkgnd=' >> "$ofile"
 
 $b_args && {
 	argc=0
@@ -283,8 +285,7 @@ $b_args && {
 }
 
 echo -en '
-declare usagestr=
-usagestr="$(
+declare usagestr="$(
 cat <<EOF
 
 $(basename "$0")' >> "$ofile"
@@ -356,17 +357,11 @@ if $b_ui; then echo -en '
 # exitme
 #
 # Globals
-#  ui exit codes - see lib/ui.source
-#  ui_err_msg array
+#   ui exit codes - see lib/ui.source
+#   ui_err_msg array
 ' >> "$ofile"
 
-	if $b_cfgmgr; then echo -en '
-#   configfile - these are implicit in the call to cfg_write
-#   configtable
-' >> "$ofile"
-	fi
-	echo -en '
-#
+	echo -en '#
 # Arguments
 #   $1 - exit code
 #   $2 - optional string to precede cli message
@@ -374,15 +369,12 @@ if $b_ui; then echo -en '
 exitme() {
 	local -i code=$1
 	local str="$2"
-
 ' >> "$ofile"
-	$b_cfgmgr && echo -e "\tcfg_write" >> "$ofile"
-	echo -en '
-	((code == ui_exit_ok)) && exit "$code"
-
+	$b_cfgmgr && echo -e "\n\tcfg_write" >> "$ofile" || echo >> "$ofile"
+	echo -en '	((code == ui_exit_ok)) && exit "$code"
 	ui_print_climsg "$code" "$str"
 	usage
-	exit "$cpde"
+	exit "$code"
 }
 '>> "$ofile"
 
@@ -406,12 +398,10 @@ else echo -en '
 exitme() {
 	local -i code="$1"
 	local msg="$2"
-
 ' >> "$ofile"
 	$b_cfgmgr && echo -e "\tcfg_write" >> "$ofile"
 	echo -en '
-	((code == 0)) exit "$code"
-
+	((code == 0)) && exit "$code"
 	echo -e "$msg"
 	usage
 	exit "$code"
@@ -431,12 +421,9 @@ $b_color || $b_cfgmgr && echo -en '#
 init() {
 ' >> "$ofile"
 
-$b_color && echo -en '	local -i bgtemp
+$b_color && echo -e "\tui_setbg termbkgnd" >> "$ofile"
 
-	ui_setbg bgtemp
-' >> "$ofile"
-
-$b_cfgmgr && echo -e "\tcfg_start configtable" >> "$ofile"
+$b_cfgmgr && echo -e "\t"'cfg_start configtable "$configfile"' >> "$ofile"
 
 $b_color || $b_cfgmgr && echo -en '}
 ' >> "$ofile"
@@ -513,14 +500,12 @@ else
 fi
 
 echo -en 'main() {
-
         # Trap for control-c
         trap control_c SIGINT
-
 ' >> "$ofile"
 
-$b_cfgmgr || $b_color && echo -e "\tinit" >> "$ofile"
-($b_args|| $b_opts) && echo -e "\tparseopts "'"$@"' >> "$ofile"
+$b_cfgmgr || $b_color && echo -e "\n\tinit" >> "$ofile"
+($b_args || $b_opts) && echo -e "\n\tparseopts "'"$@"' >> "$ofile"
 
 $b_args && {
 	declare -a argary=()
@@ -534,12 +519,10 @@ $b_args && {
 } || echo >> "$ofile"
 
 
-if $b_cfgmgr && $b_ui; then
+if $b_ui; then
 	echo -e "\texitme "'$ui_exit_ok' >> "$ofile"
-elif $b_ui; then
-	echo -e "\tui_exit "'ui_exit_ok' >> "$ofile"
 else
-	echo -e "\texit 0" >> "$ofile"
+	echo -e "\texitme 0" >> "$ofile"
 fi
 
 echo -en '}
