@@ -164,7 +164,7 @@ ui_exit() {
 	exit "$msgindex"
 }
 
-#* ui_print_climsg - print the command line interface message
+#** ui_print_climsg - print the command line interface message
 #
 # Globals
 #   ui_err_msg - array of exit messages
@@ -173,7 +173,7 @@ ui_exit() {
 # Arguments:
 #   $1 - ui_err* index into the error messages
 #   $2 - optional string to preceede error message
-#
+#*
 ui_print_climsg() {
 	local -i msgindex="$1"
 	local str="$2"
