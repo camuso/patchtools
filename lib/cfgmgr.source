@@ -292,6 +292,12 @@ cfg_write_cfgfile() {
 # Globals
 #    cfgfile; passed by user
 #
+# Arguments
+#    $1 - cfgtbl, passed by reference, so no leading $
+#         This is the associative array declared in caller's script
+#    $2 - cfgfile - the file that will retain the caller's conf vars
+#         between invocations of the caller's script.
+#
 cfg_start() {
 	local -n cfgtbl="$1"
 
