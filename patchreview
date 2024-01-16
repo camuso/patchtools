@@ -571,7 +571,7 @@ menu_parser() {
 			return $rc_run
 		fi
 		;;
-	    h )	less "$main_man"
+	    h )	ptpage -b "$background" "$main_man_pg"
 		;;
 	    v )     get_merge_request -c
 		;;

@@ -1,0 +1,562 @@
+#!/bin/bash
+#
+declare cherpman="$(
+cat <<EOF
+${MNU}===================
+${STA}Patchreview v12.0
+${MNU}===================
+$OFF
+This menu-driven script allows the user to compare a set of patches
+from one branch with those of another branch. The branches can be
+remote or local.
+
+The script was designed to be used for comparing RHEL patches with the
+correspoinding upstream commits from which they were derived or backported.
+The comparison helps identify differences between the two, giving the
+reviewer a clear picture of how close the backported RHEL patches are to
+the upstream commits.
+$MNU$UND
+Contents$OFF
+${MNU}1.$OFF Installation
+${MNU}2.$OFF Preparing the Environment
+${MNU}3.$OFF Running the Script for the First Time
+${MNU}4.$OFF Menus, Options, and Operations
+${MNU}   4.1$OFF The Main Menu
+${MNU}   4.2$OFF Menu Selections
+${MNU}   4.3$OFF Discrete Operations
+${MNU}5.$OFF External App Menus
+${MNU}   5.1$OFF The Interactively Compare patches with upstream commits menu
+${MNU}   5.2$OFF Batch Comparison Setup Menu
+$MNU
+1. ${UND}Installation$OFF
+
+The patchreview script and its dependencies can be git-cloned into any
+directory, however that directory must be in your executable path.
+
+For example:
+
+$MNU	$ ${OFF}cd $HOME
+$MNU	$ ${OFF}git -c http.sslVerify=false \\\
+
+	  clone https://tosmith@gitlab.cee.redhat.com/tcamuso/patchtools.git \\\
+
+	  mybin
+$MNU	$ ${OFF}export PATH=\$PATH:~/mybin
+
+If you are contributing to the development of the script, send email
+to tcamuso@redhat.com for 'git push' access credentials.
+
+After the above sequence of commands, the user can invoke patchreview
+from the command line in any directory that contains a valid git repo.
+$MNU
+2. ${UND}Preparing the Git Environment$OFF
+
+The script must be run from the top of a linux git tree. If not, it will
+exit with an error message.
+
+Your repo directory should be configured with gitlab RHEL or CentOS tree
+as origin/main. Each RHEL/CentOS distro should have its own directory.
+Be sure to add your fork to that directory.
+
+For example.
+
+	${CYN}### Create the RHEL-8 repo$OFF
+$MNU	$ ${OFF}mkdir -p /work/rhel8
+$MNU 	$ ${OFF}cd /work/rhel8
+$MNU 	$ ${OFF}git clone git@gitlab.com:redhat/rhel/src/kernel/rhel-8.git \\\
+
+	     kernel
+$MNU 	$ ${OFF}cd kernel
+$MNU 	$ ${OFF}git remote add tcamuso git@gitlab.com:tcamuso/rhel-8.git
+$MNU 	$ ${OFF}git fetch --all
+
+$CYN	### Create the centos-9 repo
+$MNU 	$ ${OFF}mkdir -p /work/c9s
+$MNU 	$ ${OFF}git clone \\\
+
+	  git@gitlab.com:redhat/centos-stream/src/kernel/centos-stream-9.git \\\
+
+	  kernel
+$MNU 	$ ${OFF}cd kernel
+$MNU 	$ ${OFF}git remote add tcamuso git@gitlab.com:tcamuso/centos-stream-9.git
+$MNU 	$ ${OFF}git fetch --all
+
+The linus tree should be located in a different directory
+$MNU 	$ ${OFF}mkdir -p /work/upstream
+$MNU 	$ ${OFF}cd /work/upstream
+$MNU 	$ ${OFF}git clone \\\
+
+	      git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git \\\
+
+	      kernel
+$MNU 	$ ${OFF}cd kernel
+$MNU 	$ ${OFF}git fetch --all
+
+Other upstream repos can be added to the upstream kernel tree as needed.
+For example...
+$MNU 	$ ${OFF}cd /work/upstream/kernel
+$MNU 	$ ${OFF}git remote add scsi \\\
+
+	  https://git.kernel.org/pub/scm/linux/kernel/git/jejb/scsi.git
+$MNU 	$ ${OFF}git remote add net-next \\\
+
+	  https://git.kernel.org/pub/scm/linux/kernel/git/netdev/net-next.git
+$MNU 	$ ${OFF}git fetch --all -p
+
+The directory tree created by the above operations would look like this.
+
+ work$MNU --+--$OFF rhel8$MNU ---$OFF kernel    $CYN ## contains RHEL8 kernel and your fork
+     $MNU   |
+     $MNU   +--$OFF c9s$MNU ---$OFF kernel      $CYN ## contains centos-9 kernel and your folrk
+     $MNU   |
+     $MNU   +--$OFF upstream$MNU ---$OFF kernel $CYN ## contains linus tree and any other
+                                $CYN ## upstream repos you added with 'git remote add'$OFF
+
+Run this program from one of the downstream directories, e.g.
+/work/rhel8/kernel.
+
+Create a file of the repo list in ~/.config/patchreview/repolist.
+This file is used by patchreview to navigate among the various repos.
+For example, within patchreview you can switch from the rhel8 repo to
+the c9s repo by pressing upper case 'W' at the main menu and selecting
+from the list presented. The list is from ~/.config/patchreview/repolist.
+
+${MNU}$ ${OFF}cd ~
+${MNU}$ ${OFF}mkdir -p .config/patchreview
+${MNU}$ ${OFF}> .config/patchreview/repolist
+${MNU}$ ${OFF}echo '/work/rhel8/kernel' >> .config/patchreview/repolist
+${MNU}$ ${OFF}echo '/work/c9s/kernel' >> .config/patchreview/repolist
+
+At this point, the directory environment is ready.
+$MNU
+3. ${UND}Runing the script for the First Time$OFF
+
+When invoking the script for the first time, or in a new git tree, the
+script queries the user for the following items.
+
+${MNU}*$OFF The Patch directory
+
+${MNU}*$OFF The Work directory
+
+${MNU}*$OFF The user's preferred diff editor.
+  vimdiff, emacs, and tkdiff are supported.
+
+Detailed descriptions of these items follow.
+
+${INF}Patch directory${OFF}: is the directory containing the backported patches.
+
+		 If this directory were populated by a mail client, then
+		 the files must be renamed to be processed. The files
+		 will be renamed according to their subject lines with
+		 non-alpha-numeric characters replaced with hyphens.
+
+		 This will occur automatically upon pressing the 'r'
+		 control option, but only if there are no *.patch files
+		 in the directory.
+
+		 Alternatively, the user can invoke the 'R' control to
+		 separately rename the files without having to run the
+		 whole script.
+
+${INF}Work directory${OFF}: is the directory into which the script will put
+		upstream patches that were formatted using the upstream
+		commit hashes in the commit logs of the patches in the
+		Patch directory.
+
+		Log files generated by the script will also be put in
+		this directory.
+
+		This will occur automatically upon pressing the 'r'
+		control otion, but only if there are no *.patch files
+		in the directory.
+
+		Alternatively, the user can invoke the 'F control to
+		separately create the upstream patches without having to
+		run the whole script.
+
+The first two items in the ${MNU}Environment$OFF section reflect the current
+state of the git tree.
+
+   - most recent tag in the current git branch.
+   - current head of the current git branch.
+$MNU
+4. ${UND}Menus, Options, and Operations$OFF
+$MNU
+4.1 ${UND}The Main Menu$OFF
+$MNU
+    ${UND}Environment:$STA Merge Request$MNU Mode Version:$STA 12.0$OFF
+$MNU c $OFF Config Menu
+    Most recent tag          :$STA kernel-5.14.0-74.el9$OFF
+    Current Head             :$STA 88e53a048d49 Merge: Sched: Fix fork versus cgroup race
+$MNU b $OFF Current git branch       :$STA main
+$MNU W $OFF Working repo             :$STA /work/c9s/kernel
+$MNU d $OFF Patch directory          $STA: /work/c9s/kernel/.patches has 37 patch files.
+$MNU w $OFF Work directory           :$STA /tmp
+$MNU u $OFF Upstream dir repo/branch :$STA /work/upstream/kernel : origin/master
+$MNU g $OFF grep Merge List for      :
+$MNU
+    ${UND}Main Controls$OFF
+$MNU M $OFF Enter a specific Merge Request for review
+$MNU m $OFF Show the list of Merge Requests and select one for review
+$MNU v $OFF View comments for a specific MR
+$MNU r $OFF Refresh the list of Merge Requests and select one for review
+$MNU a $OFF Ack, Nack and/or Comment on a Merge Request
+$MNU i $OFF Init to defaults
+$MNU q $OFF Quit this script
+$MNU x $OFF Hide$MNU Discrete Operations$OFF Menu
+$MNU
+    ${UND}Discrete Operations$OFF
+$MNU i $OFF Init to defaults
+$MNU h $OFF help text
+$MNU F $OFF Format commits into      :$STA /tmp
+$MNU S $OFF Seek missing Fixes
+$MNU P $OFF Compare Patches
+$MNU A $OFF Apply patches            : apply mode is$STA OFF
+$MNU B $OFF Create a new branch at   :$STA 88e53a048d49 Merge: Sched: Fix fork versus cgroup race
+$MNU G $OFF Git reset to             :$STA kernel-5.14.0-74.el9
+$MNU C $OFF Clean the Patch and/or Work directories
+$MNU N $OFF Nuke the directories and reset head to most recent tag
+$MNU V $OFF View the log files
+
+${MNU}Enter one of the above:$OFF
+
+${MNU}Fig 1.$OFF Main Menu
+$MNU
+4.2 ${UND}Main Menu selections (See Fig. 1)$OFF
+
+Some menu items are sticky and retain their values between invocations of
+the script. Sticky items will be indicated with a * in the help text below.
+These are saved in a patchreview.conf file in the .data/ directory in your
+current repo directory. If .data/ does not exist, it will be created by
+the script. patchreview.conf is a text file and can be edited or deleted.
+If it's deleted, you will be prompted for initial values as you were the
+first time the script was invoked.
+$MNU
+4.2.1 ${UND}Environment Section$OFF
+
+This section of the menu sets up the operating environment for the
+patchreview script with the following selections.
+
+${MNU}c *$OFF Invokes the config menu. These are preferences that will be preserved
+    between invocations of patchreview.
+    The configuration menu has its own help text.
+
+${MNU}b *$OFF sets the git branch from which you will be operating. When selecting
+    this option, you will be presented with a numbered list of branches
+    currently in your RHEL repo directory from which to choose.
+
+${MNU}W *$OFF Presents a numbered list of RHEL repos that are available for the user
+    work in. This list was created by the user in the file ...
+    $HOME/.config/patchreview/repolist
+    ... as instructed above.
+    This allows you to move from one RHEL directory to another without
+    having to exit the script.
+
+${MNU}d *$OFF Change the directory to receive the RHEL patches
+
+${MNU}w *$OFF (lower case w) Change the directory to receive upstream patches
+    and script logs.
+
+${MNU}u *$OFF (upper case W) Change the directory and branch of the upstream repo.
+
+${MNU}g *$OFF prompts the user for a string to grep for in the merge list.
+$MNU
+4.2.2 ${UND}main controls$OFF
+
+${MNU}M$OFF - enter a specific merge request to review
+
+${MNU}m$OFF - show the list of merge requests obtained by the 'r' menu entry.
+    If the list does not exist, the user will be presented with a
+    menu to select the contents of the merge request list.
+
+${MNU}r$OFF - Refresh the Merge Request list. The user will be presented with
+    a menu from which to select the criteria for the MR list.
+
+${MNU}a$OFF - Ack/Nack or Comment on the current Merge Request
+
+${MNU}i$OFF - Initializes the script to the defaults as currently stored in
+    patchreview.conf.
+
+${MNU}q$OFF - quit the script and return to the shell
+
+${MNU}x$OFF - Toggle the presence of the Discrete Operations Menu. The menu
+    entries remain active whether or not the extended menu is visible.
+$MNU
+4.2.3 ${UND}Discrete Operations Menu (See Fig. 1)$OFF
+
+${MNU}F$OFF - Format upstream patches into the Work directory using commit hashes
+    discovered in the commit logs of the *.patch files in the Patch
+    directory. This will not alter the contents of the Work directory
+    if there are any *.patch files in it.
+    Files downloaded from email must be renamed with the R control first.
+
+${MNU}S$OFF - Seek fixes that may be missing from the serires.
+    Files downloaded from email must be renamed with the R control first.
+
+${MNU}P$OFF - Run the patch comparison to compare the submitted patches in the
+    Patch directory with the formatted upstream patches in the Work
+    directory according to the patch comparison mode.
+    Upstream patches must be derived from the hashes in the patches
+    in the Patch dirictory with F control first.
+
+${MNU}A$OFF - Apply the patch or patch series. This option only appears if there
+    are patches remaining to be applied and the patch apply mode is
+    not OFF.
+
+${MNU}B$OFF - Create a new branch at the current git head. This can be useful
+    when expecting patches that depend on the currently applied ones.
+    You will be presented with an option to tag the branch.
+
+${MNU}C$OFF - Presents a submenu giving the user the choice to delete either or
+    both the Patch and Work directories. The user can also return from
+    the submenu without choosing any of the options.
+
+${MNU}G$OFF - git reset head of the current branc to it's most recent tag.
+
+${MNU}N$OFF - Clears the *.patch files out of the Patch and Wokr directories and
+    resets the branch head to the most recent tag.
+
+${MNU}V$OFF - View the session log files. This will present a menu of the currently
+    existing log files you can view. The 'less' app is utilized for this
+    function, so all the 'less' navigation controls apply.
+$MNU
+4.3 ${UND}Typical operation$OFF
+
+You will use either M to enter a specific Merge Request, or m to see
+a list of merge requests that was created using the criteria you cite
+when queried by the MR list manager.
+
+You will see the following prompts appear after you enter the MR.
+User input is enclosed in angle brackets, for the sakd of illustration.
+
+--------------------------------------------------------------------------
+Enter a Merge Request or press ENTER to keep 3769 : <3798>
+Getting comments from MR 3798
+Continue with review? y/n: <y>
+There are already RHEL patch files in /work/8/kernel/.patches.
+Do you want to replace them?  (y/n) : <y>
+Getting patches from MR 3798
+--------------------------------------------------------------------------
+
+At this point, the script does the following.
+   . Retrieve the MR from GitLab
+   . Extract the RHEL patches from the MR
+   . Create the Upstream patches for comparison using the upstream
+     commit listed in each RHEL patch.
+   . Look upstream for fixes that are not in the RHEL series and that
+     have not been merged into the RHEL repo. Missing fixes will be
+     saved in a log file in the Work directory.
+   . Automatically compare the files.
+   . Present the user with a "No Conflicts" message or a list of
+     conflicts detected.
+
+This menu is presented after the the patches have been compared in batch
+mode by the script. If there are no conflicting patches, you will see the
+following message ...
+$INF
+ *********************************************
+ *                                           *
+ *     There are no conflicting patches      *
+ *                                           *
+ *********************************************
+$OFF
+... and the menu will appear as follows.
+$MNU$UND
+Interactively Compare patches with upstream commits$OFF
+ Compare : ~/Maildir/work/cur/RHEL8-3-net-PATCH-01-16-selftests-netfilter-missing-error-check.patch
+    With : ../cmp/0001-selftests-netfilter-missing-error-check-when-setting.patch
+
+	    Last Tag : kernel-4.18.0-228.el8
+	    RHEL dir : /home/tcamuso/Maildir/work/cur
+	Upstream dir : ../cmp
+-----------------------------------------------------------------
+	c - run batch file comparison to find conflicts with upstream
+	b - back to the previous patch
+	n - prompt for a number for a specific patch
+	p - replace current upstream patch with a different commit
+	x - spawns a secondary shell
+	q - quit and return to previous execution environment
+	or any other key moves forward to the next patch ... q
+_________________________________________________________________________
+Fig 5. Interactively Compare Patches menu when there are no conflicts
+
+At this point, the most sensible thing is to press 'q', but you can look at
+the patches if you like. Pressing any key other than the ones with specific
+actions will invoke the diff editor you chose when you first invoked this
+script.
+
+If conflicts were discovered, you will be presented with the enumeration of
+each patch having conflicts and the total number of conflicts.
+_________________________________________________________________________
+
+Patches conflicting with upstream commits
+=========================================
+Conflict number, Patch number, Conflicting Patch file
+1.  6: /work/c9s/kernel/.patches/0006-redhat-configs-enable-CONFIG_MLXREG_LC.patch
+2. 15: /work/c9s/kernel/.patches/0015-platform-chrome-Split-trace-include-file.patch
+3. 19: /work/c9s/kernel/.patches/0019-platform-chrome-cros_ec_typec-Get-mux-state-inside-c.patch
+4. 24: /work/c9s/kernel/.patches/0024-redhat-configs-enable-ChromeOS-privacy-screen.patch
+5. 27: /work/c9s/kernel/.patches/0027-drm-privacy_screen-Add-drvdata-in-drm_privacy_screen.patch
+
+Total number of conflicts with upstream: 5
+
+vimdiff will diff local patches with upstream commits
+-----------------------------------------------------------------
+Next Patch 6 of 41
+Diff Local : /work/c9s/kernel/.patches/0006-redhat-configs-enable-CONFIG_MLXREG_LC.patch
+v Upstream : /work/c9s/kernel/.patches/tmp/0006-nocommit.patch
+Conflict : 1 of 5
+-----------------------------------------------------------------
+	c - show conflicting patches
+	m - only examine patches conflicting with upstream: true
+	s - show contents of conflicts log
+	p - use a different upstream commit for Patch 6
+	n - prompt for a number for a specific patch
+	e - show environment, directories, last tag, etc.
+	C - run batch file comparison to find conflicts with upstream
+	q - quit and return to previous execution environment
+	    Any other key displays the diff for patch 6 of 41.
+
+	Your choice :
+
+After you exit the comparison utility, you will be presented with the
+option to Ack or Nack the Merge Request.
+
+    For MR 1684, you want to ...
+    a  ACK
+    A  ACK with comment
+    n  NACK
+    N  NACK with comment
+    c  Comment only
+    v  View description and comments for 1684
+    M  Review another Merge Request
+    m  Display a list of Merge Requests
+    q  Quit and return to main menu
+   Enter one of the above:
+
+If you ack or nack the MR, you will see that it has been ACKed or NACKed
+in this menu and in the main menu. This flag is cleared when you enter
+another MR for review.
+
+---------------------
+5. External App Menus
+---------------------
+
+There are two external (not sourced) scripts that can provide a menu to
+the user. These scripts are included in the git repo for this script.
+
+These menus compare the patches in the Patch directory with those in
+the Work directory.
+
+_________________________________________________________________________
+
+-------------------------------
+5.2 Batch Comparison Setup Menu
+-------------------------------
+
+The following menu only appears if the Compare Mode in the Main Menu is
+set to "Batch compare setup".
+_________________________________________________________________________
+
+     Batch Comparison of RHEL Patches with Upstream
+     ----------------------------------------------
+
+     Batch Comparison of RHEL Patches with Upstream
+
+     Environment
+     ----------------------
+     Most Recent Tag            : kernel-3.10.0-516.el7
+  R  RHEL directory             : /home/tcamuso/Maildir/work/cur has 9 patch files
+  U  Upstream directory         : ../temp has 9 patch files
+  o  Optional output file.      : ../temp/mm.log
+
+     Lines to exclude
+     ----------------------
+  d  diff stats                 : true
+  p  file paths                 : true
+  s  without leading + or -     : true
+
+     Output Parameters
+     ----------------------
+  v  verbose                    : false
+  V  Very verbose               : false
+
+     Control
+     ----------------------
+  r  run the comparison
+  e  if output file is not /dev/stdout, less the output file
+  i  init to defaults
+  h  print the help using less command
+  x  spawn a shell
+  q  quit and return to previous execution environment
+
+Enter one of the above:
+_________________________________________________________________________
+Fig 7. Batch Comparison Setup Menu
+
+  Each patchfile in the RHEL directory is compared with its complement in
+  the Upstream directory. If a mismatched line is found, the sequence
+  number of that patch pair is printed to the ofile, which is /dev/stdout
+  by default.
+
+  Verbose output options are available for examination of the files that
+  are congruent and the ones that differ.
+
+  Menu choices
+  ------------
+
+  All menu items are sticky, persisting across invocations of this script.
+  You can use the verbose options to test the results.
+
+  When you get the results you want, press q to advance to the Interactive
+  comparison menu, where you can examine the patch pairs that were not
+  congruent, if any.
+
+  R - change the directory containing the RHEL patch files
+  U - change the directory containing the Upstream patch files
+
+  o - change the output file.
+      The default is /dev/stdout, but the patchreview and patcmp scripts
+      will call this with an output file defined that will exist in the
+      Upstream patch directory as mm.log. You may change the name and
+      location of this file with this option.
+
+  d - when true, excludes diff stat lines from the comparison.
+      It is possible for the patches to still be congruent even when
+      the diff stats are different. For example, when the RHEL patch is
+      a subset of the upstream patch
+      Default: true
+
+  p - when true, excludes path lines from the comparison
+      You will want to do this if the file being patched has been renamed
+      or moved to a different directory.
+      Default: true
+
+  s - when true, excludes lines that do not begin with + or -
+      You will want to do this if you are only concerned about the lines
+      that are actually being changed by the patch. When true, this will
+      automatically exclude the diff stat lines, but WILL NOT exclude
+      the path lines.
+      Default: true
+
+  v - verbose prints the sequence numbers of all files and indicates which
+      are congruent and which are not
+      Default: false
+
+  V - Very verbose prints the sequence numbers of all the files, all the
+      lines being compared in each file, and indicates whether the files
+      are congruent or not.
+      Default: false
+
+      If Very verbose is true, then verbose will automatically be set true.
+      If verbose is false, then Very verbose will automatically be set false.
+
+  r - run the comparison
+  e - run less on the output file
+  i - init the controls and output file to defaults
+  h - less this help text
+  x - spawn a shell
+  q - quit and return to previous execution environment
+\0
+EOF
+)"
