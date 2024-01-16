@@ -915,10 +915,13 @@ get_mrcommits_labmr() {
 	local origbranch
 	local newbranch
 	local -a tary=()
-	local depend=
+	local -a depend=()
 
-	depend="$(grep -o 'Dependencies::[^,]*' "$mrcomments")"
-	basecmt="$(echo "$depend" | cut -d':' -f3)"
+	mapfile -t depend < <(grep -o 'Dependencies::[^,]*' "$mrcomments")
+	for ((i = 0; i < ${#depend[@]}; ++i)); do
+		basecmt="$(echo "$depend" | cut -d':' -f3)"
+		[ "$basecmt" == "OK" ] && continue || break
+	done
 
 	if [ "$basecmt" == "OK" ]; then
 		lab mr show "$origin" "$mr" -p --reverse | \
