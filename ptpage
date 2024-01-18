@@ -87,6 +87,7 @@ set_pager() {
 
 	lookup_pager "bat" && pager="bat" && return
 	lookup_pager "highlight" && pager="highlight" && return
+	lookup_pager "less" && pager="less -R" && return
 
 	pager="more"
 }
@@ -154,7 +155,7 @@ main() {
 	source "$srctxt"
 	txtname="$(get_txtname "$srctxt")"
 	set_pager
-	echo -e "${!txtname}" | "$pager"
+	echo -e "${!txtname}" | $pager
 
 	ui_exit ui_exit_ok
 }
