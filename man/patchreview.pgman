@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-declare cherpman="$(
+declare prman="$(
 cat <<EOF
 ${MNU}===================
 ${STA}Patchreview v12.0
