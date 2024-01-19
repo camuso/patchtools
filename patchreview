@@ -1051,8 +1051,12 @@ main() {
 		git_get_lasttag lasttag "$last_tag_file"
 		main_loop
 	else
-		[ "$1" == "man" ] && { less "$main_man"; exit 0; }
+
 		check_env
+		[ "$1" == "man" ] && {
+			ptpage -b $background "$main_man_pg"
+			exit 0
+		}
 		parse_cmdline "$@"
 	fi
 
