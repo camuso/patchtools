@@ -334,7 +334,7 @@ ${MNU}Getting comments from MR$STA 3798
 ${MNU}Continue with review? y/n:$OFF y    $CYN # You enter 'y'
 ${MNU}There are already RHEL patch files in$STA /work/8/kernel/.patches.
 ${MNU}Do you want to replace them?  (y/n) : <y>
-${MNU}Getting patches from MR$STA 3798
+${MNU}Getting patches from MR$STA 3798$OFF
 
 At this point, the script does the following.
    . Retrieve the MR from GitLab
@@ -377,7 +377,7 @@ $MNU	    Any other key displays the diff for patch$STA 1$MNU of$STA 1.
 
 $MNU	Your choice :
 
-${MNU}Fig 5.$CYN Interactively Compare Patches menu when there are no conflicts
+${MNU}Fig 5.$CYN Interactively Compare Patches menu when there are no conflicts$OFF
 
 Highlighted at the top of this menu is the diff editor you chose when first
 invoking patchreview.
@@ -424,7 +424,7 @@ ${MNU}	Your choice :$OFF
 After you exit the comparison utility, you will be presented with the
 option to approve or block the Merge Request.
 
-   $MNU${UND}Merge Request Review Actions
+$MNU${UND}Merge Request Review Actions$OFF
 $MNU   For MR$STA 2631$MNU, you want to ...
 $MNU   a $STA Approve
 $MNU   A $STA Approve$OFF with comment
@@ -439,7 +439,7 @@ $MNU   P $OFF Review diffs for 2631
 $MNU   H $OFF History of MR Reviews
 $MNU   q $OFF Quit and return to main menu
 $MNU   Enter one of the above:$OFF a
-$MNU   Are you sure you want to Approve Merge Request$STA 2631$MNU (y/n)?
+$MNU   Are you sure you want to Approve Merge Request$STA 2631$MNU (y/n)?$OFF
 
 If you ack or nack the MR, you will see that it has been ACKed or NACKed
 in this menu and in the main menu. This flag is cleared when you enter
