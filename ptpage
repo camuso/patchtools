@@ -85,8 +85,8 @@ set_pager() {
 	local batsts=
 	local hilsts=
 
-	lookup_pager "bat" && pager="bat" && return
-	lookup_pager "highlight" && pager="highlight" && return
+	# lookup_pager "bat" && pager="bat" && return
+	# lookup_pager "highlight" && pager="highlight" && return
 	lookup_pager "less" && pager="less -R" && return
 
 	pager="more"
