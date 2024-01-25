@@ -1,0 +1,81 @@
+#!/bin/bash
+#
+declare prcfgman="$(
+cat <<EOF
+       ${MNU}${UND}Configuration        $OFF
+    ${MNU}o${OFF}  Operating mode           : ${STA}Merge Request Mode${OFF}
+    ${MNU}c${OFF}  See comments first       : ${STA}ON${OFF}
+    ${MNU}s${OFF}  Automatically Seek Fixes : ${STA}ON${OFF}
+    ${MNU}d${OFF}  Patch directory          : ${STA}/work/c9s/kernel/.patches has 381 patch files.${OFF}
+    ${MNU}w${OFF}  Work directory           : ${STA}/work/c9s/kernel/.patches/tmp${OFF}
+    ${MNU}r${OFF}  Upstream Dir Repo/Branch : ${STA}origin/master${OFF}
+       Upstream URL             : ${STA}git@gitlab.com:redhat/centos-stream/src/kernel/centos-stream-9.git${OFF}
+    ${MNU}e${OFF}  Diff Editor              : ${STA}vimdiff${OFF}
+    ${MNU}f${OFF}  Patch Validation fuzz    : ${STA}3 - case insensitive and ignore all punctuation${OFF}
+    ${MNU}p${OFF}  Cycle Patch Compare Mode : ${STA}Batch${OFF}
+    ${MNU}v${OFF}  Toggle verbose mode      : ${MNU}verbose is ${STA}ON${OFF}
+    ${MNU}C${OFF}  Toggle screen background : ${MNU}Currently ${STA}DARK${OFF}
+    ${MNU}h${OFF}  Help text for this menu
+    ${MNU}q${OFF}  Quit and return to previous menu${OFF}
+
+    ${MNU}Enter one of the above:$OFF
+
+${MNU}${UND}Configuration Menu Items${OFF}
+
+	${MNU}o${OFF} - Operating mode, selects between Merge Request and email modes.
+	    Merge Request is the default.
+
+	${MNU}c${OFF} - Presents the comments for the Merge request before downloading
+	    the MR patches and comparing them with upstream.
+	    This switch toggles this utility ON/OFF
+
+	${MNU}s${OFF} - Toggles the 'Automatially Seek Fixes' mode ON/OFF
+	    When ON, the script will search upstream for fixes that are not
+	    included in the series being reviewed and not yet merged into
+	    the downstream (RHEL) repo.
+
+	${MNU}d${OFF} - Name the directory to receive the RHEL patches.
+
+	${MNU}w${OFF} - Name the directory to receive the corresponding upstream patches
+	    and the script log files.
+
+	${MNU}r${OFF} - Selects the remote branch to search for missing fixes.
+	    Fixes are defined in the upsteam patch submission rules as
+	    follows.
+	    If your patch fixes a bug in a specific commit, e.g. you found
+	    an issue using git bisect, please use the ‘Fixes:’ tag with the
+	    first 12 characters of the SHA-1 ID, and the one line summary.
+	    For example:
+	    Fixes: e21d2170f366 ("video: remove unnecessary platform_set_drvdata()"$OFF
+
+	    See: https://www.kernel.org/doc/html/v4.17/process/submitting-patches.html
+
+	${MNU}e${OFF} - Presents a menu from which to select one of the three supported
+	    diff editors.
+	     ${MNU}1 -${OFF} vimdiff
+	     ${MNU}2 -${OFF} emacs
+	     ${MNU}3 -${OFF} tkdiff
+
+	${MNU}f${OFF} - Because there can be some differences in the way developers copy
+	    the upstream summary line, fuzz is sometimes necessary to minimize
+	    false positives of invalid commits.
+	    This item will present a menu of available fuzz levels.
+	    The default is 'case insensitive and ignore all punctuation'
+
+	${MNU}p${OFF} - This selection will cycle the patch compare mode through three
+	    different states.
+	    The default is Batch, and, unless you're familiar with the
+	    Patch Compare Manager, it's probably best to just leave it.
+
+	${MNU}v${OFF} - Toggle verbose mode ON/OFF
+
+	${MNU}C${OFF} - Toggle screen background LIGHT/DARK
+	    This is automatically sensed by the script when invoked, but
+	    can be changed with this selection.
+
+	${MNU}h${OFF} - Uses 'less' to print this menu to the screen.
+
+	${MNU}q${OFF} - Return to Main Menu
+
+EOF
+)"

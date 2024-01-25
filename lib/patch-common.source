@@ -35,8 +35,7 @@ declare repolist="$HOME"/.config/patchreview/repolist
 declare main_man=
 declare config_man=
 main_man="$MYMAN/$(basename "$0").pgman"
-main_man_pg="$MYMAN/$(basename "$0").pgman"
-config_man="$MYMAN/$(basename "$0")-config.txt"
+config_man="$MYMAN/$(basename "$0")-config.pgman"
 
 #######################################
 # External Scripts

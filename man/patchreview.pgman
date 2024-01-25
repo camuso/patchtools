@@ -60,7 +60,7 @@ Be sure to add your fork to that directory.
 
 For example.
 
-	${CYN}### Create the RHEL-8 repo$OFF
+	${CYN}# Create the RHEL-8 repo$OFF
 $MNU	$ ${OFF}mkdir -p /work/rhel8
 $MNU 	$ ${OFF}cd /work/rhel8
 $MNU 	$ ${OFF}git clone git@gitlab.com:redhat/rhel/src/kernel/rhel-8.git \\\
@@ -70,7 +70,7 @@ $MNU 	$ ${OFF}cd kernel
 $MNU 	$ ${OFF}git remote add tcamuso git@gitlab.com:tcamuso/rhel-8.git
 $MNU 	$ ${OFF}git fetch --all
 
-$CYN	### Create the centos-9 repo
+$CYN	# Create the centos-9 repo
 $MNU 	$ ${OFF}mkdir -p /work/c9s
 $MNU 	$ ${OFF}git clone \\\
 
@@ -81,7 +81,7 @@ $MNU 	$ ${OFF}cd kernel
 $MNU 	$ ${OFF}git remote add tcamuso git@gitlab.com:tcamuso/centos-stream-9.git
 $MNU 	$ ${OFF}git fetch --all
 
-The linus tree should be located in a different directory
+$CYN	# Create the upstream directory using the Linus repo
 $MNU 	$ ${OFF}mkdir -p /work/upstream
 $MNU 	$ ${OFF}cd /work/upstream
 $MNU 	$ ${OFF}git clone \\\
@@ -92,8 +92,8 @@ $MNU 	$ ${OFF}git clone \\\
 $MNU 	$ ${OFF}cd kernel
 $MNU 	$ ${OFF}git fetch --all
 
-Other upstream repos can be added to the upstream kernel tree as needed.
-For example...
+$CYN	# Other upstream repos can be added to the upstream kernel tree as needed.
+$CYN	# For example...
 $MNU 	$ ${OFF}cd /work/upstream/kernel
 $MNU 	$ ${OFF}git remote add scsi \\\
 
@@ -220,15 +220,18 @@ $MNU V $OFF View the log files
 
 ${MNU}Enter one of the above:$OFF
 
-${MNU}Fig 1.${CYN} Main Menu
+${MNU}4.2 ${UND}Main Menu selections$OFF
 
-${MNU}4.2 ${UND}Main Menu selections (See Fig. 1)$OFF
+Some menu items are sticky, which means they retain their values between
+invocations of the script.
 
-Some menu items are sticky and retain their values between invocations of
-the script. Sticky items will be indicated with a * in the help text below.
-These are saved in a patchreview.conf file in the .data/ directory in your
-current repo directory. If .data/ does not exist, it will be created by
-the script. patchreview.conf is a text file and can be edited or deleted.
+Sticky items are saved in ${STA}\${PWD}/.data/patchreview.conf${OFF} in your current
+repo directory. If that file does not exist, it will be created by the
+script. The file and its directory will be ignored by git, because the
+kernel git will not index directory entries with a leading dot.
+See .gitignore at the top of the kernel repo directory.
+
+${STA}\${PWD}/.data/patchreview.conf${OFF} is a text file and can be edited or deleted.
 If it's deleted, you will be prompted for initial values as you were the
 first time the script was invoked.
 
@@ -236,6 +239,8 @@ ${MNU}4.2.1 ${UND}Environment Section$OFF
 
 This section of the menu sets up the operating environment for the
 patchreview script with the following selections.
+
+${MNU}Sticky items will be indicated with a * in the explanation below.$OFF
 
 ${MNU}c *$OFF Invokes the config menu. These are preferences that will be preserved
     between invocations of patchreview.
@@ -252,9 +257,9 @@ ${MNU}W *$OFF Presents a numbered list of RHEL repos that are available for the 
     This allows you to move from one RHEL directory to another without
     having to exit the script.
 
-${MNU}d *$OFF Change the directory to receive the RHEL patches
+${MNU}d *$OFF Change the directory that receives the RHEL patches
 
-${MNU}w *$OFF (lower case w) Change the directory to receive upstream patches
+${MNU}w *$OFF (lower case w) Change the directory that receives upstream patches
     and script logs.
 
 ${MNU}u *$OFF (upper case W) Change the directory and branch of the upstream repo.
@@ -282,7 +287,7 @@ ${MNU}q$OFF - quit the script and return to the shell
 ${MNU}x$OFF - Toggle the presence of the Discrete Operations Menu. The menu
     entries remain active whether or not the extended menu is visible.
 
-${MNU}4.2.3 ${UND}Discrete Operations Menu (See Fig. 1)$OFF
+${MNU}4.2.3 ${UND}Discrete Operations Menu$OFF
 
 ${MNU}F$OFF - Format upstream patches into the Work directory using commit hashes
     discovered in the commit logs of the *.patch files in the Patch
@@ -377,8 +382,6 @@ $MNU	    Any other key displays the diff for patch$STA 1$MNU of$STA 1.
 
 $MNU	Your choice :
 
-${MNU}Fig 5.$CYN Interactively Compare Patches menu when there are no conflicts$OFF
-
 Highlighted at the top of this menu is the diff editor you chose when first
 invoking patchreview.
 
@@ -445,6 +448,5 @@ If you ack or nack the MR, you will see that it has been ACKed or NACKed
 in this menu and in the main menu. This flag is cleared when you enter
 another MR for review.
 
-\0
 EOF
 )"

@@ -310,7 +310,7 @@ config_parser() {
 			terminal_background="$background"
 			ui_set_colors
 			;;
-		h )     less "$config_man"
+		h )     ptpage -b "$background" "$config_man"
 			;;
 		q ) 	return
 			;;
@@ -571,7 +571,7 @@ menu_parser() {
 			return $rc_run
 		fi
 		;;
-	    h )	ptpage -b "$background" "$main_man_pg"
+	    h )	ptpage -b "$background" "$main_man"
 		;;
 	    v )     get_merge_request -c
 		;;
@@ -1054,7 +1054,7 @@ main() {
 
 		check_env
 		[ "$1" == "man" ] && {
-			ptpage -b $background "$main_man_pg"
+			ptpage -b $background "$main_man"
 			exit 0
 		}
 		parse_cmdline "$@"
