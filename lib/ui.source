@@ -10,9 +10,6 @@
 declare ui_loaded=true
 declare ui_b_debug=false
 
-declare EXEDIR="$(dirname -- "${0}")"
-declare SRCLIB="$EXEDIR/lib"
-
 #** Text Attributes
 #
 # $BLD - bold
@@ -244,6 +241,7 @@ ui_set_colors() {
 		STA="$BLD"
 		WRN="$BLD"
 		CAU="$BLD"
+		URL="$UND"
 		qstr="${STA}q${OFF}"
 		return 1
 	}
@@ -252,15 +250,17 @@ ui_set_colors() {
 		"$tb_lite" ) INF="\033[38;5;90m"
 			     MNU="\033[1;38;5;21m"
 			     STA="\033[1;38;5;28m"
-			     WRN=$BRED
-			     CAU=$BMGT
+			     WRN="$BRED"
+			     CAU="$BMGT"
+			     URL="$BLU"
 			     ;;
-		"$tb_dark" ) INF=$YEL
-			     MNU=$BYEL
-			     STA=$BGRN
-			     # WRN=$BWOR
-			     WRN=$BRED
-			     CAU=$BLIL
+		"$tb_dark" ) INF="$YEL"
+			     MNU="$BYEL"
+			     STA="$BGRN"
+			     # WRN="$BWOR"
+			     WRN="$BRED"
+			     CAU="$BLIL"
+			     URL="$CYN"
 			     ;;
 	esac
 
@@ -1089,6 +1089,11 @@ ui_getnewdir() {
 	done
 }
 
+#** ui_testdir - test for existence of directory and poll user for action
+#
+# Arguments:
+#   $1 - name of the directory to test
+#*
 ui_testdir() {
 	local tstdir="$1"
 	local stat
@@ -1119,13 +1124,13 @@ ui_testdir() {
 	done
 }
 
-# ui_remove_spaces - remove spaces from filenames in the current directory
+#** ui_remove_spaces - remove spaces from filenames in the current directory
 #
 # The intention is that the calling function has already issued cd to the
 # directory in which ui_remove_spaces will execute.
 #
 # No globals, no arguments.
-#
+#*
 ui_remove_spaces() {
     local sp=" "
     while IFS= read -r -d '' file
