@@ -5,38 +5,42 @@
 # This source file provides routines common to both patchreview and
 # patchdevelop scripts.
 #
-# The following source files must be included before this one.
-#
-
-# Get the directory defaults if they don't already exist
-#
-[ "$MYDIR" ] || {
-	declare MYDIR=
+[ -n "$MYDIR" ] || {
+	declare MYDIR
 	MYDIR="$(dirname "$(which "$(basename "$0")")")"
 }
-[ "$MYLIB" ] || {
-	declare MYLIB=
-	MYLIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1; pwd)"
+
+[ -n "$MYLIB" ] || {
+	declare MYLIB
+	MYLIB="$MYDIR"/lib
 }
 
-[ -n "$MYDATA" ] || {
-	declare MYDATA=
-	MYDATA=$(realpath ./.data)
-}
-[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
+[ "$ui_loaded" ]            || source "$MYLIB"/ui.source
+[ "$patchcommon_loaded" ]   || source "$MYLIB"/patch-common.source
+[ "$configmanager_loaded" ] || source "$MYLIB"/config-manager.source
 
 [ -n "$GLOBALDATA" ] || {
 	declare GLOBALDATA=
-	GLOBALDATA=$(realpath ~/.data/patchreview)
+	GLOBALDATA="$HOME/.data/patchreview"
 }
-[ -d "$GLOBALDATA" ] || mkdir -p "$GLOBALDATA"
 
+[ -n "$MYDATA" ] || {
+	declare MYDATA
+	MYDATA="$PWD"/.data
+}
 
+pr_mrdir_err() {
+	local dir="$1"
+	local errstr="\
+${CAU}patchreview cannot create directory: $MNU$dir$OFF
+Please create the $MNU$dir$OFF from the command line."
 
-[ "$ui_loaded" ] || source "$MYLIB"/ui.source
-[ "$patchcommon_loaded" ] || source "$MYLIB"/patch-common.source
-[ "$configmanager_loaded" ] || source "$MYLIB"/config-manager.source
-[ "$aamgr_loaded" ] || source "$MYLIB"/aa-mgr.source
+	echo -e "$errstr"
+	exit 1
+}
+
+[ -d "$MYDATA" ]     || mkdir -p "$MYDATA"     || pr_mrdir_err "$MYDATA"
+[ -d "$GLOBALDATA" ] || mkdir -p "$GLOBALDATA" || pr_mrdir_err "$GLOBALDATA"
 
 patchmrutilities_loaded=true
 
@@ -64,7 +68,6 @@ declare mergelist_file=
 declare gl_projid=24118165	# gitlab project ID
 declare origin=			# the principal remote in a git repo
 declare mrhistoryfile="$GLOBALDATA"/mrhistory.log
-# declare -A mrhistory
 
 declare -i mr_val=0	# valid mr
 declare -i mr_inv=1	# invalid mr
@@ -76,7 +79,16 @@ declare -a mr_errs=(
 "${WRN}No patches found for Merge Request$OFF"
 )
 
-# init_mr - initialize the environment for this
+#** init_mr - initialize the environment for this
+#
+# Globals
+#   MYDATA
+#   mergelist_file
+#   mrcomments
+#   origin
+#   mrhistory_file
+#   outdir - defined in patchreview before calling this init
+#*
 init_mr() {
 
 	# Get the origin of this repo to use in 'lab mr' calls
@@ -89,10 +101,6 @@ init_mr() {
 
 	[ -s "$mrhistoryfile" ] || touch "$mrhistoryfile"
 }
-
-# update_mrhistoryfile() {
-#	aa_write_aafile mrhistory "$mrhistoryfile"
-# }
 
 # show_init - display the init menu option
 #

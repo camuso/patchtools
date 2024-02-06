@@ -2,17 +2,21 @@
 #
 # gitutilities.src
 #
-# NOTE: ~/bin/ui.source must be included before this file.
+# NOTE: $MYLIB/ui.source must be included before this file.
 #
 
-declare gitutilities_loaded=true
-
-[ "$MYDIR" ] || {
-	declare MYDIR=
+[ -n "$MYDIR" ] || {
+	declare MYDIR
 	MYDIR="$(dirname "$(which "$(basename "$0")")")"
 }
 
-[ "$MYLIB" ]             || declare MYLIB="$MYDIR"/lib
+[ -n "$MYLIB" ] || {
+	declare MYLIB
+	MYLIB="$MYDIR"/lib
+}
+
+declare gitutilities_loaded=true
+
 [ "$ui_loaded" ]         || source "$MYLIB"/ui.source
 [ "$patchutils_loaded" ] || source "$MYLIB"/patch-utils.source
 

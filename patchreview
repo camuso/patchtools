@@ -22,6 +22,10 @@
 # ./patbatcmpmgr
 #
 
+# Global background color declared here to provide color for all
+# messages.
+declare -i background=
+
 #######################################
 # Default file locations
 #######################################
@@ -34,14 +38,36 @@
 # Where MYDIR is the directory in which this script and its companions
 # are located.
 
-declare MYDIR
+# The following dictionary definitions and locations are inherited by the
+# source files that follow.
+#
+declare MYDIR=
 MYDIR="$(dirname "$(which "$(basename "$0")")")"
-declare MYLIB="$MYDIR"/lib
+
+declare MYLIB=
+MYLIB="$MYDIR"/lib
+
+declare MYMAN=
+MYMAN="$MYDIR"/man
+
+declare MYDATA=
+MYDATA="$PWD"/.data
+
+# ui must be sourced before anything else happens.
+source "$MYLIB"/ui.source
+
+ui_setbg background
+
+[ -d "$MYDATA" ] || mkdir -p "$MYDATA" || {
+	echo -e "\
+${CAU}patchreview cannot create: $MNU$MYDATA$OFF \
+Please create $MNU$MYDATA$OFF from the command line."
+	exit 1
+}
 
 #######################################
 # External Source Files
 #######################################
-source "$MYLIB"/ui.source
 source "$MYLIB"/gitutilities.source
 source "$MYLIB"/patch-common.source
 source "$MYLIB"/patch-utils.source
@@ -701,13 +727,8 @@ init_parms() {
 	local confline
 	local configfile=
 	local cfgtemplate=
-	local bgtemp
 
-	ui_setbg bgtemp
 	get_labuser || exit 1
-
-	MYDATA=$(realpath ./.data)
-	[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
 
 	configfile="$MYDATA/patchreview.conf"
 	cfgtemplate="$MYLIB/patchreview.conf"
@@ -715,7 +736,6 @@ init_parms() {
 	last_tag_file="$MYDATA/lasttag"
 
 	cfg_start "$cfgtemplate" "$configfile"
-	background="$bgtemp"
 	cfg_set_item "background" "$background"
 
 	# Trap for control-c
@@ -913,7 +933,7 @@ $MNU
     token = "<your-gitlab-token>"
     user = "<your-gitlab-username>"
 $INF
-  Please see: $STA
+  Please see: $URL
     https://docs.google.com/document/d/1PLPBqrnV-m4hr8Jos_7dhYGYqtMdiuCZZC72t2ljyEA/edit
 $OFF
 EOF

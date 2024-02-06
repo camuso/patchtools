@@ -5,8 +5,8 @@
 
 declare keysupport_loaded=true
 
-[ -n "$EXIDIR" ] && declare EXEDIR="$(dirname "${0}")"
-[ -n "$SRCLIB" ] && declare SRCLIB="$EXEDIR/lib"
+declare EXEDIR="$(dirname "$(which "$(basename "$0")")")"
+declare SRCLIB="$EXEDIR/lib"
 
 declare keypress_exe="$EXEDIR/keypress"
 declare keypress_src="$keypress_exe"".c"

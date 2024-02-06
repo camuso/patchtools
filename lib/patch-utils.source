@@ -5,14 +5,17 @@
 # This source file provides utility routines for patch management,
 # manipulation, and review scripts.
 
-declare patchutils_loaded=true
-
-# MYLIB is the directory in which this sourced script finds itself.
-#
-[ "$MYLIB" ] || {
-	declare MYLIB
-	MYLIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" || exit; pwd)"
+[ -n "$MYDIR" ] || {
+	declare MYDIR
+	MYDIR="$(dirname "$(which "$(basename "$0")")")"
 }
+
+[ -n "$MYLIB" ] || {
+	declare MYLIB
+	MYLIB="$MYDIR"/lib
+}
+
+declare patchutils_loaded=true
 
 # If $MYLIB/$ui.source is already loaded, then the $ui_source_loaded
 # variable will not be empty.

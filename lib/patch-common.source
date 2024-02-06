@@ -6,15 +6,19 @@
 # patchdevelop scripts.
 #
 
-# Get the directory defaults if they don't already exist
-#
-[ "$MYDIR" ] || {
-	declare MYDIR=
+[ -n "$MYDIR" ] || {
+	declare MYDIR
 	MYDIR="$(dirname "$(which "$(basename "$0")")")"
 }
-[ "$MYLIB" ] || {
-	declare MYLIB=
+
+[ -n "$MYLIB" ] || {
+	declare MYLIB
 	MYLIB="$MYDIR"/lib
+}
+
+[ -n "$MYMAN" ] || {
+	declare MYMAN
+	MYMAN="$MYDIR"/man
 }
 
 [ "$ptversion_loaded" ]     || source "$MYLIB"/patchtools-version.source
@@ -29,8 +33,6 @@ declare patchcommon_loaded=true
 #
 shopt -s extglob
 
-declare MYDATA=
-declare MYMAN="$MYDIR"/man
 declare repolist="$HOME"/.config/patchreview/repolist
 declare main_man=
 declare config_man=
@@ -90,7 +92,6 @@ declare b_seekfixes
 
 declare lasttag=
 declare -i patchvalfuzz
-declare -i background=
 
 # menu display control
 declare -i menumode
