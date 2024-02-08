@@ -42,6 +42,8 @@ $(basename $0) [ options ] <bashscript>
 Create an empty bash script with placeholders for help text and
 a usage function
 
+OPTIONS:
+
   -c Include config-manager. This will also include the ui source file.
 
   -u Include ui functions, see lib/ui.source or run "docscript lib/ui.source"
@@ -199,8 +201,6 @@ for arg in "$@"; do
 	s ) b_source=true
 	    ;;
 	n ) b_nolib=true
-	    ;;
-	h ) usage
 	    ;;
 	* ) echo "unrecognized option"
 	    echo -e "$usagestr"
