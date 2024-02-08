@@ -1,0 +1,141 @@
+#!/bin/bash
+#
+# docscript
+#
+
+declare MYDIR=
+declare MYLIB=
+declare MYDATA=
+declare background=
+declare usagestr=
+declare optcount=0
+declare b_verbose=false
+declare file=
+declare b_func=false
+
+MYDIR="$(dirname "$(which "$(basename "$0")")")"
+MYLIB="$MYDIR"/lib
+MYDATA=$(realpath ./.data)
+[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
+
+source "$MYLIB"/ui.source
+
+usagestr=$(
+cat <<EOF
+
+$(basename "$0") [options] file
+
+Arguments
+---------
+   file : script having doc delimiters #** and #*
+
+Options
+-------
+  -v : verbose output instead of single line
+  -f : specific function or data block
+\0
+EOF
+)
+
+# control_c: run if user hits control-c
+#
+# Global
+#   CTLC_EXIT - bash environment variable
+#
+control_c() {
+	echo -e "\nCtrl-c detected\nCleaning up and exiting."
+	exit $CTLC_EXIT
+}
+
+# init
+#
+# GLOBALS
+#   background
+#
+init() {
+	local bgtemp
+
+	ui_setbg bgtemp
+	background=$bgtemp
+}
+
+# parseopts
+#
+# Globals
+#
+parseopts() {
+	local arg=
+	local opt=
+
+	for arg in $@; do
+
+	    if [ "${arg:0:1}" == "-" ]; then
+		opt="${arg:1}"
+		shift
+		((optcount++))
+
+		case "$opt" in
+		v ) b_verbose=true
+		    ;;
+		f ) fname="$1"
+		    b_verbose=true
+		    b_func=true
+		    shift
+		    ((optcount++))
+		    ;;
+		h ) echo -e "$usagestr"
+		    exit 0
+		esac
+	    fi
+	done
+
+	return 0
+}
+
+main() {
+	local b_doc=false
+	local line=
+	local -i fnamsiz
+	local -a lary=()
+
+	parseopts "$@"
+	shift "$optcount"
+
+	(($# > 0)) || { echo -e "$usagestr"; exit 1; }
+
+	file="$1"
+
+	[ -f "$file" ] || { echo -e "$usagestr"; exit 1; }
+
+	while IFS= read -r line; do
+		read -ra lary <<< "$line"
+
+		$b_doc || [ "${line:0:1}" == "#" ] || continue
+		if [ "${lary[0]:0:3}" == "#**" ]; then
+
+			if $b_func; then
+				fnamsiz=${#fname}
+				[[ "${lary[1]}" == *"$fname"* ]] || continue
+			fi
+
+			$b_verbose && echo -e "\n$(ui_putnchar "=" 75)"
+			echo "${lary[@]:1}"
+			b_doc=true
+			$b_verbose && echo "$(ui_putnchar "-" 75)"
+			continue
+		fi
+		$b_verbose || continue
+
+		if [[ "${lary[0]:0:2}" != "#*" ]]; then
+			if $b_doc; then
+				[[ "${line:0:1}" == "#" ]] && echo "${line:1}" || echo "$line"
+			fi
+		else
+			b_doc=false
+		fi
+	done < "$file"
+
+	ui_exit ui_exit_ok
+}
+
+main "$@"
