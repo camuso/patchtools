@@ -239,7 +239,7 @@ $b_source && echo -en '
 echo -en '
 [ -n "$MYDIR" ] || {
 	declare MYDIR=
-	MYDIR="$(dirname -- "${0}")"
+	MYDIR="$(dirname "$(which "$(basename "$0")")")"
 }
 ' >> "$ofile"
 
