@@ -2,9 +2,9 @@
 #
 declare prman="$(
 cat <<EOF
-${MNU}===================
-${STA}Patchreview v12.0
-${MNU}===================
+${MNU}==============================
+${STA}patchreview - patchtools v12.*
+${MNU}==============================
 $OFF
 This menu-driven script allows the user to compare a set of patches
 from one branch with those of another branch. The branches can be

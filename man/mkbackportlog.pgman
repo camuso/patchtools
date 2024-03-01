@@ -1,0 +1,184 @@
+#!/bin/bash
+#
+MYDIR="$(dirname "$(which "$(basename "$0")")")"
+MYLIB="$MYDIR"/lib
+
+[ "$ptversion_loaded" ]     || source "$MYLIB"/patchtools-version.source
+
+declare prman="$(
+cat <<EOF
+${MNU}================================
+${STA}mkbackportlog - patchtools v12.*
+${MNU}================================
+$OFF
+
+This menu-driven script creates a list of commts to be backported
+from an upstream repo. Commits that have already been backported
+will have a leading $MNU #$OFF to comment them out got subsequent
+scripts like git-backport or cherp.
+
+This script must be run in the downstream (RHEL) repo directory.
+
+Creates the following files in the ouptut directory specified by
+the user in the Main Menu.
+  ${STA}upstream.log$OFF   - Contains the upstream commits since the
+                   downstream commit specified by the user.
+  ${STA}downstream.log$OFF - Contains the downstream commits since the
+                   downstream commit specified by the user.
+  ${STA}backport.log$OFF   - Contains the upstream commits that have not
+                   yet been backported downstream.
+
+${MNU}${UND}Main Menu$OFF
+The main menu from a fresh start in a new RHEL directory
+appears as follows. None of the parameters for the commit
+searh have yet been entered.
+
+The required fields must be entered before the script can
+successfully create the files listed above.
+
+$MNU${UND}mkbackportlog - patchtools: $STA$version$OFF
+
+$MNU${UND}Required$OFF
+$MNU o$OFF - Output Directory         :
+$MNU u$OFF - Upstream repo directory  :
+$MNU b$OFF - Upstream repo/branch     :
+$MNU d$OFF - Downstream RHEL commit   :
+$MNU p$OFF - Path(s) to search        :
+
+$MNU${UND}Optional$OFF
+$MNU s$OFF - Start at upstream commit :
+$MNU e$OFF - End at upstream commit   :
+$MNU B$OFF - Current Downstream Branch:
+$MNU A$OFF - Add to search path
+$MNU D$OFF - Delete from search path
+
+$MNU${UND}Functional$OFF
+$MNU r$OFF - Run with the above parameters
+$MNU C$OFF - Clear all parameters
+$MNU q$OFF - Quit this script
+$MNU h$OFF - Help
+
+${MNU}Enter one of the above: $OFF
+
+Following is an explanation of each of the fields in the Main Menu.
+
+$MNU${UND}Required$OFF
+
+$MNU o$OFF - Output Directory
+     This is the directory into which the output files are written.
+
+$MNU u$OFF - Upstream repo directory
+     This is the directory that contains the upstream repo. It can
+     be declared as a remote directory in the downstream directory,
+     so \$PWD is an acceptable value for this field.
+     The user will then be prompted for the Upstream repo/branch.
+
+$MNU b$OFF - Upstream repo/branch
+     This field is populated when the user supplies the$INF Upstream repo
+     ${INF}directory$OFF. However, this menu option allows the user to change
+     the branch within that repo without having to change the upstream
+     repo.
+
+$MNU d$OFF - Downstream RHEL commit
+     This is the RHEL or downstream commit from which to start the search.
+     The corresponding upstream commit is extracted from the git log in
+     this downstream commit and used as a starting point from which to
+     commence the search of upstream commits that have yet to be backported.
+
+$MNU p$OFF - Path(s) to search
+     This is a list of paths the user can enter. Individual filenames as
+     well as directories are entered separated by spaces.
+
+$MNU${UND}Optional$OFF
+
+$MNU s$OFF - Start at upstream commit
+     The user can choose to start the upstream search from a commit other
+     than the one that was extracted from the git log of the supplied
+     downstream commit.
+
+$MNU e$OFF - End at upstream commit
+     The upstream commit where you want to end the search.
+     This value will usually be an upstream tag, e.g. v6.8
+     but it can also be an upstream commit hash.
+     All commits occuring after this commit will have a leading
+     "#+ " prepended to their lines in the backport.log. Scripts like
+     like git-backport will ignore lines with a leading "#", and the
+     "+ " is added to inform that this commit is outside the scope of
+     the search.
+
+$MNU B$OFF - Current Downstream Branch
+     This is the current branch in the downstream repo.
+     The user can change this to another branch.
+
+$MNU A$OFF - Add to search path
+     Paths and filenames can be added to the list. Multiple files and
+     paths can be entered separated by spaces.
+
+$MNU D$OFF - Delete from search path
+     A numbered list of paths and files is presented. The user can remove
+     a path or file from the list by selecting the number. Deletions from
+     the list are complete when the user types "$qstr"
+
+$MNU${UND}Functional$OFF
+
+$MNU r$OFF - Run with the above parameters
+$MNU C$OFF - Clear all parameters
+$MNU q$OFF - Quit this script
+$MNU h$OFF - Help
+
+$MNU${UND}Finding the last upstream commit for your subsystem
+
+The$MNU gitnice$OFF script in patchtools-v12 can be used to find the most
+recent downstream commit for a given subsystem.
+Type \'gitnice -h\' to see all the options that script offers.
+
+For example, let's get the five most recent RHEL commits for the ipmi
+subsystem along with the commit dates.
+
+${WRN}$ ${INF}gitnice -d -5 drivers/char/ipmi/ include/linux/ipmi.h include/linux/ipmi_smi.h
+${GRN}62b6f130e280 2023-11-19$OFF Merge: RHEL-9.4 Update IPMI to upstream v6.5+
+${GRN}094c7e28221f 2023-08-07$OFF driver core: class: remove module * from class_create()
+${GRN}81946f348446 2023-10-23$OFF ipmi: Explicitly include correct DT includes
+${GRN}8601cca296bb 2023-10-23$OFF ipmi_si: fix -Wvoid-pointer-to-enum-cast warning
+${GRN}49914a008fac 2023-10-23$OFF ipmi: fix potential deadlock on &kcs_bmc->lock
+
+The most recent RHEL commit,$GRN 62b6f130e280$OFF, is a merge, so it won't have
+a corresponding upstream commit.
+
+${GRN}094c7e28221f$OFF seems to be the most recent commit that affects 
+the ipmi subsystem.
+
+However, lets choose ${GRN}81946f348446$OFF as our starting RHEL commit.
+Commits that have already been backported since that commit will be
+hashed out in the backports file, anyway.
+
+When we are ready to run the search, the Main Menu will appear as follows.
+
+$MNU${UND}mkbackportlog - patchtools: $STA$version$OFF
+
+$MNU${UND}Required$OFF
+$MNU o$OFF - Output Directory         : ${STA}/work/c9s/backports/95/ipmi
+$MNU u$OFF - Upstream repo directory  : ${STA}/work/upstream/kernel
+$MNU b$OFF - Upstream repo/branch     : ${STA}origin/master
+$MNU d$OFF - Downstream RHEL commit   : ${STA}81946f348446
+$MNU p$OFF - Path(s) to search        : ${STA}drivers/char/ipmi
+                                        ${STA}include/linux/ipmi.h
+					${STA}include/linux/ipmi_smi.h
+
+$MNU${UND}Optional$OFF
+$MNU s$OFF - Start at upstream commit : $STA${configtable[upcmt]}$OFF
+$MNU e$OFF - End at upstream commit   : $STA${configtable[upscope]}$OFF
+$MNU B$OFF - Current Downstream Branch: ${STA}ipmi
+$MNU A$OFF - Add to search path
+$MNU D$OFF - Delete from search path
+
+$MNU${UND}Functional$OFF
+$MNU r$OFF - Run with the above parameters
+$MNU C$OFF - Clear all parameters
+$MNU q$OFF - Quit this script
+$MNU h$OFF - Help
+
+${MNU}Enter one of the above: $OFF
+
+EOF
+)"
