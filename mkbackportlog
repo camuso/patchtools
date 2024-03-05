@@ -90,7 +90,7 @@ Cleaning up and exiting.$OFF
 }
 
 declare -i background=
-declare -i optcount=0
+declare -i khashsize=
 declare uplog="upstream.log"
 declare dnlog="downstream.log"
 declare chlog="backport.log"
@@ -103,7 +103,6 @@ declare path=
 declare repobr=
 declare upscope=	# upstream scope limited to this commit expression
 declare b_localus=false	# default true, upstream is in current local dir
-declare b_ready=false
 declare b_interactive=false
 
 declare myman="$MYMAN"/mkbackportlog.pgman
@@ -312,6 +311,20 @@ is_validcmtexpr() {
 	ui_cd -
 	return 0
 }
+#** get_khashsize - print the number of characters in the kernel hash
+#
+# Globals
+#   khashsize	- size of small hash in upstream kernel
+#   updir	- directory containing the upstream kernel
+#
+get_khashsize() {
+	local cmt
+
+	ui_cd "$updir"
+	cmt="$(gitnice -1 | cut -d' ' -f1)"
+	echo "${#cmt}"
+	ui_cd -
+}
 
 #** getcmt - validate a commit expression supplied at the cmd line
 #
@@ -442,11 +455,11 @@ compare_strings() {
 
 	for ((j = 0; j < ${#upstr[@]}; ++j)); do
 		up=${upstr[j]}
-		upcmt="${up:0:9}"
+		upcmt="${up:0:$khashsize}"
 
 		for ((k = 0; k < ${#rhstr[@]}; ++k)); do
-			tmp=$(echo "${rhstr[k]}" | cut -d' ' -f2)
-			rhcmt="${tmp:0:9}"
+			tmp=$(echo "${rhstr[k]}" | cut -d' ' -f1)
+			rhcmt="${tmp:0:$khashsize}"
 
 			[[ "$rhcmt" == "$upcmt" ]] && {
 				b_match=true
@@ -874,7 +887,6 @@ menu_loop() {
 main() {
 	local mainbranch
 	local currentbranch
-	local -a tmpary=()
 	local mypid
 
 	init_env
@@ -912,14 +924,21 @@ main() {
 		configtable[currentbranch]="$currentbranch"
 	fi
 
+	# Get the short size of the upstream kernel hashes.
+	khashsize=$(get_khashsize)
+
 	# If the user did not input an upstream commit, then extract the
 	# upstream commit from the submitted RHEL commit, which is the most
 	# recent RHEL commit under consideration, entered with the -dc option.
 	if [ -z "$upcmt" ]; then
-		tmpary=($(extup -1 -r -n -u "$updir" "$dncmt"))
-		upcmt="${tmpary[1]}"
+		upcmt="$(oneup $dncmt)"    # extract the upcmt from the dncmt
+
+		# validate the $upcmt
 		[[ $upcmt =~ ^[0-9A-Fa-f]+$ ]] || exitme $exit_noupcmt "$dncmt"
 		is_validcmtexpr "$upcmt" || exitme $exit_noupcmt "$dncmt"
+
+		# trim the upcmt to kernel short hash size
+		upcmt="${upcmt:0:$khashsize}"
 	fi
 
 	read -r mainbranch <<< "$(git branch -r | grep origin/HEAD | cut -d'>' -f2)"
@@ -957,15 +976,24 @@ main() {
 	# as the upstream start or the one extracted from the submitted
 	# RHEL commit with the -dc option.
 	ui_cd "$updir"
-	gitnice -r -c -d --no-merges "$upcmt^..$repobr" $path 2>&1 | tee "$outdir/$uplog"
-	ui_cd -
-
-	echo -e "$STA$PWD$OFF"
+	gitnice -r -c -d --no-merges \
+		"$upcmt^..$repobr" $path 2>&1 | tee "$outdir/$uplog"
 	echo
-
-	echo -e "$STA"
+	ui_cd -
+	echo -e "$STA$PWD$OFF\n"
 	echo -e "${STA}Creating $outdir/$dnlog$INF"
-	extup -r -n -u "$updir" "$dncmt^..$currentbranch" $path 2>&1 | tee "$outdir/$dnlog"
+
+	> "$outdir/$dnlog"
+	while read line; do
+		local tuc="$(cut -d' ' -f1 <<< "$line")" # upstream commit
+		local upd="$(cut -d' ' -f3 <<< "$line")" # date of upstream commit
+		local tdc	                         # downstream commit
+
+		tdc="$(git log --oneline --date=short \
+			--grep "commit $tuc" --grep "cherry-picked from $tuc" \
+			--since="$upd" -- $path)"
+		[ -n "$tdc" ] && echo "$tuc $tdc" | tee -a "$outdir/$dnlog"
+	done < "$outdir/$uplog"
 
 	echo
 	echo -e "${STA}Creating $outdir/$chlog$INF"
