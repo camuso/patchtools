@@ -1,0 +1,128 @@
+#!/bin/bash
+#
+# oneup
+#
+
+[ -n "$MYDIR" ] || {
+	declare MYDIR=
+	MYDIR="$(dirname "$(which "$(basename "$0")")")"
+}
+declare dncmt
+declare -a argv=()
+declare -i argc=1
+
+declare usagestr="$(
+cat <<EOF
+
+$(basename "$0") dncmt
+
+Extracts the upstream commit from the git log of the  given downstream
+commit.
+
+Arguments
+---------
+   dncmt : downstream commit from which to extract the upstream commit
+
+\0
+EOF
+)"
+
+usage() {
+	echo -e "$usagestr"
+}
+
+# control_c: run if user hits control-c
+#
+# Global
+#   CTLC_EXIT - bash environment variable
+#
+control_c() {
+	echo -e "\nCtrl-c detected\nCleaning up and exiting."
+	exit $CTLC_EXIT
+}
+
+# exitme
+#
+# Arguments
+#   $1 - exit code
+#   $2 - optional message
+#
+exitme() {
+	local -i code="$1"
+	local msg="$2"
+
+	((code == 0)) && exit "$code"
+	echo -e "$msg"
+	usage
+	exit "$code"
+}
+
+# check_arg
+#
+# Globals:
+#   argv - array containing command line arguments
+#
+check_arg() {
+        local arg="$1"
+
+        # If 1st char is a hyphen, then invalid switch
+        [ "${arg:0:1}" == "-" ] && return 1
+
+        # Otherwise, add the arg to the argary
+        argv+=("$arg")
+        return 0
+}
+
+# parseopts
+#
+# Globals
+#   argv
+#   argc
+#
+parseopts() {
+	while (($# > 0)); do
+	    case "$1" in
+		-h | --help )
+		     echo -e "$usagestr"
+		     exit 0
+		     ;;
+		* )  argv+=("$1")
+		     ;;
+	    esac
+	    shift
+	done
+}
+
+main() {
+	local dnlog
+	local upcmt
+
+        # Trap for control-c
+        trap control_c SIGINT
+
+	parseopts "$@"
+	dncmt="${argv[0]}"
+
+	# Get the downstream log less the downstream commit
+	dnlog="$(git log -1 "$dncmt" | tail -n +2)"
+
+	# Strip all leading spaces
+	dnlog="$(echo "$dnlog" | sed -e 's/^ *//g')"
+
+	# Extract the upstream commit from the downstream log
+	upcmt="$(echo "$dnlog" | grep -E -m1 '^commit')"
+
+	# If it didn't start with commit, see if it started with cherry-picked
+	[ -n "$upcmt" ] || upcmt="$(echo "$log" | grep -E -m1 'cherry-picked from')"
+
+	# If we can't find a corresponding upstream commit, exit now.
+	[ -n "$upcmt" ] || exitme 1 "Could not find an upstream commit for $dncmt"
+
+	# Get just the commit hash and print it.
+	upcmt="$(awk '{print $NF}' <<< "$upcmt")"
+	echo "$upcmt"
+
+	exitme 0
+}
+
+main "$@"
