@@ -60,6 +60,8 @@ exitme() {
 	local strarg=""
 	local exitmsg
 
+	((exitval == exit_ok)) && exit $exitval
+
 	if [ "$exitval" -ne $exit_ok ] && [ "$exitval" -ne $CTLC_EXIT ]; then
 		[ $# -eq 2 ] && strarg=$2
 		[ ${#exitmsgary[@]} -gt "$exitval" ] \
@@ -818,8 +820,7 @@ menu_parser() {
 	local mp_in="$1"
 
 	case "$mp_in" in
-		q ) b_interactive=false
-		    exitme $exit_ok
+		q ) exitme $exit_ok
 		    ;;
 		d ) getuser "Downstream RHEL commit: " dncmt
 		    is_validcmtexpr && configtable[dncmt]="$dncmt"
@@ -882,51 +883,21 @@ menu_loop() {
 	done
 }
 
-#** main
-#*
-main() {
-	local mainbranch
-	local currentbranch
-	local mypid
-
-	init_env
-
-        # Trap for control-c
-        trap control_c SIGINT
-
-	if (($# == 0 )); then
-		b_interactive=true
-		menu_loop
-	else
-		b_interactive=false
-		test_help "$1"
-		parseops "$@"
-
-		[ -f .git/config ] || exitme $exit_norepo "PWD: $PWD"
-
-		# If user did not supply the upstream repo dir in the options, and
-		# there is no upstream repo in $PWD/.git/config, then exit with
-		# help clue.
-		if [ -z "$updir" ]; then
-			git branch -r | grep -E -v "origin|$USER" ||
-				exitme $exit_noupstream "PWD: $PWD"
-			updir="$PWD"
-			configtable[updir]="$PWD"
-		fi
-
-		[[ "$updir" == "$PWD" ]] && b_localus=true || b_localus=false
-
-		# update the configfile before going any further
-		cfg_write
-
-		select_remote repobr
-		currentbranch=$(get_currentbranch)
-		configtable[currentbranch]="$currentbranch"
-	fi
-
-	# Get the short size of the upstream kernel hashes.
-	khashsize=$(get_khashsize)
-
+#** run - execute with the given parameters
+#
+# Globals
+#   outdir
+#   updir
+#   uplog
+#   dnlog
+#   chlog
+#   repobr
+#   path
+#   upcmt
+#   dncmt
+#   upscope
+#
+run() {
 	# If the user did not input an upstream commit, then extract the
 	# upstream commit from the submitted RHEL commit, which is the most
 	# recent RHEL commit under consideration, entered with the -dc option.
@@ -966,7 +937,7 @@ main() {
 	fi
 
 	echo
-	echo -n "Press any key to proceed or CTRL-C to exit..."
+	echo -en "${CAU}Press any key to proceed or CTRL-C to exit...$OFF"
 	read -r -n1
 
 	echo -e "$STA$PWD$OFF"
@@ -1006,8 +977,58 @@ main() {
 		limit_scope & mypid=$!
 		ui_waitonproc_tty $mypid .05 "Limiting scope to $MNU$upscope$OFF. Please wait."
 	fi
+}
 
-	$b_interactive && menu_loop
+#** main
+#*
+main() {
+	local mainbranch
+	local currentbranch
+	local mypid
+
+	init_env
+
+	# Get the short size of the upstream kernel hashes.
+	khashsize=$(get_khashsize)
+
+        # Trap for control-c
+        trap control_c SIGINT
+
+	if (($# == 0 )); then
+		b_interactive=true
+
+		while :; do
+			menu_loop
+			run
+		done
+	else
+		b_interactive=false
+		test_help "$1"
+		parseops "$@"
+
+		[ -f .git/config ] || exitme $exit_norepo "PWD: $PWD"
+
+		# If user did not supply the upstream repo dir in the options, and
+		# there is no upstream repo in $PWD/.git/config, then exit with
+		# help clue.
+		if [ -z "$updir" ]; then
+			git branch -r | grep -E -v "origin|$USER" ||
+				exitme $exit_noupstream "PWD: $PWD"
+			updir="$PWD"
+			configtable[updir]="$PWD"
+		fi
+
+		[[ "$updir" == "$PWD" ]] && b_localus=true || b_localus=false
+
+		# update the configfile before going any further
+		cfg_write
+
+		select_remote repobr
+		currentbranch=$(get_currentbranch)
+		configtable[currentbranch]="$currentbranch"
+	fi
+
+	run
 
 	exitme $exit_ok
 }
