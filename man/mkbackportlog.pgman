@@ -145,7 +145,7 @@ ${GRN}49914a008fac 2023-10-23$OFF ipmi: fix potential deadlock on &kcs_bmc->lock
 The most recent RHEL commit,$GRN 62b6f130e280$OFF, is a merge, so it won't have
 a corresponding upstream commit.
 
-${GRN}094c7e28221f$OFF seems to be the most recent commit that affects 
+${GRN}094c7e28221f$OFF seems to be the most recent commit that affects
 the ipmi subsystem.
 
 However, lets choose ${GRN}81946f348446$OFF as our starting RHEL commit.
@@ -162,8 +162,8 @@ $MNU u$OFF - Upstream repo directory  : ${STA}/work/upstream/kernel
 $MNU b$OFF - Upstream repo/branch     : ${STA}origin/master
 $MNU d$OFF - Downstream RHEL commit   : ${STA}81946f348446
 $MNU p$OFF - Path(s) to search        : ${STA}drivers/char/ipmi
-                                        ${STA}include/linux/ipmi.h
-					${STA}include/linux/ipmi_smi.h
+                                ${STA}include/linux/ipmi.h
+                                ${STA}include/linux/ipmi_smi.h
 
 $MNU${UND}Optional$OFF
 $MNU s$OFF - Start at upstream commit : $STA${configtable[upcmt]}$OFF
@@ -180,5 +180,192 @@ $MNU h$OFF - Help
 
 ${MNU}Enter one of the above: $OFF
 
+When you type 'r' to run, you will see the following on your screen.
+
+${INF}Create :$STA /work/c9s/backports/95/ipmi/upstream.log
+${INF}Create :$STA /work/c9s/backports/95/ipmi/downstream.log
+${INF}Create :$STA /work/c9s/backports/95/ipmi/backport.log
+${INF}Upstream branch       :$STA origin/master
+${INF}Upstream Start commit :$STA 86cdae14a58a
+${INF}Downstream branch     :$STA ipmi
+${INF}Paths:
+$STA  drivers/char/ipmi/
+$STA  include/linux/ipmi.h
+$STA  include/linux/ipmi_smi.h
+
+${CAU}Press any key to proceed or CTRL-C to exit...
+
+Processing will stop here while you decide to continue or to exit the
+script.
+
+If you choose to continue by pressing any key other than CTRL-C, the
+script will generate the following output on the screen, which will
+also be written into the displayed files in the output directory.
+
+$STA/work/c9s/kernel
+${STA}Creating /work/c9s/backports/95/ipmi/upstream.log
+${INF}9930702cfebb 2023-05-18 2023-05-17 ipmi_watchdog: Fix read syscall not responding to signals during sleep
+${INF}e64c82b80641 2023-05-25 2023-05-25 ipmi: Switch i2c drivers back to use .probe()
+${INF}c5586d0f711e 2023-06-19 2023-06-19 ipmi:ssif: Add check for kstrdup
+${INF}b8d72e32e145 2023-06-20 2023-06-19 ipmi:ssif: Fix a memory leak when scanning for an adapter
+${INF}392fa3a3abdb 2023-06-20 2023-06-20 ipmi: make ipmi_class a static const structure
+${INF}e87443a5f68d 2023-06-20 2023-06-20 ipmi: Change request_module to request_module_nowait
+${INF}6cf1a126de29 2023-06-29 2023-06-29 ipmi_si: fix a memleak in try_smi_init()
+${INF}b02bb79eee07 2023-07-04 2023-06-27 ipmi: fix potential deadlock on &kcs_bmc->lock
+${INF}d40f09c1a230 2023-08-15 2023-08-09 ipmi_si: fix -Wvoid-pointer-to-enum-cast warning
+${INF}86cdae14a58a 2023-08-28 2023-07-28 ipmi: Explicitly include correct DT includes
+${INF}b00839ca4cca 2023-09-13 2023-09-13 ipmi: refactor deprecated strncpy
+${INF}ed1aa959b508 2023-10-11 2023-10-02 char-misc: Remove the now superfluous sentinel element from ctl_table array
+${INF}5be50eb5ae99 2023-12-19 2023-11-15 ipmi: si: Use device_get_match_data()
+${INF}242c6fd473a6 2023-12-19 2023-11-22 ipmi: Use regspacings passed as a module parameter
+${INF}9bd9fbd9032a 2023-12-19 2023-12-19 ipmi: Remove usage of the deprecated ida_simple_xx() API
+$STA/work/c9s/kernel
+
+${STA}Creating /work/c9s/backports/95/ipmi/downstream.log
+${INF}9930702cfebb ec006b657c78 ipmi_watchdog: Fix read syscall not responding to signals during sleep
+${INF}c5586d0f711e 8fe613b87b24 ipmi:ssif: Add check for kstrdup
+${INF}b8d72e32e145 f3b4f22e5983 ipmi:ssif: Fix a memory leak when scanning for an adapter
+${INF}e87443a5f68d 3342dcffc126 ipmi: Change request_module to request_module_nowait
+${INF}6cf1a126de29 52f46e78c013 ipmi_si: fix a memleak in try_smi_init()
+${INF}b02bb79eee07 49914a008fac ipmi: fix potential deadlock on &kcs_bmc->lock
+${INF}d40f09c1a230 8601cca296bb ipmi_si: fix -Wvoid-pointer-to-enum-cast warning
+${INF}86cdae14a58a 81946f348446 ipmi: Explicitly include correct DT includes
+
+${STA}Creating /work/c9s/backports/95/ipmi/backport.log
+${INF}# 9930702cfebb 2023-05-18 2023-05-17 ipmi_watchdog: Fix read syscall not responding to signals during sleep
+${INF}e64c82b80641 2023-05-25 2023-05-25 ipmi: Switch i2c drivers back to use .probe()
+${INF}# c5586d0f711e 2023-06-19 2023-06-19 ipmi:ssif: Add check for kstrdup
+${INF}# b8d72e32e145 2023-06-20 2023-06-19 ipmi:ssif: Fix a memory leak when scanning for an adapter
+${INF}392fa3a3abdb 2023-06-20 2023-06-20 ipmi: make ipmi_class a static const structure
+${INF}# e87443a5f68d 2023-06-20 2023-06-20 ipmi: Change request_module to request_module_nowait
+${INF}# 6cf1a126de29 2023-06-29 2023-06-29 ipmi_si: fix a memleak in try_smi_init()
+${INF}# b02bb79eee07 2023-07-04 2023-06-27 ipmi: fix potential deadlock on &kcs_bmc->lock
+${INF}# d40f09c1a230 2023-08-15 2023-08-09 ipmi_si: fix -Wvoid-pointer-to-enum-cast warning
+${INF}# 86cdae14a58a 2023-08-28 2023-07-28 ipmi: Explicitly include correct DT includes
+${INF}b00839ca4cca 2023-09-13 2023-09-13 ipmi: refactor deprecated strncpy
+${INF}ed1aa959b508 2023-10-11 2023-10-02 char-misc: Remove the now superfluous sentinel element from ctl_table array
+${INF}5be50eb5ae99 2023-12-19 2023-11-15 ipmi: si: Use device_get_match_data()
+${INF}242c6fd473a6 2023-12-19 2023-11-22 ipmi: Use regspacings passed as a module parameter
+${INF}9bd9fbd9032a 2023-12-19 2023-12-19 ipmi: Remove usage of the deprecated ida_simple_xx() API
+
+The$STA upstream.log$OFF file contains all upstream commits since the most
+recent downstream commit backport for the same given path.
+
+The$STA downstream.log$OFF contains those downstream commits that have already
+backported the corresponding upstream commit. In the output, the upstream
+commit is in the first column and the corresponding downstream commit is
+in the second column.
+
+The$STA backport.log$OFF file contains a sequential merge of the$STA upstream.log$OFF
+file and the$STA downstream.log$OFF files. However, upstream commits that have
+already been backported are hashed out. The leading hash signals backport
+scripts, like cherp and git-backport, to ignore those commits.
+
+Let's now consider a more complex example.
+
+$MNU${UND}mkbackportlog - patchtools: 12.6.2
+
+$MNU${UND}Required
+$MNU o$OFF - Output Directory         :$STA /work/c9s/backports/perf
+$MNU u$OFF - Upstream repo directory  :$STA /work/upstream/kernel
+$MNU b$OFF - Upstream repo/branch     :$STA origin/master
+$MNU d$OFF - Downstream RHEL commit   :$STA 19d985cd6381
+$MNU p$OFF - Path(s) to search        :$STA drivers/perf/
+                              $STA  include/linux/perf
+                              $STA  include/linux/perf_event_api.h
+                              $STA  include/linux/perf_regs.h
+                              $STA  include/linux/perf_event.h
+                              $STA  arch/alpha/kernel/perf_event.c
+                              $STA  arch/arm64/include/asm/apple_m1_pmu.h
+
+$MNU${UND}Optional
+$MNU s$OFF - Start at upstream commit :$STA v6.3
+$MNU e$OFF - End at upstream commit   :$STA v6.6
+$MNU B$OFF - Current Downstream Branch:$STA main
+$MNU A$OFF - Add to search path
+$MNU D$OFF - Delete from search path
+
+$MNU${UND}Functional
+$MNU r$OFF - Run with the above parameters
+$MNU C$OFF - Clear all parameters
+$MNU q$OFF - Quit this script
+$MNU h$OFF - Help
+
+Because this example will generate a lot of output, some of it has been
+omitted to minimize the noise.
+
+First, the script will display the details and allow you the option to
+CTRL-C before proceeding.
+
+After pressing any key other than CTRL-C, you will see the following
+output, albeit trimmed for instructional purposes.
+
+${STA}Creating /work/c9s/backports/perf/upstream.log
+${INF}5c6e623f1b8e 2023-07-26 2023-07-25 perf/mem: Add PERF_MEM_LVLNUM_NA to PERF_MEM_NA
+${INF}5c816728651a 2023-07-26 2023-07-24 arm_pmu: Add PERF_PMU_CAP_EXTENDED_HW_TYPE capability
+${INF}80391d8c387d 2023-07-26 2023-07-24 arm_pmu: Remove unused PERF_PMU_CAP_HETEROGENEOUS_CPUS capability
+${INF}0cb52ad7bbb2 2023-07-26 2023-07-24 perf: Remove unused PERF_PMU_CAP_HETEROGENEOUS_CPUS capability
+${INF}62af03223785 2023-07-26 2023-07-25 perf: Remove unused extern declaration arch_perf_get_page_size()
+${INF}cbbc6fdd85be 2023-07-27 2023-06-20 driver/perf: Add identifier sysfs file for Yitian 710 DDR
+${INF}c47ea342d85d 2023-07-27 2023-07-04 perf: xgene_pmu: Convert to devm_platform_ioremap_resource()
+${INF}7c3f204e544d 2023-07-27 2023-07-06 perf/smmuv3: Remove build dependency on ACPI
+${INF}989567fc0f3d 2023-07-27 2023-07-06 perf: pmuv3: Add Cortex A520, A715, A720, X3 and X4 PMUs
+${INF}918dc87b746e 2023-07-27 2023-07-14 drivers/perf: Explicitly include correct DT includes
+${INF}00df90934c9e 2023-07-28 2023-07-07 perf/arm-cmn: Remove spurious event aliases
+${INF}b1b7dc38e482 2023-07-28 2023-07-07 perf/arm-cmn: Refactor HN-F event selector macros
+     :
+ .. etc ..
+
+${STA}Creating /work/c9s/backports/perf/downstream.log
+${INF}5c6e623f1b8e b34d7642868c perf/mem: Add PERF_MEM_LVLNUM_NA to PERF_MEM_NA
+${INF}5c816728651a 19d985cd6381 arm_pmu: Add PERF_PMU_CAP_EXTENDED_HW_TYPE capability
+${INF}80391d8c387d ea80fc4e2b8c arm_pmu: Remove unused PERF_PMU_CAP_HETEROGENEOUS_CPUS capability
+${INF}0cb52ad7bbb2 b2f44ea47390 perf: Remove unused PERF_PMU_CAP_HETEROGENEOUS_CPUS capability
+${INF}62af03223785 3fcece272656 perf: Remove unused extern declaration arch_perf_get_page_size()
+${INF}366d259ff597 3c62aa340e60 perf: Fix wrong comment about default event_idx
+     :
+ .. etc ..
+
+${STA}Creating /work/c9s/backports/perf/backport.log
+${INF}# 5c6e623f1b8e 2023-07-26 2023-07-25 perf/mem: Add PERF_MEM_LVLNUM_NA to PERF_MEM_NA
+${INF}# 5c816728651a 2023-07-26 2023-07-24 arm_pmu: Add PERF_PMU_CAP_EXTENDED_HW_TYPE capability
+${INF}# 80391d8c387d 2023-07-26 2023-07-24 arm_pmu: Remove unused PERF_PMU_CAP_HETEROGENEOUS_CPUS capability
+${INF}# 0cb52ad7bbb2 2023-07-26 2023-07-24 perf: Remove unused PERF_PMU_CAP_HETEROGENEOUS_CPUS capability
+${INF}# 62af03223785 2023-07-26 2023-07-25 perf: Remove unused extern declaration arch_perf_get_page_size()
+${INF}cbbc6fdd85be 2023-07-27 2023-06-20 driver/perf: Add identifier sysfs file for Yitian 710 DDR
+${INF}c47ea342d85d 2023-07-27 2023-07-04 perf: xgene_pmu: Convert to devm_platform_ioremap_resource()
+${INF}7c3f204e544d 2023-07-27 2023-07-06 perf/smmuv3: Remove build dependency on ACPI
+     :
+ .. etc ..
+
+Limiting scope to${MNU} v6.8-rc1${OFF}. Please wait.
+................................................................
+
+${INF}# 5c6e623f1b8e 2023-07-26 2023-07-25 perf/mem: Add PERF_MEM_LVLNUM_NA to PERF_MEM_NA
+${INF}# 5c816728651a 2023-07-26 2023-07-24 arm_pmu: Add PERF_PMU_CAP_EXTENDED_HW_TYPE capability
+${INF}# 80391d8c387d 2023-07-26 2023-07-24 arm_pmu: Remove unused PERF_PMU_CAP_HETEROGENEOUS_CPUS capability
+${INF}# 0cb52ad7bbb2 2023-07-26 2023-07-24 perf: Remove unused PERF_PMU_CAP_HETEROGENEOUS_CPUS capability
+${INF}# 62af03223785 2023-07-26 2023-07-25 perf: Remove unused extern declaration arch_perf_get_page_size()
+${INF}cbbc6fdd85be 2023-07-27 2023-06-20 driver/perf: Add identifier sysfs file for Yitian 710 DDR
+${INF}c47ea342d85d 2023-07-27 2023-07-04 perf: xgene_pmu: Convert to devm_platform_ioremap_resource()
+${INF}7c3f204e544d 2023-07-27 2023-07-06 perf/smmuv3: Remove build dependency on ACPI
+     :
+${INF}1892fe103c3a 2023-12-12 2023-12-11 perf/arm-cmn: Fail DTC counter allocation correctly
+${INF}eb183b2cd0a6 2023-12-13 2023-12-13 Revert "perf/arm_dmc620: Remove duplicate format attribute #defines"
+${INF}af9597adc2f1 2023-12-13 2023-12-08 drivers/perf: add DesignWare PCIe PMU driver
+${INF}bb339db4d363 2023-12-17 2023-12-15 arm: perf: Fix ARCH=arm build with GCC
+${INF}#+ 719da04f2d12 2024-02-09 2024-02-08 perf: CXL: fix mismatched cpmu event opcode
+${INF}#+ 50572064ec71 2024-02-09 2024-02-09 perf/arm-cmn: Workaround AmpereOneX errata AC04_MESH_1 (incorrect child count)
+${INF}#+ 802379b8f9e1 2024-02-20 2024-02-16 perf: CXL: fix CPMU filter value mask length
+${INF}#+ 65730fe8f4fb 2024-02-27 2024-02-27 drivers: perf: added capabilities for legacy PMU
+${INF}#+ 682dc133f83e 2024-02-27 2024-02-27 drivers: perf: ctr_get_width function for legacy is not defined
+${INF}#+ 34b567868777 2024-02-29 2024-02-28 perf: RISCV: Fix panic on pmu overflow handler
+
+In this example, you can see an additional section of output that will
+limit the scope of the backport to v6.8-rc1, as specified in the main
+menu. Upstream commits ocurring after v6.8-rc1 will be hashed out, but
+will have a + following the # to indicate that they are post v6.8-rc1.
+
+\0
 EOF
 )"
