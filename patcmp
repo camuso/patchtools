@@ -340,7 +340,7 @@ show_mismatch() {
 
 	echo -e "\n${MNU}Patches conflicting with upstream commits$INF"
 	echo -e       "=========================================$OFF"
-	echo -e "${INF}Conflict number, Patch number, Conflicting Patch file$OFF"
+	echo -e "${INF}Conflict number. Patch number: Conflicting Patch file$OFF"
 	for seqno in "${mismatch_array[@]}"; do
 		dispnum=$((seqno + 1))
 		padded=$(ui_padfield "$dispnum" " " "$fldwidth")
@@ -432,6 +432,7 @@ show_env() {
 	echo -e  "\t    RHEL dir :$STA $mldir$MNU"
 	echo -e  "\tUpstream dir :$STA $usdir$INF"
 	echo
+	show_mismatch
 }
 
 vim_cmd() {
