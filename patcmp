@@ -326,25 +326,27 @@ say_nomismatch() {
 
 # show_mismatch() - display the mismatched patches to the screen
 #
+# Prints:
+# 	conflict number. patch number: conflicting patch file
+#
 # Globals:
 # 	mismatch_array
 # 	mlfiles
 #
 show_mismatch() {
-	local seqno	# sequence number of patch
-	local confnum=1
-	local numfiles=${#mlfiles[@]}
-	local fldwidth=${#numfiles}
-	local padded
-	local dispnum
+	local -i seqno		# sequence number of patch
+	local -i confnum=1	# sequential conflict number
+	local -i mlcount="${#mlfiles[@]}"	# total number of patch files
+	local -i mlcountwid="${#mlcount}"	# field width of number of patch files
+	local -i mmcount="${#mismatch_array[@]}"	# number of mismatches
+	local -i mmcountwid="${#mmcount}"		# field width of mmcount
 
 	echo -e "\n${MNU}Patches conflicting with upstream commits$INF"
 	echo -e       "=========================================$OFF"
 	echo -e "${INF}Conflict number. Patch number: Conflicting Patch file$OFF"
 	for seqno in "${mismatch_array[@]}"; do
-		dispnum=$((seqno + 1))
-		padded=$(ui_padfield "$dispnum" " " "$fldwidth")
-		echo -e "$MNU$confnum. $padded: $STA${mlfiles[seqno]}$OFF"
+		printf "${MNU}%${mmcountwid}d. %${mlcountwid}d: ${STA}%s${OFF}\n" \
+			"$confnum" "$((seqno + 1))" "${mlfiles[seqno]}"
 		((confnum++))
 	done
 }
