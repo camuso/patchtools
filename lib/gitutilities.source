@@ -511,7 +511,7 @@ git_comment2commitsfile() {
 		# one RHEL commit.
 		#
 		mapfile -t rawcmtarray < \
-			<(grep -Ew -m 3 '(commit|cherry-picked from)' "$srcfile" \
+			<(grep -Ew '(commit|cherry-picked from)' "$srcfile" \
 			| grep -vi 'revert' \
 			| grep -E -o "\b[0-9a-f]{$hashsize}\b" \
 			| sort -u)

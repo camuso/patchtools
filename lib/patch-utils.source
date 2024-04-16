@@ -38,7 +38,7 @@ is_prologue() {
 	local tok
 	local i
 
-	subj=$(grep -q -m1 "Subject: " "$pfile")
+	subj=$(grep -m1 "Subject: " "$pfile")
 	ui_strtok "$subj" " " subarray
 
 	for ((i = 0; i < ${#subarray[@]}; ++i)); do
