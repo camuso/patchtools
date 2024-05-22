@@ -68,7 +68,7 @@ unset BLIL && declare BLIL="\e[1m$LIL"
 unset BWOR && declare BWOR='\e[1;37;41m'
 
 declare b_256color=false
-if (($(tput colors) >= 256)); then
+if (($(tput -T "$TERM" colors) >= 256)); then
 	b_256color=true
 	unset LIL && declare LIL="\e[38;2;$((16#FF));$((16#99));$((16#FF))m"
 	unset BLIL && declare BLIL="$BLD$LIL"
