@@ -22,6 +22,7 @@ declare -i stat		# general purpose return status variable
 declare mldir		# dir with patches downloaded from email
 declare usdir		# dir with upstream patches created from commits
              		# : from the files in mldir
+declare missing_fixes	# file containing missing fixes, if any
 declare -a usfiles	# array of the upstream patch file names
 
 declare editor
@@ -39,6 +40,7 @@ declare upstream_dir=	# directory containing upstream repo optionally passed
 
 declare b_runmismatch=false
 declare b_nomismatch=true
+declare b_missing_fixes=false
 
 declare mismatch_file		# file of filenames of patches conflicting with
 				# : upstream. Passed by user with -m option.
@@ -74,8 +76,8 @@ $(basename "$0") [options] dir-1 dir-2 editor commits-file
 
   Required Arguments
   ------------------
-  dir-1 - The directories containing the files to be compared
-  dir-2
+  dir-1 - downstream patches
+  dir-2 - upstream patches and scratch files, like missing_fixes
 
   editor - the editor to invoke for comparisons. One of ..
            vimdiff, emacs, or tkdiff
@@ -427,14 +429,28 @@ getlasttag() {
 	echo
 }
 
+show_missing_fixes() {
+	if $b_missing_fixes; then
+		echo -en "$INF"
+		missingfixes -a
+		echo -e "$OFF"
+		ui_press_any
+	fi
+}
+
+menu_missing_fixes() {
+	if $b_missing_fixes; then
+		echo -e "\t${MNU}f$OFF - show missing fixes"
+	fi
+}
+
 show_env() {
-	echo
 	echo -en "$MNU"
 	echo -e  "\t    Last Tag :$STA $lasttag$MNU"
 	echo -e  "\t    RHEL dir :$STA $mldir$MNU"
 	echo -e  "\tUpstream dir :$STA $usdir$INF"
-	echo
-	show_mismatch
+	$b_missing_fixes && echo -e "\n\t${CAU}There are missing fixes.$INF"
+	$b_nomismatch || show_mismatch
 }
 
 vim_cmd() {
@@ -531,6 +547,13 @@ mldir="$1"
 usdir="$2"
 editor="$3"
 uscommits="$4"
+missing_fixes="$usdir/missing_fixes"
+
+if [ -s "$missing_fixes" ] && grep -q 'WARNING' "$missing_fixes"; then
+	b_missing_fixes=true
+else
+	b_missing_fixes=false
+fi
 
 case "$editor" in
     "vimdiff" )	editcmd=vim_cmd
@@ -617,6 +640,8 @@ lasttag=$(cat /dev/shm/lasttag)
 
 declare anystr="\t${MNU}    Any other key displays the diff for patch "
 
+$b_missing_fixes && echo -e "\n${CAU}There are missing fixes."
+
 #############################################
 # Main program Loop
 ############################################
@@ -701,6 +726,7 @@ while :; do
 	echo -e  "\t${MNU}n$OFF - prompt for a number for a specific patch$OFF"
 	echo -e  "\t${MNU}c$OFF - show conflicting patches"
 	echo -e  "\t${MNU}m$OFF - only examine patches conflicting with upstream:$STA $b_runmismatch"
+	menu_missing_fixes
 	echo -e  "\t${MNU}s$OFF - show contents of conflicts log"
 	echo -e  "\t${MNU}e$OFF - show environment, directories, last tag, etc.$OFF"
 	echo -e  "\t${MNU}C$OFF - run batch file comparison to find conflicts with upstream$OFF"
@@ -777,6 +803,9 @@ while :; do
 			else
 				say_nomismatch
 			fi
+			continue
+			;;
+		f )	show_missing_fixes
 			continue
 			;;
 	esac
