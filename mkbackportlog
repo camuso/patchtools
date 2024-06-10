@@ -796,7 +796,7 @@ $MNU o$OFF - Output Directory         : $STA${configtable[outdir]}$OFF
 $MNU u$OFF - Upstream repo directory  : $(show_upstreamdir)
 $MNU b$OFF - Upstream repo/branch     : $STA${configtable[repobr]}$OFF
 $MNU d$OFF - Downstream RHEL commit   : $STA${configtable[dncmt]}$OFF
-$MNU p$OFF - Path(s) to search        : $(show_paths)
+$MNU p$OFF - Path(s) to search        : $(show_paths)\
 $MNU$UND
 Optional$OFF
 $MNU s$OFF - Start at upstream commit : $STA${configtable[upcmt]}$OFF
