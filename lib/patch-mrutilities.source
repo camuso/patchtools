@@ -443,6 +443,7 @@ $MNU
   $MNU m$OFF  Display the list of Merge Requests
   $MNU r$OFF  Refresh the list of merge Requests
   $MNU P$OFF  Review diffs for $STA$current_mr
+$(show_missing_fixes "  ")\
   $MNU H$OFF  History of MR Reviews
   $MNU q$OFF  Quit and return to main menu$OFF
 EOF
@@ -595,6 +596,7 @@ query_acknack() {
 			    ;;
 			H ) query_review_history
 			    ;;
+			f ) print_missing_fixes
 		esac
 
 		continue
