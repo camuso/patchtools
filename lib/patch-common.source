@@ -206,9 +206,11 @@ show_seekfixes() {
 }
 
 show_missing_fixes() {
+	local indent="$1"
+
 	if [ -s "$missing_fixes" ] \
 	&& grep -q 'WARNING:' "$missing_fixes"; then
-		echo -e "$MNU f$OFF  Show missing fixes"
+		echo -e "$indent$MNU f$OFF  Show missing fixes"
 	fi
 }
 
