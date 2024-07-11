@@ -498,13 +498,15 @@ call_getmr() {
 # of the chain of patchreview functions.
 #
 case_qanret() {
+	local stat=
 	menuinput=
 	case $1 in
-	    $mrqan_news ) menuinput='m' ;;
-	    $mrqan_newg ) menuinput='M' ;;
-	    $mrqan_run  ) return $rc_run ;;
-		      * ) menuinput=; return $rc_continue ;;
+	    $mrqan_news ) menuinput='m'; stat=$rc_continue ;;
+	    $mrqan_newg ) menuinput='M'; stat=$rc_continue ;;
+	    $mrqan_run  ) stat=$rc_run ;;
+		      * ) menuinput=; stat=$rc_continue ;;
 	esac
+	return $stat
 }
 
 menu_parser() {
@@ -525,9 +527,11 @@ menu_parser() {
 		;;
 	    g )	grep_mrlist && return $rc_run
 		;;
-	    a )	$b_mrflag && ui_call query_acknack stat
+	    a )	$b_mrflag && {
+		ui_call query_acknack stat
 		case_qanret $stat
 		return $?
+		}
 		;;
 	    m )	$b_mrflag && { call_selmr; return $?; }
 		;;
@@ -605,6 +609,7 @@ menu_parser() {
 		# hidden from main menu
 		# ;;
 	esac
+	menuinput=
 	return $rc_continue
 }
 
@@ -655,7 +660,6 @@ menu_loop() {
 	local stat=0
 
 	while true; do
-		# If the caller passed a menuitem, then forego prompting the
 
 		if [ -z "$menuinput" ]; then
 			get_filecount
@@ -665,9 +669,11 @@ menu_loop() {
 
 		menu_parser $menuinput
 		stat=$?
-		menuinput=
 		# echo "menu_parser_stat: $stat"; read
-		((stat == rc_run)) && break
+		case $stat in
+			$rc_pass )	menuinput="" ;;
+			$rc_run  )	break ;;
+		esac
 	done
 	return $stat
 }
@@ -675,7 +681,7 @@ menu_loop() {
 # get_labuser() - get the gitlab username for $USER
 #
 # Unfortunately, the gitlab username is not always the same as the $USER
-# on the system. This function extracts the gitlab username from the 
+# on the system. This function extracts the gitlab username from the
 # ~/.config/lab/lab.toml file.
 #
 # Globals

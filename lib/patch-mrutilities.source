@@ -539,9 +539,11 @@ query_acknack() {
 	local actstr=
 	local labaction
 	local labflags
+	local withcomment=
 
 	while :;do
 		actstr=
+		withcomment=
 
 		get_acknack
 		display_acknack_menu choice
@@ -550,6 +552,7 @@ query_acknack() {
 			q ) return 0
 			    ;;
 			A ) labflags="--with-comment --force-linebreak "
+			    withcomment=" with comment"
 			    ;&
 			a ) b_acked=true
 			    b_nacked=false
@@ -558,7 +561,7 @@ query_acknack() {
 			    actstr="${STA}Approve$OFF"
 			    confirm_acknack "$actstr" "$labflags" || continue
 			    set_acknack
-			    update_history $current_mr "Approved"
+			    update_history $current_mr "Approved$withcomment"
 			    ;;
 			b ) labflags=
 			    b_nacked=true
@@ -582,6 +585,7 @@ query_acknack() {
 			    ;;
 			c ) echo -e "$INF   Comment on $STA$current_mr$INF ...$OFF"
 			    lab mr note "$origin" "$current_mr" --force-linebreak
+			    update_history $current_mr "Comment-only"
 			    ;;
 			v ) update_mrcomments_log
 			    less "$mrcomments"
