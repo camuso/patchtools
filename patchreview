@@ -497,6 +497,16 @@ call_getmr() {
 # because, in effect, query_acknack will be calling itself at the end
 # of the chain of patchreview functions.
 #
+# Globals:
+#   menuinput   - a main menu selection
+#   mrqan_news  - display the current list of MRs
+#   mrqan_newg  - get a new specific MR to review
+#   rc_continue - present the main patchreview menu
+#   rc_run      - run the patchreview
+#
+# Arguments:
+#   $1 - return value from MR ack/nak menu
+#
 case_qanret() {
 	local stat=
 	menuinput=

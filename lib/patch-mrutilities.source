@@ -445,6 +445,7 @@ $MNU
   $MNU P$OFF  Review diffs for $STA$current_mr
 $(show_missing_fixes "  ")\
   $MNU H$OFF  History of MR Reviews
+  $MNU W$OFF  Select a repo from your repo list
   $MNU q$OFF  Quit and return to main menu$OFF
 EOF
 )
@@ -463,7 +464,7 @@ EOF
 		fi
 
 		promptgetchar "$MNU   Enter one of the above: $OFF" _dak_response
-		[[ qbuaAcvMmrPH =~ $_dak_response ]] && break
+		[[ qbuaAcvMmrPHW =~ $_dak_response ]] && break
 	done
 
 	eval "$1"="$_dak_response"
@@ -593,6 +594,8 @@ query_acknack() {
 			M ) return $mrqan_newg
 			    ;;
 			m ) return $mrqan_news
+			    ;;
+			W ) set_working_repo
 			    ;;
 			r ) refresh_mergelist && return $mrqan_run
 			    ;;
