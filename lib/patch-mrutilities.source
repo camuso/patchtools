@@ -926,14 +926,15 @@ get_merge_request() {
 #
 # Total number of commits analyzed
 get_mrcommits_labmr() {
+$ui_b_debug && echo "get_mr_commits_labmr"
 	local mr="$1"
-	local bascmt
+	local basecmt="OK"
 	local lcnt
 	local origbranch
 	local newbranch
 	local -a tary=()
 	local -a depend=()
-
+$ui_b_debug && set -x
 	mapfile -t depend < <(grep -o 'Dependencies::[^,]*' "$mrcomments")
 	for ((i = 0; i < ${#depend[@]}; ++i)); do
 		basecmt="$(echo "$depend" | cut -d':' -f3)"
@@ -965,6 +966,7 @@ get_mrcommits_labmr() {
 	fi
 
 	patchcount=$(wc -l < "$bp_commits")
+$ui_b_debug && set +x
 }
 
 update_mrcomments_log() {
@@ -1031,6 +1033,7 @@ get_merge_request_patches() {
 	local basmr=
 	local basary=()
 	local approvals=
+$ui_b_debug && echo "mr:$mr:"
 
 	bascmt="$origin"
 	b_already_acked=false
