@@ -914,7 +914,7 @@ EOF
 )
 	echo -e "$statstr"
 	git status
-	$b_internal || exit 0
+	$b_internal && ui_press_any || exit 0
 }
 
 #** get_patchdir: get the directory to receive the patches
@@ -1171,7 +1171,9 @@ $MNU S $OFF Stop before              : $STA$stophash$OFF
 $MNU P $OFF Create a patch series
 $MNU N $OFF Start a New Session
 $MNU H $OFF Show History
-$MNU r $OFF Run cherp
+$MNU r $OFF Run all remaining commits
+$MNU 1 $OFF Run the next commit and stop
+$MNU s $OFF cherp status
 $(show_altopt "R" "RESET to an earlier commit in this session ")
 $MNU q $OFF Quit this tool
 $MNU h $OFF Help
@@ -1240,6 +1242,10 @@ menu_parser() {
 			cfg_set_item "stophash" "$stophash"
 			;;
 		P )	create_patches
+			;;
+		1 )	run_me 1
+			;;
+		s )	show_status i
 			;;
 #		V )	ui_popterm "vim $upcommitsfile"
 #			;;
@@ -1381,23 +1387,16 @@ reset_cherp() {
 	local -a clrary=()
 	local linenumber
 
-	if [ "$dncurrenthead" == "$dnorighead" ]; then
-		echo -e "${WRN}No backported commits to choose from."
-		ui_press_any
-		return
-	fi
-
-	get_newhead || return
-
-	# User selected a new head, so clear the leading "+ " from the lines in
-	# the upstreamcommitsfile to indicate that the corresponding upstream
-	# commits are not applied. We are backtracking.
+	# Reset: Clear the leading "+ " from the lines in the upstreamcommitsfile to
+	# indicate that the corresponding upstream commits are not applied.
+	# We are backtracking.
 	# If the user chose the original head, resetting it back to the beginning,
 	# then clear all the done markers, else just clear the ones that we're
 	# retreating from.
 	if [ "$dncurrenthead" == "$dnorighead" ]; then
 		linenumber=1
 	else
+		get_newhead || return
 		mapfile -t clrary < <(extup -m -b "$dncurrenthead".. | cut -d' ' -f1)
 		linenumber=$(grep -n -m1 "${clrary[-1]}" "$upcommitsfile" | cut -d: -f1)
 	fi
@@ -2008,7 +2007,7 @@ init_current_session() {
 #                 b_cmdline
 #                 b_conflict
 #                 b_session_inited
-#     ARGUMENTS:  none
+#     ARGUMENTS:  $1 - if .eq to 1, then just run the very next commit and stop.
 #       RETURNS:  None
 #*==============================================================================
 run_me() {
@@ -2016,6 +2015,9 @@ run_me() {
 
 	local uphash
 	local stat
+	local b_one=false
+
+	(($1 == 1)) && b_one=true
 
 	$b_session_inited || { $b_cmdline && init_cmdline_call; }
 
@@ -2040,6 +2042,8 @@ run_me() {
 			echo -e "${CAU}No more commits in $STA$upcommitsfile$OFF"
 			break
 		fi
+
+		$b_one && break
 
 	done
 
