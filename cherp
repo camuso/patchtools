@@ -283,6 +283,7 @@ set_working_directory() {
 	echo -e "${INF}The working directory is used for scratch by this script.$OFF"
 	[ "$workdir" ] && echo -e "$STA$workdir$OFF"
 	set_dir "working" "workdir" workdir
+	cfg_set_item "workdir" "$workdir"
 }
 
 #** fetch_upstream_repo: spawn git fetch $upname $upurl and wait on proc
@@ -948,15 +949,10 @@ get_patchdir() {
 #*
 create_patches() {
 	local dirstr="${MNU}Do you want to use$STA $patchdir$MNU y/n :$OFF "
-	local pdir="$patchdir"
 	local findargs="-maxdepth 1 -type f -name "*.patch" -print -quit"
-	local delprompt="$(
-cat <<EOF
-${CAU}There are .patch files in$STA $patchdir$CAU.
-${INF}They will be erased if you continue.
-Do you want to proceed?$MNU y/n : $OFF
-EOF
-)"
+
+	cfg_get_item "patchdir" patchdir
+	local pdir="$patchdir"
 
 	echo -e "\n${INF}Create a patch series from the applied commits.$OFF"
 
@@ -968,6 +964,13 @@ EOF
 		get_patchdir || return
 	}
 
+	local delprompt="$(
+cat <<EOF
+${CAU}There are .patch files in$STA $patchdir$CAU.
+${INF}They will be erased if you continue.
+Do you want to proceed?$MNU y/n : $OFF
+EOF
+)"
 	[ -n "$(find "$patchdir" $findargs)" ] && {
 		loop_yn "$delprompt" && rm -f "$patchdir"/*.patch || return
 	}
@@ -1272,7 +1275,7 @@ menu_loop() {
 
 	cmtmsgfile="$workdir/.gcpgitlog"
 
-
+	cfg_update_configfile
 	while :; do
 
 		menu_parser
