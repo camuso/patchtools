@@ -802,13 +802,15 @@ show_upsteam_commits_file() {
 	local lastdnup  # last upstream commit referenced in last downstream commit
 	local padstr="$(printf "%*c" "$menupad" " ")"
 
-	$b_cmdline && \
-		cmtfilestr="    Backports File           : $STA$upcommitsfile$OFF" || \
-		cmtfilestr="$MNU f$OFF  Backports File           : $STA$upcommitsfile$OFF"
+	if $b_cmdline; then
+		cmtfilestr="    Upstream Backports File  : $STA$upcommitsfile$OFF"
+	else
+		cmtfilestr="$MNU f$OFF  Upstream Backports File  : $STA$upcommitsfile$OFF"
+	fi
+
+	echo -e "$cmtfilestr"
 
 	[ "$upcommitsfile" ] || return
-
-	[ -f "$upcommitsfile" ] && echo -e "$cmtfilestr"
 
 	# Get the total backports in the file that have not been hashed out.
 	mapfile -t dary < <(grep -v "^[#]" "$upcommitsfile" | grep -v '^$')
@@ -2213,9 +2215,17 @@ fi
 # Main Program
 ##############################################
 
+test_sanity() { echo -en "${CAU}SANITY$OFF  "; ui_press_any; }
+
 # Print the herald
 #
 print_herald
+
+# The following line will single step through this script.
+# Use the # to comment it out.
+# trap 'read -p "$(printf "%$((${#BASH_SOURCE[0]}+8))s" "")" \
+#       line && eval "$line" || exit $?' DEBUG
+
 
 # Present the ui and get the parameters for the cherry-picks.
 #
