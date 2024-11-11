@@ -186,7 +186,7 @@ control_c() {
 }
 
 ################  SANITY TEST DEBUGER  ###########################
-test_sanity() { echo -e "$BLD\0SANITY$OFF"; ui_press_any; }
+test_sanity() { echo -e "${CAU}SANITY$OFF"; ui_press_any; }
 ###################################################################
 
 set_cfg_item() {
