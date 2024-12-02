@@ -295,7 +295,7 @@ update_history() {
 	spc=$(ui_rptchr " " "$fldwid")
 	mridpad=$(ui_padfield_aft "$mrid" " " "$fldwid")
 
-	linenumber=$(grep -wn "$mrid" "$mrhistoryfile" | cut -d':' -f1
+	linenumber=$(grep -wn "$mrid" "$mrhistoryfile" | tail -1 | cut -d':' -f1
 			exit ${PIPESTATUS[0]})
 
 	# If we didn't find the mrid, then add it to the end of the file
