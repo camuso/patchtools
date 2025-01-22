@@ -671,11 +671,12 @@ get_mrlist_specifier() {
 	specmenu=$(
 cat <<EOF
 $MNU
-          ${UND}Specify the MR list content   $OFF
+          ${UND}Specify the MR list content$OFF
+      $MNU M$OFF  My open MRs on the project
       $MNU a$OFF  All MRs on the project
-      $MNU o$OFF  Open MRs
-      $MNU r$OFF  Ready MRs
-      $MNU d$OFF  Draft MRs
+      $MNU o$OFF  All Open MRs
+      $MNU r$OFF  All Ready MRs
+      $MNU d$OFF  All Draft MRs
       $MNU n$OFF  No-conflicts, can be merged
       $MNU c$OFF  Conflicts, cannot be merged
       $MNU m$OFF  Merged MRs
@@ -708,6 +709,9 @@ EOF
 			    spec="--state all --all -t $targbranch"
 			    break
 			    ;;
+			M ) author="$USER"
+			    spec="--state opened --author $author"
+			    break
 		esac
 	done
 
