@@ -1,0 +1,176 @@
+#!/bin/bash
+#
+# filter-backportlog
+#
+
+[ -n "$MYDIR" ] || {
+	declare MYDIR=
+	MYDIR="$(pwd)"
+}
+declare bplog
+declare -a argv=()
+declare -i argc=1
+
+declare usagestr="$(
+cat <<EOF
+
+Filter indigenous commits from the backport log passed as an argument.
+Indigenous commits are commits that are RHEL commits inherited from a
+previous major release. This step is usually only necessary for backport
+logs generated for the first point release of a major release, e.g. 10.1.
+
+$(basename "$0") bplog
+
+Arguments
+---------
+   bplog - backport log file
+
+\0
+EOF
+)"
+
+#** usage - print usage to the screen
+#
+# Globals:
+#   usagestr - Script info and usage instructions
+#*
+usage() {
+	echo -e "$usagestr"
+}
+
+#** control_c: run if user hits control-c
+#
+# Global
+#   CTLC_EXIT - bash environment variable
+#*
+control_c() {
+	echo -e "\nCtrl-c detected\nCleaning up and exiting."
+	exit $CTLC_EXIT
+}
+
+#** exitme
+#
+# Arguments
+#   $1 - exit code
+#   $2 - optional message
+#*
+exitme() {
+	local -i code="$1"
+	local msg="$2"
+
+	((code == 0)) && exit "$code"
+	echo -e "$msg"
+	usage
+	exit "$code"
+}
+
+#** check_arg
+#
+# Globals:
+#   argv - array containing command line arguments
+#*
+check_arg() {
+        local arg="$1"
+
+        # If 1st char is a hyphen, then invalid switch
+        [ "${arg:0:1}" == "-" ] && return 1
+
+        # Otherwise, add the arg to the argary
+        argv+=("$arg")
+        return 0
+}
+
+#** parseopts
+#
+# Globals
+#   argv
+#   argc
+#*
+parseopts() {
+	while (($# > 0)); do
+	    case "$1" in
+		-h | --help )
+		     echo -e "$usagestr"
+		     exit 0
+		     ;;
+		* )  argv+=("$1")
+		     ;;
+	    esac
+	    shift
+	done
+}
+
+#** replaceline: replace a numbered line in a file
+#
+# Replaces one line in a file, using only the line number instead of
+# pattern matching.
+#
+# $1 - Line number
+# $2 - Text to write over the existing text in the line
+# $3 - File
+#
+#*
+replaceline() {
+	local -i line
+	local new_content
+	local tempfile
+
+	tempfile="$(mktemp)"
+
+	awk -v line="$1" -v new_content="$2" '{
+		if (NR == line) {
+			print new_content;
+		} else {
+			print $0;
+		}
+	}' "$3" > "$tempfile"
+	[ -f "$tempfile" ] && mv -f "$tempfile" "$3"
+
+	rm -f "$tempfile"
+}
+
+#** mark_skip: mark the line with a leading #
+#
+#  Indicates the upstream hash in this line of the backport commits file has
+#  been backported.
+#
+#     ARGUMENTS:  $1 - uphash, upstream hash to mark with a leading #
+#       GLOBALS:  bplog
+#*
+mark_skip() {
+	local uphash="$1"
+	local line
+	local -i lnum
+
+	line=$(grep -n -m1 "$uphash" "$bplog")
+	(($? == 0)) || return 1
+	lnum=$(cut -d: -f1 <<< "$line")
+	line=$(cut -d: -f2- <<< "$line")
+	line="# $line"
+	replaceline "$lnum" "$line" "$bplog"
+}
+
+#** main
+#*
+main() {
+	local line
+
+        # Trap for control-c
+        trap control_c SIGINT
+
+	parseopts "$@"
+	bplog="${argv[0]}"
+	bplog="$(realpath "$bplog")"
+	[ -f "$bplog" ] || exitme 1 "Cannot find: $bplog"
+
+	while read line; do
+		line=$(cut -d' ' -f1 <<< "$line")
+		[[ "${line:0:1}" == "#" ]] && continue
+		git log --oneline --no-merges | grep -m1 "$line" \
+			&& mark_skip "$line"
+	done < "$bplog"
+
+	exitme 0
+}
+
+main "$@"
