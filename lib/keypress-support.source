@@ -17,10 +17,11 @@ declare promptgetkey_cmd=
 declare keypress_info=$(
 cat <<EOF
 There are some options in this script that require Alt-Shift keystrokes
-to execute. These options won't be available without the natively compiled
-keypress utility in this repo. These options can do things like delete
-files or reset git heads, etc. The alt-shift keystrokes provide a level
-of safety from inadvertent keystrokes modifying your development state.
+to execute. These options will not be available without the natively
+compiled keypress utility in this repo. These options can do things
+like delete files or reset git heads, etc. The alt-shift keystrokes
+provide a level of safety from inadvertent keystrokes modifying your
+development state.
 \0
 EOF
 )
