@@ -2093,7 +2093,7 @@ check_command() {
 # trap keyboard interrupt (control-c)
 #
 trap ctrl_c SIGINT
-ui_testkeypress		# set the getchar input command
+ui_testkeypress	# from lib/keypress_support.source: inits promptgetkey_cmd
 init_session
 
 # Determine if we're at the top of a git tree. If not, exit.
