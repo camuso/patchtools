@@ -48,7 +48,7 @@ OPTIONS:
 
   -u Include ui functions, see lib/ui.source or run "docscript lib/ui.source"
 
-  -k include colors, see lib/ui.source
+  -k include colors, includes lib/ui.source
 
   -n no library functions. If this flag is present, no library functions
      will be included, regardless of any other flags.
@@ -70,7 +70,11 @@ OPTIONS:
      Example: -a "arg1 arg2"
 
   -C commands, a quote enclosed string of command verbs for a command
-     oriented script
+     oriented script. A command oriented script will take commands
+     instead of arguments. The difference is that commands invoke a
+     specific response from the script, while arguments provide input
+     for the script to act upon.
+     The difference is subtle, but important.
 
   -s source only for a library of functions
 \0
@@ -172,6 +176,13 @@ declare opt=
 
 test_help "$1"
 
+if [[ $@ == *"-C"* && $@ == *"-a"* ]]; then
+  echo "You cannot have both the -a and -C options."
+  echo "This is either a command script or a script that takes args."
+  echo "it cannot be both"
+  exit "$ui_err_invargc"
+fi
+
 for arg in "$@"; do
 
     if [ "${arg:0:1}" == '-' ]; then
@@ -183,11 +194,11 @@ for arg in "$@"; do
 	    b_opts=true
 	    shift
 	    ;;
-	a ) args="$1"
+	a ) [ -z args ] && args="$1" || args="$args $1"
 	    b_args=true
 	    shift
 	    ;;
-	C ) cmds="$1"
+	C ) [ -z "$cmds" ] && cmds="$1" || cmds="$cmds $1"
 	    b_cmds=true
 	    shift
 	    ;;
@@ -265,23 +276,31 @@ $b_ui && echo -en '
 $b_cfgmgr && echo -en '
 [ "$cfgmgr_loaded" ] || source "${MYLIB}/cfgmgr.source"
 
-# Configuration (sticky) variables
+#** Configuration (sticky) variables
+#*
 declare configfile="${MYDATA}/$(basename "$0").conf"
 declare -A configtable
 configtable[var]=	# Rename and add new conf vars as needed
 ' >> "$ofile"
 
-$b_color && echo -en '
+$b_color && echo -e '
 declare -i termbkgnd=' >> "$ofile"
 
 $b_args && {
 	argc=0
 	for arg in $args; do
-		echo "declare $arg" >> "$ofile"
+		echo "declare ${arg}=" >> "$ofile"
 		let ++argc
 	done
 	echo "declare -a argv=()" >> "$ofile"
 	echo "declare -i argc=$argc" >> "$ofile"
+}
+
+$b_cmd && {
+	for cmd in $cmds; do
+		echo "declare ${cmd}=" >> "$ofile"
+		let ++argc
+	done
 }
 
 echo -en '
@@ -301,15 +320,20 @@ echo -en '\\0
 EOF
 )"
 
+#** usage: print info and instructions to screen
+#
+# Global
+# 	usagestr
+#*
 usage() {
 	echo -e "$usagestr"
 }
 
-# control_c: run if user hits control-c
+#** control_c: control-c trap
 #
 # Global
 #   CTLC_EXIT - bash environment variable
-#
+#*
 control_c() {
 	echo -e "\\nCtrl-c detected\\nCleaning up and exiting."
 ' >> "$ofile"
@@ -321,26 +345,26 @@ echo -en '	exit $CTLC_EXIT
 ' >> "$ofile"
 
 if $b_cfgmgr; then echo -en '
-# cfg_write - write the configtable into the configfile
+#** cfg_write - write the configtable into the configfile
 #
 # See lib/cfgmgr.source for details
 #
-# Globals
+# Global
 #   configtable
 #   configfile
-#
+#*
 cfg_write() {
 	cfg_write_cfgfile configtable
 }
 
-# cfg_read - read the configfile into the configtable
+#** cfg_read - read the configfile into the configtable
 #
 # see lib/cfgmgr.cource for details
 #
-# Globals:
+# Global
 #   configtable
 #   configfile
-#
+#*
 cfg_read() {
 	cfg_read_cfgfile configtable
 }
@@ -348,15 +372,16 @@ cfg_read() {
 fi
 
 # There will be two different exitme functions. One for if lib/ui
-# is inclided, and one if not.
+# is included, and one if not.
 # Additionally, each of the exitme functions will have to add
 # cfg_write if b_cfgmgr is true.
 
 # For the lib/ui case ...
-if $b_ui; then echo -en '
-# exitme
+if $b_ui; then
+	echo -en '
+#** exitme
 #
-# Globals
+# Global
 #   ui exit codes - see lib/ui.source
 #   ui_err_msg array
 ' >> "$ofile"
@@ -365,7 +390,7 @@ if $b_ui; then echo -en '
 # Arguments
 #   $1 - exit code
 #   $2 - optional string to precede cli message
-#
+#*
 exitme() {
 	local -i code=$1
 	local str="$2"
@@ -380,11 +405,11 @@ exitme() {
 
 # For the case without lib/ui
 else echo -en '
-# exitme
+#** exitme
 #' >> "$ofile"
 
 	if $b_cfgmgr; then echo -en '
-# Globals
+# Global
 #   configfile - these are implicit in the call to cfg_write
 #   configtable
 #' >> "$ofile"
@@ -394,7 +419,7 @@ else echo -en '
 # Arguments
 #   $1 - exit code
 #   $2 - optional message
-#
+#*
 exitme() {
 	local -i code="$1"
 	local msg="$2"
@@ -410,14 +435,14 @@ exitme() {
 fi
 
 $b_color || $b_cfgmgr && echo -en '
-# init
+#** init
 #
-# GLOBALS
+# Global
 ' >> "$ofile"
 
 $b_cfgmgr && echo -e "#   configtable" >> "$ofile"
 
-$b_color || $b_cfgmgr && echo -en '#
+$b_color || $b_cfgmgr && echo -en '#*
 init() {
 ' >> "$ofile"
 
@@ -429,11 +454,11 @@ $b_color || $b_cfgmgr && echo -en '}
 ' >> "$ofile"
 
 ($b_args || $b_opts) && echo -en '
-# check_arg
+#** check_arg
 #
-# Globals:
+# Global
 #   argv - array containing command line arguments
-#
+#*
 check_arg() {
         local arg="$1"
 
@@ -445,12 +470,12 @@ check_arg() {
         return 0
 }
 
-# parseopts
+#** parseopts
 #
-# Globals
+# Global
 #   argv
 #   argc
-#
+#*
 parseopts() {
 	while (($# > 0)); do
 	    case "$1" in
@@ -499,7 +524,9 @@ else
 	echo >> "$ofile"
 fi
 
-echo -en 'main() {
+echo -en '#** main
+#*
+main() {
         # Trap for control-c
         trap control_c SIGINT
 ' >> "$ofile"
