@@ -141,11 +141,13 @@ print_herald() {
 
 #** exit_cherp: exit in an orderly manner
 #===============================================================================
-#     ARGUMENTS:  None
+#     ARGUMENTS:  1 - exit code
+#                 2 - optional exit message
 #       RETURNS:  None
 #===============================================================================
 exit_cherp() {
 	# echo -e "$UND\0exit_cherp $1$OFF"
+	[ -n "$2" ] && echo -e "\n$2\n"
 	$b_session_inited && save_session
 	exit "$1"
 }
@@ -1391,6 +1393,8 @@ reset_cherp() {
 	local cols=$((tcols - 12))
 	local -a clrary=()
 	local linenumber
+echo "dncurrenthead: $dncurrenthead dnorighead: $dnorighead"
+
 
 	# Reset: Clear the leading "+ " from the lines in the upstreamcommitsfile to
 	# indicate that the corresponding upstream commits are not applied.
@@ -1398,13 +1402,13 @@ reset_cherp() {
 	# If the user chose the original head, resetting it back to the beginning,
 	# then clear all the done markers, else just clear the ones that we're
 	# retreating from.
-	if [ "$dncurrenthead" == "$dnorighead" ]; then
-		linenumber=1
-	else
+#	if [ "$dncurrenthead" == "$dnorighead" ]; then
+#		linenumber=1
+#	else
 		get_newhead || return
 		mapfile -t clrary < <(extup -m -b "$dncurrenthead".. | cut -d' ' -f1)
 		linenumber=$(grep -n -m1 "${clrary[-1]}" "$upcommitsfile" | cut -d: -f1)
-	fi
+#	fi
 
 	sed -i "${linenumber},\$s|^+ ||" "$upcommitsfile"
 
@@ -1794,16 +1798,7 @@ get_cfg_item() {
 get_originhead() {
 	local br
 
-	# Let's use the .git/config file to get the name of the origin branch
-	br="$(grep origin -B2 .git/config | grep -m1 branch | tr -d '["\[\]]')"
-	br="${br#* }"
-
-	# Get the original head by getting the commit where the current
-	# branch diverged from main
-	dnorighead="$(git merge-base HEAD "$br")"
-	dnorighead="$(cut -d' ' -f1 <<< "$(gitnice -1 "$dnorighead")")"
-
-	set_cfg_item dnorighead "$dnorighead"
+	dnorighead="$(get_cfg_item dnorighead)"
 }
 
 #** get_backport_mode: choose which of the availiable backport modes to use
@@ -1969,11 +1964,15 @@ init_newsession() {
 	# echo -e "\n$UND\0init_newsession$OFF"
 
 	read_session
+	dnorighead="$(cut -d' ' -f1 <(git log --oneline -1 ))"
+	set_cfg_item dnorighead "$dnorighead"
+
 	b_conflict=false
 	set_cfg_item b_conflict "$b_conflict"
 	set_working_directory
 	set_upcommitsfile
 	set_gitbranch
+
 	echo -e "\n${CAU}The following will be in the Options Menu.$OFF"
 	get_oneopt "${MNU}JIRA link: $OFF" "str_jira"
 	get_oneopt "${MNU}CVE: $OFF" "str_cve"
@@ -2021,8 +2020,15 @@ run_me() {
 	local uphash
 	local stat
 	local b_one=false
+	local -i input="$1"
 
-	(($1 == 1)) && b_one=true
+	[ -n "$upcommitsfile" ] || \
+		exit_cherp $exit_nothing "${CAU}No Upstream Backports file.$OFF"
+
+	[ -n "$workdir" ] ||
+		exit_cherp $exit_nothing "${CAU}No Working Directory.$OFF"
+
+	[ -n "$input" ] && (($input == 1)) && b_one=true
 
 	$b_session_inited || { $b_cmdline && init_cmdline_call; }
 
