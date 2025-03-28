@@ -1393,8 +1393,6 @@ reset_cherp() {
 	local cols=$((tcols - 12))
 	local -a clrary=()
 	local linenumber
-echo "dncurrenthead: $dncurrenthead dnorighead: $dnorighead"
-
 
 	# Reset: Clear the leading "+ " from the lines in the upstreamcommitsfile to
 	# indicate that the corresponding upstream commits are not applied.
@@ -1402,13 +1400,9 @@ echo "dncurrenthead: $dncurrenthead dnorighead: $dnorighead"
 	# If the user chose the original head, resetting it back to the beginning,
 	# then clear all the done markers, else just clear the ones that we're
 	# retreating from.
-#	if [ "$dncurrenthead" == "$dnorighead" ]; then
-#		linenumber=1
-#	else
-		get_newhead || return
-		mapfile -t clrary < <(extup -m -b "$dncurrenthead".. | cut -d' ' -f1)
-		linenumber=$(grep -n -m1 "${clrary[-1]}" "$upcommitsfile" | cut -d: -f1)
-#	fi
+	get_newhead || return
+	mapfile -t clrary < <(extup -m -b "$dncurrenthead".. | cut -d' ' -f1)
+	linenumber=$(grep -n -m1 "${clrary[-1]}" "$upcommitsfile" | cut -d: -f1)
 
 	sed -i "${linenumber},\$s|^+ ||" "$upcommitsfile"
 
