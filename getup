@@ -776,6 +776,7 @@ show_most_recent_cherrypick() {
 	local eofstr="$CAU$padstr was the last commit in Backports File$OFF"
 	local lastbackport=
 
+	[ -f "$upcommitsfile" ] || return
 	lastbackport="$(get_lastbackport)" || { echo -n; return; }
 
 	laststr="\n    Last backported commit   : $STA${lastbackport:0:$cols}$OFF"
@@ -1150,11 +1151,10 @@ show_settings() {
 	local lastbrcmt
 	local orighead
 	local settings
-	local lgc=$(gitnice "$lastgoodcommit")
 
 	subjectprefix="$(git config format.subjectprefix)"
 	lastbrcmt="$(git log -n1 --oneline)"
-	orighead="$(git log --oneline -n1 "$dnorighead")"
+	orighead="$(git log --oneline -n1 $dnorighead)"
 	dncurrenthead="$(cut -d' ' -f1 <<< "$lastbrcmt")"
 
 	settings=$(
