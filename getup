@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# cherp
+# getup
 #
 # Provide some automation for cherrypicking.
 #
@@ -28,7 +28,7 @@
 declare MYMAN="$MYDIR"/man
 declare MYDATA=
 MYDATA="$(realpath ./.data)"
-declare MYHLP="$MYMAN"/cherp.pgman
+declare MYHLP="$MYMAN"/getup.pgman
 declare MYNAME=
 MYNAME="$(basename "$0")"
 
@@ -121,7 +121,7 @@ declare str_herald=
 declare str_conflicts=
 
 init_global_strings() {
-str_herald="\n$MNU${UND}Patchtools v$version$OFF\n\n${MNU}cherp - Automates \
+str_herald="\n$MNU${UND}Patchtools v$version$OFF\n\n${MNU}getup - Automates \
 Backporting$OFF"
 str_conflicts="Conflicts:\n"
 }
@@ -139,14 +139,14 @@ print_herald() {
 	echo -e "$str_herald"
 }
 
-#** exit_cherp: exit in an orderly manner
+#** exit_getup: exit in an orderly manner
 #===============================================================================
 #     ARGUMENTS:  1 - exit code
 #                 2 - optional exit message
 #       RETURNS:  None
 #===============================================================================
-exit_cherp() {
-	# echo -e "$UND\0exit_cherp $1$OFF"
+exit_getup() {
+	# echo -e "$UND\0exit_getup $1$OFF"
 	[ -n "$2" ] && echo -e "\n$2\n"
 	$b_session_inited && save_session
 	exit "$1"
@@ -198,13 +198,13 @@ set_gitbranch() {
 	echo -e "${MNU}git checkout $STA$gitbranch$OFF"
 	git am --abort --quiet >/dev/null 2>&1
 	git checkout "$gitbranch" || {
-		$b_cmdline && exit_cherp $exit_pending;
+		$b_cmdline && exit_getup $exit_pending;
 		return 1
 	}
 
 	git log --oneline -1
 	get_originhead
-	$b_cmdline && exit_cherp $exit_good || return 0
+	$b_cmdline && exit_getup $exit_good || return 0
 }
 
 #** git_set_subjectprefix: Set the subject prefix in .git/config
@@ -523,13 +523,13 @@ set_next_cherrypick() {
 	currentupcommit="$(ui_readline "$upcmtstartline" "$upcommitsfile")"
 	# echo "currentupcommit: $currentupcommit"
 	currentuphash=$(echo "$currentupcommit" | cut -d' ' -f1)
-	$b_cmdline && exit_cherp $exit_good
+	$b_cmdline && exit_getup $exit_good
 }
 
 #** validate_last_upstream_hash: assure commit hash is valid
 #===============================================================================
 #   Validates whether the hash stored in the project file is valid for this
-#   instance of cherp
+#   instance of getup
 #
 #     ARGUMENTS:  none
 #       GLOBALS:  upcommitsfile - the cherry-pick commits file containing the
@@ -1180,7 +1180,7 @@ $MNU N $OFF Start a New Session
 $MNU H $OFF Show History
 $MNU r $OFF Run all remaining commits
 $MNU 1 $OFF Run the next commit and stop
-$MNU s $OFF cherp status
+$MNU s $OFF getup status
 $(show_altopt "R" "RESET to an earlier commit in this session ")
 $MNU q $OFF Quit this tool
 $MNU h $OFF Help
@@ -1238,7 +1238,7 @@ menu_parser() {
 			;;
 		h )	ptpage -b "$tbackground" "$MYHLP"
 			;;
-		q )	exit_cherp $exit_good
+		q )	exit_getup $exit_good
 			;;
 		r )	run_me
 			b_new=false
@@ -1260,7 +1260,7 @@ menu_parser() {
 #			init_current_session
 #			;;
 		R )	((retval == 1)) || return $rc_continue
-			reset_cherp
+			reset_getup
 	esac
 	return $rc_continue
 }
@@ -1312,7 +1312,7 @@ edit_commit() {
 	done
 }
 
-#** abort_cherp: abort the current cherrypick/apply and exit
+#** abort_getup: abort the current cherrypick/apply and exit
 #===============================================================================
 #
 #  This will clear conflicts flag and abort the pending cherrypick
@@ -1322,7 +1322,7 @@ edit_commit() {
 #                 upcmtstartline
 #       RETURNS:  none
 #*===============================================================================
-abort_cherp() {
+abort_getup() {
 	local cmt
 
 	init_cmdline_call
@@ -1337,7 +1337,7 @@ abort_cherp() {
 	cfg_set_item "upcmtstartline" "$upcmtstartline"
 	get_current_cherrypick
 
-	exit_cherp $exit_good
+	exit_getup $exit_good
 }
 
 #** get_newhead: choose from the heads since dnorighead
@@ -1371,7 +1371,7 @@ get_newhead() {
 	return 0
 }
 
-#** reset_cherp: reset the current downstream HEAD to an earlier commit
+#** reset_getup: reset the current downstream HEAD to an earlier commit
 #=============================================================================
 # If the current downstream HEAD is not at the original downstream HEAD, then
 # the user is presented with a list of downstream commits and corresponding
@@ -1389,7 +1389,7 @@ get_newhead() {
 #                 lastuphash -  will be modified if caller selects new dncurrenthead
 #       RETURNS:  none
 #*==============================================================================
-reset_cherp() {
+reset_getup() {
 	local cols=$((tcols - 12))
 	local -a clrary=()
 	local linenumber
@@ -1412,7 +1412,7 @@ reset_cherp() {
 	b_lasthashvalid=false
 	upcmtstartline=0
 	get_next_cherrypick
-	$b_cmdline && exit_cherp $exit_reset || return
+	$b_cmdline && exit_getup $exit_reset || return
 }
 
 #** run_continue: continue backporting after resolving conflicts
@@ -1432,8 +1432,8 @@ run_continue() {
 
 	statstr=$(
 cat <<EOF
-You have made changes that must be committed before using "cherp continue".
-You can use "cherp commit" if you want cherp to make these commits for you.
+You have made changes that must be committed before using "getup continue".
+You can use "getup commit" if you want getup to make these commits for you.
 EOF
 )
 
@@ -1479,7 +1479,7 @@ run_commit() {
 	fi
 
 	b_conflict=false
-	$b_one && exit_cherp $exit_good
+	$b_one && exit_getup $exit_good
 	get_next_cherrypick
 	b_cmdline=false
 	menu_loop
@@ -1619,12 +1619,12 @@ cat <<EOF
 
 $UND$WRN\0You have conflicts to fix.$OFF$INF
 
-After fixing the conflicts, you can reenter cherp with the following commands.
+After fixing the conflicts, you can reenter getup with the following commands.
 
-$MNU\0cherp commit$INF   : if you have fixed the conflicts and want the script to stage
+$MNU\0getup commit$INF   : if you have fixed the conflicts and want the script to stage
                  the commit and create the commit log for you.
 
-$MNU\0cherp continue$INF : if you have fixed the conflicts and made the commit externally
+$MNU\0getup continue$INF : if you have fixed the conflicts and made the commit externally
                  and wish to continue with the next cherrypick.$OFF
 EOF
 )
@@ -1657,7 +1657,7 @@ EOF
 	# If cherry-pick or git-apply returns with 128, the commit was invalid
 	# or ambiguous.
 	#
-	[ $gitstat -eq 128 ] && { echo -e "$bogusmsg"; exit_cherp $exit_bogus; }
+	[ $gitstat -eq 128 ] && { echo -e "$bogusmsg"; exit_getup $exit_bogus; }
 
 	if $b_nit && $b_single; then
 		git reset	# unstage changes.
@@ -1679,7 +1679,7 @@ EOF
 			# echo -e "Saving: $BLD${commit:0:$wcols}$OFF"
 			show_status internal
 			[ -n "$err" ] && echo -e "$INF$err$OFF"
-			exit_cherp $exit_conflict
+			exit_getup $exit_conflict
 		fi
 	fi
 
@@ -1859,11 +1859,11 @@ read_session() {
 	# Initialize the paths for the current working directory
 	#
 	[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
-	configfile="$MYDATA/cherp.conf"
-	cfgtemplate="$MYLIB/cherp.conf"
+	configfile="$MYDATA/getup.conf"
+	cfgtemplate="$MYLIB/getup.conf"
 
 	# This call will init all the global variables with the values stored
-	# in .data/cherp.conf
+	# in .data/getup.conf
 	cfg_start "$cfgtemplate" "$configfile"
 
 	# If the background value saved in the conf file is not valid, then
@@ -1945,7 +1945,7 @@ init_session() {
 
 	read_session
 	init_common
-	# $b_cmdline && exit_cherp $exit_good
+	# $b_cmdline && exit_getup $exit_good
 }
 
 #** init_newsession: initialize a new session from scratch
@@ -1974,7 +1974,7 @@ init_newsession() {
 	b_lasthashvalid=false
 	b_new=true
 	init_common
-	$b_cmdline && exit_cherp $exit_good
+	$b_cmdline && exit_getup $exit_good
 }
 
 #* init_current_session: recover last good conf and internal variables
@@ -2017,10 +2017,10 @@ run_me() {
 	local -i input="$1"
 
 	[ -n "$upcommitsfile" ] || \
-		exit_cherp $exit_nothing "${CAU}No Upstream Backports file.$OFF"
+		exit_getup $exit_nothing "${CAU}No Upstream Backports file.$OFF"
 
 	[ -n "$workdir" ] ||
-		exit_cherp $exit_nothing "${CAU}No Working Directory.$OFF"
+		exit_getup $exit_nothing "${CAU}No Working Directory.$OFF"
 
 	[ -n "$input" ] && (($input == 1)) && b_one=true
 
@@ -2054,7 +2054,7 @@ run_me() {
 
 	save_session
 
-	if $b_cmdline; then exit_cherp $exit_good; else menu_loop; fi
+	if $b_cmdline; then exit_getup $exit_good; else menu_loop; fi
 }
 
 #** ctrl_c: handler for user interrupt
@@ -2065,7 +2065,7 @@ ctrl_c() {
 	set +x
 	echo
 	validate_last_upstream_hash
-	exit_cherp $CTLC_EXIT         # defined in lib/ui.source
+	exit_getup $CTLC_EXIT         # defined in lib/ui.source
 }
 
 #** check_command: checks the command line command
@@ -2153,7 +2153,7 @@ else
 	while :; do
 	    case "$checked_cmd" in
 		"--abort" )
-			abort_cherp
+			abort_getup
 			;;
 		"--branch" )
 			set_gitbranch
@@ -2181,7 +2181,7 @@ else
 			run_single
 			;;
 		"--reset" )
-			reset_cherp
+			reset_getup
 			;;
 		-r | "--run" )
 			run_me
@@ -2232,5 +2232,5 @@ print_herald
 menu_loop
 
 echo
-exit_cherp $exit_good
+exit_getup $exit_good
 
