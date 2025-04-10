@@ -11,10 +11,9 @@ ${MNU}================================
 ${STA}mkbackportlog - patchtools v12.*
 ${MNU}================================
 $OFF
-
 This menu-driven script creates a list of commts to be backported
 from an upstream repo. Commits that have already been backported
-will have a leading $MNU #$OFF to comment them out got subsequent
+will have a leading $MNU #$OFF to comment them out for subsequent
 scripts like git-backport or cherp.
 
 This script must be run in the downstream (RHEL) repo directory.
@@ -135,7 +134,7 @@ Type \'gitnice -h\' to see all the options that script offers.
 For example, let's get the five most recent RHEL commits for the ipmi
 subsystem along with the commit dates.
 
-${WRN}$ ${INF}gitnice -d -5 drivers/char/ipmi/ include/linux/ipmi.h include/linux/ipmi_smi.h
+${CAU}$ ${INF}gitnice -d -5 drivers/char/ipmi/ include/linux/ipmi.h include/linux/ipmi_smi.h
 ${GRN}62b6f130e280 2023-11-19$OFF Merge: RHEL-9.4 Update IPMI to upstream v6.5+
 ${GRN}094c7e28221f 2023-08-07$OFF driver core: class: remove module * from class_create()
 ${GRN}81946f348446 2023-10-23$OFF ipmi: Explicitly include correct DT includes
@@ -280,7 +279,7 @@ $MNU p$OFF - Path(s) to search        :$STA drivers/perf/
 
 $MNU${UND}Optional
 $MNU s$OFF - Start at upstream commit :$STA v6.3
-$MNU e$OFF - End at upstream commit   :$STA v6.6
+$MNU e$OFF - End at upstream commit   :$STA v6.8-rc1
 $MNU B$OFF - Current Downstream Branch:$STA main
 $MNU A$OFF - Add to search path
 $MNU D$OFF - Delete from search path
