@@ -106,6 +106,8 @@ declare repobr=
 declare upscope=	# upstream scope limited to this commit expression
 declare b_localus=false	# default true, upstream is in current local dir
 declare b_interactive=false
+declare upbase=		# the upstream commit that is the base of this
+			# downstream kernel.
 
 declare myman="$MYMAN"/mkbackportlog.pgman
 
@@ -282,7 +284,7 @@ test_help() {
 	shopt -u nocasematch
 }
 
-#** is_validcmtexpr - validate a commit expression
+#** is_validcmtexpr - validate an upstream commit expression
 #
 # Break the commit expression into separate strings, dividing on a
 # double dot elipsis, and cycle through the resulting array to
@@ -313,6 +315,7 @@ is_validcmtexpr() {
 	ui_cd -
 	return 0
 }
+
 #** get_khashsize - print the number of characters in the kernel hash
 #
 # Globals
@@ -916,16 +919,22 @@ menu_loop() {
 #   upcmt
 #   dncmt
 #   upscope
+#   upbase
 #*
 run() {
 	# If the user did not input an upstream commit, then extract the
 	# upstream commit from the submitted RHEL commit, which is the most
 	# recent RHEL commit under consideration, entered with the -dc option.
 	if [ -z "$upcmt" ]; then
-		upcmt="$(oneup $dncmt)"    # extract the upcmt from the dncmt
+		upcmt="$(oneup $dncmt)" || {
+			git rev-list "$upbase" | grep -q -m1 "$dncmt" \
+			&& upcmt="$upbase" \
+			|| exitme "$exit_invhash" "$upcmt $dncmt"
+		}
 
 		# validate the $upcmt
-		[[ $upcmt =~ ^[0-9A-Fa-f]+$ ]] || exitme $exit_noupcmt "$dncmt"
+		([[ "$upcmt" == "$upbase" ]] || [[ $upcmt =~ ^[0-9A-Fa-f]+$ ]]) \
+			|| exitme $exit_noupcmt "$dncmt"
 		is_validcmtexpr "$upcmt" || exitme $exit_noupcmt "$dncmt"
 
 		# trim the upcmt to kernel short hash size
@@ -999,6 +1008,17 @@ run() {
 	fi
 }
 
+#** extract_upbase - extract the upstream base for this downstream kernel
+#
+# Globals:
+#   upbase - the upstream base kernel
+#*
+extract_upbase() {
+	upbase="$(cut -d'-' -f2 < <(gitlasttag))"
+	upbase="$(cut -d. -f1-2 <<< "$upbase")"
+	upbase="v${upbase}"
+}
+
 #** main
 #*
 main() {
@@ -1013,6 +1033,8 @@ main() {
 
         # Trap for control-c
         trap control_c SIGINT
+
+	extract_upbase
 
 	if (($# == 0 )); then
 		b_interactive=true
