@@ -2,7 +2,7 @@
 #
 # getup
 #
-# Provide some automation for cherrypicking.
+# Provide some automation for backporting.
 #
 
 #######################################
@@ -61,7 +61,7 @@ declare b_cmdline=false		# boolean indicating a comman line call
 #########################################
 #** These variables will be initialized by the call to cfg_start
 declare configfile=
-declare upcmtstartline=		# Line in upcommitsfile to start cherrypick
+declare upcmtstartline=		# Line in upcommitsfile to start backport
 declare dnorighead=		# original downstream head at session start
 declare lastuphash=		# most recently applied upstream commit hash
 declare workdir=		# scratch directory for the session
@@ -84,10 +84,11 @@ declare conflicthash=		# upstream hash that introduced a conflict
 #########################################
 
 # backport modes
-declare -i bm_lower=1	# lower boundary of backport modes
-declare -i bm_cherry=1	# git cherry-pick
-declare -i bm_patch=2	# git apply
-declare -i bm_upper=2	# upper boundary of backport modes
+declare -i bm_lower=1		# lower boundary of backport modes
+declare -i bm_cherry=1		# git cherry-pick
+declare -i bm_patch=2		# patch --merge
+declare -i bm_patch_rej=3	# patch, straight no chaser
+declare -i bm_upper=3		# upper boundary of backport modes
 
 declare finaluphash
 declare -i menupad=30
@@ -96,7 +97,7 @@ declare b_lasthashvalid=false
 declare lasttagfile="/dev/shm/gcplasttag"
 
 declare b_new=false		# new session
-declare b_single=false		# only perform single cherrypick
+declare b_single=false		# only perform single backport
 declare b_nit=false		# selective cherrypick
 
 declare gitbranch		# current downstream branch
@@ -431,7 +432,7 @@ EOF
 #** pr_nohash_msg: message for hash not among commits in backport file
 #===============================================================================
 #     ARGUMENTS:  $1 - hash
-#       GLOBALS:  upcommitsfile - file of upstream commits to cherrypick
+#       GLOBALS:  upcommitsfile - file of upstream commits to backport
 #       RETURNS:  none
 #*==============================================================================
 pr_nohash_msg () {
@@ -454,7 +455,7 @@ EOF
 #     ARGUMENTS:  $1 - hash
 #                 $2 - will return the number of the line in the commits file
 #                      that has the hash.
-#       GLOBALS:  upcommitsfile - file of upstream commits to cherrypick
+#       GLOBALS:  upcommitsfile - file of upstream commits to backport
 #       RETURNS:  nonzero if lookup fails
 #*==============================================================================
 lookup_hash() {
@@ -472,10 +473,10 @@ lookup_hash() {
 	return 0
 }
 
-#** set_next_cherrypick: Select the starting commit from the upcommitsfile
+#** set_next_backport: Select the starting commit from the upcommitsfile
 #===============================================================================
 #     ARGUMENTS:  none
-#       GLOBALS:  upcommitsfile - file of upstream commits to cherrypick
+#       GLOBALS:  upcommitsfile - file of upstream commits to backport
 #                 upcmtstartline- starting line for upcommitsfile
 #                 currentupcommit - global storage for current upstream commit
 #                 currentuphash - global storage for current upstream cmt hash
@@ -485,9 +486,9 @@ lookup_hash() {
 #                 ignore_str    - string of comment chars in commits log
 #       RETURNS:  none
 #*==============================================================================
-set_next_cherrypick() {
+set_next_backport() {
 
-	# echo -e "$UND\0set_next_cherrypick$OFF"
+	# echo -e "$UND\0set_next_backport$OFF"
 	$b_cmdline && init_cmdline_call
 
 	local counter=0
@@ -607,7 +608,7 @@ get_finaluphash() {
 	finaluphash="$(cut -d' ' -f1 <<< "${lary[-1]}")"
 }
 
-#** get_next_cherrypick: gets the next commit in the backport commits file
+#** get_next_backport: gets the next commit in the backport commits file
 #===============================================================================
 #
 #  Ignores lines with leading *, indicating the commit is to be skipped, and
@@ -624,8 +625,8 @@ get_finaluphash() {
 #       OUTPUTS:  echoes the hash of next upstream commit in the commits file
 #       RETURNS:  1 if there are no more cherries to pick, else 0
 #*==============================================================================
-get_next_cherrypick() {
-	# local myname="get_next_cherrypick: "
+get_next_backport() {
+	# local myname="get_next_backport: "
 	# echo -e "\n$UND$myname$OFF start line: $upcmtstartline"
 
 	[[ -f "$upcommitsfile" ]] || return 1
@@ -654,31 +655,31 @@ get_next_cherrypick() {
 	return $sts
 }
 
-#** get_current_cherrypick: gets the current commit to backport
+#** get_current_backport: gets the current commit to backport
 #===============================================================================
 #
 #  Gets the current commit in the commits file indicated by the current
 #  upcmtstartline.
 #
-#  Because get_next_cherrypick always pre-increments the upcmtstartline, this
-#  routine will decrement the upcmtstartline before calling get_next_cherrypick/
+#  Because get_next_backport always pre-increments the upcmtstartline, this
+#  routine will decrement the upcmtstartline before calling get_next_backport.
 #
 #     ARGUMENTS:  none
 #       GLOBALS:  upcmtstartline
 #       OUTPUTS:  echoes the hash of next upstream commit in the commits file
-#       RETURNS:  status of call to get_next_cherrypick
+#       RETURNS:  status of call to get_next_backport
 #*===============================================================================
-get_current_cherrypick() {
-	# local myname="get_current_cherrypick:"
+get_current_backport() {
+	# local myname="get_current_backport:"
 	# echo -e "$OFF\n$UND$myname upcmtstartline: $upcmtstartline$OFF"
 
 	((--upcmtstartline))
 	# echo "$myname startline: $upcmtstartline"
-	get_next_cherrypick
+	get_next_backport
 	return $?
 }
 
-#** show_next_cherrypick: show the next upstream commit to backport
+#** show_next_backport: show the next upstream commit to backport
 #===============================================================================
 #     ARGUMENTS:  None
 #       GLOBALS:  upcommitsfile
@@ -689,48 +690,48 @@ get_current_cherrypick() {
 #                 menupad
 #       RETURNS:  none
 #*==============================================================================
-show_next_cherrypick() {
-	# echo "\n${UND}show_next_cherrypick$OFF"
+show_next_backport() {
+	# echo "\n${UND}show_next_backport$OFF"
 
 	local linecount
 	local prstr=
 	local statstr
 	local leadstr
 	local cols=$((tcols - menupad))
-	local show_next_cherrypick_str
+	local show_next_backport_str
 	local padstr="$(printf "%*c" "$menupad" " ")"
 
 	($b_cmdline || $b_conflict) && leadstr="    " || leadstr="$MNU c$OFF  "
 	$b_conflict && statstr="${CAU}Current conflict         ${OFF}:" \
 		    || statstr="Next backport commit     :$OFF"
 
-	get_current_cherrypick	&& prstr="$STA${currentupcommit:0:$cols}$OFF"
+	get_current_backport	&& prstr="$STA${currentupcommit:0:$cols}$OFF"
 
-	show_next_cherrypick_str=$(
+	show_next_backport_str=$(
 cat <<EOF
 
 $leadstr$statstr $prstr
 EOF
 )
-	[ -n "$currentuphash" ] && echo -e "$show_next_cherrypick_str"
+	[ -n "$currentuphash" ] && echo -e "$show_next_backport_str"
 	return 0
 }
 
-#** show_select_next_cherrypick: let user select next commit to backport
+#** show_select_next_backport: let user select next commit to backport
 #===============================================================================
 #     ARGUMENTS:  none
 #       GLOBALS:  upcommitsfile
 #       RETURNS:  0
 #*==============================================================================
-show_select_next_cherrypick() {
-	# echo -e "${UND}show_select_next_cherrypick$OFF"
+show_select_next_backport() {
+	# echo -e "${UND}show_select_next_backport$OFF"
 
 	local selcmt_str
 
 	selcmt_str=$(
 cat <<EOF
 
-$MNU S$INF  Select a different commit for next cherrypick$OFF
+$MNU S$INF  Select a different commit for next backport$OFF
 EOF
 )
 	[[ -f $upcommitsfile ]] || return 1
@@ -758,7 +759,7 @@ get_lastbackport() {
 	[[ $hash =~ ^[0-9a-fA-F]+$ ]] && return 0 || return 2
 }
 
-#** show_most_recent_cherrypick: show the last upstream commit backported
+#** show_most_recent_backport: show the last upstream commit backported
 #===============================================================================
 #     ARGUMENTS:  none
 #       GLOBALS:  lastuplog
@@ -767,8 +768,8 @@ get_lastbackport() {
 #                 b_lasthashvalid
 #       RETURNS:  none
 #*==============================================================================
-show_most_recent_cherrypick() {
-	# echo -e "\n${UND}show_most_recent_cherrypick$OFF"
+show_most_recent_backport() {
+	# echo -e "\n${UND}show_most_recent_backport$OFF"
 
 	local cols=$((tcols - menupad))
 	local laststr
@@ -910,8 +911,8 @@ show_status() {
 	statstr=$(
 cat <<EOF
 $INF$(show_upsteam_commits_file)\
-$INF$(show_most_recent_cherrypick)\
-$INF$(show_next_cherrypick)
+$INF$(show_most_recent_backport)\
+$INF$(show_next_backport)
 $INF    Current downstream branch: $STA$(get_gitbranch)
 $INF    Current downstream head  : $STA${lastbrcmt:0:cols}
 $INF    Original downstream head : $STA${orighead:0:cols}$OFF
@@ -1007,8 +1008,10 @@ show_backport_mode() {
 	case "$backport_mode" in
 	    "$bm_cherry" ) echo "git cherry-pick"
 			  ;;
-	    "$bm_patch" )  echo "patch --merge"
+	    "$bm_patch" )  echo "patch --merge, patch with conflict markers"
 			  ;;
+	    "$bm_patch_rej" ) echo "patch with rej files"
+		    	  ;;
 	esac
 }
 
@@ -1162,8 +1165,8 @@ cat <<EOF
 $MNU
     ${UND}Upstream Environment    $OFF
 $(show_upsteam_commits_file)\
-$(show_most_recent_cherrypick)\
-$(show_next_cherrypick)
+$(show_most_recent_backport)\
+$(show_next_backport)
 $MNU u $OFF Upstream url             : $LNK$upurl$OFF
 $MNU
     ${UND}Downstream Environment  $OFF
@@ -1230,7 +1233,7 @@ menu_parser() {
 			;;
 		u )	set_upstream_url
 			;;
-		c )	set_next_cherrypick
+		c )	set_next_backport
 			;;
 		N )	init_newsession
 			;;
@@ -1312,10 +1315,10 @@ edit_commit() {
 	done
 }
 
-#** abort_getup: abort the current cherrypick/apply and exit
+#** abort_getup: abort the current backport/apply and exit
 #===============================================================================
 #
-#  This will clear conflicts flag and abort the pending cherrypick
+#  This will clear conflicts flag and abort the pending backport
 #
 #     ARGUMENTS:  $1 - true if command line call
 #       GLOBALS:  b_conflict
@@ -1335,7 +1338,7 @@ abort_getup() {
 	upcmtstartline=1
 	cfg_set_item "b_conflict" "$b_conflict"
 	cfg_set_item "upcmtstartline" "$upcmtstartline"
-	get_current_cherrypick
+	get_current_backport
 
 	exit_getup $exit_good
 }
@@ -1406,12 +1409,12 @@ reset_getup() {
 
 	sed -i "${linenumber},\$s|^+ ||" "$upcommitsfile"
 
-	# Reset to the new head, and get the next cherrypick.
+	# Reset to the new head, and get the next backport.
 	git reset --hard "$dncurrenthead"
 	b_conflict=false
 	b_lasthashvalid=false
 	upcmtstartline=0
-	get_next_cherrypick
+	get_next_backport
 	$b_cmdline && exit_getup $exit_reset || return
 }
 
@@ -1443,7 +1446,7 @@ EOF
 	init_cmdline_call
 	git cherry-pick --continue
 	b_conflict=false
-	get_next_cherrypick
+	get_next_backport
 	run_me
 }
 
@@ -1480,7 +1483,7 @@ run_commit() {
 
 	b_conflict=false
 	$b_one && exit_getup $exit_good
-	get_next_cherrypick
+	get_next_backport
 	b_cmdline=false
 	menu_loop
 }
@@ -1500,7 +1503,7 @@ run_single() {
 
 	set_cfg_item "lastuphash" "$currentuphash"
 
-	cherrypick
+	backport
 	stat=$?
 	exit $stat
 }
@@ -1592,7 +1595,7 @@ clear_alldone() {
 	return 0
 }
 
-#** cherrypick: backport the upstream commit in uphash
+#** backport: backport the upstream commit in uphash
 #===============================================================================
 #     ARGUMENTS:  none
 #       GLOBALS:  upcommitsfile
@@ -1604,11 +1607,11 @@ clear_alldone() {
 #                 b_single
 #       RETURNS:  non-zero if something went wrong
 #*==============================================================================
-cherrypick() {
-	# echo -e "$UND\0cherrypick$OFF"
+backport() {
+	# echo -e "$UND\0backport$OFF"
 
 	local uphash=$currentuphash
-	local gitstat
+	local stat
 	local wcols=$((tcols - 10))
 	local untracked
 	local b_setexit=false
@@ -1625,7 +1628,7 @@ $MNU\0getup commit$INF   : if you have fixed the conflicts and want the script t
                  the commit and create the commit log for you.
 
 $MNU\0getup continue$INF : if you have fixed the conflicts and made the commit externally
-                 and wish to continue with the next cherrypick.$OFF
+                 and wish to continue with the next backport commit.$OFF
 EOF
 )
 	bogusmsg=$(
@@ -1650,14 +1653,17 @@ EOF
 	    "$bm_patch" )
 		err="$(patch -p1 --merge < <(git show "$uphash"))"
 		;;
+	    "$bm_patch_rej" )
+		err="$(patch -p1 < <(git show "$uphash"))"
+		;;
 	esac
 
-	gitstat=$?
+	stat=$?
 
-	# If cherry-pick or git-apply returns with 128, the commit was invalid
+	# If cherry-pick with 128 or $err is not null, the commit was invalid
 	# or ambiguous.
 	#
-	[ $gitstat -eq 128 ] && { echo -e "$bogusmsg"; exit_getup $exit_bogus; }
+	([ $stat -eq 128 ] || [ -n "$err" ]) && { echo -e "$bogusmsg"; exit_getup $exit_bogus; }
 
 	if $b_nit && $b_single; then
 		git reset	# unstage changes.
@@ -1669,7 +1675,7 @@ EOF
 		# must report the conflict and stop.
 		untracked="$(git ls-files --others --exclude-standard)"
 
-		if [ -n "$untracked" ] || ((gitstat != 0)); then
+		if [ -n "$untracked" ] || ((stat != 0)); then
 			b_setexit=true
 			b_conflict=true
 			$b_single && git status && exit $exit_conflict
@@ -1806,9 +1812,10 @@ get_backport_mode() {
 	echo
 	echo -e "    ${INF}Which backport mode do you want to use?$MNU"
 	echo -e "      1.$OFF git cherry-pick$MNU"
-	echo -e "      2.$OFF patch --merge"
+	echo -e "      2.$OFF patch --merge, use conflict markers instead of rej files$MNU"
+	echo -e "      3.$OFF patch with reject files"
 
-	loop_range 1 2 backport_mode
+	loop_range $bm_lower $bm_upper  backport_mode
 
 	set_cfg_item "backport_mode" "$backport_mode"
 }
@@ -1911,7 +1918,7 @@ init_common() {
 	# echo -e "$UND\0init_common$OFF"
 
 	$b_new && upcmtstartline=1
-	[ -f "$upcommitsfile" ] && get_current_cherrypick
+	[ -f "$upcommitsfile" ] && get_current_backport
 
 	git branch -r | grep -q "$upname" || fetch_upstream_repo
 
@@ -2039,8 +2046,8 @@ run_me() {
 			echo -e "${INF}Stopping before $MNU$stophash$OFF"
 			break
 		fi
-		cherrypick
-		get_next_cherrypick
+		backport
+		get_next_backport
 		stat=$?
 
 		if [ $stat -ne 0 ];then
@@ -2187,7 +2194,7 @@ else
 			run_me
 			;;
 		"--select" )
-			set_next_cherrypick
+			set_next_backport
 			;;
 		"--setup" )
 			init_session
