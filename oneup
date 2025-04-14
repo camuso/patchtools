@@ -53,7 +53,7 @@ exitme() {
 
 	((code == 0)) && exit "$code"
 	echo -e "$msg"
-	usage
+	# usage
 	exit "$code"
 }
 
