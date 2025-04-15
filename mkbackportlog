@@ -108,6 +108,9 @@ declare b_localus=false	# default true, upstream is in current local dir
 declare b_interactive=false
 declare upbase=		# the upstream commit that is the base of this
 			# downstream kernel.
+declare b_upeqdn=false	# Upstream commit is same as downstream commit,
+			# because the downstream commit is actually
+			# encompassed by the base upstream kernel (upbase).
 
 declare myman="$MYMAN"/mkbackportlog.pgman
 
@@ -925,20 +928,26 @@ run() {
 	# If the user did not input an upstream commit, then extract the
 	# upstream commit from the submitted RHEL commit, which is the most
 	# recent RHEL commit under consideration, entered with the -dc option.
+	# If the submitted RHEL commit does not have a corresponding upstream
+	# commit, then it may be contained within the upstream base commit for
+	# this RHEL kernel. In that case, upcmt=dncmt.
+	# If none of those criteria are met, then exit with error messages.
 	if [ -z "$upcmt" ]; then
 		upcmt="$(oneup $dncmt)" || {
 			git rev-list "$upbase" | grep -q -m1 "$dncmt" \
-			&& upcmt="$upbase" \
+			&& upcmt="$dncmt" \
 			|| exitme "$exit_invhash" "$upcmt $dncmt"
 		}
 
 		# validate the $upcmt
 		([[ "$upcmt" == "$upbase" ]] || [[ $upcmt =~ ^[0-9A-Fa-f]+$ ]]) \
-			|| exitme $exit_noupcmt "$dncmt"
-		is_validcmtexpr "$upcmt" || exitme $exit_noupcmt "$dncmt"
+			|| exitme $exit_invhash "$dncmt"
+		is_validcmtexpr "$upcmt" || exitme $exit_invhash "$dncmt"
 
-		# trim the upcmt to kernel short hash size
-		upcmt="${upcmt:0:$khashsize}"
+		# If the upcmt is the base kernel tag, then no need to trim
+		# the upcmt to kernel short hash size.
+		[ "$upcmt" == "$upbase" ] || upcmt="${upcmt:0:$khashsize}"
+		configtable[upcmt]="$upcmt"
 	fi
 
 	read -r mainbranch <<< "$(git branch -r | grep origin/HEAD | cut -d'>' -f2)"
@@ -989,10 +998,8 @@ run() {
 		local upd="$(cut -d' ' -f3 <<< "$line")" # date of upstream commit
 		local tdc	                         # downstream commit
 
-		tdc="$(git log --oneline --date=short \
-			--grep "commit $tuc" --grep "cherry-picked from $tuc" \
-			--since="$upd" -- $path)"
-		[ -n "$tdc" ] && echo "$tuc $tdc" | tee -a "$outdir/$dnlog"
+		tdc="$(gitnice -d --since=$upd $path | grep "^$tuc")"
+		[ -n "$tdc" ] && echo "$tdc" | tee -a "$outdir/$dnlog"
 	done < "$outdir/$uplog"
 
 	echo
@@ -1014,7 +1021,15 @@ run() {
 #   upbase - the upstream base kernel
 #*
 extract_upbase() {
-	upbase="$(cut -d'-' -f2 < <(gitlasttag))"
+	local ktag=
+
+	# Get the most recent RHEL kernel tag
+	ktag="$(git tag --list 'kernel-*' --sort=-v:refname | head -n 1)"
+
+	# Now extract the upstream base kernel version from the rhel
+	# kernel tag.
+	#
+	upbase="$(cut -d'-' -f2 <<< "$ktag")"
 	upbase="$(cut -d. -f1-2 <<< "$upbase")"
 	upbase="v${upbase}"
 }
