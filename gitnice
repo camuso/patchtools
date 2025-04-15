@@ -42,7 +42,8 @@ $(basename "$0") [options] [commitexpr] [path]
 
   Displays commits in --oneline format, with options as detailed below.
   With no commitexpr, only the most recent commit is displayed.
-  If the commitexpr does not provide a range,  only that one commit is displayed.
+  If the commitexpr does not provide a range, only that one commit is
+  displayed.
 
   commitexpr - any valid git commit expression.
   path - any path, or a list of space-separated paths
@@ -53,16 +54,17 @@ $(basename "$0") [options] [commitexpr] [path]
      befb28f26
      befb28f26~1..
      9930702cfebb..e87443a5f68d
-     c5586d0f711e~1..HEAD
+     c5586d0f711e^..HEAD
 
   Options
-  -c        - show commit date
-  -d        - show author date
-  -a        - show author
-  -s number - space out author to columns of "number" width (git 2.8+ only)
-  -r        - show in reverse order (oldest first)
-  -w        - show full 40-char hash. Default is "--short"
-  -h        - this help text
+  -<number>  - Will ouput <number> lines. If zero, outputs all with pager.
+  -c         - show commit date
+  -d         - show author date
+  -a         - show author
+  -s<number> - space out author to columns of "number" width (git 2.8+ only)
+  -r         - show in reverse order (oldest first)
+  -w         - show full 40-char hash. Default is "--short"
+  -h         - this help text
 
   Additionally, except for formatting options, any valid git log option can
   also be entered.
