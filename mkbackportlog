@@ -18,7 +18,7 @@
 [ "$configmanager_loaded" ] || source "$MYLIB"/cfgmgr.source
 [ "$ptversion_loaded" ]     || source "$MYLIB"/patchtools-version.source
 
-# Other exit codes
+#** Exit Codes
 declare -i exit_ok=0
 declare -i exit_invarg=1
 declare -i exit_invpath=2	# invalid path
@@ -34,9 +34,11 @@ declare -i exit_nopath=11	# user did not supply a path to search
 declare -i exit_norepobr=12	# user did not supply an upstream repo/branch
 declare -i exit_noupstream=13	# PWD does not have an upstream repo
 declare -i exit_noupdir=14	# No upstream directory specified
+#*
 
 declare -a exitmsgary=
 
+#** Exit messages
 exitmsgary=(
 ""
 "Invalid number of arguments."
@@ -54,7 +56,18 @@ exitmsgary=(
 " does not have an upstream repo."
 "You did not specify an upstream repo directory"
 )
+#*
 
+#** exitme - exit with exit code and messages
+#
+# Globals:
+#   b_interactive
+#   exitmsgary
+#   exit codes
+#
+# Arguments:
+#   1 - exit code
+#*
 exitme() {
 	local -i exitval=$1
 	local strarg=""
@@ -79,7 +92,7 @@ exitme() {
 	exit "$exitval"
 }
 
-#** run if user hits control-c
+#** control_c - run if user hits control-c
 #*
 control_c()
 {
@@ -95,7 +108,7 @@ declare -i background=
 declare -i khashsize=
 declare uplog="upstream.log"
 declare dnlog="downstream.log"
-declare chlog="backport.log"
+declare bplog="backport.log"
 declare outdir=
 declare updir="$PWD"
 declare upcmt=
@@ -159,7 +172,7 @@ This script must be run in the downstream (RHEL) repo directory.
 Creates the following files in the <outdir>.
   $STA$uplog$OFF   - contains the upstream commits since$INF upcmt$OFF
   $STA$dnlog$OFF - contains the downstream commits since$INF dwncmt$OFF
-  $STA$chlog$OFF   - contains the upstream commits that have not yet been
+  $STA$bplog$OFF   - contains the upstream commits that have not yet been
                    backported downstream.
 
 If all the required inputs are satisfied, you will be prompted to select an
@@ -356,22 +369,25 @@ getcmt() {
 	return 0
 }
 
-#** parseops - parse the input options
+#** parseops - parse the input options for non-interactive command line
 #
 # Arguments: $@, the whole command line
 #
 # Globals:
-# 	optcount
-# 	upcmt
-# 	dncmt
-# 	usagestr
-# 	searchstr
-# 	path
-# 	upscope
-# 	outdir
-# 	version
-#	configtable[]
-#	version
+#   usagestr
+#   searchstr - optional string to search for upstream
+#   path    - path (subsystem, h files, etc) to be searched for commits
+#   outdir  - directory to receive the log files
+#   updir   - upstream kernel directory
+#   configtable[] - associative array of persistent config variables
+#   version - current version of patchtools
+#   path    - path (subsystem, h files, etc) to be searched for commits
+#   upcmt   - the upstream commit from which to start the search, may be
+#             extracted from dncmt or entered explicitly by user
+#   dncmt   - the downstream commit entered by user to determine upstream
+#             commit
+#   upscope - user option to limit upstream search by the given commit
+#             expression
 #*
 parseops() {
 	local arg=
@@ -428,7 +444,7 @@ parseops() {
 #    were already backported with a leading #
 #
 # GLOBALS
-#	chlog - output commits file
+#	bplog - output commits file
 #	uplog - upstream commits file
 #	dnlog - downstream commits file
 #	outdir - directory for all the commit log files
@@ -437,7 +453,7 @@ parseops() {
 compare_strings() {
 	local uppath="$outdir/$uplog"
 	local dnpath="$outdir/$dnlog"
-	local chpath="$outdir/$chlog"
+	local chpath="$outdir/$bplog"
 	local savedifs="$IFS"
 	local upstr=
 	local rhstr=
@@ -504,7 +520,6 @@ init_env() {
 	currentbranch=$(get_currentbranch)
 	configtable[currentbranch]="$currentbranch"
 	cfg_write
-echo "version: $version"
 }
 
 #** check_log - notify user if logfile already exists
@@ -534,7 +549,7 @@ get_currentbranch() {
 # Globals:
 #   updir
 #   outdir
-#   chlog
+#   bplog
 #*
 seek_str() {
 	local prepend=
@@ -545,7 +560,7 @@ seek_str() {
 	ui_cd "$updir"
 	for str in $searchstr; do
 		prepend=$(echo "$str" | cut -d' ' -f1)
-		outfile="$outdir/$prepend-$chlog"
+		outfile="$outdir/$prepend-$bplog"
 
 		echo -e "\n${STA}Creating $outfile$INF"
 		: > "$outfile"
@@ -554,7 +569,7 @@ seek_str() {
 			commit=$(echo "$line" | cut -d' ' -f1)
 			git show "$commit" | grep -q -m1 "$str" || continue
 			echo "$line" | tee -a "$outfile"
-		done < "$outdir/$chlog"
+		done < "$outdir/$bplog"
 	done
 	ui_cd -
 }
@@ -646,7 +661,7 @@ select_localbr() {
 #
 # GLOBALS:
 #   outdir  - destination directory for files output by this script
-#   chlog   - the backport log file
+#   bplog   - the backport log file
 #   upscope - the upstream limiting commit
 #             this commit will also be excluded, if it's in the
 #             backport log.
@@ -655,7 +670,7 @@ limit_scope() {
 	local delim=
 	local line
 	local -a linary=()
-	local outfil="$outdir"/"$chlog"
+	local outfil="$outdir"/"$bplog"
 
 	mapfile -t linary < "$outfil"
 	> "$outfil"
@@ -912,17 +927,20 @@ menu_loop() {
 #** run - execute with the given parameters
 #
 # Globals
-#   outdir
-#   updir
-#   uplog
-#   dnlog
-#   chlog
-#   repobr
-#   path
-#   upcmt
-#   dncmt
-#   upscope
-#   upbase
+#   outdir  - directory to receive the log files
+#   updir   - upstream kernel directory
+#   uplog   - upstream commits since last downstream commit
+#   dnlog   - downstream commits already backported from upstream
+#   bplog   - commits to be backported
+#   repobr  - current repobranch
+#   path    - path (subsystem, h files, etc) to be searched for commits
+#   upcmt   - the upstream commit from which to start the search, may be
+#             extracted from dncmt or entered explicitly by user
+#   dncmt   - the downstream commit entered by user to determine upstream
+#             commit
+#   upscope - user option to limit upstream search by the given commit
+#             expression
+#   upbase  - the base upstream kernel of this downstream kernel
 #*
 run() {
 	# If the user did not input an upstream commit, then extract the
@@ -936,13 +954,12 @@ run() {
 		upcmt="$(oneup $dncmt)" || {
 			git rev-list "$upbase" | grep -q -m1 "$dncmt" \
 			&& upcmt="$dncmt" \
-			|| exitme "$exit_invhash" "$upcmt $dncmt"
+			|| exitme "$exit_invhash" "$dncmt"
 		}
 
 		# validate the $upcmt
-		([[ "$upcmt" == "$upbase" ]] || [[ $upcmt =~ ^[0-9A-Fa-f]+$ ]]) \
-			|| exitme $exit_invhash "$dncmt"
-		is_validcmtexpr "$upcmt" || exitme $exit_invhash "$dncmt"
+		[[ $upcmt =~ ^[0-9A-Fa-f]+$ ]] || exitme $exit_invhash "$upcmt"
+		is_validcmtexpr "$upcmt" || exitme $exit_invhash "$upcmt"
 
 		# If the upcmt is the base kernel tag, then no need to trim
 		# the upcmt to kernel short hash size.
@@ -954,7 +971,7 @@ run() {
 
 	check_log "$outdir/$uplog"
 	check_log "$outdir/$dnlog"
-	check_log "$outdir/$chlog"
+	check_log "$outdir/$bplog"
 
 	echo -e "${INF}Upstream branch       : $STA$repobr$OFF"
 	echo -e "${INF}Upstream Start commit : $STA$upcmt$OFF"
@@ -1003,7 +1020,7 @@ run() {
 	done < "$outdir/$uplog"
 
 	echo
-	echo -e "${STA}Creating $outdir/$chlog$INF"
+	echo -e "${STA}Creating $outdir/$bplog$INF"
 	compare_strings
 
 	[ -n "$searchstr" ] && seek_str
