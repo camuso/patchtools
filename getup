@@ -61,14 +61,14 @@ declare b_cmdline=false		# boolean indicating a comman line call
 #########################################
 #** These variables will be initialized by the call to cfg_start
 declare configfile=
-declare upcmtstartline=		# Line in upcommitsfile to start backport
+declare upcmtstartline=		# Line in backportfile to start backport
 declare dnorighead=		# original downstream head at session start
 declare lastuphash=		# most recently applied upstream commit hash
 declare workdir=		# scratch directory for the session
-declare upcommitsfile=		# File of upstream commits to cherry-pick
+declare backportfile=		# File of upstream commits to apply
 declare b_conflict=		# last attempt generated a conflict
 declare str_jira=		# Options: JIRA link
-declare str_cve			# Options: CVE
+declare str_cve=		# Options: CVE
 declare str_upstream=		# Options: upstream version, e.g, v6.7
 declare str_brew=		# Options: brew link
 declare str_test=		# Options: string containing test info
@@ -85,7 +85,7 @@ declare conflicthash=		# upstream hash that introduced a conflict
 
 # backport modes
 declare -i bm_lower=1		# lower boundary of backport modes
-declare -i bm_cherry=1		# git cherry-pick
+declare -i bm_gitam3=1		# git am with 3-way merge
 declare -i bm_patch=2		# patch --merge
 declare -i bm_patch_rej=3	# patch, straight no chaser
 declare -i bm_upper=3		# upper boundary of backport modes
@@ -98,20 +98,19 @@ declare lasttagfile="/dev/shm/gcplasttag"
 
 declare b_new=false		# new session
 declare b_single=false		# only perform single backport
-declare b_nit=false		# selective cherrypick
 
 declare gitbranch		# current downstream branch
 
-declare currentuphash	# next hash in the upcommitsfile
-declare currentupcommit # oneline gitlog of next hash in the upcommitsfile
+declare currentuphash	# next hash in the backportfile
+declare currentupcommit # oneline gitlog of next hash in the backportfile
 declare lastuplog	# oneline gitlog of last committed upstream hash
 declare dncurrenthead	# hash of current downstread head
+declare forpatdir	# directory to harbor temporary formatted patches
+			# : for the git am -3 option.
+forpatdir="./.getup"
 
-# Default upstream repo
-declare upurl=			# url of upstream repo
-declare upname="cp_upstream"	# Name of remote upstream repo
-
-# Lines starting with any of these chars will be ignored.
+# Lines in the backport file starting with any of these chars will be
+# ignored.
 # The '#' indicates a comment, and the '+' indicates already committed.
 declare ignore_str="#+"
 
@@ -150,7 +149,32 @@ exit_getup() {
 	# echo -e "$UND\0exit_getup $1$OFF"
 	[ -n "$2" ] && echo -e "\n$2\n"
 	$b_session_inited && save_session
+	[ -e "$forpatdir" ] && rm -rf "$forpatdir"
 	exit "$1"
+}
+
+#** gu_pushd - cd safely to new directory, exit if there is a problem.
+#
+# Globals
+#   none
+#
+# Arguments
+#   1 - directory to cd into
+#*
+gu_pushd() {
+	pushd "$1" > /dev/null  || exit_getup 1 "${CAU}${1} is not a valid directory!$OFF"
+}
+
+#** gu_popd - cd safely out of directory, exit if there is a problem.
+#
+# Globals
+#   none
+#
+# Arguments
+#   none
+#*
+gu_popd() {
+	popd > /dev/null || exit_getup 1 "${CAU}Directory stack empty!$OFF"
 }
 
 #** get_gitbranch: prints the name of the current git branch
@@ -162,7 +186,7 @@ get_gitbranch() {
 	git branch | grep '\*' | cut -d' ' -f2
 }
 
-#** set_gitbranch: list the available branches for the user to choose one
+#** select_gitbranch: list the available branches for the user to choose one
 #===============================================================================
 #     ARGUMENTS:  None
 #       GLOBALS:  workdir
@@ -170,7 +194,7 @@ get_gitbranch() {
 #       RETURNS:  0 if new branch selected, 1 if user did not make a selection
 #                 or if the selected branch could not be checked out.
 #*==============================================================================
-set_gitbranch() {
+select_gitbranch() {
 	local index=1
 	local linenumber
 	local line
@@ -244,8 +268,7 @@ cat <<EOF
 $INF
 This directory has not yet been named.
 You must provide a directory path for me to continue.
-If the path does not exist, I will offer to create it
-for you.
+If the path does not exist, I will create it for you.
 $OFF
 EOF
 )
@@ -274,14 +297,14 @@ EOF
 	eval "$3"="$dir"
 }
 
-#** set_working_directory: for the script's output
+#** input_working_directory: for the script's output
 #===============================================================================
 #     ARGUMENTS:  none
 #       GLOBALS:  workdir
 #       RETURNS:  none
 #*==============================================================================
-set_working_directory() {
-	# echo -e "$UND\0set_working_directory$OFF"
+input_working_directory() {
+	# echo -e "$UND\0input_working_directory$OFF"
 
 	echo -e "${INF}The working directory is used for scratch by this script.$OFF"
 	[ "$workdir" ] && echo -e "$STA$workdir$OFF"
@@ -289,96 +312,55 @@ set_working_directory() {
 	cfg_set_item "workdir" "$workdir"
 }
 
-#** fetch_upstream_repo: spawn git fetch $upname $upurl and wait on proc
-#===============================================================================
-#     ARGUMENTS:  none
-#       GLOBALS:  upurl
-#                 upname
-#       RETURNS:  none
-#*==============================================================================
-fetch_upstream_repo() {
-	local mypid
+#** is_valid_gitdir - check that the directory is a valid git directory
+#
+# Globals
+#   none
+#
+# Arguments
+#   1 - directory to test
+#
+# Returns
+#   0 - if valid git directory
+#   1 - if not
+#*
+is_valid_gitdir() {
+	local gdir="$1"
 
-	echo -e "${INF}Adding url: $UND$CYN$upurl$OFF"
-	echo -e "${INF}as \"$STA$upname\""
-	echo -e "${INF}Type: ${MNU}git branch -r | grep $upname$OFF" \
-		"${INF}to see the $upname remote and its branches$OFF"
-	echo -e "${INF}Fetching the upstream repo.$OFF"
-	echo -e "${INF}This could take some time, so please be patient.$OFF"
-
-	git fetch -p "$upname" & mypid=$!
-	ui_waitonproc_tty $mypid 1
+	[ "$gdir" == "$(git -C $updir rev-parse --show-toplevel 2>&1)" ] \
+		&& return 0 \
+		|| return 1
 }
 
-#** set_upstream_url: user inputs the url to use for upstream repo
-#===============================================================================
-#     ARGUMENTS:  $1="NEW" if there is no upurl stored in the .conf file
-#       GLOBALS:  upurl
-#                 upname
-#       RETURNS:  none
-#*==============================================================================
-set_upstream_url() {
-	local new="$1"	# if == "new", then there is no upurl yet, so ge it
-	local temp=
-	local b_new=
-	local defurl="git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git"
-
-	echo
-
-	if [ "$new" == "NEW" ]; then
-		b_new=true
-		echo -e  "${UND}${MNU}Enter the upstream url$OFF"
-		echo -e "${INF}The default upstream url is ..."
-		echo -e "${LNK}$defurl$OFF"
-		echo
-		echo -e "${INF}Enter $qstr$inf to accept the default.$OFF"
-	else
-		b_new=false
-		echo -e "${UND}${MNU}Change the upstream url$OFF"
-		echo -e "${INF}The current upstream url is ...$OFF"
-		echo -e "$LNK$upurl$OFF"
-		echo
-		echo -e "${INF}Enter $qstr$INF to leave it unchanged.$OFF"
-	fi
-
+#** input_updir - obtain upstream repo directory from user
+#
+# Globals
+#   updir
+#*
+input_updir() {
+	echo -e "${INF}\nThis will loop until I get a valid directory with a valid repo.$OFF"
 	while :; do
-		getuser "Upstream URL: " temp
-
-		if [ -z "$temp" ]; then
-			echo -en "${CAU}Enter an upstream url or $qstr$CAU to "
-			if $b_new; then
-				echo -e "accept the default.$OFF"
-			else
-				echo -e "leave the upstream url unchanged.$OFF"
-			fi
+		getuser "Upstream repo directory: " updir
+		[ -d "$updir" ] || {
+			echo -e "$WRN$updir$CAU is not a valid directory.$OFF"
 			continue
-		fi
-
-		if [ "$temp" == "q" ]; then
-			if $b_new; then
-				upurl="$defurl"
-				break;
-			else
-				return
-			fi
-		else
-			$b_new || git remote remove "$upname"
-			upurl="$temp"
-			break;
-		fi
+		}
+		is_valid_gitdir "$updir" || {
+			echo -e "$WRN$updir$CAU does not contain a git repo."
+			continue
+		}
+		break
 	done
-
-	git remote add "$upname" "$upurl"
-	fetch_upstream_repo
+	cfg_set_item "updir" "$updir"
 }
 
-#** set_upcommitsfile: user enters file containing commits to backport
+#** input_backportfile: user enters file containing commits to backport
 #===============================================================================
 #     ARGUMENTS:  none
-#       GLOBALS:  upcommitsfile - file containing the commits to be backported
+#       GLOBALS:  backportfile - file containing the commits to be backported
 #       RETURNS:  status of call to ui_getfilespec()
 #*==============================================================================
-set_upcommitsfile() {
+input_backportfile() {
 	local stat
 	local prstr
 	local commitsfilemsg
@@ -404,19 +386,19 @@ EOF
 )
 	currentfile=$(
 cat <<EOF
-${INF}The current file is $STA$upcommitsfile$INF.
+${INF}The current file is $STA$backportfile$INF.
 Press $qstr$INF at the prompt to use this file.$OFF
 EOF
 )
-	# echo -e "$UND\0set_upcommitsfile$OFF"
+	# echo -e "$UND\0input_backportfile$OFF"
 
-	[ "$upcommitsfile" ] && prstr="$prstr.\n$currentfile"
-	ui_getfilespec "$prstr : " upcommitsfile
+	[ "$backportfile" ] && prstr="$prstr.\n$currentfile"
+	ui_getfilespec "$prstr : " backportfile
 	stat=$?
 
 	if [ $stat -ne 0 ]; then
-		if [ "$upcommitsfile" ]; then
-			echo -e "${INF}Keeping: $STA$upcommitsfile$OFF"
+		if [ "$backportfile" ]; then
+			echo -e "${INF}Keeping: $STA$backportfile$OFF"
 		else
 			echo -e "$exitmsg"
 			echo -e "$commitsfilemsg"
@@ -424,15 +406,15 @@ EOF
 		fi
 	fi
 
-	upcommitsfile="$(realpath "$upcommitsfile")"
-	set_cfg_item "upcommitsfile" "$upcommitsfile"
+	backportfile="$(realpath "$backportfile")"
+	set_cfg_item "backportfile" "$backportfile"
 	return $stat
 }
 
 #** pr_nohash_msg: message for hash not among commits in backport file
 #===============================================================================
 #     ARGUMENTS:  $1 - hash
-#       GLOBALS:  upcommitsfile - file of upstream commits to backport
+#       GLOBALS:  backportfile - file of upstream commits to backport
 #       RETURNS:  none
 #*==============================================================================
 pr_nohash_msg () {
@@ -442,7 +424,7 @@ pr_nohash_msg () {
 	nohash_msg=$(
 cat <<EOF
 $INF
-  Cannot find $STA$hash$INF as a commit or valid line number in $STA$upcommitsfile$INF
+  Cannot find $STA$hash$INF as a commit or valid line number in $STA$backportfile$INF
   Lines having a '$STA\0#$INF' as their first character are not listed or considered.
   Try again or type $qstr$INF to return to main menu.$OFF
 EOF
@@ -455,7 +437,7 @@ EOF
 #     ARGUMENTS:  $1 - hash
 #                 $2 - will return the number of the line in the commits file
 #                      that has the hash.
-#       GLOBALS:  upcommitsfile - file of upstream commits to backport
+#       GLOBALS:  backportfile - file of upstream commits to backport
 #       RETURNS:  nonzero if lookup fails
 #*==============================================================================
 lookup_hash() {
@@ -463,9 +445,9 @@ lookup_hash() {
 	local counter
 	local line
 
-	[[ -f "$upcommitsfile" ]] || return 1
+	[[ -f "$backportfile" ]] || return 1
 
-	counter=$(grep -m1 -n "^$hash" "$upcommitsfile" | cut -d':' -f1)
+	counter=$(grep -m1 -n "^$hash" "$backportfile" | cut -d':' -f1)
 
 	[ -z "$counter" ] && return 1
 
@@ -473,11 +455,11 @@ lookup_hash() {
 	return 0
 }
 
-#** set_next_backport: Select the starting commit from the upcommitsfile
+#** set_next_backport: Select the starting commit from the backportfile
 #===============================================================================
 #     ARGUMENTS:  none
-#       GLOBALS:  upcommitsfile - file of upstream commits to backport
-#                 upcmtstartline- starting line for upcommitsfile
+#       GLOBALS:  backportfile - file of upstream commits to backport
+#                 upcmtstartline- starting line for backportfile
 #                 currentupcommit - global storage for current upstream commit
 #                 currentuphash - global storage for current upstream cmt hash
 #                 tlines        - number of lines in the terminal window
@@ -501,13 +483,13 @@ set_next_backport() {
 	local cols=$((tcols - 2 - numwid))
 	local selected
 
-	[ -f "$upcommitsfile" ] || return
-	linecount=$(wc -l "$upcommitsfile")
-	echo -e "\n${INF}Contents of upstream commits file: $STA$upcommitsfile$OFF"
+	[ -f "$backportfile" ] || return
+	linecount=$(wc -l "$backportfile")
+	echo -e "\n${INF}Contents of upstream commits file: $STA$backportfile$OFF"
 	echo -e "$MNU\0NOTE:$INF Not showing lines starting with any of these chars:"\
 	        "$STA$ignore_str$OFF\n"
 
-	# Dump the contents of the upcommitsfile
+	# Dump the contents of the backportfile
 	#
 	while read -r line; do
 		((++counter))
@@ -516,12 +498,12 @@ set_next_backport() {
 		echo -e "${line:0:cols}$OFF"
 		linary[$idx]=$counter
 		((++idx))
-	done < "$upcommitsfile"
+	done < "$backportfile"
 
 	echo
 	loop_range_q 1 "$idx" selected
 	[ "$selected" = "q" ] || upcmtstartline=${linary[$((selected - 1))]}
-	currentupcommit="$(ui_readline "$upcmtstartline" "$upcommitsfile")"
+	currentupcommit="$(ui_readline "$upcmtstartline" "$backportfile")"
 	# echo "currentupcommit: $currentupcommit"
 	currentuphash=$(echo "$currentupcommit" | cut -d' ' -f1)
 	$b_cmdline && exit_getup $exit_good
@@ -533,8 +515,8 @@ set_next_backport() {
 #   instance of getup
 #
 #     ARGUMENTS:  none
-#       GLOBALS:  upcommitsfile - the cherry-pick commits file containing the
-#                                 hashes of the commits to be backported.
+#       GLOBALS:  backportfile - the file containing the hashes of the commits
+#                                to be backported.
 #                 b_lasthashvalid - boolean indicating last hash was valid
 #       RETURNS:  nonzero if the last stored hash is not valid
 #*==============================================================================
@@ -543,7 +525,7 @@ validate_last_upstream_hash() {
 
 	# If we don't have a commits file, show nothing
 	#
-	[[ -f $upcommitsfile ]] || b_lasthashvalid=false
+	[[ -f $backportfile ]] || b_lasthashvalid=false
 
 	# If there is no hash saved in the config file, then show nothing.
 	#
@@ -552,7 +534,7 @@ validate_last_upstream_hash() {
 	# If the commit stored in the config file is not in the commits file
 	# then show nothing.
 	#
-	grep -m1 -n "$lastuphash" "$upcommitsfile" >/dev/null 2>&1 || b_lasthashvalid=false
+	grep -m1 -n "$lastuphash" "$backportfile" >/dev/null 2>&1 || b_lasthashvalid=false
 	$b_lasthashvalid && lastuplog=$(git log -n1 --oneline "$lastuphash")
 	$b_lasthashvalid && return 0 || return 1
 }
@@ -578,14 +560,14 @@ getlasttag() {
 # Globals:
 # 	lastuplog
 # 	lastuphash
-# 	upcommitsfile
+# 	backportfile
 #*
 get_lastuplog() {
 	local ch="+"
 	lastuphash=
 
-	[ -f "$upcommitsfile" ] || return
-	lastuplog="$(grep "^$ch" $upcommitsfile | tail -n1)"
+	[ -f "$backportfile" ] || return
+	lastuplog="$(grep "^$ch" $backportfile | tail -n1)"
 
 	if [ -n "$lastuplog" ]; then
 		lastuphash="$(cut -d' ' -f2 <<< "$lastuplog")"
@@ -598,14 +580,50 @@ get_lastuplog() {
 #** get_finaluphash: find the last commit in the backport commits file
 #
 # Globals
-#   upcommitsfile
+#   backportfile
 #   finaluphash
 #*
 get_finaluphash() {
 	local -a lary=()
 
-	mapfile -t lary < <(grep -v "^[${ignore_str}]" "$upcommitsfile" | grep -v '^$')
+	mapfile -t lary < <(grep -v "^[${ignore_str}]" "$backportfile" | grep -v '^$')
 	finaluphash="$(cut -d' ' -f1 <<< "${lary[-1]}")"
+}
+
+#** get_upcommit - get the upstream commit from upstream dir for given hash
+#
+# Globals
+#   updir - directory of upstream repo
+#
+# Arguments
+#   1 - upstream hash to lookup
+#*
+get_upcommit() {
+	local uphash="$1"
+	local retstr=
+
+	gu_pushd "$updir"
+	retstr="$(gitnice -1 "$uphash")"
+	gu_popd
+	echo "$retstr"
+}
+
+#** show_upcommit - stream the diff from the upstream hash to the caller
+#
+# Globals
+#   updir
+#
+# Arguments
+#   1 - uphash
+#*
+show_upcommit() {
+	local uphash="$1"
+	local updiff=
+
+	gu_pushd "$updir"
+	updiff="$(git show "$uphash")"
+	gu_popd
+	echo "$updiff"
 }
 
 #** get_next_backport: gets the next commit in the backport commits file
@@ -616,7 +634,7 @@ get_finaluphash() {
 #  branch.
 #
 #     ARGUMENTS:  none
-#       GLOBALS:  upcommitsfile
+#       GLOBALS:  backportfile
 #                 upcmtstartline
 #                 currentuphash
 #                 currentupcommit
@@ -629,25 +647,30 @@ get_next_backport() {
 	# local myname="get_next_backport: "
 	# echo -e "\n$UND$myname$OFF start line: $upcmtstartline"
 
-	[[ -f "$upcommitsfile" ]] || return 1
+	[[ -f "$backportfile" ]] || return 1
 
 	local idx
 	local line
 	local -a lary=()
 	local sts=0
 
+	# Make sure we have a valid upstream directory, or prompt the user to
+	# input one.
+	# 
+	[ -d "$updir" ] || input_updir
+
 	# Find the first line that does NOT begin with one of the characters in the
 	# string of characters indicating the line is to be ignored.
 	#
-	mapfile -t lary < <(grep -v "^[${ignore_str}]" "$upcommitsfile" | grep -v '^$')
+	mapfile -t lary < <(grep -v "^[${ignore_str}]" "$backportfile" | grep -v '^$')
 	if ((${#lary} > 0)); then
 		currentuphash="$(cut -d' ' -f1 <<< "${lary[0]}")"
-		upcmtstartline="$(grep -n "$currentuphash" "$upcommitsfile" | cut -d: -f1)"
-		currentupcommit="$(gitnice -1 "$currentuphash")"
+		upcmtstartline="$(grep -n "$currentuphash" "$backportfile" | cut -d: -f1)"
+		currentupcommit="$(get_upcommit "$currentuphash")"
 		sts=0
 	else
 		currentuphash=
-		upcmtstartline="$(($(wc -l < "$upcommitsfile") + 1))"
+		upcmtstartline="$(($(wc -l < "$backportfile") + 1))"
 		sts=1
 	fi
 
@@ -682,7 +705,7 @@ get_current_backport() {
 #** show_next_backport: show the next upstream commit to backport
 #===============================================================================
 #     ARGUMENTS:  None
-#       GLOBALS:  upcommitsfile
+#       GLOBALS:  backportfile
 #                 currentupcommit
 #                 currentuphash
 #                 b_conflict
@@ -720,7 +743,7 @@ EOF
 #** show_select_next_backport: let user select next commit to backport
 #===============================================================================
 #     ARGUMENTS:  none
-#       GLOBALS:  upcommitsfile
+#       GLOBALS:  backportfile
 #       RETURNS:  0
 #*==============================================================================
 show_select_next_backport() {
@@ -734,7 +757,7 @@ cat <<EOF
 $MNU S$INF  Select a different commit for next backport$OFF
 EOF
 )
-	[[ -f $upcommitsfile ]] || return 1
+	[[ -f $backportfile ]] || return 1
 	echo -e "$selcmt_str"
 	return 0
 }
@@ -777,18 +800,18 @@ show_most_recent_backport() {
 	local eofstr="$CAU$padstr was the last commit in Backports File$OFF"
 	local lastbackport=
 
-	[ -f "$upcommitsfile" ] || return
+	[ -f "$backportfile" ] || return
 	lastbackport="$(get_lastbackport)" || { echo -n; return; }
 
 	laststr="\n    Last backported commit   : $STA${lastbackport:0:$cols}$OFF"
 	echo -e "$laststr"
-	((upcmtstartline > $(wc -l < "$upcommitsfile"))) && echo -e "$eofstr"
+	((upcmtstartline > $(wc -l < "$backportfile"))) && echo -e "$eofstr"
 }
 
 #** show_upsteam_commits_file: print the filename of the upstream commmits file
 #===============================================================================
 #     ARGUMENTS:  none
-#       GLOBALS:  upcommitsfile
+#       GLOBALS:  backportfile
 #                 b_cmdline
 #       RETURNS:  none
 #*==============================================================================
@@ -807,21 +830,21 @@ show_upsteam_commits_file() {
 	local padstr="$(printf "%*c" "$menupad" " ")"
 
 	if $b_cmdline; then
-		cmtfilestr="    Upstream Backports File  : $STA$upcommitsfile$OFF"
+		cmtfilestr="    Upstream Backports File  : $STA$backportfile$OFF"
 	else
-		cmtfilestr="$MNU f$OFF  Upstream Backports File  : $STA$upcommitsfile$OFF"
+		cmtfilestr="$MNU f$OFF  Upstream Backports File  : $STA$backportfile$OFF"
 	fi
 
 	echo -e "$cmtfilestr"
 
-	[ "$upcommitsfile" ] || return
+	[ "$backportfile" ] || return
 
 	# Get the total backports in the file that have not been hashed out.
-	mapfile -t dary < <(grep -v "^[#]" "$upcommitsfile" | grep -v '^$')
+	mapfile -t dary < <(grep -v "^[#]" "$backportfile" | grep -v '^$')
 	nd="${#dary[@]}"
 
 	# Get the backports in the file that indicate they have been committed.
-	mapfile -t bary < <(grep "^[+]" "$upcommitsfile" | grep -v '^$')
+	mapfile -t bary < <(grep "^[+]" "$backportfile" | grep -v '^$')
 	nb="${#bary[@]}"
 
 	# If none of the upstream commits has been applied to downstream, and
@@ -913,6 +936,7 @@ cat <<EOF
 $INF$(show_upsteam_commits_file)\
 $INF$(show_most_recent_backport)\
 $INF$(show_next_backport)
+$INF    Current upstream dir     : $STA$updir
 $INF    Current downstream branch: $STA$(get_gitbranch)
 $INF    Current downstream head  : $STA${lastbrcmt:0:cols}
 $INF    Original downstream head : $STA${orighead:0:cols}$OFF
@@ -1001,12 +1025,12 @@ show_tbackground() {
 #
 #  Globals:
 #    backport_mode
-#    bm_cherry
+#    bm_gitam3
 #    bm_patch
 #*
 show_backport_mode() {
 	case "$backport_mode" in
-	    "$bm_cherry" ) echo "git cherry-pick"
+	    "$bm_gitam3" ) echo "git am -3 of upstream git show <commit>"
 			  ;;
 	    "$bm_patch" )  echo "patch --merge, patch with conflict markers"
 			  ;;
@@ -1047,13 +1071,13 @@ EOF
 	echo -e "$options"
 }
 
-#** get_oneopt: get one of the string options
+#** input_oneopt: get one of the string options
 #
 # Arguments:
 #   $1 - prompt string
 #   $2 - option name by reference, so no leading $
 #*
-get_oneopt() {
+input_oneopt() {
 	local prompt="$1"
 	local -n getone_str="$2"
 	local item="$2"
@@ -1088,15 +1112,15 @@ get_options() {
 	"$promptgetkey_cmd" "${MNU}    Enter one of the above: $OFF" opt
 
 	case $opt in
-		J )	get_oneopt "${MNU}JIRA link: $OFF" "str_jira"
+		J )	input_oneopt "${MNU}JIRA link: $OFF" "str_jira"
 			;;
-		C )	get_oneopt "${MNU}CVE: $OFF" "str_cve"
+		C )	input_oneopt "${MNU}CVE: $OFF" "str_cve"
 			;;
-		u )     get_oneopt "${MNU}Upstream status: $OFF" "str_upstream"
+		u )     input_oneopt "${MNU}Upstream status: $OFF" "str_upstream"
 			;;
-		b )	get_oneopt "${MNU}Brew or build info: $OFF" "str_brew"
+		b )	input_oneopt "${MNU}Brew or build info: $OFF" "str_brew"
 			;;
-		t )	get_oneopt "${MNU}Testing info: $OFF" "str_test"
+		t )	input_oneopt "${MNU}Testing info: $OFF" "str_test"
 			;;
 		p )	git_set_subjectprefix
 			;;
@@ -1167,11 +1191,11 @@ $MNU
 $(show_upsteam_commits_file)\
 $(show_most_recent_backport)\
 $(show_next_backport)
-$MNU u $OFF Upstream url             : $LNK$upurl$OFF
 $MNU
     ${UND}Downstream Environment  $OFF
     Current Head             : $STA${lastbrcmt:0:cols}$OFF
     Head at Session Start    : $STA${orighead:0:cols}$OFF
+$MNU u $OFF Upstream repo directory  : $STA$updir$OFF
 $MNU b $OFF Current git branch       : $STA$(get_gitbranch)$OFF
 $MNU w $OFF Working directory        : $STA$workdir$OFF
 $MNU O $OFF Options menu
@@ -1191,7 +1215,7 @@ $OFF
 EOF
 )
 # save for later
-# $MNU V $OFF vim $STA$upcommitsfile$OFF in a popup window
+# $MNU V $OFF vim $STA$backportfile$OFF in a popup window
 
 	echo -e "$settings"
 }
@@ -1225,13 +1249,13 @@ menu_parser() {
 
 	case $setting in
 
-		b )	set_gitbranch
+		b )	select_gitbranch
 			;;
-		w )	set_working_directory
+		w )	input_working_directory
 			;;
-		f )	set_upcommitsfile
+		f )	input_backportfile
 			;;
-		u )	set_upstream_url
+		u )	input_updir
 			;;
 		c )	set_next_backport
 			;;
@@ -1257,7 +1281,7 @@ menu_parser() {
 			;;
 		s )	show_status i
 			;;
-#		V )	ui_popterm "vim $upcommitsfile"
+#		V )	ui_popterm "vim $backportfile"
 #			;;
 #		I )	((retval == 1)) || return $rc_continue
 #			init_current_session
@@ -1273,7 +1297,7 @@ menu_parser() {
 #     ARGUMENTS:  none, but lots of side effects
 #       GLOBALS:  workdir
 #                 cmtmsgfile
-#                 upcommitsfile
+#                 backportfile
 #       RETURNS:  stat, which is the value returned by the call to menu_parser
 #*==============================================================================
 menu_loop() {
@@ -1329,7 +1353,7 @@ abort_getup() {
 	local cmt
 
 	init_cmdline_call
-	git cherry-pick --abort 2>/dev/null
+	git am --abort 2>/dev/null
 	# Get the last succesful commit and git reset to it.
 	cmt="$(gitnice | cut -d' ' -f1)"
 	git reset --hard "$cmt"
@@ -1388,7 +1412,7 @@ get_newhead() {
 #       GLOBALS:  dnorighead
 #                 dncurrenthead
 #                 currentuphash
-#                 upcommitsfile
+#                 backportfile
 #                 lastuphash -  will be modified if caller selects new dncurrenthead
 #       RETURNS:  none
 #*==============================================================================
@@ -1405,9 +1429,9 @@ reset_getup() {
 	# retreating from.
 	get_newhead || return
 	mapfile -t clrary < <(extup -m -b "$dncurrenthead".. | cut -d' ' -f1)
-	linenumber=$(grep -n -m1 "${clrary[-1]}" "$upcommitsfile" | cut -d: -f1)
+	linenumber=$(grep -n -m1 "${clrary[-1]}" "$backportfile" | cut -d: -f1)
 
-	sed -i "${linenumber},\$s|^+ ||" "$upcommitsfile"
+	sed -i "${linenumber},\$s|^+ ||" "$backportfile"
 
 	# Reset to the new head, and get the next backport.
 	git reset --hard "$dncurrenthead"
@@ -1444,7 +1468,7 @@ EOF
 	[ "$gitstat" ] && { echo -e "$statstr"; git status; exit $exit_pending; }
 
 	init_cmdline_call
-	git cherry-pick --continue
+	git am --continue
 	b_conflict=false
 	get_next_backport
 	run_me
@@ -1516,7 +1540,7 @@ run_single() {
 #
 #     ARGUMENTS:  $1 - uphash
 #    		  $2 - optional user supplied mark
-#       GLOBALS:  upcommitsfile
+#       GLOBALS:  backportfile
 #       RETURNS:  0 on success, nonzero on fail
 #*==============================================================================
 mark_done() {
@@ -1526,26 +1550,26 @@ mark_done() {
 	local -i lnum
 	local stat
 
-	[ -f "$upcommitsfile" ] || return 1
+	[ -f "$backportfile" ] || return 1
 
 	# If user passed a char in $2, then it means user wants to apply a
 	# different leading mark.
 	[ -n "$2" ] && mark="$2"
 
-	line=$(grep -n -m1 "$uphash" "$upcommitsfile")
+	line=$(grep -n -m1 "$uphash" "$backportfile")
 	(($? == 0)) || return 1
 	lnum=$(cut -d: -f1 <<< "$line")
 	line=$(cut -d: -f2- <<< "$line")
 	line="$mark $line"
-	ui_replaceline "$lnum" "$line" "$upcommitsfile"
+	ui_replaceline "$lnum" "$line" "$backportfile"
 	return 0
 }
 
-#** clear_done: clear "done" mark for line having given hash in upcommitsfile
+#** clear_done: clear "done" mark for line having given hash in backportfile
 #===  FUNCTION  ================================================================
 #     ARGUMENTS:  $1 - uphash
 #    		  $2 - optional user supplied mark
-#       GLOBALS:  upcommitsfile
+#       GLOBALS:  backportfile
 #       RETURNS:  0 on success, nonzero on fail
 #*==============================================================================
 clear_done() {
@@ -1555,50 +1579,61 @@ clear_done() {
 	local -i lnum
 	local stat
 
-	[ -f "$upcommitsfile" ] || return 1
+	[ -f "$backportfile" ] || return 1
 
 	# If user passed a char in $2, then it means user wants to apply a
 	# different leading mark.
 	[ -n "$2" ] && mark="$2"
 
-	line=$(grep -n -m1 "$uphash" "$upcommitsfile")
+	line=$(grep -n -m1 "$uphash" "$backportfile")
 	(($? == 0)) || return 1
 	lnum=$(cut -d: -f1 <<< "$line")
 	line=$(cut -d: -f2- <<< "$line")
 	line="${line:2}"
-	ui_replaceline "$lnum" "$line" "$upcommitsfile"
+	ui_replaceline "$lnum" "$line" "$backportfile"
 	return 0
 }
 
-#** clear_alldone: clear all the done marks in the upcommitsfile
+#** clear_alldone: clear all the done marks in the backportfile
 #===============================================================================
 #          NAME:  clear_alldone
-#   DESCRIPTION:  Clear the "done" mark for the line in the upcommitsfile
+#   DESCRIPTION:  Clear the "done" mark for the line in the backportfile
 #                 corresponding to the hash passed.
 #     ARGUMENTS:  $1 - optional user supplied mark
-#       GLOBALS:  upcommitsfile
+#       GLOBALS:  backportfile
 #       RETURNS:  0 on success, nonzero on fail
 #*==============================================================================
 clear_alldone() {
 	local mark='+'		# the default leading char
 	local markstr=
 
-	[ -f "$upcommitsfile" ] || return 1
+	[ -f "$backportfile" ] || return 1
 
 	# If user passed a char in $1, then it means user wants to remove  a
 	# different leading mark.
 	[ -n "$1" ] && mark="$1"
 	markstr="$mark "	# add the trailing space
 
-	sed -i "s|^$markstr||g" "$upcommitsfile"
+	sed -i "s|^$markstr||g" "$backportfile"
 
 	return 0
 }
 
+#** get_upcmt - use git show to retrieve the upstream commit
+#
+# Change directory to the upstream kernel directory. No need to maintain an
+# upstream directory as a remote in the downstream directory.
+#
+# Globals
+#   updir
+#
+# Arguments
+#   commit - upstream commit to show
+
 #** backport: backport the upstream commit in uphash
 #===============================================================================
 #     ARGUMENTS:  none
-#       GLOBALS:  upcommitsfile
+#       GLOBALS:  backportfile
 #                 commit
 #                 tcols
 #                 currentuphash
@@ -1620,7 +1655,7 @@ backport() {
 	conflictmsg=$(
 cat <<EOF
 
-$UND$WRN\0You have conflicts to fix.$OFF$INF
+$UND$CAU\0You have conflicts to fix.$OFF$INF
 
 After fixing the conflicts, you can reenter getup with the following commands.
 
@@ -1633,60 +1668,69 @@ EOF
 )
 	bogusmsg=$(
 cat <<EOF
-$WRN
-Upstream commit hash $STA$uphash$WRN appears to be bogus.$INF
-Make sure the hashes in $STA$upcommitsfile$INF are all valid.$OFF
+$CAU
+Could not apply the patch generated from upstream: $STA$uphash$INF
 \0
 EOF
 )
-	commit=$(git log --oneline -n1 "$uphash")
+	commit=$(get_upcommit "$uphash")
 	echo -e "${INF}Processing : $STA${commit:0:$wcols}$OFF"
 
 	case "$backport_mode" in
-	    "$bm_cherry" )
-		if $b_nit; then
-			git cherry-pick -n "$uphash"
-		else
-			git -c merge.renameLimit=1 cherry-pick -x "$uphash"
-		fi
+	    "$bm_gitam3" )
+		local patfil
+
+		# Go into the upstream directory and create a patch file
+		# for git am.
+		gu_pushd "$updir"
+		git format-patch -1 "$uphash" -o "$forpatdir" > /dev/null || {
+			gu_popd
+			exit_getup 1 "${CAU}Failed to generate patch for $WRN$uphash$OFF"
+		}
+		gu_popd
+
+		# get the most recently created patchfile name to apply it.
+		patfil="$(ls -t "$forpatdir" | head -n 1)"
+		err="$(git am -3 "$patfil" 2>&1)"
 		;;
 	    "$bm_patch" )
-		err="$(patch -p1 --merge < <(git show "$uphash"))"
+		err="$(patch -p1 --merge < <(show_upcommit "$uphash") 2>&1)"
 		;;
 	    "$bm_patch_rej" )
-		err="$(patch -p1 < <(git show "$uphash"))"
+		err="$(patch -p1 < <(show_upcommit "$uphash") 2>&1)"
 		;;
 	esac
 
 	stat=$?
 
-	# If cherry-pick with 128 or $err is not null, the commit was invalid
-	# or ambiguous.
+	# Check for errors
+	# git am returns:
+	#    0 all good
+	#    1 conflicts or other problems
+	#    128 fatal, invalid arg, missing patch, or repo corruption
 	#
-	([ $stat -eq 128 ] || [ -n "$err" ]) && { echo -e "$bogusmsg"; exit_getup $exit_bogus; }
+	# patch returns
+	#    0 all good
+	#    1 conflicts
+	#    2 patch cannot be applied at all
+	#
+	(($stat > 1)) && exit_getup $exit_bogus "$CAU$err$OFF"
 
-	if $b_nit && $b_single; then
-		git reset	# unstage changes.
-		git add -p	# select the hunks you want.
-		b_nit=false
-	else
-		# If the backport wants to add a new file to the index, or if the
-		# backport exited with a nonzero status other than 128, then we
-		# must report the conflict and stop.
-		untracked="$(git ls-files --others --exclude-standard)"
+	# If the backport wants to add a new file to the index, or if the
+	# backport exited with a nonzero status greater than 1, then we
+	# must report the conflict and stop.
+	untracked="$(git ls-files --others --exclude-standard)"
 
-		if [ -n "$untracked" ] || ((stat != 0)); then
-			b_setexit=true
-			b_conflict=true
-			$b_single && git status && exit $exit_conflict
-			echo -e "$conflictmsg"
-			conflicthash=$uphash
-			set_cfg_item "conflicthash" "$conflicthash"
-			# echo -e "Saving: $BLD${commit:0:$wcols}$OFF"
-			show_status internal
-			[ -n "$err" ] && echo -e "$INF$err$OFF"
-			exit_getup $exit_conflict
-		fi
+	if [ -n "$untracked" ] || ((stat == 1)); then
+		b_setexit=true
+		b_conflict=true
+		$b_single && git status && exit $exit_conflict
+		echo -e "$conflictmsg"
+		conflicthash=$uphash
+		set_cfg_item "conflicthash" "$conflicthash"
+		# echo -e "Saving: $BLD${commit:0:$wcols}$OFF"
+		show_status internal
+		exit_getup $exit_conflict "$CAU$err$OFF"
 	fi
 
 	stage_commit
@@ -1728,7 +1772,7 @@ stage_commit() {
 	#	Descriptor line, with leading whitespace trimmed
 	#	Bugzilla and brew if available
 	#	Upstream status if available
-	#	Original commit message from cherry-picked commit
+	#	Original commit message from applied commit
 	#	Signed-off-by: line
 	#
 	echo -e "\n" > "$cmtmsgfile"
@@ -1805,13 +1849,13 @@ get_originhead() {
 #
 # Globals
 #   backport_mode
-#   bm_cherry
+#   bm_gitam3
 #   bm_patch
 #*
 get_backport_mode() {
 	echo
 	echo -e "    ${INF}Which backport mode do you want to use?$MNU"
-	echo -e "      1.$OFF git cherry-pick$MNU"
+	echo -e "      1.$OFF git am -3 with upstream commits, same as cherry-pick$MNU"
 	echo -e "      2.$OFF patch --merge, use conflict markers instead of rej files$MNU"
 	echo -e "      3.$OFF patch with reject files"
 
@@ -1825,7 +1869,7 @@ get_backport_mode() {
 #          NAME:  save_session
 #   DESCRIPTION:  Save session's project variables to the project file.
 #     ARGUMENTS:  $1 is not empty if this is an status call
-#       GLOBALS:  upcommitsfile
+#       GLOBALS:  backportfile
 #                 upcmtstartline
 #                 All the sticky project variables
 #       RETURNS:  none
@@ -1852,7 +1896,7 @@ save_session() {
 #
 #     ARGUMENTS:  none
 #       GLOBALS:  workdir
-#                 upcommitsfile
+#                 backportfile
 #                 upurl
 #                 upname
 #                 tbackground
@@ -1885,23 +1929,17 @@ read_session() {
 
 	init_global_strings
 
-	if grep -q "$upname" .git/config; then
-		upurl=$(grep -A1 "$upname" .git/config | grep url | cut -d'=' -f2)
-		# Trim spaces
-		upurl="${upurl// /}"
-	else
-		set_upstream_url "NEW"
-	fi
-
 	((backport_mode >= bm_lower && backport_mode <= bm_upper)) || {
 		get_backport_mode
 	}
 
 	get_originhead
 
-	[ "$upcmtstartline" ] || return 1
-	[ "$workdir" ]        || set_working_directory
-	[ "$upcommitsfile" ]  || set_upcommitsfile
+	[ -n "$upcmtstartline" ] || return 1
+	[ -d "$workdir" ]        || input_working_directory
+	[ -f "$backportfile" ]   || input_backportfile
+	updir=$(get_cfg_item "updir")
+	is_valid_gitdir "$updir" || input_updir
 
 	return 0
 }
@@ -1910,7 +1948,7 @@ read_session() {
 #==============================================================================
 #     ARGUMENTS:  none
 #       GLOBALS:  upcmtstartline
-#                 upcommitsfile
+#                 backportfile
 #                 upname
 #       RETURNS:  none
 #*==============================================================================
@@ -1918,9 +1956,8 @@ init_common() {
 	# echo -e "$UND\0init_common$OFF"
 
 	$b_new && upcmtstartline=1
-	[ -f "$upcommitsfile" ] && get_current_backport
-
-	git branch -r | grep -q "$upname" || fetch_upstream_repo
+	[ -f "$backportfile" ] && get_current_backport
+	[ -d "$forpatdir" ] || mkdir -p "$forpatdir"
 
 	$b_conflict || get_lastuplog
 	b_session_inited=true
@@ -1970,14 +2007,14 @@ init_newsession() {
 
 	b_conflict=false
 	set_cfg_item b_conflict "$b_conflict"
-	set_working_directory
-	set_upcommitsfile
-	set_gitbranch
+	input_working_directory
+	input_backportfile
+	select_gitbranch
 
 	echo -e "\n${CAU}The following will be in the Options Menu.$OFF"
-	get_oneopt "${MNU}JIRA link: $OFF" "str_jira"
-	get_oneopt "${MNU}CVE: $OFF" "str_cve"
-	get_oneopt "${MNU}Upstream status: $OFF" "str_upstream"
+	input_oneopt "${MNU}JIRA link: $OFF" "str_jira"
+	input_oneopt "${MNU}CVE: $OFF" "str_cve"
+	input_oneopt "${MNU}Upstream status: $OFF" "str_upstream"
 	b_lasthashvalid=false
 	b_new=true
 	init_common
@@ -1999,13 +2036,13 @@ init_current_session() {
 	set_cfg_item "lastuphash"	"$lastuphash"
 
 	b_lasthashvalid=false
-	git cherry-pick --abort 2>/dev/null
+	git am --abort 2>/dev/null
 	init_session
 }
 
 #** run_me: main program loop
 #===============================================================================
-#       GLOBALS:  upcommitsfile
+#       GLOBALS:  backportfile
 #                 currentuphash
 #                 stophash
 #                 exit_good
@@ -2023,7 +2060,7 @@ run_me() {
 	local b_one=false
 	local -i input="$1"
 
-	[ -n "$upcommitsfile" ] || \
+	[ -n "$backportfile" ] || \
 		exit_getup $exit_nothing "${CAU}No Upstream Backports file.$OFF"
 
 	[ -n "$workdir" ] ||
@@ -2051,7 +2088,7 @@ run_me() {
 		stat=$?
 
 		if [ $stat -ne 0 ];then
-			echo -e "${CAU}No more commits in $STA$upcommitsfile$OFF"
+			echo -e "${CAU}No more commits in $STA$backportfile$OFF"
 			break
 		fi
 
@@ -2163,7 +2200,7 @@ else
 			abort_getup
 			;;
 		"--branch" )
-			set_gitbranch
+			select_gitbranch
 			;;
 		"--commit" )
 			[ "$2" == "1" ] && b_one=true || b_one=false
@@ -2179,9 +2216,6 @@ else
 		"--new" )
 			init_newsession
 			;;
-		"--nit" )
-			b_nit=true
-			;& 		# fall through to pick
 		-p | "--pick" )
 			currentuphash=$2
 			[ "$currentuphash" ] || { echo -e "$needcmtstr"; exit 1; }
@@ -2234,7 +2268,7 @@ print_herald
 #       line && eval "$line" || exit $?' DEBUG
 
 
-# Present the ui and get the parameters for the cherry-picks.
+# Present the ui and get the parameters for the commits to apply.
 #
 menu_loop
 
