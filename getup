@@ -107,7 +107,8 @@ declare lastuplog	# oneline gitlog of last committed upstream hash
 declare dncurrenthead	# hash of current downstread head
 declare forpatdir	# directory to harbor temporary formatted patches
 			# : for the git am -3 option.
-forpatdir="./.getup"
+forpatdir=
+forpatdirname=".getup"
 
 # Lines in the backport file starting with any of these chars will be
 # ignored.
@@ -327,7 +328,7 @@ input_working_directory() {
 is_valid_gitdir() {
 	local gdir="$1"
 
-	[ "$gdir" == "$(git -C $updir rev-parse --show-toplevel 2>&1)" ] \
+	[ "$gdir" == "$(git -C $gdir rev-parse --show-toplevel 2>&1)" ] \
 		&& return 0 \
 		|| return 1
 }
@@ -518,6 +519,7 @@ set_next_backport() {
 #       GLOBALS:  backportfile - the file containing the hashes of the commits
 #                                to be backported.
 #                 b_lasthashvalid - boolean indicating last hash was valid
+#                 updir - directory of upstream repo
 #       RETURNS:  nonzero if the last stored hash is not valid
 #*==============================================================================
 validate_last_upstream_hash() {
@@ -535,7 +537,9 @@ validate_last_upstream_hash() {
 	# then show nothing.
 	#
 	grep -m1 -n "$lastuphash" "$backportfile" >/dev/null 2>&1 || b_lasthashvalid=false
+	gu_pushd "$updir"
 	$b_lasthashvalid && lastuplog=$(git log -n1 --oneline "$lastuphash")
+	gu_popd
 	$b_lasthashvalid && return 0 || return 1
 }
 
@@ -571,7 +575,9 @@ get_lastuplog() {
 
 	if [ -n "$lastuplog" ]; then
 		lastuphash="$(cut -d' ' -f2 <<< "$lastuplog")"
+		gu_pushd "$updir"
 		lastuplog="$(gitnice "$lastuphash")"
+		gu_popd
 	fi
 
 	cfg_set_item "lastuphash" "$lastuphash"
@@ -656,7 +662,7 @@ get_next_backport() {
 
 	# Make sure we have a valid upstream directory, or prompt the user to
 	# input one.
-	# 
+	#
 	[ -d "$updir" ] || input_updir
 
 	# Find the first line that does NOT begin with one of the characters in the
@@ -1225,7 +1231,9 @@ EOF
 #** menu_parser: parse the user input at the main menu
 #===============================================================================
 #     ARGUMENTS:  none, but lots of side effects
-#       GLOBALS:  dncurrenthead
+#       GLOBALS:
+#         dncurrenthead
+#         ui_b_keypress - defined in lib/keypress_support.soource
 #       RETURNS:  rc_continue, used by menu_loop to determine whether to
 #       	  continue looping.
 #*==============================================================================
@@ -1353,7 +1361,7 @@ abort_getup() {
 	local cmt
 
 	init_cmdline_call
-	git am --abort 2>/dev/null
+	git am --abort > /dev/null 2>&1
 	# Get the last succesful commit and git reset to it.
 	cmt="$(gitnice | cut -d' ' -f1)"
 	git reset --hard "$cmt"
@@ -1395,6 +1403,8 @@ get_newhead() {
 
 	# Set the new downstream current head global
 	dncurrenthead="$(cut -d' ' -f1 <<< "$new")"
+	# Normalize the hash length.
+	dncurrenthead=$(cut -d' ' -f1 < <(gitnice "$dncurrenthead"))
 	return 0
 }
 
@@ -1411,15 +1421,16 @@ get_newhead() {
 #     ARGUMENTS:  $1 - exit code
 #       GLOBALS:  dnorighead
 #                 dncurrenthead
-#                 currentuphash
 #                 backportfile
-#                 lastuphash -  will be modified if caller selects new dncurrenthead
 #       RETURNS:  none
 #*==============================================================================
 reset_getup() {
 	local cols=$((tcols - 12))
 	local -a clrary=()
 	local linenumber
+
+	# Abort any git am in progress
+	git am --abort > /dev/null 2>&1
 
 	# Reset: Clear the leading "+ " from the lines in the upstreamcommitsfile to
 	# indicate that the corresponding upstream commits are not applied.
@@ -1428,8 +1439,13 @@ reset_getup() {
 	# then clear all the done markers, else just clear the ones that we're
 	# retreating from.
 	get_newhead || return
-	mapfile -t clrary < <(extup -m -b "$dncurrenthead".. | cut -d' ' -f1)
-	linenumber=$(grep -n -m1 "${clrary[-1]}" "$backportfile" | cut -d: -f1)
+
+	if [ "$dnorighead" == "$dncurrenthead" ]; then
+		linenumber=1
+	else
+		mapfile -t clrary < <(extup -m -b "$dncurrenthead".. | cut -d' ' -f1)
+		linenumber=$(grep -n -m1 "${clrary[-1]}" "$backportfile" | cut -d: -f1)
+	fi
 
 	sed -i "${linenumber},\$s|^+ ||" "$backportfile"
 
@@ -1674,6 +1690,7 @@ Could not apply the patch generated from upstream: $STA$uphash$INF
 EOF
 )
 	commit=$(get_upcommit "$uphash")
+echo "uphash: $uphash  commit: $commit"
 	echo -e "${INF}Processing : $STA${commit:0:$wcols}$OFF"
 
 	case "$backport_mode" in
@@ -1691,7 +1708,9 @@ EOF
 
 		# get the most recently created patchfile name to apply it.
 		patfil="$(ls -t "$forpatdir" | head -n 1)"
-		err="$(git am -3 "$patfil" 2>&1)"
+		patfil="${forpatdir%/}"/"$patfil"
+		git apply -3 < <(show_upcommit "$uphash")
+test_sanity
 		;;
 	    "$bm_patch" )
 		err="$(patch -p1 --merge < <(show_upcommit "$uphash") 2>&1)"
@@ -1737,7 +1756,6 @@ EOF
 	mark_done "$uphash"
 	set_cfg_item "lastuphash" "$lastuphash"
 	get_lastuplog
-
 	return 0;
 }
 
@@ -1796,7 +1814,9 @@ stage_commit() {
 
 	# Append the original commit message.
 	#
+	gu_pushd "$updir"
 	git log -n1 "$uphash" >> "$cmtmsgfile"
+	gu_popd
 
 	# Amend the commit messsage with you as author, using the
 	# commit message file we built in the previous few lines,
@@ -1941,6 +1961,7 @@ read_session() {
 	updir=$(get_cfg_item "updir")
 	is_valid_gitdir "$updir" || input_updir
 
+	forpatdir="${workdir%/}"/"$forpatdirname"
 	return 0
 }
 
@@ -2036,7 +2057,7 @@ init_current_session() {
 	set_cfg_item "lastuphash"	"$lastuphash"
 
 	b_lasthashvalid=false
-	git am --abort 2>/dev/null
+	git am --abort > /dev/null 2>&1
 	init_session
 }
 
@@ -2133,6 +2154,8 @@ check_command() {
 #**############################
 # Start of Script Execution
 #*#############################
+
+test_sanity() { echo -en "${CAU}SANITY$OFF  "; ui_press_any; }
 
 # trap keyboard interrupt (control-c)
 #
@@ -2255,8 +2278,6 @@ fi
 ##############################################
 # Main Program
 ##############################################
-
-test_sanity() { echo -en "${CAU}SANITY$OFF  "; ui_press_any; }
 
 # Print the herald
 #
