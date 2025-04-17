@@ -672,9 +672,15 @@ getuser_noslash() {
 	eval "uigu_var=\"$uigu_var\""
 }
 
-#** getkey: get Alt-Shift key strokes
+#** getkey: get modifier key combinations (hot keys)
 #
-# GLOBALS: ui_b_keypress
+# Uses external compiled tool, keypress.
+# If it does not exist, it will be compiled on the fly.
+# It's a small enough source to build without being
+# noticed.
+# See keypress.c
+#
+# GLOBALS: none
 #
 # $1 - reference var receives the char
 #
@@ -682,7 +688,6 @@ getuser_noslash() {
 #*
 getkey() {
 	local -n gkp_char="$1"
-	local b_alt
 	local foo
 	local -i sts
 
