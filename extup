@@ -21,7 +21,7 @@ declare -a alist		# alternate (upstream) branch list
 declare -a blist		# current branch list
 declare -i count		# limit the number of commits to parse
 declare show_b=true
-declare notupstream="---------"
+declare notupstream="-------------"
 declare cmtline=
 declare nomerges=
 declare dates="-c -d"	# These will be cleared if the user enters -m option
@@ -216,15 +216,17 @@ for ((i=0; i < ${#blist[@]}; ++i)); do
 	alist[$i]=$(echo "$cmtline" | grep -E -o "\b[0-9a-f]{40}\b")
 	stat=$?
 
-	[ -d "$updir" ] && { cd "$updir" > /dev/null 2>&1 || exit; }
-
 	# if the commit has a valid format, then ...
 	if [ $stat -eq 0 ]; then
+
+		pushd "$updir" > /dev/null 2>&1
 
 		# get the pretty commit line with commit date for the hash
 		# extracted above.
 		astr=$(gitnice $dates -1 "${alist[$i]}" 2> /dev/null)
 		stat=$?
+
+		popd > /dev/null 2>&1
 
 		if [ $stat -ne 0 ]; then
 			tmp="$(gitnice $dates -1 "${blist[$i]}" | cut -d' ' -f2-)"
@@ -240,11 +242,9 @@ for ((i=0; i < ${#blist[@]}; ++i)); do
 	if $show_b; then
 		uc=$(echo "$astr" | cut -d' ' -f1)	# upstream cmt hash
 		as=$(echo "$astr" | cut -d' ' -f2-)	# upstream cmt date & desc
-		printf "%-9.9s %-9.9s %s\n" "${blist[$i]}" "$uc" "$as"
+		printf "%-12.12s %-12.12s %s\n" "${blist[$i]}" "$uc" "$as"
 	else
 		echo "$astr"
 	fi
-
-	[ -d "$updir" ] && { cd - > /dev/null 2>&1 || exit; }
 done
 
