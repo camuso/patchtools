@@ -85,10 +85,13 @@ declare conflicthash=		# upstream hash that introduced a conflict
 
 # backport modes
 declare -i bm_lower=1		# lower boundary of backport modes
-declare -i bm_gitam3=1		# git am with 3-way merge
-declare -i bm_patch=2		# patch --merge
-declare -i bm_patch_rej=3	# patch, straight no chaser
-declare -i bm_upper=3		# upper boundary of backport modes
+declare -i bm_gitam=1		# vanila git am
+declare -i bm_gitam3=2		# git am with 3-way merge
+declare -i bm_gitapply=3	# vanilla git apply
+declare -i bm_gitapply3=4	# git apply with 3-way merge
+declare -i bm_patch=5		# patch straight no chaser
+declare -i bm_patch_merge=6	# patch --merge
+declare -i bm_upper=6		# upper boundary of backport modes
 
 declare finaluphash
 declare -i menupad=30
@@ -163,7 +166,8 @@ exit_getup() {
 #   1 - directory to cd into
 #*
 gu_pushd() {
-	pushd "$1" > /dev/null  || exit_getup 1 "${CAU}${1} is not a valid directory!$OFF"
+	pushd "$1" > /dev/null 2>&1 ||
+		exit_getup 1 "${CAU}${1} is not a valid directory!$OFF"
 }
 
 #** gu_popd - cd safely out of directory, exit if there is a problem.
@@ -175,7 +179,8 @@ gu_pushd() {
 #   none
 #*
 gu_popd() {
-	popd > /dev/null || exit_getup 1 "${CAU}Directory stack empty!$OFF"
+	popd > /dev/null 2>&1 ||
+		exit_getup 1 "${CAU}Directory stack empty!$OFF"
 }
 
 #** get_gitbranch: prints the name of the current git branch
@@ -222,8 +227,9 @@ select_gitbranch() {
 
 	gitbranch="$(ui_readline "$linenumber" "$branchlistfile" | tr -d [\*" "])"
 	echo -e "${MNU}git checkout $STA$gitbranch$OFF"
-	git am --abort --quiet >/dev/null 2>&1
-	git checkout "$gitbranch" || {
+	clean_status
+
+        git checkout "$gitbranch" || {
 		$b_cmdline && exit_getup $exit_pending;
 		return 1
 	}
@@ -249,7 +255,7 @@ git_set_subjectprefix() {
 	git config format.subjectprefix "$newpfx"
 }
 
-#** set_dir - set a directory variable and save it in the config file
+#** input_dir - set a directory variable and save it in the config file
 #
 # Arguments
 #   $1 - string to be used in the prompt describing the directory
@@ -257,60 +263,23 @@ git_set_subjectprefix() {
 #   $3 - the current value of the directory variable. Will be updated
 #        if the user changes the directory name.
 #*
-set_dir() {
+input_dir() {
 	local dirstr="$1"
 	local dircfgkey="$2"
 	local dir="${!3}"
 	local b_msgshown=false
-	local ndirmsg
 
-	ndirmsg=$(
-cat <<EOF
-$INF
-This directory has not yet been named.
-You must provide a directory path for me to continue.
-If the path does not exist, I will create it for you.
-$OFF
-EOF
-)
 	[ -n "$dir" ] && {
 		echo -e "${INF}Current $STA$dirstr$INF directory : $STA$dir$OFF"
 		echo -e "${INF}Type $qstr$INF to leave it as it is.$OFF"
 	}
 
-	# We can't accept a NULL directory name, so cycle until we get a name.
-	#
-	while :; do
-		ui_getnewdir "${INF}New $STA$dirstr$INF directory : $OFF" dir
-
-		if [ -n "$dir" ]; then
-			[ -d "$dir" ] || mkdir -p "$dir"
-			break
-		else
-			$b_msgshown || echo -e "$ndirmsg"
-			b_msgshown=true
-		fi
-	done
+	ui_getnewdir "${INF}New $STA$dirstr$INF directory : $OFF" dir
 
 	dir=$(realpath "$dir")
 	set_cfg_item "$dircfgkey" "$dir"
 	echo -e "$INF$dirstr directory is $STA$dir$OFF\n"
 	eval "$3"="$dir"
-}
-
-#** input_working_directory: for the script's output
-#===============================================================================
-#     ARGUMENTS:  none
-#       GLOBALS:  workdir
-#       RETURNS:  none
-#*==============================================================================
-input_working_directory() {
-	# echo -e "$UND\0input_working_directory$OFF"
-
-	echo -e "${INF}The working directory is used for scratch by this script.$OFF"
-	[ "$workdir" ] && echo -e "$STA$workdir$OFF"
-	set_dir "working" "workdir" workdir
-	cfg_set_item "workdir" "$workdir"
 }
 
 #** is_valid_gitdir - check that the directory is a valid git directory
@@ -328,31 +297,13 @@ input_working_directory() {
 is_valid_gitdir() {
 	local gdir="$1"
 
+	# Strip off any tailing slash
+	#
+	gdir="${gdir%/}"
+
 	[ "$gdir" == "$(git -C $gdir rev-parse --show-toplevel 2>&1)" ] \
 		&& return 0 \
 		|| return 1
-}
-
-#** input_updir - obtain upstream repo directory from user
-#
-# Globals
-#   updir
-#*
-input_updir() {
-	echo -e "${INF}\nThis will loop until I get a valid directory with a valid repo.$OFF"
-	while :; do
-		getuser "Upstream repo directory: " updir
-		[ -d "$updir" ] || {
-			echo -e "$WRN$updir$CAU is not a valid directory.$OFF"
-			continue
-		}
-		is_valid_gitdir "$updir" || {
-			echo -e "$WRN$updir$CAU does not contain a git repo."
-			continue
-		}
-		break
-	done
-	cfg_set_item "updir" "$updir"
 }
 
 #** input_backportfile: user enters file containing commits to backport
@@ -402,8 +353,7 @@ EOF
 			echo -e "${INF}Keeping: $STA$backportfile$OFF"
 		else
 			echo -e "$exitmsg"
-			echo -e "$commitsfilemsg"
-			exit 0
+			exit_getup $exit_nothing "$commitsfilemsg"
 		fi
 	fi
 
@@ -596,40 +546,34 @@ get_finaluphash() {
 	finaluphash="$(cut -d' ' -f1 <<< "${lary[-1]}")"
 }
 
-#** get_upcommit - get the upstream commit from upstream dir for given hash
-#
-# Globals
-#   updir - directory of upstream repo
-#
-# Arguments
-#   1 - upstream hash to lookup
-#*
-get_upcommit() {
-	local uphash="$1"
-	local retstr=
-
-	gu_pushd "$updir"
-	retstr="$(gitnice -1 "$uphash")"
-	gu_popd
-	echo "$retstr"
-}
-
-#** show_upcommit - stream the diff from the upstream hash to the caller
+#** git_upcmt - stream the git outpu from the upstream
 #
 # Globals
 #   updir
 #
 # Arguments
-#   1 - uphash
+#   1 - cmd    - the git command to execute
+#   1 - uphash - the upstream hash for the git command
 #*
-show_upcommit() {
-	local uphash="$1"
-	local updiff=
+git_upcmt() {
+# set -x
+	local cmd="$1"
+	local uphash="$2"
+	local upstr=
 
 	gu_pushd "$updir"
-	updiff="$(git show "$uphash")"
+	case "$cmd" in
+		"show")	upstr="$(git show "$uphash")"
+			;;
+		"log")	upstr="$(git log -n1 "$uphash")"
+			;;
+		"nice")	upstr="$(gitnice -1 "$uphash")"
+			;;
+		"parse") upstr="$(git rev-parse "$uphash")"
+	esac
 	gu_popd
-	echo "$updiff"
+	echo "$upstr"
+# set +x
 }
 
 #** get_next_backport: gets the next commit in the backport commits file
@@ -663,7 +607,7 @@ get_next_backport() {
 	# Make sure we have a valid upstream directory, or prompt the user to
 	# input one.
 	#
-	[ -d "$updir" ] || input_updir
+	[ -d "$updir" ] || input_dir "Upstream repo directory" "updir" updir
 
 	# Find the first line that does NOT begin with one of the characters in the
 	# string of characters indicating the line is to be ignored.
@@ -672,7 +616,7 @@ get_next_backport() {
 	if ((${#lary} > 0)); then
 		currentuphash="$(cut -d' ' -f1 <<< "${lary[0]}")"
 		upcmtstartline="$(grep -n "$currentuphash" "$backportfile" | cut -d: -f1)"
-		currentupcommit="$(get_upcommit "$currentuphash")"
+		currentupcommit="$(git_upcmt "nice" "$currentuphash")"
 		sts=0
 	else
 		currentuphash=
@@ -782,9 +726,10 @@ get_lastbackport() {
 	local bp
 	local hash="$( cut -d' ' -f1 <<< $(gitnice -1) )"
 
-	[ "$hash" == "$dnorighead" ] && return 1
+	[ "$(git rev-parse "$hash")" == "$(git rev-parse "$dnorighead")" ] \
+		&& return 1
 
-	extup -1 -m -b "$hash"
+	extup -1 -m -b -u "$updir" "$hash"
 	[[ $hash =~ ^[0-9a-fA-F]+$ ]] && return 0 || return 2
 }
 
@@ -859,7 +804,8 @@ show_upsteam_commits_file() {
 	lastdncmt="$(gitnice -1 | cut -d' ' -f1)"
 
 	if ((${#bary[@]} == 0)); then
-		if [ "$lastdncmt" == "$dnorighead" ]; then
+
+		if [ "$(git rev-parse "$lastdncmt")" == "$(git rev-parse "$dnorighead")" ]; then
 			return
 		else
 			echo -e "$padstr$WRN Inconsistent State$OFF\n"\
@@ -876,8 +822,15 @@ show_upsteam_commits_file() {
 	# at the top of the current downstream branch, then notify inconsistent
 	# state.
 	lastupcmt="$(cut -d' ' -f2 <<< "${bary[-1]}")"
-	lastdncmt="$(extup -1 -m -b "$lastdncmt" | cut -d' ' -f1)"
-	if [ "$lastdncmt" != "$lastupcmt" ]; then
+	lastdnup="$(extup -1 -m -b -u "$updir" "$lastdncmt" | cut -d' ' -f1)"
+
+	# Use rev-parse in the upstream directory to get the full commit hash
+	# of each of these commits.
+	#
+	lastupcmt="$(git_upcmt "parse" "$lastupcmt")"
+	lastdnup="$(git_upcmt "parse" "$lastdnup")"
+
+	if [ "$lastdnup" != "$lastupcmt" ]; then
 		echo -e "$padstr$WRN Inconsistent State"
 		echo -e "$padstr$CAU Last upstream commit in current downstream branch"
 		echo -e "$padstr not same as last upstream commit in backports file."
@@ -1036,12 +989,18 @@ show_tbackground() {
 #*
 show_backport_mode() {
 	case "$backport_mode" in
-	    "$bm_gitam3" ) echo "git am -3 of upstream git show <commit>"
+	    "$bm_gitam"  ) echo "git am"
 			  ;;
-	    "$bm_patch" )  echo "patch --merge, patch with conflict markers"
+	    "$bm_gitam3" ) echo "git am with 3-way merge"
 			  ;;
-	    "$bm_patch_rej" ) echo "patch with rej files"
+	    "$bm_gitapply") echo "git apply"
 		    	  ;;
+	    "$bm_gitapply3") echo "git apply with 3-way merge"
+			  ;;
+	    "$bm_patch" ) echo "patch with rej files"
+		    	  ;;
+	    "$bm_patch_merge" )  echo "patch --merge, patch with conflict markers"
+			  ;;
 	esac
 }
 
@@ -1174,6 +1133,7 @@ show_altopt() {
 #     ARGUMENTS:  none
 #       GLOBALS:  tcols - number of columns in the current terminal
 #                 menupad - number of to the dynamic menu items
+#                 dncurrenthead - current downstream head
 #       RETURNS:  none
 #*==============================================================================
 show_settings() {
@@ -1259,15 +1219,15 @@ menu_parser() {
 
 		b )	select_gitbranch
 			;;
-		w )	input_working_directory
+		w )	input_dir "working" "workdir" workdir
 			;;
 		f )	input_backportfile
 			;;
-		u )	input_updir
+		u )	input_dir "Upstream repo directory" "updir" updir
 			;;
 		c )	set_next_backport
 			;;
-		N )	init_newsession
+		N )	read_session; init_newsession
 			;;
 		H )	show_history
 			;;
@@ -1347,6 +1307,19 @@ edit_commit() {
 	done
 }
 
+#** clean_status - abort everything and leave git status clean
+#
+# Globals
+#
+# Arguments
+#*
+clean_status() {
+	git am --abort > /dev/null 2>&1
+	git checkout . > /dev/null 2>&1
+	git clean -fd > /dev/null 2>&1
+}
+
+
 #** abort_getup: abort the current backport/apply and exit
 #===============================================================================
 #
@@ -1361,7 +1334,8 @@ abort_getup() {
 	local cmt
 
 	init_cmdline_call
-	git am --abort > /dev/null 2>&1
+	clean_status
+
 	# Get the last succesful commit and git reset to it.
 	cmt="$(gitnice | cut -d' ' -f1)"
 	git reset --hard "$cmt"
@@ -1389,17 +1363,18 @@ get_newhead() {
 	local tmp
 	local spc
 
-	mapfile -t dncmtary < <(extup -m "$dnorighead"^..)
+	# Get the downstream and upstream commits
+	mapfile -t dncmtary < <(extup -m -u "$updir" "$dnorighead^"..)
 
 	# Create space strings based on the sizes of the hashes.
 	# These will be used to correctly align the column headings in the
 	# selection menu.
 	tmp="$(cut -d' ' -f1 <<< "${dncmtary[0]}")"
 	hashsize="${#tmp}"
-	spc="$(printf "%*c" $((hashsize - 7)) " ")"
+	spc="$(printf "%*c" $((hashsize - 12)) " ")"
 
-	select_from_array dncmtary "Dn Cmts" new \
-		"      $MNU${UND}Dn Cmts$spc$OFF $MNU${UND}Up Cmts$spc$OFF" || return 1
+	select_from_array dncmtary "Dn Commits" new \
+		"      $MNU${UND}Dn Commits$spc$OFF  $MNU${UND}Up Commits$spc$OFF" || return 1
 
 	# Set the new downstream current head global
 	dncurrenthead="$(cut -d' ' -f1 <<< "$new")"
@@ -1429,8 +1404,7 @@ reset_getup() {
 	local -a clrary=()
 	local linenumber
 
-	# Abort any git am in progress
-	git am --abort > /dev/null 2>&1
+	clean_status
 
 	# Reset: Clear the leading "+ " from the lines in the upstreamcommitsfile to
 	# indicate that the corresponding upstream commits are not applied.
@@ -1443,7 +1417,8 @@ reset_getup() {
 	if [ "$dnorighead" == "$dncurrenthead" ]; then
 		linenumber=1
 	else
-		mapfile -t clrary < <(extup -m -b "$dncurrenthead".. | cut -d' ' -f1)
+		mapfile -t clrary < \
+			<(extup -m -b -u "$updir" "$dncurrenthead".. | cut -d' ' -f1)
 		linenumber=$(grep -n -m1 "${clrary[-1]}" "$backportfile" | cut -d: -f1)
 	fi
 
@@ -1578,6 +1553,7 @@ mark_done() {
 	line=$(cut -d: -f2- <<< "$line")
 	line="$mark $line"
 	ui_replaceline "$lnum" "$line" "$backportfile"
+
 	return 0
 }
 
@@ -1689,7 +1665,7 @@ Could not apply the patch generated from upstream: $STA$uphash$INF
 \0
 EOF
 )
-	commit=$(get_upcommit "$uphash")
+	commit=$(git_upcmt "nice" "$uphash")
 echo "uphash: $uphash  commit: $commit"
 	echo -e "${INF}Processing : $STA${commit:0:$wcols}$OFF"
 
@@ -1709,14 +1685,13 @@ echo "uphash: $uphash  commit: $commit"
 		# get the most recently created patchfile name to apply it.
 		patfil="$(ls -t "$forpatdir" | head -n 1)"
 		patfil="${forpatdir%/}"/"$patfil"
-		git apply -3 < <(show_upcommit "$uphash")
-test_sanity
+		git apply -3 < <(git_upcmt show "$uphash")
 		;;
 	    "$bm_patch" )
-		err="$(patch -p1 --merge < <(show_upcommit "$uphash") 2>&1)"
+		err="$(patch -p1 --merge < <(git_upcmt show  "$uphash") 2>&1)"
 		;;
 	    "$bm_patch_rej" )
-		err="$(patch -p1 < <(show_upcommit "$uphash") 2>&1)"
+		err="$(patch -p1 < <(git_upcmt show "$uphash") 2>&1)"
 		;;
 	esac
 
@@ -1779,10 +1754,8 @@ stage_commit() {
 
 	local description
 	local uphash=$currentuphash
-	local commit
-
-	commit=$(git log --oneline -n1 "$uphash")
-	git commit -aC "$uphash"
+	local uplog
+	local b_crlf=false
 
 	# Create the new commit message in a file consisting of ..
 	#	The user of this script as author of the patch
@@ -1796,32 +1769,58 @@ stage_commit() {
 	echo -e "\n" > "$cmtmsgfile"
 
 	set -f	# disable wildcard
-	description=$(git log -n1 "$uphash" | head -5 | tail -1)
+
+	# Get the upstream commit log and extract the description
+	# from the fifth line.
+	#
+	uplog="$(git_upcmt log "$uphash")"
+	description=$(sed -n '5p' <<< "$uplog")
 
 	# Trim leading whitespace from description line and append
 	# it to the commit message. Also append the standard commit
 	# message.
 	#
 	description=$(echo -e $description)
-	echo -e "$description\n\n" >> "$cmtmsgfile"
-	[ -n "$str_jira" ] && echo -e "JIRA: $str_jira" >> "$cmtmsgfile"
-	[ -n "$str_cve" ] && echo -e "CVE: $str_cve" >> "$cmtmsgfile"
-	[ -n "$str_upstream" ] && echo -e "Upstream status: $str_upstream" >> "$cmtmsgfile"
-	echo -e "\n" >> "$cmtmsgfile"
+
+	echo -e "$description\n" >> "$cmtmsgfile"
+	[ -n "$str_jira" ] && {
+		echo -e "JIRA: $str_jira" >> "$cmtmsgfile"
+		b_crlf=true
+	}
+	[ -n "$str_cve" ] && {
+		echo -e "CVE: $str_cve" >> "$cmtmsgfile"
+		b_crlf=true
+	}
+	[ -n "$str_upstream" ] && {
+		echo -e "Upstream status: $str_upstream" >> "$cmtmsgfile"
+		b_crlf=true
+	}
+	$b_crlf && echo >> "$cmtmsgfile"
+
 	set +f	# re-enable wildcards
 
 	$b_conflict && echo -e "$str_conflicts" >> "$cmtmsgfile"
 
 	# Append the original commit message.
 	#
-	gu_pushd "$updir"
-	git log -n1 "$uphash" >> "$cmtmsgfile"
-	gu_popd
+	echo "$uplog"  >> "$cmtmsgfile"
 
 	# Amend the commit messsage with you as author, using the
 	# commit message file we built in the previous few lines,
 	# and a Signed-off-by: ("-s") line.
 	#
+	# Commit according to backport mode.
+	#
+	case "$backport_mode" in
+		"$bm_patch"     ) ;&
+		"$bm_patch_rej" )
+			[ -n "$(git ls-files --others --exclude-standard | head -n 1)" ] \
+				&& git add . \
+				|| git add -u
+			git commit -a -m"hold" > /dev/null 2>&1
+			;;
+	esac
+
 	git commit -s --amend --reset-author --file="$cmtmsgfile"
 
 	# If there are conflicts, give the user the option to edit
@@ -1860,8 +1859,6 @@ get_cfg_item() {
 #   dnorighead
 #*
 get_originhead() {
-	local br
-
 	dnorighead="$(get_cfg_item dnorighead)"
 }
 
@@ -1875,9 +1872,12 @@ get_originhead() {
 get_backport_mode() {
 	echo
 	echo -e "    ${INF}Which backport mode do you want to use?$MNU"
-	echo -e "      1.$OFF git am -3 with upstream commits, same as cherry-pick$MNU"
-	echo -e "      2.$OFF patch --merge, use conflict markers instead of rej files$MNU"
-	echo -e "      3.$OFF patch with reject files"
+	echo -e "      1.$OFF git am$MNU"
+	echo -e "      2.$OFF git am with 3-way merge$MNU"
+	echo -e "      3.$OFF git apply$MNU"
+	echo -e "      4.$OFF git apply with 3-way merge$MNU"
+	echo -e "      5.$OFF patch with reject files$MNU"
+	echo -e "      6.$OFF patch --merge, use conflict markers instead of rej files$OFF"
 
 	loop_range $bm_lower $bm_upper  backport_mode
 
@@ -1947,21 +1947,6 @@ read_session() {
 		ui_do_colors "$tbackground"
 	fi
 
-	init_global_strings
-
-	((backport_mode >= bm_lower && backport_mode <= bm_upper)) || {
-		get_backport_mode
-	}
-
-	get_originhead
-
-	[ -n "$upcmtstartline" ] || return 1
-	[ -d "$workdir" ]        || input_working_directory
-	[ -f "$backportfile" ]   || input_backportfile
-	updir=$(get_cfg_item "updir")
-	is_valid_gitdir "$updir" || input_updir
-
-	forpatdir="${workdir%/}"/"$forpatdirname"
 	return 0
 }
 
@@ -1976,11 +1961,21 @@ read_session() {
 init_common() {
 	# echo -e "$UND\0init_common$OFF"
 
+	init_global_strings
+
+	((backport_mode >= bm_lower && backport_mode <= bm_upper)) || {
+		get_backport_mode
+	}
+
 	$b_new && upcmtstartline=1
-	[ -f "$backportfile" ] && get_current_backport
+	get_current_backport
+	forpatdir="${workdir%/}"/"$forpatdirname"
 	[ -d "$forpatdir" ] || mkdir -p "$forpatdir"
 
-	$b_conflict || get_lastuplog
+	# If it's not a new session, and we don't have any conflicts, get the
+	# last successfully backported commit.
+	#
+	($b_new || $b_conflict) || get_lastuplog
 	b_session_inited=true
 }
 
@@ -1995,7 +1990,13 @@ init_cmdline_call() {
 	local stat
 	local newstr="${INF}Please type $MNU$MYNAME new$INF to start.$OFF\n"
 
-	read_session || { echo -e "$newstr"; exit 1; }
+	read_session
+
+	# If any one of workdir, updir, or backportfile is missing, then this
+	# is a new session, so set $b_new true.
+	#
+	([ -d "$workdir" ] && [ -f "$backportfile" ] && is_valid_gitdir "$updir") ||
+		init_newsession
 	init_common
 }
 
@@ -2022,13 +2023,20 @@ init_session() {
 init_newsession() {
 	# echo -e "\n$UND\0init_newsession$OFF"
 
+	> "$configfile"
 	read_session
 	dnorighead="$(cut -d' ' -f1 <(git log --oneline -1 ))"
 	set_cfg_item dnorighead "$dnorighead"
 
 	b_conflict=false
 	set_cfg_item b_conflict "$b_conflict"
-	input_working_directory
+
+	while :; do
+		input_dir "Upstream repo" "updir" updir
+		is_valid_gitdir "$updir" && break
+	done
+
+	input_dir "working" "workdir" workdir
 	input_backportfile
 	select_gitbranch
 
@@ -2067,6 +2075,8 @@ init_current_session() {
 #                 currentuphash
 #                 stophash
 #                 exit_good
+#                 updir
+#                 workdir
 #                 b_cmdline
 #                 b_conflict
 #                 b_session_inited
@@ -2080,12 +2090,6 @@ run_me() {
 	local stat
 	local b_one=false
 	local -i input="$1"
-
-	[ -n "$backportfile" ] || \
-		exit_getup $exit_nothing "${CAU}No Upstream Backports file.$OFF"
-
-	[ -n "$workdir" ] ||
-		exit_getup $exit_nothing "${CAU}No Working Directory.$OFF"
 
 	[ -n "$input" ] && (($input == 1)) && b_one=true
 
@@ -2161,7 +2165,16 @@ test_sanity() { echo -en "${CAU}SANITY$OFF  "; ui_press_any; }
 #
 trap ctrl_c SIGINT
 ui_testkeypress	# from lib/keypress_support.source: inits promptgetkey_cmd
-init_session
+
+read_session
+
+# If any one of workdir, updir, or backportfile is missing, then this
+# is a new session, so set $b_new true.
+#
+([ -d "$workdir" ] && [ -f "$backportfile" ] && is_valid_gitdir "$updir") ||
+	init_newsession
+init_common
+
 
 # Determine if we're at the top of a git tree. If not, exit.
 #
@@ -2237,6 +2250,7 @@ else
 			show_history
 			;;
 		"--new" )
+			read_session
 			init_newsession
 			;;
 		-p | "--pick" )
