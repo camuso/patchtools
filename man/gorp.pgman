@@ -1,24 +1,24 @@
 #!/bin/bash
 #
-declare getupman="$(
+declare gorpman=$(
 cat <<EOF
 $UND${MNU}
-getup - backporting tool
+${CAU}g${INF}orp is the$CAU o${INF}ther$CAU r${INF}ad$CAU p${INF}atchtool$OFF
 $INF
 Type 'q' at any time to exit this help.
 $OFF
-getup is a backporting tool that can use 5 different backporting
+gorp is a backporting tool that can use 5 different backporting
 methods:$MNU
    git cherry-pick
    git apply
    git apply --3way
    patch
    patch --merge$OFF
-These are presented as options when getup is started for the very
+These are presented as options when gorp is started for the very
 first time. They are also available as options from the Options
 Menu.
 $INF
-Invoking getup with no commands presents the getup menu.
+Invoking gorp with no commands presents the gorp menu.
 $UND$MNU
 Main Menu$OFF
 $MNU
@@ -144,12 +144,12 @@ ${STA}/work/c10s/backports/101/ipmi/0001-Get-rid-of-remove_new-relic-from.patch$
 ---------------------------------------------------------------------------------------------
 ${CAU}See$STA /work/c10s/backports/101/ipmi/patch.log$CAU for details.$OFF
     ---------------------------------------
-${INF}Type$CAU getup abort$INF to restore your repo to the state it was in before the conflict.$OFF
+${INF}Type$CAU gorp abort$INF to restore your repo to the state it was in before the conflict.$OFF
      -----------$INF
-${INF}After fixing the conflicts, you can reenter getup with the following commands.
-${STA}getup commit$INF   : if you have fixed the conflicts and want the script to stage
+${INF}After fixing the conflicts, you can reenter gorp with the following commands.
+${STA}gorp commit$INF   : if you have fixed the conflicts and want the script to stage
 $INF                 the commit and create the commit log for you.
-${STA}getup continue$INF : if you have fixed the conflicts and made the commit externally
+${STA}gorp continue$INF : if you have fixed the conflicts and made the commit externally
 $INF                 and wish to continue with the next backport commit.
 
   $MNU cherry-pick$OFF will leave$INF <<<<<<<$OFF and$INF >>>>>>>$OFF conflict
@@ -230,7 +230,7 @@ effort will be made to assure the user's tree is left in a coherent
 state.
 
 Environmental variables and options are persistent across invocations
-of getup.
+of gorp.
 
 This tool runs from the command line with the commands listed below.
 In command line mode, it can be used to backport single commits at
@@ -242,7 +242,7 @@ $MNU abort$OFF     - abort the current backport, restore head and index
 $MNU branch$OFF    - select a different downstream git branch
 $MNU commit [1]$OFF- commit changes after conflict resolution and create commit log
              The optional '1' will return to the command line after the
-             commit, otherwise the getup menu will be presented.
+             commit, otherwise the gorp menu will be presented.
 $MNU help$OFF      - display this help
 $MNU history$OFF   - show commits so far this session
 $MNU new$OFF       - start a new session
@@ -252,11 +252,11 @@ $MNU pick <h>$OFF  - backport one hash specified by <h>
 $MNU reset$OFF     - choose from a list of commits to reset to
 $MNU run$OFF       - run the backport automation
 $MNU select$OFF    - select the next upstream has to backport from a list
-$MNU setup$OFF     - run the getup menu to setup the runtime environment
+$MNU setup$OFF     - run the gorp menu to setup the runtime environment
              This is easier and simpler than having a different command
              for every parameter.
-$MNU status$OFF    - show the getup session status and git status
-$MNU version$OFF   - show this version of the getup tool
+$MNU status$OFF    - show the gorp session status and git status
+$MNU version$OFF   - show this version of the gorp tool
 \0
 EOF
-)"
+)

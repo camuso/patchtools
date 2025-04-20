@@ -122,7 +122,7 @@ declare str_conflicts=
 
 init_global_strings() {
 ui_log "init_global_strings"
-str_herald="\n$MNU${UND}Patchtools v$version$OFF\n\n\
+str_herald="\n$MNU${UND}patchtools v$version$OFF - \
 ${CAU}g${INF}orp is the ${CAU}o${INF}ther$CAU r${INF}ad$CAU p${INF}atchtool$OFF"
 str_conflicts="Conflicts:\n"
 }
