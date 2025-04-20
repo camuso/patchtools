@@ -149,7 +149,7 @@ print_herald() {
 #       RETURNS:  None
 #*
 exit_getup() {
-	ui_log "exit_getup"
+	ui_log "exit_getup 1:$1  2:$2"
 	# echo -e "$UND\0exit_getup $1$OFF"
 	ui_trunclog
 	[ -n "$2" ] && echo -e "\n$2\n"
@@ -993,8 +993,11 @@ show_tbackground() {
 #
 #  Globals:
 #    backport_mode
-#    bm_gitam3
+#    bm_cherry
+#    bm_apply
+#    bm_apply3
 #    bm_patch
+#    bm_patch_merge
 #*
 show_backport_mode() {
 	ui_log "show_backport_mode"
@@ -1290,8 +1293,6 @@ menu_loop() {
 	ui_log "menu_loop"
 	local stat=0
 
-	cmtmsgfile="$workdir/.gcpgitlog"
-
 	cfg_update_configfile
 	while :; do
 
@@ -1375,7 +1376,7 @@ abort_getup() {
 #   dncurrenthead - this will be modified if caller selects different head
 #*
 get_newhead() {
-	ui_log "get_newhead"
+	ui_log "get_newhead dnorighead:$dnorighead dncurrenthead:$dncurrenthead"
 	local dncmtary=()
 	local new
 	local hashsize
@@ -1384,7 +1385,7 @@ get_newhead() {
 	local spc
 
 	# Get the downstream and upstream commits
-	mapfile -t dncmtary < <(extup -m -u "$updir" "$dnorighead^"..)
+	mapfile -t dncmtary < <(extup -m -u "$updir" "$dnorighead^..HEAD")
 
 	# Create space strings based on the sizes of the hashes.
 	# These will be used to correctly align the column headings in the
@@ -1643,9 +1644,18 @@ clear_alldone() {
 #*
 flag_conflict() {
 	local uphash="$1"
-	local patch="$(git_upcmd "format" "$uphash")"
+	local patch=
 	local dashpad="$(printf '%*s\n' "${#patchlog}" "" | tr ' ' '-'})"
 	local patpad="$(printf '%*s\n' "${#patch}" "" | tr ' ' '-'})"
+
+	# Remove any patches in the workdir
+	# Patch sets will be written to a directory of the user's choosing.
+	shopt -s extglob
+	rm -f "${workdir%/}"/*.patch
+	shopt -u extglob
+
+	# Create the patch for this conflict
+	patch="$(git_upcmd "format" "$uphash")"
 
 	show_status internal
 	echo -e "
@@ -1828,17 +1838,15 @@ stage_commit() {
 	#
 	echo "$uplog"  >> "$cmtmsgfile"
 
-	# Commit according to backport mode.
+	# Make the commit. Only use git add . if there are untracked
+	# files. It saves time to use git add -u, because the git
+	# logic won't waste time looking for untracked files.
+	# git ls-files is much faster.
 	#
-	case "$backport_mode" in
-		"$bm_patch"     ) ;&
-		"$bm_patch_merge" )
-			[ -n "$(git ls-files --others --exclude-standard | head -n 1)" ] \
-				&& git add . \
-				|| git add -u
-			git commit -a -m"hold" > /dev/null 2>&1
-			;;
-	esac
+	[ -n "$(git ls-files --others --exclude-standard | head -n 1)" ] \
+		&& git add . \
+		|| git add -u
+	git commit -a -m"hold" > /dev/null 2>&1
 
 	# Amend the commit messsage with you as author, using the
 	# commit message file we built in the previous few lines,
@@ -1972,7 +1980,7 @@ read_session() {
 	fi
 
 	enum "bm" \
-		gitcherry \
+		cherry \
 		apply \
 		apply3 \
 		patch \
@@ -1995,6 +2003,9 @@ init_common() {
 
 	# updir was declared in init_newsession() or read from the config
 	# file by read_session, called before this.
+
+	cmtmsgfile="$workdir/.gcpgitlog"
+
 	mirror="$(realpath "${updir%/}/../mirror")"
 	[ -d "$mirror" ] || mkdir -p "$mirror"
 
@@ -2011,12 +2022,6 @@ $STA$mirror$INF"
 	((backport_mode >= bm_lower && backport_mode <= bm_upper)) || {
 		get_backport_mode
 	}
-
-	# Remove any patches in the workdir
-	# Patch sets will be written to a directory of the user's choosing.
-	shopt -s extglob
-	rm -f "${workdir%/}"/*.patch
-	shopt -u extglob
 
 	# Shared upstream repo housekeeping.
 	#
