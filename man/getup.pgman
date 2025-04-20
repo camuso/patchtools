@@ -1,45 +1,24 @@
 #!/bin/bash
 #
-declare cherpman="$(
+declare getupman="$(
 cat <<EOF
 $UND${MNU}
-cherp - backporting tool
+getup - backporting tool
 $INF
 Type 'q' at any time to exit this help.
 $OFF
-cherp is a backporting tool that can use either git cherry-pick or
-patch --merge. These are presented as options when cherp is started
-for the very first time. They are also available as options from the
-upper-case O item in the main menu.
-
-When invoked without arguments, cherp will present a text mode menu.
-
-This tool can be run in text menu mode or from the command line with
-the commands listed below. In command line mode, it can be used to
-backport single commits at a time or automate backporting from a list
-of upstream commits created with the mkbackportlog tool in this suite.
-
-$MNU abort$OFF     - abort the current backport
-$MNU branch$OFF    - select a different downstream git branch
-$MNU commit [1]$OFF- commit changes after conflict resolution and create commit log
-             The optional '1' will return to the command line after the
-             commit, otherwise the cherp menu will be presented.
-$MNU help$OFF      - display this help
-$MNU history$OFF   - show commits so far this session
-$MNU new$OFF       - start a new session
-$MNU nit$OFF       - select the hunks you wish to backport from the upstream commit
-             Available in cherry-pick mode only
-$MNU pick <h>$OFF  - backport one hash specified by <h>
-$MNU reset$OFF     - choose from a list of commits to reset to
-$MNU run$OFF       - run the backport automation
-$MNU select$OFF    - select the next upstream has to backport from a list
-$MNU setup$OFF     - run the cherp menu to setup the runtime environment
-             This is easier and simpler than having a different command
-             for every parameter.
-$MNU status$OFF    - show the cherp session status and git status
-$MNU version$OFF   - show this version of the cherp tool
+getup is a backporting tool that can use 5 different backporting
+methods:$MNU
+   git cherry-pick
+   git apply
+   git apply --3way
+   patch
+   patch --merge$OFF
+These are presented as options when getup is started for the very
+first time. They are also available as options from the Options
+Menu.
 $INF
-Invoking cherp with no commands presents the cherp menu.
+Invoking getup with no commands presents the getup menu.
 $UND$MNU
 Main Menu$OFF
 $MNU
@@ -53,13 +32,37 @@ $MNU c$OFF Next Backport Commit $OFF
    Shows the next commit in the Backport File that will be committed. The
    user can press$MNU c$OFF to choose a different commit in the file.
 
-$MNU u$OFF Upstream url$OFF
-   This is the url of the remote upstream repository. The defaul is the
-   Linus tree. Press$MNU u$OFF to change it.
-
 $MNU
 Downstream Environment options
 $OFF
+$MNU u$OFF Upstream repo directory$OFF
+   This the path to the user's clone of the upsteam Linux kernel.
+   A mirror of this repo will be made in a sibling directory of the
+   Upstream repo directory. If the sibling directory does not exist,
+   it will be created and named "mirror".
+
+   For example, an upstream repo directory in /work/upstream/kernel
+   will have its sibling mirror directory in /work/upstream/mirror.
+   This directory is a bare mirror clone of the upstream repo.
+   'git remote add mirror /work/upstream/mirror' will be executed
+   in the user's downstream repo, if the mirror is not already a
+   remote.
+
+   If the user's reference to the mirror needs to be updated, a 'git
+   fetch' will be executed.
+   The first time this executes, it will take a couple minutes.
+   Thereafter, the length of time it takes to update the local
+   references will be proportional to the number of changes have
+   occured upstream.
+
+   The user must keep the Upstream repo directory up-to-date to assure
+   that all the latest references and tags are available.
+
+   The advantage to this is that there is only one full upstream
+   repo directory required, and all the downstream git directories
+   need only the barest amount of information to function ast though
+   the main Upstream repo directory were added as a remote.
+
 $MNU b$OFF Current git branch $OFF
    Presents a list of the downstream branches n the current downstream
    index.
@@ -79,15 +82,23 @@ $MNU S$OFF Stop Before $OFF
 
 $MNU P$OFF Create a patchseries $OFF
    Creates a patch series starting from the$INF Head at Session Start$OFF
-   up to the current HEAD.
+   up to the current HEAD. The path to the patch directory must be
+   defined by the user in the Options > Patch Directory.
+   Options > Patch Subject Prefix, as well as Options > JIRA, Options > CVE
+   options > Brew, and Options > Test are also available fields to add
+   to the git commit log when formatting the patches.
 
 $MNU N$OFF Start a New Sesssion
    The current HEAD becomes the$INF Head at Session Start$OFF, and prompts
    are presented to provide the following:
 
    ${INF}Backport Mode$OFF
-      Currently only$INF git cherry-pick$OFF and$INF patch --merge$OFF \
-      are supported.
+      Modes avaialble are $MNU
+         git cherry-pick
+	 git apply
+	 git apply --3way
+	 patch
+         patch --merge$OFF
 
    ${INF}New working directory$OFF
       Scratch directory for the tool to use. It's good to know where the
@@ -109,13 +120,57 @@ $MNU N$OFF Start a New Sesssion
 $MNU H$OFF History
    Shows a history of the backports to the current point.
 
-$MNU r$OFF Run cherp$OFF
+$MNU r$OFF Run all remaining commits$OFF
    Runs the automation. The automatic backport will stop if any conflicts
-   are encountered when backporting.
+   are encountered when backporting, and it will exit after printing a conflict
+   message. Back at the shell prompt, the user can make the corrections needed
+   to reapply the patch and continue.
 
-   When a conflict stops the process, the conflicts must be resolved.
-   Conflicts within files can be found by seeking the$INF <<<<<<$OFF markers
-   in the files.
+   A typical conflict message looks like this.
+
+$INF    Upstream Backports File  :$STA /work/c10s/backports/101/ipmi/backport.log
+$INF                               Commits backported: 2 Commits remaining: 6
+$INF    Last backported commit   :$STA 7868b3a94045 char:ipmi: Fix the wrong format specifier
+$CAU    Conflicting commit$INF       :$STA e70140ba0d2b Get rid of 'remove_new' relic from
+$INF    Current upstream dir     :$STA /work/upstream/kernel
+$INF    Current downstream branch:$STA test
+$INF    Current downstream head  :$STA dc6818601a87 char:ipmi: Fix the wrong format specifier
+$INF    Original downstream head :$STA 53edcb1a920a [redhat] kernel-6.12.0-75.el10
+
+$CAU${UND}There are conflicts$OFF
+
+${CAU}The offending patch is in:
+${STA}/work/c10s/backports/101/ipmi/0001-Get-rid-of-remove_new-relic-from.patch$OFF
+---------------------------------------------------------------------------------------------
+${CAU}See$STA /work/c10s/backports/101/ipmi/patch.log$CAU for details.$OFF
+    ---------------------------------------
+${INF}Type$CAU getup abort$INF to restore your repo to the state it was in before the conflict.$OFF
+     -----------$INF
+${INF}After fixing the conflicts, you can reenter getup with the following commands.
+${STA}getup commit$INF   : if you have fixed the conflicts and want the script to stage
+$INF                 the commit and create the commit log for you.
+${STA}getup continue$INF : if you have fixed the conflicts and made the commit externally
+$INF                 and wish to continue with the next backport commit.
+
+  $MNU cherry-pick$OFF will leave$INF <<<<<<<$OFF and$INF >>>>>>>$OFF conflict
+   markers around the conflicts in conflicted files.
+
+  $MNU git apply$OFF
+
+  $MNU git apply --3way$OFF
+
+  $MNU patch$OFF will leave .rej files in the directories of the conflicted
+   files. A patch.log file will be left in the user's work directory. It
+   will be explicitly identified by the conflict message.$STA
+   ${MNU}grep -n -i 'fail' $workdir/patch.log$OFF
+   ...to find the conflicted files.
+   patch will leave .rej files in the home directories of the conflicted
+   files to help resolve conflicts.
+
+  $MNU patch --merge$OFF also creates a patch.log file.
+   ${MNU}grep -n 'NOT MERGED' $workdir/patch.log$OFF to find the conflicted files.
+   The conflicted files will have $INF <<<<<<<$OFF and$INF >>>>>>>$OFF markers
+   around the conflicts.
 
    New files should be added with$INF git add$OFF if they are required by the
    backport, and deleted files should be removed with$INF git rm$OFF.
@@ -123,6 +178,11 @@ $MNU r$OFF Run cherp$OFF
    If the$INF Stop Before$OFF commit has been entered, the automation will
    stop before that commit. This is useful for building and testing the
    backport along the way, especially for larger backports.
+
+$MNU A$OFF Abort, reset to last good commit and clean status
+   Same as$MNU git abort$OFF from the command line. The HEAD is reset
+   to the last successful commit, and the directory is cleaned of any
+   modified, new, or deleted files, leaving the repo in a clean state.
 
 $CAU Alt-Shift-Reset$OFF Reset to an earlier commit in this session$OFF
    Presents a list of the backported commits to this point. Choosing one
@@ -137,17 +197,27 @@ $MNU$UND
 Options Menu$OFF
 
 $MNU u$OFF Upstream Status${OFF}, e.g. v6.7, will be entered into commit logs
-$MNU j$OFF Jira Link$OFF will be entered into commit logs
+$MNU j$OFF JIRA Link$OFF will be entered into commit logs
 $MNU j$OFF CVE$OFF will be entered into commit logs
 $MNU b$OFF Brew of build info$OFF will be entered into commit logs
 $MNU t$OFF Test information$OFF will be entered into commit logs
 $MNU p$OFF Patch subject prefix$OFF used in patch series creation
 $MNU d$OFF Patch directory$OFF to be used to receive the patch series
-$MNU B$OFF Backport mode$OFF,$STA git cherry-pick$OFF or$STA patch --merge$OFF
+$MNU B$OFF Backport mode$INF
+   Selecting this option makes the following menu appear.
+
+$MNU   Which backport mode do you want to use?
+$MNU       1.$OFF git cherry-pick$MNU
+$MNU       2.$OFF git apply$MNU
+$MNU       3.$OFF git apply with 3-way merge$MNU
+$MNU       4.$OFF patch with reject files$MNU
+$MNU       5.$OFF patch --merge, use conflict markers instead of rej files$MNU
+$MNU Please enter a number between 1 and 5:
+
 $MNU c$OFF Change Terminal colors$OFF for light or dark terminal backgrounds
 $MNU q$OFF Quit to Main Menu
 
-Commits may be entered one at a time or from a Backport Commits file"
+Commits may be entered one at a time or from a Backport Commits file
 most easily created using the mkbackportlog tool in this suite.
 
 You can edit the resulting file to put a leading # on the upstream
@@ -159,8 +229,34 @@ The user can type control-c at anytime to exit the tool, and a best
 effort will be made to assure the user's tree is left in a coherent
 state.
 
-All Environmental variables and options are sticky across invocations
-of this tool.
+Environmental variables and options are persistent across invocations
+of getup.
+
+This tool runs from the command line with the commands listed below.
+In command line mode, it can be used to backport single commits at
+a time or automate backporting from a list of upstream commits
+created with the mkbackportlog tool in this patchtools suite.
+
+$MNU abort$OFF     - abort the current backport, restore head and index
+             to previous successful backported commit.
+$MNU branch$OFF    - select a different downstream git branch
+$MNU commit [1]$OFF- commit changes after conflict resolution and create commit log
+             The optional '1' will return to the command line after the
+             commit, otherwise the getup menu will be presented.
+$MNU help$OFF      - display this help
+$MNU history$OFF   - show commits so far this session
+$MNU new$OFF       - start a new session
+$MNU nit$OFF       - select the hunks you wish to backport from the upstream commit
+             Available in cherry-pick mode only
+$MNU pick <h>$OFF  - backport one hash specified by <h>
+$MNU reset$OFF     - choose from a list of commits to reset to
+$MNU run$OFF       - run the backport automation
+$MNU select$OFF    - select the next upstream has to backport from a list
+$MNU setup$OFF     - run the getup menu to setup the runtime environment
+             This is easier and simpler than having a different command
+             for every parameter.
+$MNU status$OFF    - show the getup session status and git status
+$MNU version$OFF   - show this version of the getup tool
 \0
 EOF
 )"
