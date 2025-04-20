@@ -912,6 +912,8 @@ $INF    Original downstream head : $STA${orighead:0:cols}$OFF
 EOF
 )
 	echo -e "$statstr"
+
+	$b_cmdline && exit 0 || { ui_press_any; return; }
 }
 
 #** get_patchdir: get the directory to receive the patches
@@ -2377,7 +2379,7 @@ if $b_cmdline; then
 			;;
 		"--version" )
 			print_herald
-			exit 0
+			echo
 			;;
 		-- )	shift
 			break
@@ -2386,6 +2388,7 @@ if $b_cmdline; then
 			exit 1
 			;;
 	    esac
+	    exit 0
 	done
 fi
 
