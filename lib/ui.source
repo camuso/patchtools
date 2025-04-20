@@ -1632,3 +1632,66 @@ ui_callwstat() {
 	ui_press_any
 	return $uicws_stat
 }
+
+declare b_ulog_inited=false
+
+#** ui_log() - log activity to a log file.
+#
+# Assumes the existence of $MYDATA and $MYNAME, declared in and
+# created by the sourcing script before sourcing this file.
+#
+# Globals
+#   b_ulog_inited - assures that the log file is inited just once
+#
+# Arguments
+#   1 - string to be sent to the log
+#*
+ui_log() {
+	local str="$1"
+	local logfile="${MYDATA%/}"/"${MYNAME}.log"
+
+	[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
+	$b_ulog_inited || > "$logfile"
+	b_ulog_inited=true
+
+	echo -e "$(date '+%Y-%m-%d %H:%M:%S'): $str" >> "$logfile"
+}
+
+#** ui_trunclog - truncate the log file
+#
+# Globals
+#
+# Arguments
+#   1- optional truncate to this number of lines.
+#      Default is 100
+#*
+ui_trunclog() {
+	local lines="$1"
+	local tmpfil="$(mktemp)"
+	local logfile="${MYDATA%/}"/"${MYNAME}.log"
+
+	[ -z "$lines" ] && lines=100
+	tail -n "$lines" "$logfile" > "$tmpfil"
+	mv -f "$tmpfil" "$logfile" > /dev/null 2>&1
+}
+
+#** enum - automatically create incremented enums with boundary enums
+#
+# Globals
+#
+# Arguments
+# 	1 - prefix for the enums
+# 	The rest of the args are handled as a list of items to be enumed
+#*
+enum() {
+	local prefix="$1"
+	local indx=1
+	shift
+
+	eval "declare -g ${prefix}_lower=${indx}"
+	for item in $@; do
+		eval "declare -g ${prefix}_${item}=${indx}"
+		((++indx))
+	done
+	eval "declare -g ${prefix}_upper=$((--indx))"
+}
