@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# gorp
+# gorp - Gorp is the Other Rad Patchtool
 #
 # Provide some automation for backporting.
 #
@@ -121,8 +121,9 @@ declare str_herald=
 declare str_conflicts=
 
 init_global_strings() {
-str_herald="\n$MNU${UND}Patchtools v$version$OFF\n\n${MNU}gorp - Automates \
-Backporting$OFF"
+ui_log "init_global_strings"
+str_herald="\n$MNU${UND}Patchtools v$version$OFF\n\n\
+${CAU}g${INF}orp is the ${CAU}o${INF}ther$CAU r${INF}ad$CAU p${INF}atchtool$OFF"
 str_conflicts="Conflicts:\n"
 }
 
