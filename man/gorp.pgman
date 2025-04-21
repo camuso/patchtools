@@ -2,27 +2,150 @@
 #
 declare gorpman=$(
 cat <<EOF
-$UND${MNU}
+
 ${CAU}g${INF}orp is the$CAU o${INF}ther$CAU r${INF}ad$CAU p${INF}atchtool$OFF
 $INF
 Type 'q' at any time to exit this help.
 $OFF
-gorp is a backporting tool that can use 5 different backporting
-methods:$MNU
-   git cherry-pick
-   git apply
-   git apply --3way
-   patch
-   patch --merge$OFF
-These are presented as options when gorp is started for the very
-first time. They are also available as options from the Options
-Menu.
-$INF
-Invoking gorp with no commands presents the gorp menu.
-$UND$MNU
-Main Menu$OFF
-$MNU
-Upstream Environment options
+${UND}${MNU}Introduction
+$OFF
+Backporting is one of those things that can be daunting, especially when
+there are a LOT of commits to do. Mostly, it is just tedium.$MNU gorp$OFF is an
+attempt to simplify and automate that process as much as possible.
+
+Even the$MNU Conflict$OFF resolution process has been simplified. While we cannot
+boast of AI helping to resolve conflicts, we can at least present a method
+for committing the resolved conflicts that does not require the additional
+tedium of writing and creating commit logs.
+
+After the chosen commits have been backported, the$MNU P$OFF option in the Main
+Menu will prompt you for a directory in which to create a git-formatted
+patch series from the backported commits. The patch series can then be
+examined by$MNU patchreview$OFF or another patch reviewing tool to assure that
+they meet all the criteria to go into a Merge Request,
+
+Starting a new branch, applying the patch series, building the kernel with
+them, and testing for functionality and regression are the final steps.
+
+${MNU}gorp$OFF provides five different backporting methods:
+
+$MNU   git cherry-pick
+$MNU   git apply
+$MNU   git apply --3way
+$MNU   patch
+$MNU   patch --merge
+$OFF
+These are presented as options when gorp is started for the very first
+time. They are also available as options from the Options Menu. If enough
+interest is raised, I will add$MNU git am$OFF in the future.
+
+$MNU${UND}Workflow
+$OFF
+The$MNU gorp$OFF menu fileds and other salient init and setup information
+are explained below the Workflow.
+
+Workflow consists of these steps.
+
+$MNU${UND}The Backport Commits File
+$OFF
+  Create a file containing a list of upstream commits that you want to
+  backport to your downstream repo. This file can be created with the
+  ${INF}mkbackportlog$OFF tool in the patchtools suite. The upstream commits of
+  interest should be one on each line, at the beginning of each line.
+
+  Leading hashes$MNU #$OFF comment out the commit. Additionally, as$MNU gorp$OFF goes
+  through the list, it will mark each line with a leading$MNU +$OFF to indicate
+  that the commit has been successfully backported. If you use the
+  ${CAU}Alt-Shift-R$OFF hotkey to back track, the corresponding$MNU +$OFF markers will be
+  removed from the beginning of each line of commits being backtracked
+  in the file.
+
+  Additionally, you can exclude commits simply by inserting a leading$MNU #$OFF
+  at the beginning of the lines you want to exclude. This is preferable
+  to just deleting them, because you can add comments with a leading$MNU #$OFF to
+  the file explaining why the commit is being excluded. These comments can
+  then be used in the$MNU Omitted-fix:$OFF section of your MR Description.
+
+  Invoke gorp without arguments. If this is the first time you have used
+  gorp in the current directory, gorp will start the$MNU New Session$OFF procedure.
+  After this initialization, the gorp character cell menu interface will
+  appear.
+
+  You will be prompted for a "Work Directory". This is a scratch directory
+  used by$MNU gorp$OFF to do its thing.
+  
+  ${CAU}Do not put anything named$MNU .patch$CAU in the Work Directory!
+  
+  You should use a different directory for your own patches, when prompted
+  for one after pressing the$MNU P$INF Create a patch series$OFF hotkey in the Main Menu.
+
+$MNU${UND}Run the Backport
+$OFF
+  Press$MNU r$OFF to "${INF}Run all remaining commits$OFF". The patch, apply, or cherry-pick
+  method you chose during the$MNU New Session$OFF procedure will apply and commit
+  the patches, creating a commit log with you as the author, the JIRA, CVE,
+  Upstream Status, and Test information you entered during the init. These
+  fields are also available for editing from the$MNU O$OFF options menu, as are the
+  backport methods. If the fields are empty, they will not be printed to
+  the commit log. The original upstream commit log will appear beneath all
+  this. Finally, your signoff, which you should have in your .gitconfig in
+  your$MNU HOME$OFF directory, will be printed at the bottom of the created commit
+  log.
+
+  Automated backporting will stop when it encounters a$CAU Conflict$OFF. When that
+  happens,$MNU gorp$OFF will present the git status as well as messages to
+  assist with resolving the conflict, and exit to the command line.
+
+$MNU${UND}Resolve the conflict
+$OFF
+  The message presented when a conflict is encountered will provide the
+  following salient information, as well as other tool status fields.
+
+    . The offending upstream commit
+    . A git formatted patch file of the upstream commit for editing
+    . A file named$MNU patch.log$OFF in the user work directory, containing
+      the output of whichever patch method was chosen. This file will help
+      with resolving commits from$MNU patch$OFF and$MNU git apply$OFF. The 3way methods
+      and$MNU git cherry-pick$OFF leave conflict markers in the conflicted files.
+    . A reminder to enter$CAU gorp abort$OFF at the command line when the patch
+      can be applied cleanly
+    . Instructions for commiting the patch and continuing with the
+      automation
+
+  Once the conflicts are resolved, and the modified patch can be applied
+  cleanly, enter enter$CAU gorp abort$OFF at the command line. This will reset the
+  git HEAD and index to your last successful commit and clean any remaining
+  untracked files.
+
+  You may determine that you do not want to backport the offending commit,
+  Edit the backport commits log, and enter a leading$MNU #$OFF in front of the
+  commit you want to skip. You may want to enter some commentary with leading
+  hashes to use later when creating the$MNU Omitted-fix:$OFF stanza of your Merge
+  Request Description.
+
+$UND${MNU}Commit the Modified Patch
+$OFF
+  At this point, you will enter$MNU gorp commit$OFF at the command line. This will
+  commit the patch as well as create a commit log with a$MNU Conflicts:$OFF stanza
+  in it. The ${MNU}vim$OFF editor will be invoked to edit the commit log, and you
+  will be prompted with ...
+
+    $MNU Edit this commit message? y/n:$OFF
+
+  Answer$MNU y$OFF to edit the$MNU Conflicts:$OFF stanza. After you write (save)
+  the file, you will be prompted again to edit it. If all meets your
+  approval, you can press$MNU n$OFF to exit the edit loop and re-enter the
+  main menu of$MNU gorp$OFF.
+
+  Now you can press$MNU r$OFF again to resume automated backporting, until there are
+  no more commits to process in the backport commits file, or until you
+  encounter another conflict.
+
+  That's it! You're done.
+
+$UND${MNU}Main Menu$OFF
+
+  ${MNU}Upstream Environment options
 $OFF
 $MNU f$OFF Backports File $OFF
    This is a file containing a sequential list of upstream commits to be
@@ -32,11 +155,10 @@ $MNU c$OFF Next Backport Commit $OFF
    Shows the next commit in the Backport File that will be committed. The
    user can press$MNU c$OFF to choose a different commit in the file.
 
-$MNU
-Downstream Environment options
+$MNU  Downstream Environment options
 $OFF
 $MNU u$OFF Upstream repo directory$OFF
-   This the path to the user's clone of the upsteam Linux kernel.
+   This the path to the users clone of the upsteam Linux kernel.
    A mirror of this repo will be made in a sibling directory of the
    Upstream repo directory. If the sibling directory does not exist,
    it will be created and named "mirror".
@@ -45,10 +167,10 @@ $MNU u$OFF Upstream repo directory$OFF
    will have its sibling mirror directory in /work/upstream/mirror.
    This directory is a bare mirror clone of the upstream repo.
    'git remote add mirror /work/upstream/mirror' will be executed
-   in the user's downstream repo, if the mirror is not already a
+   in the users downstream repo, if the mirror is not already a
    remote.
 
-   If the user's reference to the mirror needs to be updated, a 'git
+   If the users reference to the mirror needs to be updated, a 'git
    fetch' will be executed.
    The first time this executes, it will take a couple minutes.
    Thereafter, the length of time it takes to update the local
@@ -93,15 +215,25 @@ $MNU N$OFF Start a New Sesssion
    are presented to provide the following:
 
    ${INF}Backport Mode$OFF
-      Modes avaialble are $MNU
-         git cherry-pick
-	 git apply
-	 git apply --3way
-	 patch
-         patch --merge$OFF
+      Modes avaialble are
+$MNU        git cherry-pick
+$MNU        git apply --reject
+$MNU        git apply --3way
+$MNU        patch
+$MNU        patch --merge$OFF
+
+   ${MNU}gorp$OFF provides five different methods for backporting, as listed above.
+   The reason for that is to appeal to personal preference of the user for
+   handling backports, as well as offering methods that are speedier than
+   others.$MNU patch$OFF is faster than$MNU git apply$OFF which in turn is faster
+   than ${MNU} git cherry-pick$OFF.
+
+   Each of them handles conflicts differently, and there are other nuances
+   among the five listed options that the discerning user should want to
+   explore.
 
    ${INF}New working directory$OFF
-      Scratch directory for the tool to use. It's good to know where the
+      Scratch directory for the tool to use. It is good to know where the
       tool will leave traces so they can be reviewed when needed.
 
    ${INF}Backports File$OFF
@@ -127,6 +259,7 @@ $MNU r$OFF Run all remaining commits$OFF
    to reapply the patch and continue.
 
    A typical conflict message looks like this.
+____________________________________________________________________________
 
 $INF    Upstream Backports File  :$STA /work/c10s/backports/101/ipmi/backport.log
 $INF                               Commits backported: 2 Commits remaining: 6
@@ -141,28 +274,45 @@ $CAU${UND}There are conflicts$OFF
 
 ${CAU}The offending patch is in:
 ${STA}/work/c10s/backports/101/ipmi/0001-Get-rid-of-remove_new-relic-from.patch$OFF
----------------------------------------------------------------------------------------------
-${CAU}See$STA /work/c10s/backports/101/ipmi/patch.log$CAU for details.$OFF
-    ---------------------------------------
+-------------------------------------------------------------------------
+${CAU}grep the Patch Log for details:$OFF
+$STA/work/c10s/backports/101/ipmi/patch.log$OFF
+---------------------------------------
 ${INF}Type$CAU gorp abort$INF to restore your repo to the state it was in before the conflict.$OFF
      -----------$INF
 ${INF}After fixing the conflicts, you can reenter gorp with the following commands.
 ${STA}gorp commit$INF   : if you have fixed the conflicts and want the script to stage
-$INF                 the commit and create the commit log for you.
+$INF                the commit and create the commit log for you.
 ${STA}gorp continue$INF : if you have fixed the conflicts and made the commit externally
-$INF                 and wish to continue with the next backport commit.
+$INF                and wish to continue with the next backport commit.
+____________________________________________________________________________
+
+   Grep for errors and failed merges in the ${CAU}Patch Log$OFF identified in the
+   conflict message as shown above. The file name will be$MNU patch.log$OFF, but it
+   will be in the work directory you enter when you start a New Session or
+   change it with the$MNU w$OFF hotkey in the Main Menu.
 
   $MNU cherry-pick$OFF will leave$INF <<<<<<<$OFF and$INF >>>>>>>$OFF conflict
    markers around the conflicts in conflicted files.
+  ${MNU}  grep -ni 'conflict' <${CAU}Patch Log$MNU>$OFF
+  ... to identify the files having conflicts.
 
-  $MNU git apply$OFF
+  $MNU git apply --reject$OFF
+  The patch log will identify the files that have conflicts with the
+  following grep command.
+  ${MNU}  grep -ni 'error' <${CAU}Patch Log$MNU>$OFF
+  Additionally, .rej files will be available for examination to help
+  resolve the conflict.
 
-  $MNU git apply --3way$OFF
+  $MNU git apply --3way$OFF leaves leave$INF <<<<<<<$OFF and$INF >>>>>>>$OFF conflict
+   markers around the conflicts in files that have them.
+   To see which files have conflicts, type...
+  ${MNU}  grep -ni 'error' <${CAU}Patch Log$MNU>$OFF
 
   $MNU patch$OFF will leave .rej files in the directories of the conflicted
-   files. A patch.log file will be left in the user's work directory. It
+   files. A patch.log file will be left in the user work directory. It
    will be explicitly identified by the conflict message.$STA
-   ${MNU}grep -n -i 'fail' $workdir/patch.log$OFF
+   ${MNU}  grep -n -i 'fail' $workdir/patch.log$OFF
    ...to find the conflicted files.
    patch will leave .rej files in the home directories of the conflicted
    files to help resolve conflicts.
@@ -193,8 +343,7 @@ $MNU q$OFF Quit this tool
 
 $MNU h$OFF Help
 
-$MNU$UND
-Options Menu$OFF
+$MNU${UND}  Options Menu$OFF
 
 $MNU u$OFF Upstream Status${OFF}, e.g. v6.7, will be entered into commit logs
 $MNU j$OFF JIRA Link$OFF will be entered into commit logs
@@ -208,7 +357,7 @@ $MNU B$OFF Backport mode$INF
 
 $MNU   Which backport mode do you want to use?
 $MNU       1.$OFF git cherry-pick$MNU
-$MNU       2.$OFF git apply$MNU
+$MNU       2.$OFF git apply --reject$MNU
 $MNU       3.$OFF git apply with 3-way merge$MNU
 $MNU       4.$OFF patch with reject files$MNU
 $MNU       5.$OFF patch --merge, use conflict markers instead of rej files$MNU
@@ -226,7 +375,7 @@ commits that you want to skip over.
 Commit logs are automatically generated.
 
 The user can type control-c at anytime to exit the tool, and a best
-effort will be made to assure the user's tree is left in a coherent
+effort will be made to assure the user tree is left in a coherent
 state.
 
 Environmental variables and options are persistent across invocations

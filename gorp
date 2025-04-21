@@ -87,8 +87,8 @@ declare updir=
 #** backport modes
 declare -i bm_lower=1		# lower boundary of backport modes
 declare -i bm_gitcherry=1	# git cherry-pick
-declare -i bm_apply=3	# vanilla git apply
-declare -i bm_apply3=4	# git apply with 3-way merge
+declare -i bm_apply=3		# vanilla git apply
+declare -i bm_apply3=4		# git apply with 3-way merge
 declare -i bm_patch=5		# patch straight no chaser
 declare -i bm_patch_merge=6	# patch --merge
 declare -i bm_upper=6		# upper boundary of backport modes
@@ -154,7 +154,7 @@ exit_gorp() {
 	# echo -e "$UND\0exit_gorp $1$OFF"
 	ui_trunclog
 	[ -n "$2" ] && echo -e "\n$2\n"
-	$b_session_inited && save_session
+	# $b_session_inited && save_session
 	exit "$1"
 }
 
@@ -498,9 +498,9 @@ validate_last_upstream_hash() {
 	# then show nothing.
 	#
 	grep -m1 -n "$lastuphash" "$backportfile" >/dev/null 2>&1 || b_lasthashvalid=false
-	gu_pushd "$updir"
+	# gu_pushd "$updir"
 	$b_lasthashvalid && lastuplog=$(git log -n1 --oneline "$lastuphash")
-	gu_popd
+	# gu_popd
 	$b_lasthashvalid && return 0 || return 1
 }
 
@@ -542,6 +542,17 @@ get_finaluphash() {
 	finaluphash="$(cut -d' ' -f1 <<< "${lary[-1]}")"
 }
 
+#** git_verify - verifies whether the given hash is a commit
+#
+# Arguments
+#   1 - the hash to verify
+#*
+git_verify() {
+	local cmthash="$1"
+	git rev-parse --verify "${cmthash}^{commit}" >/dev/null 2>&1
+	return $?
+}
+
 #** git_upcmd - execute a git command in the upstream context
 #
 # The upstream context is hard-coded as either changing into
@@ -556,10 +567,10 @@ get_finaluphash() {
 #
 # Arguments
 #   1 - cmd    - the git command to execute
-#   1 - uphash - the upstream hash for the git command
+#   2 - uphash - the upstream hash for the git command
 #*
 git_upcmd() {
-	ui_log "git_upcmd"
+	ui_log "git_upcmd cmd:$1 uphash:$2"
 # set -x
 	local cmd="$1"
 	local uphash="$2"
@@ -576,9 +587,12 @@ git_upcmd() {
 		"parse") upstr="$(git rev-parse "$uphash")"
 			;;
 		"format" ) upstr=$(git format-patch -1 "$uphash" -o "$workdir")
+			;;
+		"verify" ) git_verify "$uphash" ; return $?
 	esac
 	# gu_popd
 	echo "$upstr"
+	return 0
 # set +x
 }
 
@@ -882,7 +896,7 @@ show_history() {
 #       RETURNS:  none
 #*
 show_status() {
-	ui_log "show_status"
+	ui_log "show_status $1"
 	# echo -e "$UND\0show_status$OFF"
 
 	local cols=$((tcols - menupad))
@@ -912,7 +926,7 @@ $INF    Original downstream head : $STA${orighead:0:cols}$OFF
 EOF
 )
 	echo -e "$statstr"
-
+	$b_conflict && flag_conflict "$(get_cfg_item "conflicthash")"
 	$b_cmdline && exit 0 || { ui_press_any; return; }
 }
 
@@ -931,7 +945,8 @@ get_patchdir() {
 	local prstr
 
 	prstr="\n${MNU}Directory path for patchfiles. $OFF\n"
-	prstr+="${INF}Enter $qstr$INF to leave it as it is.$MNU\n : $OFF"
+	prstr+="${INF}Enter $qstr$INF to leave it as it is.$MNU\n"
+	prstr+="$patchdir : $OFF"
 
 	ui_getnewdir "$prstr" pdir || return 1
 	patchdir="$pdir"
@@ -948,7 +963,8 @@ get_patchdir() {
 #*
 create_patches() {
 	ui_log "create_patches"
-	local dirstr="${MNU}Do you want to use$STA $patchdir$MNU y/n :$OFF "
+	local dirstr="
+${MNU}Do you want to use$STA $patchdir$MNU for your patches? y/n :$OFF "
 	local findargs="-maxdepth 1 -type f -name "*.patch" -print -quit"
 
 	cfg_get_item "patchdir" patchdir
@@ -1007,7 +1023,7 @@ show_backport_mode() {
 	case "$backport_mode" in
 	    "$bm_cherry" ) echo "git cherry-pick"
 			  ;;
-	    "$bm_apply") echo "git apply"
+	    "$bm_apply") echo "git apply --reject"
 		    	  ;;
 	    "$bm_apply3") echo "git apply with 3-way merge"
 			  ;;
@@ -1641,34 +1657,70 @@ clear_alldone() {
 #
 # Globals
 #   patchlog
+#   b_conflict
 #
 # Arguments
-#   1 - uphash
+#   1 - uphash - the conflicted commit
 #*
 flag_conflict() {
+	ui_log "flag_conflict uphash:$1"
 	local uphash="$1"
 	local patch=
-	local dashpad="$(printf '%*s\n' "${#patchlog}" "" | tr ' ' '-'})"
-	local patpad="$(printf '%*s\n' "${#patch}" "" | tr ' ' '-'})"
+	local dashpad=
+	local patpad=
+	local patcmt=
+	local b_patvalid=false
+	local b_notsame=false
 
-	# Remove any patches in the workdir
-	# Patch sets will be written to a directory of the user's choosing.
-	shopt -s extglob
-	rm -f "${workdir%/}"/*.patch
-	shopt -u extglob
+	b_conflict=true
+	set_cfg_item "b_conflict" "$b_conflict"
 
-	# Create the patch for this conflict
-	patch="$(git_upcmd "format" "$uphash")"
+	# We need to check the patch that was saved to see if it's the same as
+	# the one for this conflict commit.
+	#
+	patch="$(get_cfg_item "patfil")"
 
-	show_status internal
+	# If the patchfile exists, then extract the commit field.
+	if [ -f "$patch" ]; then
+		patcmt="$(cut -d' ' -f2 < <(head -1 "$patch"))"
+		# Verify that it's a valid commit
+		git_upcmd "verify" "$patcmt" && b_patvalid=true || b_patvalid=false
+	fi
+
+	# If it's a valid commit, see if it's the same as the "$uphash" conflict.
+	if $b_patvalid; then
+		[ "$(git_upcmd parse "$patcmt")" != "$(git_upcmd parse "$uphash")" ] \
+			&& b_notsame=true || b_notsame=false
+	fi
+
+	# If the commit hash in the existing file is not valid, or if it's
+	# valid but not the same as the current conflict uphash, then
+	# delete the old one and create a new one from the uphash conflict
+	# commit.
+	if ! $b_patvalid || $b_notsame; then
+		ui_log "flag_conflict: creating new patch file"
+		# Remove any patches in the workdir
+		shopt -s extglob
+		rm -f "${workdir%/}"/*.patch
+		shopt -u extglob
+
+		# Create the patch for this conflict
+		patch="$(git_upcmd "format" "$uphash")"
+		set_cfg_item "patfil" "$patch"
+	fi
+
+	patpad="$(printf '%*s\n' "${#patch}" "" | tr ' ' '-'})"
+	dashpad="$(printf '%*s\n' "${#patchlog}" "" | tr ' ' '-'})"
+
 	echo -e "
 $CAU${UND}There are conflicts$INF
 
 ${CAU}The offending patch is in:
 $STA$patch$OFF
 $patpad
-${CAU}See $STA$patchlog$CAU for details.$OFF
-    $dashpad$INF
+${CAU}grep the Patch Log for details:$OFF
+$STA$patchlog$OFF
+$dashpad$INF
 Type ${CAU}gorp abort$INF to restore your repo to the state it was in \
 before the conflict.$OFF
      -----------$INF
@@ -1704,8 +1756,6 @@ backport() {
 	local b_setexit=false
 	commit=$(git_upcmd "nice" "$uphash")
 
-	patchlog="${workdir%/}/patch.log"
-
 	echo -e "${INF}Processing : $STA${commit:0:$wcols}$OFF"
 
 	case "$backport_mode" in
@@ -1718,7 +1768,7 @@ backport() {
                 fi
                 ;;
 	    "$bm_apply" )
-		git apply < <(git show "$uphash") > "$patchlog" 2>&1
+		git apply --reject < <(git show "$uphash") > "$patchlog" 2>&1
 		;;
 	    "$bm_apply3" )
 		git apply -3 < <(git show "$uphash") > "$patchlog" 2>&1
@@ -1761,6 +1811,7 @@ backport() {
 		conflicthash=$uphash
 		set_cfg_item "conflicthash" "$conflicthash"
 		# echo -e "Saving: $BLD${commit:0:$wcols}$OFF"
+		show_status internal
 		flag_conflict "$uphash"
 	fi
 
@@ -1906,8 +1957,8 @@ get_backport_mode() {
 	ui_log "get_backport_mode"
 	echo
 	echo -e "    ${INF}Which backport mode do you want to use?$MNU"
-	echo -e "      1.$OFF git cherry-pick$MNU"
-	echo -e "      2.$OFF git apply$MNU"
+	echo -e "      1.$OFF git cherry-pick, leaves conflict markers$MNU"
+	echo -e "      2.$OFF git apply --reject, with .rej files to peruse$MNU"
 	echo -e "      3.$OFF git apply with 3-way merge$MNU"
 	echo -e "      4.$OFF patch with reject files$MNU"
 	echo -e "      5.$OFF patch --merge, use conflict markers instead of rej files$OFF"
@@ -1932,7 +1983,6 @@ save_session() {
 	ui_log "save_session"
 	local -a keys=()
 	local fd
-
 	exec {fd}< "$configfile"
 	while IFS+="=" read -ru $fd key; do
 		key="$(echo "$key" | cut -d' ' -f1)"
@@ -2008,6 +2058,7 @@ init_common() {
 	# file by read_session, called before this.
 
 	cmtmsgfile="$workdir/.gcpgitlog"
+	patchlog="${workdir%/}/patch.log"
 
 	mirror="$(realpath "${updir%/}/../mirror")"
 	[ -d "$mirror" ] || mkdir -p "$mirror"
