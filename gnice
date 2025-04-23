@@ -1,0 +1,401 @@
+#!/bin/bash
+#
+# gnice
+#
+# gorp's nice commit engine
+#
+
+[ -n "$MYDIR" ] || {
+	declare MYDIR=
+	MYDIR="$(dirname "$(which "$(basename "$0")")")"
+}
+
+[ -n "$MYLIB" ] || {
+	declare MYLIB=
+	MYLIB="${MYDIR}/lib"
+}
+
+[ -n "$MYDATA" ] || {
+	declare MYDATA=
+	MYDATA="${PWD}/.data"
+}
+[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
+
+[ "$ui_loaded" ] || source "${MYLIB}/ui.source"
+
+[ "$cfgmgr_loaded" ] || source "${MYLIB}/cfgmgr.source"
+
+#** Configuration (sticky) variables
+#*
+declare termbkgnd=
+declare configfile="${MYDATA}/$(basename "$0").conf"
+declare -A configtable
+configtable[str_jira]=	# Rename and add new conf vars as needed
+configtable[str_cve]=	# Rename and add new conf vars as needed
+
+declare cmtexp=
+declare -a argv=()
+declare -i argc=1
+declare b_quilt=false
+
+declare usagestr="$(
+cat <<EOF
+
+$(basename "$0") [options] [cmtexp]
+
+Takes the downstream commit expression and re-commits each one to
+insert 
+
+If you are submitting a quilt/patch/series file with the -q
+
+Arguments
+---------
+   cmtexp : A valid git commit expression, e.g. :
+            5465a8830cfa
+	    5465a8830cfa..eae88068af7a
+            5465a8830cfa^
+Options
+-------
+   q:series   : path to a quilt/patches/series file
+   j:jira     : Link to a str_jira
+   c:str_cve  : Link to a str_cve
+   u:upstream : upstream status, e.g. v6.17 or url.
+\0
+EOF
+)"
+
+########################################
+# Global Strings
+########################################
+# These can be inited only after colors have been determined and defined,
+# as well as other parameters that need user interaction of processing to
+# determine.
+#
+declare errmsg_missing_qseries=
+
+init_global_strings() {
+errmsg_missing_qseries="-q option requires path to quilt series file.
+${STA}   gnice -q /path-to/quilt/patches/series
+$OFF"
+}
+
+#** usage: print info and instructions to screen
+#
+# Global
+# 	usagestr
+#*
+usage() {
+	echo -e "$usagestr"
+}
+
+#** control_c: control-c trap
+#
+# Global
+#   CTLC_EXIT - bash environment variable
+#*
+control_c() {
+	echo -e "\nCtrl-c detected\nCleaning up and exiting."
+	cfg_write_cfgfile configtable
+	ui_trunclog
+	exit $CTLC_EXIT
+}
+
+#** cfg_write - write the configtable into the configfile
+#
+# See lib/cfgmgr.source for details
+#
+# Global
+#   configtable
+#   configfile
+#*
+cfg_write() {
+	cfg_write_cfgfile configtable
+}
+
+#** cfg_read - read the configfile into the configtable
+#
+# see lib/cfgmgr.cource for details
+#
+# Global
+#   configtable
+#   configfile
+#*
+cfg_read() {
+	cfg_read_cfgfile configtable
+}
+
+#** exitme
+#
+# Global
+#   ui exit codes - see lib/ui.source
+#   ui_err_msg array
+#
+# Arguments
+#   $1 - exit code
+#   $2 - optional string to precede cli message
+#*
+exitme() {
+	local -i code=$1
+	local str="$2"
+
+	cfg_write
+	((code == ui_exit_ok)) && exit "$code"
+	ui_print_climsg "$code" "$str"
+	cfg_write
+	exit "$code"
+}
+
+#** init
+#
+# Global
+#   configtable
+#*
+init() {
+	cfg_start configtable "$configfile"
+	cfg_read
+	ui_setbg termbkgnd
+	configtable[termbkgnd]="$termbkgnd"
+	init_global_strings
+}
+
+#** check_arg
+#
+# Global
+#   argv - array containing command line arguments
+#*
+check_arg() {
+        local arg="$1"
+
+        # If 1st char is a hyphen, then invalid switch
+        [ "${arg:0:1}" == "-" ] && return 1
+
+        # Otherwise, add the arg to the argary
+        argv+=("$arg")
+        return 0
+}
+
+#** parseopts
+#
+# Global
+#   argv
+#   argc
+#*
+parseopts() {
+	while (($# > 0)); do
+	    case "$1" in
+		-q ) shift
+		     qseries="$1"
+		     b_quilt=true
+		     ;;
+		-j ) shift
+		     str_jira="$1"
+		     ;;
+		-c ) shift
+		     str_cve="$1"
+		     ;;
+		-u ) shift
+		     str_upstream="$1"
+		     ;;
+		-h | --help )
+		     echo -e "$usagestr"
+		     exit 0
+		     ;;
+		* )  argv+=("$1")
+		     ;;
+	    esac
+	    shift
+	done
+
+	configtable[str_jira]="$str_jira"
+	configtable[str_cve]="$str_cve"
+}
+
+#** stage_commit: process the commit that was backported
+#
+#  Create the git log for the backported commit, including JIRA number, upstream
+#  and brew info, if any.
+#  Query the user to see if editing the commit is warranted, for conflicts, etc.
+#
+#     ARGUMENTS:  none
+#       GLOBALS:  b_conflict
+#		  cmtmsgfile
+#		  str_jira
+#		  str_cve
+#		  str_upstream
+#		  str_conflicts
+#       RETURNS:  none
+#*
+stage_commit() {
+	ui_log "stage_commit uphash:$1"
+	local uphash="$1"
+	local description
+	local uplog
+	local b_crlf=false
+
+	# Create the new commit message in a file consisting of ..
+	#	The user of this script as author of the patch
+	#	The current date
+	#	Descriptor line, with leading whitespace trimmed
+	#	Bugzilla and brew if available
+	#	Upstream status if available
+	#	Original commit message from applied commit
+	#	Signed-off-by: line
+	#
+	echo -e "\n" > "$cmtmsgfile"
+
+	set -f	# disable wildcard
+
+	# Get the upstream commit log and extract the description
+	# from the fifth line.
+	#
+	uplog="$(git log -n 1 "$uphash")"
+	description=$(sed -n '5p' <<< "$uplog")
+
+	# Trim leading whitespace from description line and append
+	# it to the commit message. Also append the standard commit
+	# message.
+	#
+	description=$(echo -e $description)
+
+	echo -e "$description\n" >> "$cmtmsgfile"
+	[ -n "$str_jira" ] && {
+		echo -e "JIRA: $str_jira" >> "$cmtmsgfile"
+		b_crlf=true
+	}
+	[ -n "$str_cve" ] && {
+		echo -e "CVE: $str_cve" >> "$cmtmsgfile"
+		b_crlf=true
+	}
+	[ -n "$str_upstream" ] && {
+		echo -e "Upstream status: $str_upstream" >> "$cmtmsgfile"
+		b_crlf=true
+	}
+	$b_crlf && echo >> "$cmtmsgfile"
+
+	set +f	# re-enable wildcards
+
+	$b_conflict && echo -e "$str_conflicts" >> "$cmtmsgfile"
+
+	# Append the original commit message.
+	#
+	echo "$uplog"  >> "$cmtmsgfile"
+
+	# Make the commit. Only use git add . if there are untracked
+	# files. It saves time to use git add -u, because the git
+	# logic won't waste time looking for untracked files.
+	# git ls-files is much faster.
+	#
+	[ -n "$(git ls-files --others --exclude-standard | head -n 1)" ] \
+		&& git add . \
+		|| git add -u
+	git commit -a -m"hold" > /dev/null 2>&1
+
+	# Amend the commit messsage with you as author, using the
+	# commit message file we built in the previous few lines,
+	# and a Signed-off-by: ("-s") line.
+	#
+	git commit -s --amend --reset-author --file="$cmtmsgfile"
+
+	# If there are conflicts, give the user the option to edit
+	# the commit log.
+	#
+	$b_conflict && edit_commit
+
+	b_conflict=false
+}
+
+#** is_valid_commit - verifies whether the given hash is a commit
+#
+# Arguments
+#   1 - the hash to verify
+#*
+is_valid_commit() {
+	local cmthash="$1"
+	git rev-parse --verify "${cmthash}^{commit}" >/dev/null 2>&1
+	return $?
+}
+
+#** is_valid_cmtexp - verifies whether the given commit expression is valid
+#
+# Arguments
+#   1 - the commit expression to verify
+#*
+is_valid_cmtexp() {
+	local cmtexp="$1"
+	git rev-list -n1 $cmtexp > /dev/null 2>&1
+	return $?
+}
+
+#** loop_commits
+#
+# Globals
+#
+# Arguments
+#   1 - commit expression
+#*
+loop_commits() {
+	local cmtexp="$1"
+	local -a cmtary=()
+	local -i idx
+
+	is_valid_cmtexp "$cmtexp" || return 1
+	mapfile -t cmtary < <(git rev-list "$cmtexp")
+
+	for (( idx = 0; idx < ${#cmtary}; ++idx )); do
+		$b_quilt && quilt push
+		stage_commit "${cmtary[idx]}" || return 2
+	done
+
+	return 0
+}
+
+#** is_valid_gitdir - check that the directory is a valid git directory
+#
+# Globals
+#   none
+#
+# Arguments
+#   1 - directory to test
+#
+# Returns
+#   0 - if valid git directory
+#   1 - if not
+#*
+is_valid_gitdir() {
+	ui_log "is_valid_gitdir directory:$1"
+	local gdir="$1"
+
+	# Strip off any tailing slash
+	#
+	gdir="${gdir%/}"
+
+	if [ "$gdir" == "$(git -C $gdir rev-parse --show-toplevel 2>&1)" ]; then
+		return 0
+	fi
+	return 1
+}
+
+#** main
+#*
+main() {
+	ui_log "main"
+
+        # Trap for control-c
+        trap control_c SIGINT
+
+	is_valid_gitdir "$(pwd)"
+	init
+	parseopts "$@"
+	cmtexp="${argv[0]}"
+	cmtmsgfile="$(mktemp)"
+
+	$b_quilt && [ -n "$qseries" ] || \
+		exitme $ui_err_missing_arg "$errmsg_missing_qseries"
+
+	loop_commits "$cmtexp" || exitme $? "Something went wrong"
+	rm -f cmtmsgfile
+
+	exitme $ui_exit_ok
+}
+
+main "$@"
