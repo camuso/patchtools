@@ -155,7 +155,7 @@ print_usagearts() {
 		((${#art} > artwid)) && artwid=${#art}
 	done
 
-	echo -e "$artname">> "$ofile"
+	echo -e "$artname" >> "$ofile"
 	print_pad ${#artname} "-" "crlf" >> "$ofile"
 
 	for art in $arts; do
@@ -310,12 +310,13 @@ cat <<EOF
 $(basename "$0")' >> "$ofile"
 
 $b_opts && echo -en ' [options]' >> "$ofile"
-$b_args && echo -e " $args\n" >> "$ofile"
+$b_args && echo -e "$args" >> "$ofile"
+
+echo >> "$ofile"
 
 $b_args && print_usagearts "$args" "Arguments"
-$b_opts && print_usagearts "$opts" "Options"
-$b_cmds && print_usagearts "$cmds" "Commands"
-
+$b_opts && { print_usagearts "$opts" "Options"; echo >> "$ofile"; }
+$b_cmds && { print_usagearts "$cmds" "Commands"; echo >> "$ofile"; }
 echo -en '\\0
 EOF
 )"
@@ -442,7 +443,7 @@ $b_color || $b_cfgmgr && echo -en '
 
 $b_cfgmgr && echo -e "#   configtable" >> "$ofile"
 
-$b_color || $b_cfgmgr && echo -en '#*
+($b_color || $b_cfgmgr) && echo -en '#*
 init() {
 ' >> "$ofile"
 
@@ -501,7 +502,7 @@ if ($b_args || $b_opts); then
 
 		if [ -n "$var" ]; then
 			echo -e "shift" >> "$ofile"
-			echo -e "\t\t     var"'="$1"' >> "$ofile"
+			echo -e "\t\t     $var"'="$1"' >> "$ofile"
 		else
 			echo >> "$ofile"
 		fi
