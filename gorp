@@ -83,17 +83,6 @@ declare updir=
 #########################################
 # Global Variables
 #########################################
-: '
-#** backport modes
-declare -i bm_lower=1		# lower boundary of backport modes
-declare -i bm_gitcherry=1	# git cherry-pick
-declare -i bm_apply=3		# vanilla git apply
-declare -i bm_apply3=4		# git apply with 3-way merge
-declare -i bm_patch=5		# patch straight no chaser
-declare -i bm_patch_merge=6	# patch --merge
-declare -i bm_upper=6		# upper boundary of backport modes
-#*
-'
 declare -i menupad=30
 declare cmtmsgfile=
 declare b_lasthashvalid=false
@@ -1021,15 +1010,17 @@ show_tbackground() {
 show_backport_mode() {
 	ui_log "show_backport_mode"
 	case "$backport_mode" in
-	    "$bm_cherry" ) echo "git cherry-pick"
-			  ;;
-	    "$bm_apply") echo "git apply --reject"
-		    	  ;;
-	    "$bm_apply3") echo "git apply with 3-way merge"
-			  ;;
-	    "$bm_patch" ) echo "patch with rej files"
-		    	  ;;
-	    "$bm_patch_merge" )  echo "patch --merge, patch with conflict markers"
+	    "$bm_patchpal"	) echo "patchpal"
+				;;
+	    "$bm_cherry"	) echo "git cherry-pick"
+				;;
+	    "$bm_apply"	) echo "git apply --reject"
+				;;
+	    "$bm_apply3"	) echo "git apply with 3-way merge"
+				;;
+	    "$bm_patch" 	) echo "patch with rej files"
+				;;
+	    "$bm_patch_merge"	)  echo "patch --merge, patch with conflict markers"
 	esac
 }
 
@@ -1767,6 +1758,8 @@ backport() {
 				"$uphash" > "$patchlog" 2>&1
                 fi
                 ;;
+	    "$bm_patchpal" ) patchpal "$uphash"
+		;;
 	    "$bm_apply" )
 		git apply --reject < <(git show "$uphash") > "$patchlog" 2>&1
 		;;
@@ -1948,6 +1941,51 @@ get_originhead() {
 	dnorighead="$(get_cfg_item dnorighead)"
 }
 
+#** is_xrunning - determine if x is running
+#
+# X needs to be running so that the application's windows can materialize
+# somewhere. If we don't have the homegrown binary that detects whether X
+# is running, then compile it on the fly.
+#
+# Globals
+#
+# Arguments
+#
+#*
+is_xrunning() {
+	# Define a temporary directory for compilation
+	local tmpdir=$(mktemp -d)
+	local xtest_c="$tmpdir/x_test.c"
+	local xtest_bin="$tmpdir/x_test"
+
+	# Write the C code to a file
+cat << 'EOF' > "$xtest_c"
+#include <X11/Xlib.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(void) {
+    Display *dpy = XOpenDisplay(NULL);
+    if (dpy) {
+	XCloseDisplay(dpy);
+	return 0;  // X is available
+    }
+    return 1;  // No X server
+}
+EOF
+	# Compile the program (you can change gcc options as needed)
+	gcc "$xtest_c" -o "$xtest_bin" -lX11 >/dev/null 2>&1
+
+	# Check if the binary exists and is executable, then run it.
+	if [ -x "$xtest_bin" ] && "$xtest_bin"; then
+	    echo "X server is available."
+	else
+	    echo "No X server found."
+	fi
+
+	# Clean up if you like (or leave for debugging)
+	rm -rf "$tmpdir"
+
 #** get_backport_mode: choose which of the availiable backport modes to use
 #
 # Globals
@@ -1957,13 +1995,21 @@ get_backport_mode() {
 	ui_log "get_backport_mode"
 	echo
 	echo -e "    ${INF}Which backport mode do you want to use?$MNU"
-	echo -e "      1.$OFF git cherry-pick, leaves conflict markers$MNU"
-	echo -e "      2.$OFF git apply --reject, with .rej files to peruse$MNU"
-	echo -e "      3.$OFF git apply with 3-way merge$MNU"
-	echo -e "      4.$OFF patch with reject files$MNU"
-	echo -e "      5.$OFF patch --merge, use conflict markers instead of rej files$OFF"
+	echo -e        1.$OFF patchpal
+	echo -e "      2.$OFF git cherry-pick, leaves conflict markers$MNU"
+	echo -e "      3.$OFF git apply --reject, with .rej files to peruse$MNU"
+	echo -e "      4.$OFF git apply with 3-way merge$MNU"
+	echo -e "      5.$OFF patch with reject files$MNU"
+	echo -e "      6.$OFF patch --merge, use conflict markers instead of rej files$OFF"
 
 	loop_range $bm_lower $bm_upper  backport_mode
+
+	# We need to special case patchpal mode, because you need to be
+	# running X to use it.
+	# Works fine with VNC, so you can still be remote, as long as you
+	# launce an X-client that can handle it, like VNC.
+	#
+	(backport_mode == bm_patchpal) && check_X
 
 	set_cfg_item "backport_mode" "$backport_mode"
 }
@@ -2032,7 +2078,10 @@ read_session() {
 		ui_do_colors "$tbackground"
 	fi
 
+	# backport_mode enumeration
+	#
 	enum "bm" \
+		patchpal \
 		cherry \
 		apply \
 		apply3 \
