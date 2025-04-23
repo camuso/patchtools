@@ -175,10 +175,9 @@ ui_print_climsg() {
 	local -i msgindex="$1"
 	local str="$2"
 	local msg
-
 	echo
-	msg="$WRN${ui_err_msg[msgindex]}$OFF"
-	[ -n "$str" ] && msg="$MNU$str $msg"
+	msg="$CAU${ui_err_msg[msgindex]}$OFF"
+	[ -n "$str" ] && msg="$msg$INF : $str"
 	echo -e "$msg"
 }
 
