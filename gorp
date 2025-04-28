@@ -1202,6 +1202,7 @@ $MNU 1 $OFF Run the next commit and stop
 $MNU s $OFF gorp status
 $MNU A $OFF Abort, reset to last good commit and clean status
 $(show_altopt "R" "RESET to an earlier commit in this session ")
+$(show_altopt "U" "UPDATE to Current Head: $STA$dncurrenthead")
 $MNU q $OFF Quit this tool
 $MNU h $OFF Help
 $OFF
@@ -1286,6 +1287,8 @@ menu_parser() {
 		R )	((retval == 1)) || return $rc_continue
 			reset_gorp
 			;;
+		U )	update_gorp
+			;;
 		A )	abort_gorp
 	esac
 	return $rc_continue
@@ -1355,13 +1358,16 @@ clean_status() {
 #
 #  This will clear conflicts flag and abort the pending backport
 #
-#     ARGUMENTS:  $1 - true if command line call
+#     ARGUMENTS:  none
+#
 #       GLOBALS:  b_conflict
+#                 b_cmdline
 #                 upcmtstartline
+#
 #       RETURNS:  none
 #*
 abort_gorp() {
-	ui_log "abort_gorp"
+	ui_log "abort_gorp upcmtstartline:$upcmtstartline b_conflict:$b_conflict"
 	local cmt
 
 	clean_status
@@ -1393,9 +1399,23 @@ get_newhead() {
 	local addlprompt
 	local tmp
 	local spc
+	local count
+	local mypid
+	local tmpfile
 
-	# Get the downstream and upstream commits
-	mapfile -t dncmtary < <(extup -m -u "$updir" "$dnorighead^..HEAD")
+	# Get the number of commits made after dnorighead and notify
+	# user.
+	count=$(git rev-list --count "$dnorighead"^..HEAD)
+	echo -e "$INF
+There are $STA$count$INF commits since Head at Session Start: $STA$dnorighead$INF"
+
+	# Get the downstream and upstream commits in a spawned process and
+	# save it to a named pipe.
+	tmpfile=$(mktemp)
+	extup -m -u "$updir" "$dnorighead^..HEAD" > "$tmpfile" & mypid=$!
+	ui_waitonproc_tty "$mypid" 0.05 "${INF}Getting the list of commits...$OFF"
+	mapfile -t dncmtary < "$tmpfile"
+	rm -f "$tmpfile"
 
 	# Create space strings based on the sizes of the hashes.
 	# These will be used to correctly align the column headings in the
@@ -1414,6 +1434,40 @@ get_newhead() {
 	return 0
 }
 
+#** update_gorp: update the Head at Session Start to Current downstream head
+#
+# If the git index has been updated with a git pull or creation of a new
+# branch, this will update the Head at Session Start to the current
+# downstream head, after resetting all the markers in the backportfile.
+# Basically, gorp_reset, but without offering a choice, because there are
+# likely hundreds of commits since the last downstream pull.
+#
+# Globals:
+#   dnorighead
+#   dncurrenthead
+#   backportfile
+#
+# Arguments
+#   none
+#
+# Returns
+#   none
+#*
+update_gorp() {
+	ui_log "update_gorp dnorighead:$dnorighead dncurrenthead:$dncurrenthead"
+	clean_status
+	clear_alldone
+	dnorighead="$dncurrenthead"
+	set_cfg_item "dnorighead" "$dnorighead"
+	linenumber=1
+	b_conflict=false
+	b_lasthashvalid=false
+	upcmtstartline=0
+	get_next_backport
+
+	$b_cmdline && exit_gorp $exit_reset || return
+}
+
 #** reset_gorp: reset the current downstream HEAD to an earlier commit
 #
 # If the current downstream HEAD is not at the original downstream HEAD, then
@@ -1424,15 +1478,14 @@ get_newhead() {
 # made.
 # This is useful if things go over the edge, and you need to backtrack.
 #
-#     ARGUMENTS:  $1 - exit code
+#     ARGUMENTS:  none
 #       GLOBALS:  dnorighead
 #                 dncurrenthead
 #                 backportfile
 #       RETURNS:  none
 #*
 reset_gorp() {
-	ui_log "reset_gorp"
-	local cols=$((tcols - 12))
+	ui_log "reset_gorp dnorighead:$dnorighead dncurrenthead:$dncurrenthead"
 	local -a clrary=()
 	local linenumber
 
@@ -1462,6 +1515,7 @@ reset_gorp() {
 	b_lasthashvalid=false
 	upcmtstartline=0
 	get_next_backport
+
 	$b_cmdline && exit_gorp $exit_reset || return
 }
 
@@ -1509,7 +1563,7 @@ EOF
 #       RETURNS:  none
 #*
 run_commit() {
-	ui_log "run_commit"
+	ui_log "run_commit arg1:$1 currentuphash:$currentuphash conflicthash:$conflicthash"
 	# echo -e "$UND\0run_commit$OFF"
 
 	currentuphash="$conflicthash"	# get the stored conflict hash
@@ -1565,7 +1619,7 @@ run_single() {
 #       RETURNS:  0 on success, nonzero on fail
 #*
 mark_done() {
-	ui_log "mark_done"
+	ui_log "mark_done uphash: $1 mark:${2:-'+'}"
 	local uphash="$1"
 	local mark='+'		# the default leading char
 	local line
@@ -1596,7 +1650,7 @@ mark_done() {
 #       RETURNS:  0 on success, nonzero on fail
 #*
 clear_done() {
-	ui_log "clear_done"
+	ui_log "clear_done uphash: $1 mark:${2:-'+'}"
 	local uphash="$1"
 	local mark='+'		# the default leading char
 	local line
@@ -1628,7 +1682,7 @@ clear_done() {
 #       RETURNS:  0 on success, nonzero on fail
 #*
 clear_alldone() {
-	ui_log "clear_alldone"
+	ui_log "clear_alldone mark:${1:-'+'}"
 	local mark='+'		# the default leading char
 	local markstr=
 
