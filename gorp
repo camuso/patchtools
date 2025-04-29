@@ -97,6 +97,7 @@ declare currentupcommit # oneline gitlog of next hash in the backportfile
 declare lastuplog	# oneline gitlog of last committed upstream hash
 declare dncurrenthead	# hash of current downstread head
 declare patchlog	# file containing the patching errors
+declare starterr=	# errors on startup
 
 # Lines in the backport file starting with any of these chars will be
 # ignored.
@@ -130,6 +131,7 @@ test_sanity() { echo -en "${CAU}SANITY$OFF  "; ui_press_any; }
 print_herald() {
 	ui_log "print_herald"
 	echo -e "$str_herald"
+	(! $b_cmdline && [ -n "$starterr" ]) && echo -e "$starterr"
 }
 
 #** exit_gorp: exit in an orderly manner
@@ -217,8 +219,7 @@ select_gitbranch() {
 	done < "$branchlistfile"
 
 	# echo -e "$brmsg"
-	loop_range_q 1 $((index - 1)) linenumber || return 0
-
+	loop_range 1 $((index - 1)) linenumber
 	gitbranch="$(ui_readline "$linenumber" "$branchlistfile" | tr -d [\*" "])"
 	echo -e "${MNU}git checkout $STA$gitbranch$OFF"
 	clean_status
@@ -229,6 +230,8 @@ select_gitbranch() {
 	}
 
 	git log --oneline -1
+	set_cfg_item gitbranch "$gitbranch"
+
 	get_originhead
 	$b_cmdline && exit_gorp $exit_good || return 0
 }
@@ -639,7 +642,6 @@ get_next_backport() {
 
 #** get_current_backport: gets the current commit to backport
 #
-#
 #  Gets the current commit in the commits file indicated by the current
 #  upcmtstartline.
 #
@@ -652,6 +654,7 @@ get_next_backport() {
 #       RETURNS:  status of call to get_next_backport
 #*
 get_current_backport() {
+	# ui_log "get_current_backport upcmtstartline:$upcmtstartline"
 	# local myname="get_current_backport:"
 	# echo -e "$OFF\n$UND$myname upcmtstartline: $upcmtstartline$OFF"
 
@@ -673,6 +676,7 @@ get_current_backport() {
 #       RETURNS:  none
 #*
 show_next_backport() {
+	# ui_log "show_next_backport currentupcommit:$currentupcommit currentuphash:$currentuphash"
 	# echo "\n${UND}show_next_backport$OFF"
 
 	local linecount
@@ -820,7 +824,7 @@ show_upsteam_commits_file() {
 		if [ "$(git rev-parse "$lastdncmt")" == "$(git rev-parse "$dnorighead")" ]; then
 			return
 		else
-			echo -e "$padstr$WRN Inconsistent State$OFF\n"\
+			echo -e "$padstr$CAU Inconsistent State$OFF\n"\
 			"$padstr$INF None of the commits in the Backports File\n"\
 			"$padstr has been applied, but the current head is\n"\
 			"$padstr not the same as \"$OFF${BLD}Head at Session Start\"$INF.\n"\
@@ -843,7 +847,7 @@ show_upsteam_commits_file() {
 	lastdnup="$(git_upcmd "parse" "$lastdnup")"
 
 	if [ "$lastdnup" != "$lastupcmt" ]; then
-		echo -e "$padstr$WRN Inconsistent State"
+		echo -e "$padstr$CAU Inconsistent State"
 		echo -e "$padstr$CAU Last upstream commit in current downstream branch"
 		echo -e "$padstr not same as last upstream commit in backports file."
 		echo -e "$padstr$CAU Wrong branch or backport file?$OFF"
@@ -1340,6 +1344,17 @@ edit_commit() {
 	done
 }
 
+#** check_state - first thing before anything
+#
+# Globals
+#
+# Arguments
+#
+#*
+check_state() {
+	ui_log "check_state"
+}
+
 #** clean_status - abort everything and leave git status clean
 #
 # Globals
@@ -1621,24 +1636,10 @@ run_single() {
 mark_done() {
 	ui_log "mark_done uphash: $1 mark:${2:-'+'}"
 	local uphash="$1"
-	local mark='+'		# the default leading char
-	local line
-	local -i lnum
-	local stat
+	local mark="${2:-'+'}"	# the default leading char is +
 
 	[ -f "$backportfile" ] || return 1
-
-	# If user passed a char in $2, then it means user wants to apply a
-	# different leading mark.
-	[ -n "$2" ] && mark="$2"
-
-	line=$(grep -n -m1 "$uphash" "$backportfile")
-	(($? == 0)) || return 1
-	lnum=$(cut -d: -f1 <<< "$line")
-	line=$(cut -d: -f2- <<< "$line")
-	line="$mark $line"
-	ui_replaceline "$lnum" "$line" "$backportfile"
-
+	sed -i "s/^$uphash/$mark $uphash/" "$backportfile" || return 1
 	return 0
 }
 
@@ -1652,23 +1653,10 @@ mark_done() {
 clear_done() {
 	ui_log "clear_done uphash: $1 mark:${2:-'+'}"
 	local uphash="$1"
-	local mark='+'		# the default leading char
-	local line
-	local -i lnum
-	local stat
+	local mark="${2:-'+'}"	# the default leading char is +
 
 	[ -f "$backportfile" ] || return 1
-
-	# If user passed a char in $2, then it means user wants to apply a
-	# different leading mark.
-	[ -n "$2" ] && mark="$2"
-
-	line=$(grep -n -m1 "$uphash" "$backportfile")
-	(($? == 0)) || return 1
-	lnum=$(cut -d: -f1 <<< "$line")
-	line=$(cut -d: -f2- <<< "$line")
-	line="${line:2}"
-	ui_replaceline "$lnum" "$line" "$backportfile"
+	sed -i "s/^$mark $uphash/$uphash/" "$backportfile" || return 1
 	return 0
 }
 
@@ -1683,18 +1671,12 @@ clear_done() {
 #*
 clear_alldone() {
 	ui_log "clear_alldone mark:${1:-'+'}"
-	local mark='+'		# the default leading char
+	local mark="${1:-'+'}"	# the default leading char is +
 	local markstr=
 
 	[ -f "$backportfile" ] || return 1
-
-	# If user passed a char in $1, then it means user wants to remove  a
-	# different leading mark.
-	[ -n "$1" ] && mark="$1"
 	markstr="$mark "	# add the trailing space
-
-	sed -i "s|^$markstr||g" "$backportfile"
-
+	sed -i "s|^$markstr||g" "$backportfile" || return 1
 	return 0
 }
 
@@ -2077,7 +2059,7 @@ get_backport_mode() {
 	ui_log "get_backport_mode"
 	echo
 	echo -e "    ${INF}Which backport mode do you want to use?$MNU"
-	echo -e        1.$OFF patchpal
+	echo -e "      1.$OFF patchpal$MNU"
 	echo -e "      2.$OFF git cherry-pick, leaves conflict markers$MNU"
 	echo -e "      3.$OFF git apply --reject, with .rej files to peruse$MNU"
 	echo -e "      4.$OFF git apply with 3-way merge$MNU"
@@ -2091,7 +2073,7 @@ get_backport_mode() {
 	# Works fine with VNC, so you can still be remote, as long as you
 	# launce an X-client that can handle it, like VNC.
 	#
-	(backport_mode == bm_patchpal) && check_X
+	((backport_mode == bm_patchpal)) && check_X
 
 	set_cfg_item "backport_mode" "$backport_mode"
 }
@@ -2130,7 +2112,6 @@ save_session() {
 #       GLOBALS:  workdir
 #                 backportfile
 #                 upurl
-#                 upname
 #                 tbackground
 #       RETURNS:  1 if any of the important conf values are missing
 #                 0 otherwise
@@ -2173,27 +2154,96 @@ read_session() {
 	return 0
 }
 
+#** check_gitbranch - are we running on the same git branch as last time?
+#
+# If we are running on the same branch as before, no problem. Just return
+# If we are not, try to checkout the last branch we were running on.
+# If we can't do that, give the user the option to exit or to select a
+# different branch. In either case, the backport file must not have any
+# "done" marks in it.
+#
+# Globals
+#   backportfile
+#
+# Arguments
+#
+#*
+check_gitbranch() {
+	ui_log "check_gitbranch backportfile:$backportfile"
+	local cbranch	# current branch
+	local sbranch	# saved branch
+
+	cbranch="$(git rev-parse --abbrev-ref HEAD)"
+	sbranch="$(get_cfg_item gitbranch)"
+
+	[[ $cbranch == $sbranch ]] && return 0
+	git checkout "$sbranch" && return 0
+
+	# Okay, not the same branch, and previous branch is no longer valid.
+	# Clear all done markers in the backport file.
+	clear_alldone || exit_gorp 1 "${CAU}Could not access$STA $backportfile"
+	starterr+="
+$CAU$sbranch$MNU is not a valid branch$INF
+Type$CAU ctrl-c$INF to exit now, or any other key to select from a list
+of available branches.$OFF"
+	ui_press_any_ctlc
+	select_gitbranch
+}
+
+#** check_repostate
+#
+# Globals
+#   backportfile
+#
+# Arguments
+#
+#*
+check_repostate() {
+	ui_log "check_repostate backportfile:$backportfile"
+	local uphash
+	local exhash
+	local currenthead
+
+	currenthead="$(git rev-parse --short HEAD)"
+
+	# Find the last backported upstream commit in the backport file
+	uphash="$(tac "$backportfile" | \
+		grep -m 1 '^+' | sed 's/^\+\s*\([^[:space:]]*\).*/\1/')"
+
+	# Extract the upstream commit from the first commit log in the
+	# downstream repo
+	exhash="$(git log -1 --pretty=%B \
+		| awk '/^commit[[:space:]]+[0-9a-f]{40}/ { print $2; exit }' \
+		| xargs git rev-parse --short 2> /dev/null)"
+
+	[[ $uphash == $exhash ]] && return 0
+
+	[ -n "$exhash" ] && {
+		starterr+="$CAU
+Inconsistent state: $STA$uphash$INF in $STA$backportfile$INF
+is not the same as: $STA$exhahs$INF in git HEAD: $STA$currenthead$OFF"
+		return 1
+	}
+
+	starterr+="$CAU
+Inconsistent state:$INF The current HEAD: $STA$currenthead$INF was not backported
+from upstream.
+See backport commits file: $STA$backportfile$OFF"
+	return 1
+}
+
 #** init_common: common to all init calls
 #
 #     ARGUMENTS:  none
 #       GLOBALS:  upcmtstartline
 #                 backportfile
-#                 upname
 #       RETURNS:  none
 #*
 init_common() {
 	# echo -e "$UND\0init_common$OFF"
-	ui_log "init_common"
-
-	# updir was declared in init_newsession() or read from the config
-	# file by read_session, called before this.
-
-	cmtmsgfile="$workdir/.gcpgitlog"
-	patchlog="${workdir%/}/patch.log"
-
-	mirror="$(realpath "${updir%/}/../mirror")"
-	[ -d "$mirror" ] || mkdir -p "$mirror"
-
+	ui_log "init_common backportfile:$backportfile upcmtstartline:$upcmtstartline"
+	local loc_main
+	local rem_main
 	local infostr="$INF
 If this is the first time running this script in this directory, or
 if there have been significant changes upstream since you last used
@@ -2202,11 +2252,21 @@ You will not need to add the upstream kernel as a remote, since your
 existing upstream kernel in $STA$updir$INF will be mirrored in
 $STA$mirror$INF"
 
+	# workdir was declared in init_newsession() or read from the config
+	# file by read_session, called before this.
+	cmtmsgfile="$workdir/.gcpgitlog"
+	patchlog="${workdir%/}/patch.log"
+
 	init_global_strings
 
 	((backport_mode >= bm_lower && backport_mode <= bm_upper)) || {
 		get_backport_mode
 	}
+
+	# The mirror repo is going to be parallel to the upstream repo.
+	# If it's not there, create it.
+	mirror="$(realpath "${updir%/}/../mirror")"
+	[ -d "$mirror" ] || mkdir -p "$mirror"
 
 	# Shared upstream repo housekeeping.
 	#
@@ -2215,36 +2275,33 @@ $STA$mirror$INF"
 		git clone --mirror "${updir%/}" "${mirror%/}"
 	}
 
-	$b_cmdline || {
-		local loc_master
-		local rem_master
+	# Update the mirror
+	gu_pushd "$mirror"
+	ui_log "init_common: git fetch origin --prune"
+	git fetch origin --prune
+	gu_popd
 
-		# Update the mirror
-		gu_pushd "$mirror"
-		ui_log "init_common: git fetch origin --prune"
-		git fetch origin --prune
-		gu_popd
+	# If we don't have a reference to the upstream mirror yet, then
+	# add it.
+	if ! git config --get remote.mirror.url > /dev/null; then
+		ui_log "init_common: remote add mirror $mirror"
+		git remote add mirror "$mirror"
+	fi
 
-		# If we don't have a reference to the upstream mirror yet, then
-		# add it.
-		if ! git config --get remote.mirror.url > /dev/null; then
-			ui_log "init_common: remote add mirror $mirror"
-			git remote add mirror "$mirror"
-		fi
+	# Check for updates in the mirror.
+	#
+	rem_main=$(git --git-dir="${mirror%/}" rev-parse refs/heads/master 2>/dev/null)
+	loc_main=$(git for-each-ref --format='%(objectname) %(refname)' refs/remotes/mirror/ | \
+		awk '$2 ~ /(heads\/)?master$/ {print $1; exit}')
 
-		# Check for updates in the mirror.
-		#
+	if [ "$rem_main" != "$loc_main" ]; then
+	    echo -e "$infostr"
+	    ui_log "Master branch updated; fetching changes..."
+	    git fetch mirror --prune
+	fi
 
-		rem_master=$(git --git-dir="${mirror%/}" rev-parse refs/heads/master 2>/dev/null)
-		loc_master=$(git for-each-ref --format='%(objectname) %(refname)' refs/remotes/mirror/ | \
-			awk '$2 ~ /(heads\/)?master$/ {print $1; exit}')
-
-		if [ "$rem_master" != "$loc_master" ]; then
-		    echo -e "$infostr"
-		    ui_log "Master branch updated; fetching changes..."
-		    git fetch mirror --prune
-		fi
-	}
+	check_gitbranch
+	check_repostate
 
 	$b_new && upcmtstartline=1
 	get_current_backport
@@ -2301,15 +2358,22 @@ init_session() {
 init_newsession() {
 	# echo -e "\n$UND\0init_newsession$OFF"
 	ui_log "init_newsession"
+	local time="$(date '+%Y-%m-%d %H:%M:%S')"
 
 	> "$configfile"
 	read_session
-	dnorighead="$(cut -d' ' -f1 <(git log --oneline -1 ))"
+
+	# Set the timestamp for this new session
+	set_cfg_item timestamp "$time"
+
+	# The "Head at Session Start" will be the current HEAD
+	dnorighead="$(git rev-parse --short HEAD)"
 	set_cfg_item dnorighead "$dnorighead"
 
 	b_conflict=false
 	set_cfg_item b_conflict "$b_conflict"
 
+	# Get the directory containing the upstream repo
 	while :; do
 		input_dir "Upstream repo" "updir" updir
 		is_valid_gitdir "$updir" && break
@@ -2318,6 +2382,10 @@ init_newsession() {
 	input_dir "working" "workdir" workdir
 	input_backportfile
 	select_gitbranch
+
+	# Create and init the patch.log file in the workdir
+	patchlog="${workdir%/}"/patch.log
+	echo "Session Start: $time" > "$patchlog"
 
 	echo -e "\n${CAU}The following will be in the Options Menu.$OFF"
 	input_oneopt "${MNU}JIRA link: $OFF" "str_jira"
@@ -2467,8 +2535,8 @@ init_common
 # Determine if we're at the top of a git tree. If not, exit.
 #
 if ! [ -d .git ]; then
-	echo -3 "$WRN"
-	echo -e "The current directory... $STA$PWD$WRN"
+	echo -3 "$CAU"
+	echo -e "The current directory... $STA$PWD$CAU"
 	echo -e "\t ...is not the top of a git tree.$INF"
 	echo "Please cd to the top of a git tree.$OFF"
 	echo
