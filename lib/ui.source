@@ -1610,7 +1610,8 @@ ui_press_any() {
 #** ui_press_any_ctlc: prompt to press any key to continue or ctl-c to exit
 #*
 ui_press_any_ctlc() {
-	echo -en "${MNU}Press any key to continue or Ctl-C to exit ...$OFF "
+	echo -en "
+${MNU}Press any key to continue or$CAU ctrl-c$MNU to exit ...$OFF "
 	read -r -n1
 	echo
 }
