@@ -75,9 +75,12 @@ declare str_test=		# Options: string containing test info
 declare stophash=		# stop backporting when this currentuphash
 declare tbackground=		# terminal background, light(1) or dark(2)
 declare patchdir=		# directory that gets the patches
-declare backport_mode=          # user's choice of backport mode
+declare backport_mode=		# user's choice of backport mode
 declare conflicthash=		# upstream hash that introduced a conflict
-declare updir=
+declare updir=			# directory of upstream repo
+declare patfil= 		# conflicted commit formatted into a patch
+declare gitbranch=		# branch at start of session
+declare timestamp=		# timestamp at start of session
 #*
 
 #########################################
@@ -122,7 +125,7 @@ str_conflicts="Conflicts:\n"
 # Functions
 #########################################
 
-test_sanity() { echo -en "${CAU}SANITY$OFF  "; ui_press_any; }
+test_sanity() { echo -en "${CAU}SANITY$INF : $1$OFF "; ui_press_any; }
 
 #** print_herald: print the script's herald defined above
 #
@@ -132,7 +135,6 @@ test_sanity() { echo -en "${CAU}SANITY$OFF  "; ui_press_any; }
 print_herald() {
 	ui_log "print_herald"
 	echo -e "$str_herald"
-	(! $b_cmdline && [ -n "$starterr" ]) && echo -e "$starterr"
 }
 
 #** exit_gorp: exit in an orderly manner
@@ -495,9 +497,7 @@ validate_last_upstream_hash() {
 	# then show nothing.
 	#
 	grep -m1 -n "$lastuphash" "$backportfile" >/dev/null 2>&1 || b_lasthashvalid=false
-	# gu_pushd "$updir"
 	$b_lasthashvalid && lastuplog=$(git log -n1 --oneline "$lastuphash")
-	# gu_popd
 	$b_lasthashvalid && return 0 || return 1
 }
 
@@ -516,12 +516,12 @@ get_lastuplog() {
 	lastuphash=
 
 	[ -f "$backportfile" ] || return
-	lastuplog="$(grep "^$ch" $backportfile | tail -n1)"
 
-	if [ -n "$lastuplog" ]; then
-		lastuphash="$(cut -d' ' -f2 <<< "$lastuplog")"
+	lastuphash="$(tac "$backportfile" | \
+		grep -m 1 '^+' | sed 's/^\+\s*\([^[:space:]]*\).*/\1/')"
+
+	[ -n "$lastuphash" ] &&
 		lastuplog="$(git_upcmd "nice" "$lastuphash")"
-	fi
 
 	cfg_set_item "lastuphash" "$lastuphash"
 }
@@ -573,7 +573,6 @@ git_upcmd() {
 	local uphash="$2"
 	local upstr=
 
-	# gu_pushd "$updir"
 	case "$cmd" in
 		"show")	upstr="$(git show "$uphash")"
 			;;
@@ -587,7 +586,6 @@ git_upcmd() {
 			;;
 		"verify" ) git_verify "$uphash" ; return $?
 	esac
-	# gu_popd
 	echo "$upstr"
 	return 0
 # set +x
@@ -770,7 +768,7 @@ show_most_recent_backport() {
 	local cols=$((tcols - menupad))
 	local laststr
 	local padstr="$(printf "%*c" "$menupad" " ")"
-	local eofstr="$CAU$padstr was the last commit in Backports File$OFF"
+	local eofstr="$CAU${padstr}was the last commit in Backports File$OFF"
 	local lastbackport=
 
 	[ -f "$backportfile" ] || return
@@ -832,10 +830,10 @@ show_upstream_commits_file() {
 
 	[ "$backportfile" ] || return
 
-	# Get the number of commits that are not hashed-out
-	nd="$(grep -c '^#' "$backportfile")"
+	# Count commits that are not hashed-out
+	nd="$(grep -c -v '^#' "$backportfile")"
 
-	# Get the backports in the file that indicate they have been committed.
+	# Count backports in the file that indicate they have been committed.
 	nb="$(grep -c '^+' "$backportfile")"
 
 	# If none of the upstream commits has been applied to downstream, and
@@ -1430,7 +1428,6 @@ abort_gorp() {
 	cmt="$(gitnice | cut -d' ' -f1)"
 	git reset --hard "$cmt"
 
-	b_conflict=false
 	upcmtstartline=1
 	cfg_set_item "b_conflict" "$b_conflict"
 	cfg_set_item "upcmtstartline" "$upcmtstartline"
@@ -1466,7 +1463,7 @@ There are $STA$count$INF commits since Head at Session Start: $STA$dnorighead$IN
 	# Get the downstream and upstream commits in a spawned process and
 	# save it to a named pipe.
 	tmpfile=$(mktemp)
-	extract_upcmt "$dnorighead^..HEAD" > "$tmpfile" & mypid=$!
+	extup -m "$dnorighead^..HEAD" > "$tmpfile" & mypid=$!
 	ui_waitonproc_tty "$mypid" 0.05 "${INF}Getting the list of commits...$OFF"
 	mapfile -t dncmtary < "$tmpfile"
 	rm -f "$tmpfile"
@@ -1484,7 +1481,7 @@ There are $STA$count$INF commits since Head at Session Start: $STA$dnorighead$IN
 	# Set the new downstream current head global
 	dncurrenthead="$(cut -d' ' -f1 <<< "$new")"
 	# Normalize the hash length.
-	dncurrenthead=$(cut -d' ' -f1 < <(gitnice "$dncurrenthead"))
+	dncurrenthead=$(git rev-parse --short "$dncurrenthead")
 	return 0
 }
 
@@ -1549,7 +1546,7 @@ reset_gorp() {
 	# indicate that the corresponding upstream commits are not applied.
 	# We are backtracking.
 	# If the user chose the original head, resetting it back to the beginning,
-	# then clear all the done markers, else just clear the ones that we're
+	# then clear all the done markers, else just clear the ones that we are
 	# retreating from.
 	get_newhead || return
 
@@ -1557,10 +1554,13 @@ reset_gorp() {
 		linenumber=1
 	else
 		mapfile -t clrary < \
-			<(extup -m -b -u "$updir" "$dncurrenthead".. | cut -d' ' -f1)
-		linenumber=$(grep -n -m1 "${clrary[-1]}" "$backportfile" | cut -d: -f1)
+			<(extup -m -b "$dncurrenthead"^.. | cut -d' ' -f1)
+		# Get the last element in the array
+		linenumber=$(grep -n -m1 "${clrary[@]: -1}" "$backportfile" | cut -d: -f1)
+		((++linenumber))
 	fi
 
+	# Use sed to remove the done mark from the line number
 	sed -i "${linenumber},\$s|^+ ||" "$backportfile"
 
 	# Reset to the new head, and get the next backport.
@@ -1618,18 +1618,17 @@ EOF
 #*
 run_commit() {
 	ui_log "run_commit arg1:$1 currentuphash:$currentuphash conflicthash:$conflicthash"
-	# echo -e "$UND\0run_commit$OFF"
 
 	currentuphash="$conflicthash"	# get the stored conflict hash
+	b_conflict="$(get_cfg_item b_conflict)"
 
-	# If there was no conflict hash, let the user know there's nothing
+	# If are no changes to commit, let the user know there's nothing
 	# to commit, else stage the commit and continue.
-	if [ -z "$conflicthash" ]; then
+	if git diff-index --quiet HEAD -- ; then
 		echo -e "\n${CAU}There is nothing to commit.$OFF"
 	else
 		conflicthash=		# null out the stored conflict hash
 		set_cfg_item "conflicthash" "$conflicthash"
-		b_conflict=true
 		stage_commit
 		mark_done $currentuphash
 	fi
@@ -1661,6 +1660,27 @@ run_single() {
 	stat=$?
 	exit $stat
 }
+
+#** mark_out: mark the line with a leading #
+#
+# Globals
+#   backportfile
+#
+# Arguments
+#   1 - uphash
+#   2 - optional user supplied mark
+#
+#*
+mark_out() {
+	ui_log "mark_out uphash: $1 mark:${2:-'+'}"
+	local uphash="$1"
+	local mark="${2:-#}"	# the default leading char is +
+
+	[ -f "$backportfile" ] || return 1
+	sed -i "s/^$uphash/$mark $uphash/" "$backportfile" || return 1
+	return 0
+}
+
 
 #** mark_done: mark the line with a leading +
 #
@@ -1746,7 +1766,7 @@ flag_conflict() {
 	#
 	patch="$(get_cfg_item "patfil")"
 
-	# If the patchfile exists, then extract the commit field.
+	# If the patchfile exists, then extract the upstream commit field.
 	if [ -f "$patch" ]; then
 		patcmt="$(cut -d' ' -f2 < <(head -1 "$patch"))"
 		# Verify that it's a valid commit
@@ -1824,30 +1844,42 @@ backport() {
 
 	echo -e "${INF}Processing : $STA${commit:0:$wcols}$OFF"
 
+	# If this upstream commit has already been applied, return now.
+	git apply --reverse --check  < <(git show "$uphash") > /dev/null 2>&1 && {
+		echo -e "$STA$uphash$INF already applied.$OFF"
+		mark_out "$uphash" "#+"
+		set_cfg_item "lastuphash" "$uphash"
+		return 0
+	}
+
+	# Prepare the patchlog. It will be refreshed for every patch applied.
+	date '+%Y-%m-%d %H:%M:%S' > "$patchlog"
+	echo "backport mode: $backport_mode" >> "$patchlog"
+
 	case "$backport_mode" in
 	    "$bm_cherry" )
                 if $b_nit; then
-                        git cherry-pick -n "$uphash" > "$patchlog" 2>&1
+                        git cherry-pick -n "$uphash" >> "$patchlog" 2>&1
                 else
                         git -c merge.renameLimit=1 cherry-pick -x \
-				"$uphash" > "$patchlog" 2>&1
+				"$uphash" >> "$patchlog" 2>&1
                 fi
                 ;;
-	    "$bm_patchpal" ) patchpal "$uphash"
+	"$bm_patchpal" ) patchpal "$uphash"
 		;;
 	    "$bm_apply" )
-		git apply --reject < <(git show "$uphash") > "$patchlog" 2>&1
+		git apply --reject < <(git show "$uphash") >> "$patchlog" 2>&1
 		;;
 	    "$bm_apply3" )
-		git apply -3 < <(git show "$uphash") > "$patchlog" 2>&1
+		git apply -3 < <(git show "$uphash") >> "$patchlog" 2>&1
 		;;
 	    "$bm_patch" )
 		patch --batch --verbose \
-			-p1 < <(git_upcmd show "$uphash") > "$patchlog" 2>&1
+			-p1 < <(git_upcmd show "$uphash") >> "$patchlog" 2>&1
 		;;
             "$bm_patch_merge" )
                 patch --batch --verbose --merge \
-			-p1 < <(git_upcmd show "$uphash") > "$patchlog" 2>&1
+			-p1 < <(git_upcmd show "$uphash") >> "$patchlog" 2>&1
                 ;;
 	esac
 
@@ -1885,8 +1917,7 @@ backport() {
 
 	stage_commit
 	mark_done "$uphash"
-	set_cfg_item "lastuphash" "$lastuphash"
-	get_lastuplog
+	get_lastuplog		# inits lastuphash from backport file
 	return 0;
 }
 
@@ -2216,14 +2247,17 @@ check_gitbranch() {
 	sbranch="$(get_cfg_item gitbranch)"
 
 	[[ $cbranch == $sbranch ]] && return 0
-	git checkout "$sbranch" && return 0
+	git checkout "$sbranch" 2> /dev/null && return 0
 
 	# Okay, not the same branch, and previous branch is no longer valid.
 	# Clear all done markers in the backport file.
-	clear_alldone || exit_gorp 1 "${CAU}Could not access$STA $backportfile"
-	starterr+="
-$CAU$sbranch$MNU is not a valid branch$INF
-Type$CAU ctrl-c$INF to exit now, or any other key to select from a list
+	[ -f "$backportfile" ] && clear_alldone
+	echo -e "$CAU
+git cannot checkout branch: $STA$sbranch$INF"
+	[ -n "$timestamp" ] && echo -e "${INF}\
+This session started with that branch on: $STA$timestamp$INF"
+	echo -e "$INF
+Enter$CAU ctrl-c$INF to exit now, or any other key to select from a list
 of available branches.$OFF"
 	ui_press_any_ctlc
 	select_gitbranch
@@ -2294,8 +2328,6 @@ $STA$mirror$INF"
 	# file by read_session, called before this.
 	cmtmsgfile="$workdir/.gcpgitlog"
 	patchlog="${workdir%/}/patch.log"
-
-	init_global_strings
 
 	((backport_mode >= bm_lower && backport_mode <= bm_upper)) || {
 		get_backport_mode
@@ -2421,9 +2453,10 @@ init_newsession() {
 	input_backportfile
 	select_gitbranch
 
-	# Create and init the patch.log file in the workdir
+	# Create and init the patch.log file in the workdir.
+	# This file will be refreshed with each patch applied.
 	patchlog="${workdir%/}"/patch.log
-	echo "Session Start: $time" > "$patchlog"
+	> "$patchlog"
 
 	echo -e "\n${CAU}The following will be in the Options Menu.$OFF"
 	input_oneopt "${MNU}JIRA link: $OFF" "str_jira"
@@ -2556,13 +2589,15 @@ ui_log "start of script execution"
 trap ctrl_c SIGINT
 ui_testkeypress	# from lib/keypress_support.source: inits promptgetkey_cmd
 
+read_session
+init_global_strings
+
 if [ $# -eq 0 ]; then
 	b_cmdline=false
+	print_herald
 else
 	b_cmdline=true
 fi
-
-read_session
 
 # If any one of workdir, updir, or backportfile is missing, then this
 # is a new session, so set $b_new true.
@@ -2570,7 +2605,6 @@ read_session
 ([ -d "$workdir" ] && [ -f "$backportfile" ] && is_valid_gitdir "$updir") ||
 	init_newsession
 init_common
-
 
 # Determine if we're at the top of a git tree. If not, exit.
 #
@@ -2685,10 +2719,6 @@ fi
 ##############################################
 # Main Program
 ##############################################
-
-# Print the herald
-#
-print_herald
 
 # The following line will single step through this script.
 # Use the # to comment it out.
