@@ -83,11 +83,12 @@ declare updir=
 #########################################
 # Global Variables
 #########################################
-declare -i menupad=30
+declare -i menupad=31
 declare cmtmsgfile=
 declare b_lasthashvalid=false
 declare b_new=false		# new session
 declare b_single=false		# only perform single backport
+declare b_statflag=false	# user asking for status
 
 declare mirror		# bare shared repo of upstream
 declare gitbranch	# current downstream branch
@@ -429,15 +430,17 @@ set_next_backport() {
 	local counter=0
 	local line
 	local linary
-	local idx=0
-	local stat
-	local linecount
-	local numwid=${#linecount}
-	local cols=$((tcols - 2 - numwid))
+	local -i idx=0
+	local -i stat
+	local -i linecount
+	local -i numwid=
+	local -i cols=
 	local selected
 
 	[ -f "$backportfile" ] || return
 	linecount=$(wc -l "$backportfile")
+	numwid=${#linecount}
+	cols=$((tcols - 2 - numwid))
 	echo -e "\n${INF}Contents of upstream commits file: $STA$backportfile$OFF"
 	echo -e "$MNU\0NOTE:$INF Not showing lines starting with any of these chars:"\
 	        "$STA$ignore_str$OFF\n"
@@ -455,7 +458,9 @@ set_next_backport() {
 
 	echo
 	loop_range_q 1 "$idx" selected
-	[ "$selected" = "q" ] || upcmtstartline=${linary[$((selected - 1))]}
+	[ "$selected" = "q" ] && return
+
+	upcmtstartline=${linary[$((selected - 1))]}
 	currentupcommit="$(ui_readline "$upcmtstartline" "$backportfile")"
 	# echo "currentupcommit: $currentupcommit"
 	currentuphash=$(echo "$currentupcommit" | cut -d' ' -f1)
@@ -673,6 +678,7 @@ get_current_backport() {
 #                 b_conflict
 #                 b_cmdline
 #                 menupad
+#                 tcols		# calculated in lib/ui.source
 #       RETURNS:  none
 #*
 show_next_backport() {
@@ -687,7 +693,8 @@ show_next_backport() {
 	local show_next_backport_str
 	local padstr="$(printf "%*c" "$menupad" " ")"
 
-	($b_cmdline || $b_conflict) && leadstr="    " || leadstr="$MNU c$OFF  "
+	($b_cmdline || $b_conflict || $b_statflag) \
+		&& leadstr="    " || leadstr="$MNU c$OFF  "
 	$b_conflict && statstr="${CAU}Conflicting commit       ${OFF}:" \
 		    || statstr="Next backport commit     :$OFF"
 
@@ -743,7 +750,7 @@ get_lastbackport() {
 	[ "$(git rev-parse "$hash")" == "$(git rev-parse "$dnorighead")" ] \
 		&& return 1
 
-	extup -1 -m -b -u "$updir" "$hash"
+	extract_upcmt "$hash"
 	[[ $hash =~ ^[0-9a-fA-F]+$ ]] && return 0 || return 2
 }
 
@@ -774,20 +781,39 @@ show_most_recent_backport() {
 	((upcmtstartline > $(wc -l < "$backportfile"))) && echo -e "$eofstr"
 }
 
-#** show_upsteam_commits_file: print the filename of the upstream commmits file
+#** extract_upcmt: extract upstream commit from downstream hash
+#
+# Echoes the extracted upstream hash to the caller. If there is no
+# upstream commit in the downstream hash passed as argument, then it
+# returns an empty string.
+#
+# Globals
+#   none
+#
+# Arguments
+#   1 - dnhash: downstream hash
+#
+#*
+extract_upcmt() {
+	local dnhash="${1:-"HEAD"}"	# default is HEAD
+
+	git log -1 --pretty=%B "$dnhash" \
+		| awk '/^commit[[:space:]]+[0-9a-f]{40}/ { print $2; exit }' \
+		| xargs git rev-parse --short 2> /dev/null
+}
+
+#** show_upstream_commits_file: print the filename of the upstream commmits file
 #
 #     ARGUMENTS:  none
 #       GLOBALS:  backportfile
 #                 b_cmdline
 #       RETURNS:  none
 #*
-show_upsteam_commits_file() {
-	ui_log "show_upsteam_commits_file"
-	# echo -e "${UND}show_upsteam_commits_file$OFF"
+show_upstream_commits_file() {
+	ui_log "show_upstream_commits_file"
+	# echo -e "${UND}show_upstream_commits_file$OFF"
 
 	local cmtfilestr
-	local dary	# array of backported commits
-	local bary	# array of commits to be backported
 	local -i nd	# number of commits to do
 	local -i nb	# number of commits done
 	local -i nc	# number of commits remaining to be done
@@ -796,7 +822,7 @@ show_upsteam_commits_file() {
 	local lastdnup  # last upstream commit referenced in last downstream commit
 	local padstr="$(printf "%*c" "$menupad" " ")"
 
-	if $b_cmdline || $b_conflict; then
+	if $b_cmdline || $b_conflict || $b_statflag; then
 		cmtfilestr="$INF    Upstream Backports File  : $STA$backportfile$OFF"
 	else
 		cmtfilestr="$MNU f$OFF  Upstream Backports File  : $STA$backportfile$OFF"
@@ -806,30 +832,27 @@ show_upsteam_commits_file() {
 
 	[ "$backportfile" ] || return
 
-	# Get the total backports in the file that have not been hashed out.
-	mapfile -t dary < <(grep -v "^[#]" "$backportfile" | grep -v '^$')
-	nd="${#dary[@]}"
+	# Get the number of commits that are not hashed-out
+	nd="$(grep -c '^#' "$backportfile")"
 
 	# Get the backports in the file that indicate they have been committed.
-	mapfile -t bary < <(grep "^[+]" "$backportfile" | grep -v '^$')
-	nb="${#bary[@]}"
+	nb="$(grep -c '^+' "$backportfile")"
 
 	# If none of the upstream commits has been applied to downstream, and
 	# the current head is same as the dnorighead, then just return, else
 	# report an inconsistent state.
-	lastdncmt="$(gitnice -1 | cut -d' ' -f1)"
+	lastdncmt="$(git rev-parse --short HEAD)"
 
-	if ((${#bary[@]} == 0)); then
+	if ((nb == 0)); then
 
 		if [ "$(git rev-parse "$lastdncmt")" == "$(git rev-parse "$dnorighead")" ]; then
-			return
+			return 0
 		else
-			echo -e "$padstr$CAU Inconsistent State$OFF\n"\
-			"$padstr$INF None of the commits in the Backports File\n"\
-			"$padstr has been applied, but the current head is\n"\
-			"$padstr not the same as \"$OFF${BLD}Head at Session Start\"$INF.\n"\
-			"$padstr$CAU Alt-Shift-R$INF to reset to the original head\n"\
-			"$padstr or press$MNU N$INF to start a new session.$OFF"
+			echo -e "$CAU\
+$padstr Inconsistent State$INF
+$padstr None of the commits in the Backports File
+$padstr has been applied, but the current head : $STA$lastdncmt$INF
+$padstr differs from \"Head at Session Start\"   : $STA$dnorighead\"$OFF."
 			return 1
 		fi
 	fi
@@ -837,28 +860,39 @@ show_upsteam_commits_file() {
 	# If the last one in the file that indicates it was committed is not
 	# at the top of the current downstream branch, then notify inconsistent
 	# state.
-	lastupcmt="$(cut -d' ' -f2 <<< "${bary[-1]}")"
-	lastdnup="$(extup -1 -m -b -u "$updir" "$lastdncmt" | cut -d' ' -f1)"
 
-	# Use rev-parse in the upstream directory to get the full commit hash
-	# of each of these commits.
-	#
-	lastupcmt="$(git_upcmd "parse" "$lastupcmt")"
-	lastdnup="$(git_upcmd "parse" "$lastdnup")"
+	lastupcmt="$(tac "$backportfile" | \
+		grep -m 1 '^+' | sed 's/^\+\s*\([^[:space:]]*\).*/\1/')"
+
+	lastdnup="$(extract_upcmt "$lastdncmt")"
+
+	# If we didn't extract an upstream commit from the current HEAD,
+	# then report that the backportfile has a backport marked, but
+	# there's no upsteam commit referenced in the current HEAD.
+	if [ -z "$lastdnup" ]; then
+		echo -e "$CAU\
+$padstr Inconsistent State$INF
+$padstr Upstream Backport file shows upstream: $STA$lastupcmt$INF
+$padstr was backported, but the current HEAD : $STA$lastdncmt$INF
+$padstr does not have any upstream commit reference in its log.$OFF"
+		return 1
+	fi
 
 	if [ "$lastdnup" != "$lastupcmt" ]; then
-		echo -e "$padstr$CAU Inconsistent State"
-		echo -e "$padstr$CAU Last upstream commit in current downstream branch"
-		echo -e "$padstr not same as last upstream commit in backports file."
-		echo -e "$padstr$CAU Wrong branch or backport file?$OFF"
+		echo -e "$CAU\
+$padstr Inconsistent State$INF
+$padstr Current Head references upstream commit  : $STA$lastupcmt$INF
+$padstr Upstream Backports File says it should be: $STA$lastdnup$OFF"
 		return 1
 	fi
 
 	nc=$((nd - nb))
 	if ((nc == 0)); then
-		echo -e "$padstr$CAU It appears all upstream commits have been applied.$OFF"
+		echo -e \
+"$padstr${CAU}It appears all upstream commits have been applied.$OFF"
 	else
-		echo -e "$padstr$INF Commits backported: $STA$nb$INF Commits remaining: $STA$nc$OFF"
+		echo -e \
+"$padstr${INF}Commits backported: $STA$nb$INF Commits remaining: $STA$nc$OFF"
 	fi
 
 	return 0
@@ -899,6 +933,7 @@ show_status() {
 	local statstr
 	local b_internal
 
+	echo -e "$INF"
 	git status
 
 	subjectprefix="$(git config format.subjectprefix)"
@@ -909,13 +944,16 @@ show_status() {
 
 	statstr=$(
 cat <<EOF
-$INF$(show_upsteam_commits_file)\
+\0
+$INF    Session Start Date       : $STA$(get_cfg_item timestamp)
+$INF$(show_upstream_commits_file)\
 $INF$(show_most_recent_backport)\
 $INF$(show_next_backport)
 $INF    Current upstream dir     : $STA$updir
 $INF    Current downstream branch: $STA$(get_gitbranch)
 $INF    Current downstream head  : $STA${lastbrcmt:0:cols}
 $INF    Original downstream head : $STA${orighead:0:cols}$OFF
+\0
 EOF
 )
 	echo -e "$statstr"
@@ -1185,9 +1223,10 @@ show_settings() {
 cat <<EOF
 $MNU
     ${UND}Upstream Environment    $OFF
-$(show_upsteam_commits_file)\
+$(show_upstream_commits_file)\
 $(show_most_recent_backport)\
 $(show_next_backport)
+
 $MNU    ${UND}Downstream Environment  $OFF
     Current Head             : $STA${lastbrcmt:0:cols}$OFF
     Head at Session Start    : $STA${orighead:0:cols}$OFF
@@ -1281,7 +1320,7 @@ menu_parser() {
 			;;
 		1 )	run_me 1
 			;;
-		s )	show_status i
+		s )	b_statflag=true; show_status; b_statflag=false
 			;;
 #		V )	ui_popterm "vim $backportfile"
 #			;;
@@ -1427,7 +1466,7 @@ There are $STA$count$INF commits since Head at Session Start: $STA$dnorighead$IN
 	# Get the downstream and upstream commits in a spawned process and
 	# save it to a named pipe.
 	tmpfile=$(mktemp)
-	extup -m -u "$updir" "$dnorighead^..HEAD" > "$tmpfile" & mypid=$!
+	extract_upcmt "$dnorighead^..HEAD" > "$tmpfile" & mypid=$!
 	ui_waitonproc_tty "$mypid" 0.05 "${INF}Getting the list of commits...$OFF"
 	mapfile -t dncmtary < "$tmpfile"
 	rm -f "$tmpfile"
@@ -1636,7 +1675,7 @@ run_single() {
 mark_done() {
 	ui_log "mark_done uphash: $1 mark:${2:-'+'}"
 	local uphash="$1"
-	local mark="${2:-'+'}"	# the default leading char is +
+	local mark="${2:-+}"	# the default leading char is +
 
 	[ -f "$backportfile" ] || return 1
 	sed -i "s/^$uphash/$mark $uphash/" "$backportfile" || return 1
@@ -1653,7 +1692,7 @@ mark_done() {
 clear_done() {
 	ui_log "clear_done uphash: $1 mark:${2:-'+'}"
 	local uphash="$1"
-	local mark="${2:-'+'}"	# the default leading char is +
+	local mark="${2:-+}"	# the default leading char is +
 
 	[ -f "$backportfile" ] || return 1
 	sed -i "s/^$mark $uphash/$uphash/" "$backportfile" || return 1
@@ -1670,8 +1709,8 @@ clear_done() {
 #       RETURNS:  0 on success, nonzero on fail
 #*
 clear_alldone() {
-	ui_log "clear_alldone mark:${1:-'+'}"
-	local mark="${1:-'+'}"	# the default leading char is +
+	ui_log "clear_alldone mark:${1:-+}"
+	local mark="${1:-+}"	# the default leading char is +
 	local markstr=
 
 	[ -f "$backportfile" ] || return 1
@@ -2212,23 +2251,22 @@ check_repostate() {
 
 	# Extract the upstream commit from the first commit log in the
 	# downstream repo
-	exhash="$(git log -1 --pretty=%B \
-		| awk '/^commit[[:space:]]+[0-9a-f]{40}/ { print $2; exit }' \
-		| xargs git rev-parse --short 2> /dev/null)"
+	exhash="$(extract_upcmt)"
 
 	[[ $uphash == $exhash ]] && return 0
 
 	[ -n "$exhash" ] && {
 		starterr+="$CAU
 Inconsistent state: $STA$uphash$INF in $STA$backportfile$INF
-is not the same as: $STA$exhahs$INF in git HEAD: $STA$currenthead$OFF"
+is not the same as: $STA$exhahs$INF in git HEAD: $STA$currenthead$INF
+See Upstream Backports file: $STA$backportfile$OFF"
 		return 1
 	}
 
 	starterr+="$CAU
 Inconsistent state:$INF The current HEAD: $STA$currenthead$INF was not backported
 from upstream.
-See backport commits file: $STA$backportfile$OFF"
+See Upstream Backports file: $STA$backportfile$OFF"
 	return 1
 }
 
@@ -2391,8 +2429,10 @@ init_newsession() {
 	input_oneopt "${MNU}JIRA link: $OFF" "str_jira"
 	input_oneopt "${MNU}CVE: $OFF" "str_cve"
 	input_oneopt "${MNU}Upstream status: $OFF" "str_upstream"
+	get_backport_mode
 	b_lasthashvalid=false
 	b_new=true
+	clear_alldone
 	init_common
 	$b_cmdline && exit_gorp $exit_good
 }
