@@ -117,7 +117,7 @@ declare str_conflicts=
 init_global_strings() {
 ui_log "init_global_strings"
 str_herald="\n$MNU${UND}patchtools v$version$OFF - \
-${CAU}g${INF}orp is the ${CAU}o${INF}ther$CAU r${INF}ad$CAU p${INF}atchtool$OFF"
+${CAU}G${INF}orp is the ${CAU}O${INF}ther$CAU R${INF}ad$CAU P${INF}atchtool$OFF"
 str_conflicts="Conflicts:\n"
 }
 
@@ -901,14 +901,32 @@ $padstr Upstream Backports File says it should be: $STA$lastdnup$OFF"
 #     ARGUMENTS:  none
 #       GLOBALS:  tcols - number of columns in the current terminal
 #                 menupad - number of to the dynamic menu items
+#                 dnorighead
 #       RETURNS:  none
 #*
 show_history() {
-	ui_log "show_history"
+	local tmpfile=$(mktemp)
+	local tmpfile
+	local -i count
+	local -i mypid
+	local -a dncmtary=()
+
+	echo -e "\n$MNU${UND}History of commits made this session$OFF"
+	count=$(git rev-list --count "$dnorighead"..HEAD)
+	echo -e "\
+There are $STA$count$OFF commits since Head at Session Start: $STA$dnorighead$OFF"
+	tmpfile=$(mktemp)
+	extup -m "$dnorighead..HEAD" > "$tmpfile" & mypid=$!
+	ui_waitonproc_tty "$mypid" 0.05 "${INF}Getting the History of commits...$OFF"
 	echo
-	echo -en "$INF$(git log --oneline "$dnorighead"..HEAD)$OFF"
-	echo
+	echo -e     "${MNU} Downstream $OFF|$MNU Upstream  "
+	echo -e "$MNU${UND}  Commits   $OFF|$MNU${UND}  Commits   $OFF"
+	cat "$tmpfile"
+	echo -e "$OFF"
+	rm -f "$tmpfile"
+
 	$b_cmdline && exit 0
+	ui_press_any
 	return 0
 }
 
@@ -1243,7 +1261,6 @@ $MNU 1 $OFF Run the next commit and stop
 $MNU s $OFF gorp status
 $MNU A $OFF Abort, reset to last good commit and clean status
 $(show_altopt "R" "RESET to an earlier commit in this session ")
-$(show_altopt "U" "UPDATE to Current Head: $STA$dncurrenthead")
 $MNU q $OFF Quit this tool
 $MNU h $OFF Help
 $OFF
@@ -1328,8 +1345,8 @@ menu_parser() {
 		R )	((retval == 1)) || return $rc_continue
 			reset_gorp
 			;;
-		U )	update_gorp
-			;;
+#		U )	update_gorp
+#			;;
 		A )	abort_gorp
 	esac
 	return $rc_continue
@@ -1444,7 +1461,7 @@ abort_gorp() {
 #*
 get_newhead() {
 	ui_log "get_newhead dnorighead:$dnorighead dncurrenthead:$dncurrenthead"
-	local dncmtary=()
+	local -a dncmtary=()
 	local new
 	local hashsize
 	local addlprompt
@@ -1456,7 +1473,7 @@ get_newhead() {
 
 	# Get the number of commits made after dnorighead and notify
 	# user.
-	count=$(git rev-list --count "$dnorighead"^..HEAD)
+	count=$(git rev-list --count "$dnorighead"..HEAD)
 	echo -e "$INF
 There are $STA$count$INF commits since Head at Session Start: $STA$dnorighead$INF"
 
@@ -1566,6 +1583,7 @@ reset_gorp() {
 	# Reset to the new head, and get the next backport.
 	git reset --hard "$dncurrenthead"
 	b_conflict=false
+	set_cfg_item b_conflict "$b_conflict"
 	b_lasthashvalid=false
 	upcmtstartline=0
 	get_next_backport
@@ -1590,15 +1608,21 @@ run_continue() {
 
 	statstr=$(
 cat <<EOF
+$INF
 You have made changes that must be committed before using "gorp continue".
 You can use "gorp commit" if you want gorp to make these commits for you.
+$OFF
 EOF
 )
+	# If the working tree is not clean, commit your changes before
+	# useing gorp continue or use git commit.
+	git diff-index --quiet HEAD -- || {
+		echo -e "$statstr"
+		git status
+		exit $exit_pending
+	}
 
-	gitstat=$(git status --porcelain)
-	[ "$gitstat" ] && { echo -e "$statstr"; git status; exit $exit_pending; }
-
-	git cherry-pick --continue
+	edit_commit
 	b_conflict=false
 	get_next_backport
 	run_me
@@ -1847,25 +1871,25 @@ backport() {
 	# If this upstream commit has already been applied, return now.
 	git apply --reverse --check  < <(git show "$uphash") > /dev/null 2>&1 && {
 		echo -e "$STA$uphash$INF already applied.$OFF"
-		mark_out "$uphash" "#+"
+		mark_done "$uphash"
 		set_cfg_item "lastuphash" "$uphash"
 		return 0
 	}
 
 	# Prepare the patchlog. It will be refreshed for every patch applied.
 	date '+%Y-%m-%d %H:%M:%S' > "$patchlog"
-	echo "backport mode: $backport_mode" >> "$patchlog"
+	echo "backport mode: $(show_backport_mode)" >> "$patchlog"
 
 	case "$backport_mode" in
 	    "$bm_cherry" )
-                if $b_nit; then
-                        git cherry-pick -n "$uphash" >> "$patchlog" 2>&1
-                else
-                        git -c merge.renameLimit=1 cherry-pick -x \
+		if $b_nit; then
+			git cherry-pick -n "$uphash" >> "$patchlog" 2>&1
+		else
+			git -c merge.renameLimit=1 cherry-pick -x \
 				"$uphash" >> "$patchlog" 2>&1
-                fi
-                ;;
-	"$bm_patchpal" ) patchpal "$uphash"
+		fi
+		;;
+	    "$bm_patchpal" ) patchpal "$uphash"
 		;;
 	    "$bm_apply" )
 		git apply --reject < <(git show "$uphash") >> "$patchlog" 2>&1
@@ -1942,6 +1966,9 @@ stage_commit() {
 	local uphash=$currentuphash
 	local uplog
 	local b_crlf=false
+	local b_patchpal
+
+	((backport_mode == bm_patchpal)) && b_patchpal=true || b_patchpal=false
 
 	# Create the new commit message in a file consisting of ..
 	#	The user of this script as author of the patch
@@ -1991,15 +2018,22 @@ stage_commit() {
 	#
 	echo "$uplog"  >> "$cmtmsgfile"
 
-	# Make the commit. Only use git add . if there are untracked
-	# files. It saves time to use git add -u, because the git
-	# logic won't waste time looking for untracked files.
-	# git ls-files is much faster.
+	# If we're not using patchpal, or resolving a conflict, then make
+	# the commit.
+	# patchpal resolves and corrects conflicts before gorp detects them
+	# so this should be safe for patchpal.
 	#
-	[ -n "$(git ls-files --others --exclude-standard | head -n 1)" ] \
-		&& git add . \
-		|| git add -u
-	git commit -a -m"hold" > /dev/null 2>&1
+	[[ ! $b_patchpal || $b_conflict ]] && {
+		# Only use git add . if there are untracked
+		# files. It saves time to use git add -u, because the git
+		# logic won't waste time looking for untracked files.
+		# git ls-files is much faster.
+		#
+		[ -n "$(git ls-files --others --exclude-standard | head -n 1)" ] \
+			&& git add . \
+			|| git add -u
+		git commit -a -m"hold" > /dev/null 2>&1
+	}
 
 	# Amend the commit messsage with you as author, using the
 	# commit message file we built in the previous few lines,
@@ -2064,7 +2098,7 @@ $CAU$USER$INF does not have privileges to install libx11-devel$OFF
 	# If the user has sudoer privileges, let's install libX11-devel.
 	sudo dnf install -y libX11-devel || {
 		echo -e "\n${CAU}Could not dnf install$STA libX11-devel$OFF\n"
-		return 0
+		return 1
 	}
 
 	return 0
@@ -2120,12 +2154,28 @@ EOF
 	fi
 }
 
+#** check_X - simple X check to see if we have a display0
+#
+# Globals
+#
+# Arguments
+#*
+check_X() {
+	[ -n "$DISPLAY" ] && return 0
+	echo -e "$CAU
+No X DISPLAY detected.$INF
+You cannot use patchpal for backporting without an X DISPLAY.$OFF
+"
+	return 1
+}
+
 #** get_backport_mode: choose which of the availiable backport modes to use
 #
 # Globals
 #   backport_mode
 #*
 get_backport_mode() {
+while :; do
 	ui_log "get_backport_mode"
 	echo
 	echo -e "    ${INF}Which backport mode do you want to use?$MNU"
@@ -2143,7 +2193,12 @@ get_backport_mode() {
 	# Works fine with VNC, so you can still be remote, as long as you
 	# launce an X-client that can handle it, like VNC.
 	#
-	((backport_mode == bm_patchpal)) && check_X
+	if ((backport_mode == bm_patchpal)); then
+		check_X && break || continue
+	fi
+	break
+done
+
 
 	set_cfg_item "backport_mode" "$backport_mode"
 }
