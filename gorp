@@ -1870,7 +1870,7 @@ backport() {
 
 	# If this upstream commit has already been applied, return now.
 	git apply --reverse --check  < <(git show "$uphash") > /dev/null 2>&1 && {
-		echo -e "$STA$uphash$INF already applied.$OFF"
+		echo -e "$STA$uphash$INF already committed.$OFF"
 		mark_done "$uphash"
 		set_cfg_item "lastuphash" "$uphash"
 		return 0
@@ -1940,7 +1940,6 @@ backport() {
 	fi
 
 	stage_commit
-	mark_done "$uphash"
 	get_lastuplog		# inits lastuphash from backport file
 	return 0;
 }
@@ -1966,9 +1965,20 @@ stage_commit() {
 	local uphash=$currentuphash
 	local uplog
 	local b_crlf=false
-	local b_patchpal
+	local b_committed=false	# committed externally to stage_commit
 
-	((backport_mode == bm_patchpal)) && b_patchpal=true || b_patchpal=false
+	# If this upstream commit has been committed external to stage_commit,
+	# then flag it.
+	#
+	git apply --reverse --check  < <(git show "$uphash") > /dev/null 2>&1 && {
+		echo -e "$STA$uphash$INF was committed externaly.$OFF"
+		b_committed=true
+	}
+
+	# If we're using patchpal, then process that differently.
+	((backport_mode == bm_patchpal )) && {
+		stage_patchpal && return
+	}
 
 	# Create the new commit message in a file consisting of ..
 	#	The user of this script as author of the patch
@@ -2018,12 +2028,9 @@ stage_commit() {
 	#
 	echo "$uplog"  >> "$cmtmsgfile"
 
-	# If we're not using patchpal, or resolving a conflict, then make
-	# the commit.
-	# patchpal resolves and corrects conflicts before gorp detects them
-	# so this should be safe for patchpal.
+	# If the uphash has NOT been committed anywhere, then do that now.
 	#
-	[[ ! $b_patchpal || $b_conflict ]] && {
+	! $b_committed && {
 		# Only use git add . if there are untracked
 		# files. It saves time to use git add -u, because the git
 		# logic won't waste time looking for untracked files.
@@ -2046,7 +2053,84 @@ stage_commit() {
 	#
 	$b_conflict && edit_commit
 
+	# Mark this done when we know it's done.
+	mark_done "$uphash"
+
 	b_conflict=false
+}
+
+#** stage_patchpal: process the commit that was backported
+#
+#  Create the git log for the backported commit, including JIRA number, upstream
+#  and brew info, if any.
+#  Query the user to see if editing the commit is warranted, for conflicts, etc.
+#
+#     ARGUMENTS:  1 - b_committed: indicates this upstream commit has been
+#                     committed.
+#
+#       GLOBALS:  cmtmsgfile
+#		  str_jira
+#		  str_cve
+#		  str_upstream
+#		  str_conflicts
+#       RETURNS:  0 if no further action, 1 if action needed
+#*
+stage_patchpal() {
+	ui_log "stage_patchpal"
+	local b_committed="$1"
+	local description=
+	local uphash=$currentuphash
+	local -i line=
+
+	! $b_committed {
+		# Do something here"
+		echo -e
+		return 1
+	}
+
+	set -f	# disable wildcards
+
+	git log -1 > "$cmtmsgfile"
+	$ line=$(grep -n -E -m2 '^[[:space:]]*commit [0-9a-fA-F]{40}$' foo \
+		| tail -n1 | cut -d: -f1)
+
+	description="
+"
+
+	[ -n "$str_jira" ] && {
+		description+="JIRA: $str_jira
+"
+		b_crlf=true
+	}
+	[ -n "$str_cve" ] && {
+		description+="CVE: $str_cve
+"
+		b_crlf=true
+	}
+	[ -n "$str_upstream" ] && {
+		description+="Upstream status: $str_upstream
+"
+		b_crlf=true
+	}
+	$b_crlf && description+="
+"
+
+	export ins="$description"
+	gawk -i inplace -v target="$line" '
+	{
+	  if (NR == target) {
+	    # Insert the text from ENVIRON["ins"] before printing the current line
+	    printf "%s", ENVIRON["ins"];
+	    # Delete the variable so it isn’t printed again
+	    delete ENVIRON["ins"];
+	  }
+	  print;
+	}
+	' "$cmtmsgfile"
+
+	set +f	# re-enable wildcards
+
+	mark_done "$uphash"
 }
 
 #** set_cfg_item key value: writes the value to the key in the .conf file
@@ -2198,8 +2282,6 @@ while :; do
 	fi
 	break
 done
-
-
 	set_cfg_item "backport_mode" "$backport_mode"
 }
 
@@ -2364,6 +2446,7 @@ See Upstream Backports file: $STA$backportfile$OFF"
 #     ARGUMENTS:  none
 #       GLOBALS:  upcmtstartline
 #                 backportfile
+#                 b_new
 #       RETURNS:  none
 #*
 init_common() {
@@ -2371,13 +2454,6 @@ init_common() {
 	ui_log "init_common backportfile:$backportfile upcmtstartline:$upcmtstartline"
 	local loc_main
 	local rem_main
-	local infostr="$INF
-If this is the first time running this script in this directory, or
-if there have been significant changes upstream since you last used
-it, please allow a couple minutes to fetch the upstream mirror.
-You will not need to add the upstream kernel as a remote, since your
-existing upstream kernel in $STA$updir$INF will be mirrored in
-$STA$mirror$INF"
 
 	# workdir was declared in init_newsession() or read from the config
 	# file by read_session, called before this.
@@ -2419,6 +2495,14 @@ $STA$mirror$INF"
 	loc_main=$(git for-each-ref --format='%(objectname) %(refname)' refs/remotes/mirror/ | \
 		awk '$2 ~ /(heads\/)?master$/ {print $1; exit}')
 
+	local infostr="$INF
+If this is the first time running this script in this directory, or
+if there have been significant changes upstream since you last used
+it, please allow a couple minutes to fetch the upstream mirror.
+You will not need to add the upstream kernel as a remote, since your
+existing upstream kernel in $STA$updir$INF will be mirrored in
+$STA$mirror$INF"
+
 	if [ "$rem_main" != "$loc_main" ]; then
 	    echo -e "$infostr"
 	    ui_log "Master branch updated; fetching changes..."
@@ -2428,7 +2512,13 @@ $STA$mirror$INF"
 	check_gitbranch
 	check_repostate
 
-	$b_new && upcmtstartline=1
+	$b_new && {
+		# The "Head at Session Start" will be the current HEAD
+		dnorighead="$(git rev-parse --short HEAD)"
+		set_cfg_item dnorighead "$dnorighead"
+		upcmtstartline=1
+	}
+
 	get_current_backport
 
 	# If it's not a new session, and we don't have any conflicts, get the
@@ -2490,10 +2580,6 @@ init_newsession() {
 
 	# Set the timestamp for this new session
 	set_cfg_item timestamp "$time"
-
-	# The "Head at Session Start" will be the current HEAD
-	dnorighead="$(git rev-parse --short HEAD)"
-	set_cfg_item dnorighead "$dnorighead"
 
 	b_conflict=false
 	set_cfg_item b_conflict "$b_conflict"
