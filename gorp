@@ -2099,7 +2099,7 @@ $OFF"
 
 	set -f	# disable wildcards
 	git log -1 > "$cmtmsgfile"
-set -x
+
 	# Find the second instance of "commit <40-char-hash> in the
 	# git log. This is where the upstream commit log is appended
 	# to this downstream commit log.
@@ -2141,7 +2141,7 @@ set -x
 	  print;
 	}
 	' "$cmtmsgfile"
-set +x
+
 	set +f	# re-enable wildcards
 	mark_done "$uphash"
 	return 0
