@@ -3,7 +3,7 @@
 declare gortman=$(
 cat <<EOF
 
-${CAU}g${INF}orp is the$CAU o${INF}ther$CAU r${INF}ad$CAU p${INF}atchtool$OFF
+${CAU}G${INF}ort is an$CAU O${INF}mnimodal$CAU R${INF}evision$CAU T${INF}ool$OFF
 $INF
 Type 'q' at any time to exit this help.
 $OFF
@@ -13,10 +13,17 @@ Backporting is one of those things that can be daunting, especially when
 there are a LOT of commits to do. Mostly, it is just tedium.$MNU gort$OFF is an
 attempt to simplify and automate that process as much as possible.
 
-Even the$MNU Conflict$OFF resolution process has been simplified. While we cannot
-boast of AI helping to resolve conflicts, we can at least present a method
-for committing the resolved conflicts that does not require the additional
-tedium of writing and creating commit logs.
+Even the conflict resolution process has been simplified. With$MNU patchpal$OFF
+now among the backport modes available, we have AI helping to resolve
+conflicts. Other backport modes have their own recommended ways for
+resolving conflicts.
+
+For all modes, commit logs are automatically generated in the recommended
+RHEL format. If the user has entered JIRA, CVE, and upstream version info,
+that will be added to each commit log.
+
+If a conflict was detected, a Conflicts stanza will also be inserted into
+the commit log for the user to edit.
 
 After the chosen commits have been backported, the$MNU P$OFF option in the Main
 Menu will prompt you for a directory in which to create a git-formatted
@@ -27,21 +34,22 @@ they meet all the criteria to go into a Merge Request,
 Starting a new branch, applying the patch series, building the kernel with
 them, and testing for functionality and regression are the final steps.
 
-${MNU}gort$OFF provides five different backporting methods:
+${MNU}gort$OFF provides six different backporting methods:
 
+$MNU   patchpal
 $MNU   git cherry-pick
 $MNU   git apply
 $MNU   git apply --3way
 $MNU   patch
 $MNU   patch --merge
 $OFF
-These are presented as options when gort is started for the very first
+These are presented as options when$MNU gort$OFF is started for the very first
 time. They are also available as options from the Options Menu. If enough
 interest is raised, I will add$MNU git am$OFF in the future.
 
 $MNU${UND}Workflow
 $OFF
-The$MNU gort$OFF menu fileds and other salient init and setup information
+The$MNU gort$OFF menu fields and other salient init and setup information
 are explained below the Workflow.
 
 Workflow consists of these steps.
@@ -50,7 +58,7 @@ $MNU${UND}The Backport Commits File
 $OFF
   Create a file containing a list of upstream commits that you want to
   backport to your downstream repo. This file can be created with the
-  ${INF}mkbackportlog$OFF tool in the patchtools suite. The upstream commits of
+  ${MNU}mkbackportlog$OFF tool in the patchtools suite. The upstream commits of
   interest should be one on each line, at the beginning of each line.
 
   Leading hashes$MNU #$OFF comment out the commit. Additionally, as$MNU gort$OFF goes
@@ -66,33 +74,33 @@ $OFF
   the file explaining why the commit is being excluded. These comments can
   then be used in the$MNU Omitted-fix:$OFF section of your MR Description.
 
-  Invoke gort without arguments. If this is the first time you have used
-  gort in the current directory, gort will start the$MNU New Session$OFF procedure.
-  After this initialization, the gort character cell menu interface will
+  Invoke$MNU gort$OFF without arguments. If this is the first time you have used
+  ${MNU}gort$OFF in the current directory,$MNU gort$OFF will start the$MNU New Session$OFF procedure.
+  After this initialization, the$MNU gort$OFF character cell menu interface will
   appear.
 
   You will be prompted for a "Work Directory". This is a scratch directory
   used by$MNU gort$OFF to do its thing.
-  
+
   ${CAU}Do not put anything named$MNU .patch$CAU in the Work Directory!
-  
+ 
   You should use a different directory for your own patches, when prompted
   for one after pressing the$MNU P$INF Create a patch series$OFF hotkey in the Main Menu.
 
 $MNU${UND}Run the Backport
 $OFF
-  Press$MNU r$OFF to "${INF}Run all remaining commits$OFF". The patch, apply, or cherry-pick
-  method you chose during the$MNU New Session$OFF procedure will apply and commit
-  the patches, creating a commit log with you as the author, the JIRA, CVE,
-  Upstream Status, and Test information you entered during the init. These
-  fields are also available for editing from the$MNU O$OFF options menu, as are the
+  Press$MNU r$OFF to "${MNU}Run all remaining commits$OFF". The backport method you chose
+  during the$MNU New Session$OFF procedure will apply and commit the patches,
+  creating a commit log with you as the author, the JIRA, CVE, Upstream
+  Status, and Test information you entered during the init. These fields
+  are also available for editing from the$MNU O$OFF options menu, as are the
   backport methods. If the fields are empty, they will not be printed to
   the commit log. The original upstream commit log will appear beneath all
   this. Finally, your signoff, which you should have in your .gitconfig in
   your$MNU HOME$OFF directory, will be printed at the bottom of the created commit
   log.
 
-  Automated backporting will stop when it encounters a$CAU Conflict$OFF. When that
+  Automated backporting will stop when it encounters a$MNU Conflict$OFF. When that
   happens,$MNU gort$OFF will present the git status as well as messages to
   assist with resolving the conflict, and exit to the command line.
 
@@ -107,15 +115,20 @@ $OFF
       the output of whichever patch method was chosen. This file will help
       with resolving commits from$MNU patch$OFF and$MNU git apply$OFF. The 3way methods
       and$MNU git cherry-pick$OFF leave conflict markers in the conflicted files.
-    . A reminder to enter$CAU gort abort$OFF at the command line when the patch
-      can be applied cleanly
-    . Instructions for commiting the patch and continuing with the
+    . A reminder to enter$MNU gort abort$OFF at the command line after revising the
+      offending patch but before applying it
+    . Instructions for commiting the revised patch and continuing with the
       automation
+
+  When using the$MNU patchpal$OFF method,$MNU patchpal$OFF's AI will offer a conflict
+  resolution in its dialog. If you decide not to accept that solution, then
+  you must resolve the conflicts external to$MNU patchpal$OFF and$MNU gort$OFF.
 
   Once the conflicts are resolved, and the modified patch can be applied
   cleanly, enter enter$CAU gort abort$OFF at the command line. This will reset the
   git HEAD and index to your last successful commit and clean any remaining
-  untracked files.
+  untracked files. Now you can apply the revised patch before re-entering
+  ${MNU}gort$OFF to commit the patch and continue.
 
   You may determine that you do not want to backport the offending commit,
   Edit the backport commits log, and enter a leading$MNU #$OFF in front of the
@@ -125,10 +138,10 @@ $OFF
 
 $UND${MNU}Commit the Modified Patch
 $OFF
-  At this point, you will enter$MNU gort commit$OFF at the command line. This will
-  commit the patch as well as create a commit log with a$MNU Conflicts:$OFF stanza
-  in it. The ${MNU}vim$OFF editor will be invoked to edit the commit log, and you
-  will be prompted with ...
+  Once you know the revised patch will apply and build cleanly, you will
+  enter$MNU gort commit$OFF at the command line. This will commit the patch as well
+  as create a commit log with a$MNU Conflicts:$OFF stanza in it. The$MNU vim$OFF editor
+  will be invoked to edit the commit log, and you will be prompted with ...
 
     $MNU Edit this commit message? y/n:$OFF
 
@@ -192,10 +205,22 @@ $MNU b$OFF Current git branch $OFF
 $MNU w$OFF Working directory $OFF
    Provides a scratch directory for the tool to use.
 
+$MNU B$OFF Backport method          :$STA patchpal$OFF
+   Selecting this option makes the following menu appear.
+
+$MNU   Which backport mode do you want to use?
+$MNU       1.$FF patchpal
+$MNU       2.$OFF git cherry-pick$MNU
+$MNU       3.$OFF git apply --reject$MNU
+$MNU       4.$OFF git apply with 3-way merge$MNU
+$MNU       5.$OFF patch with reject files$MNU
+$MNU       6.$OFF patch --merge$MNU
+$MNU Please enter a number between 1 and 6:
+
 $MNU O$OFF Options $OFF
    Presents the Options Menu
 $MNU
-Control options
+${MNU}Control options
 $OFF
 $MNU S$OFF Stop Before $OFF
    Presents a prompt to enter one of the commits from the Backports File.
@@ -216,21 +241,21 @@ $MNU N$OFF Start a New Sesssion
 
    ${INF}Backport Mode$OFF
       Modes avaialble are
+$MNU        patchpal
 $MNU        git cherry-pick
 $MNU        git apply --reject
 $MNU        git apply --3way
 $MNU        patch
 $MNU        patch --merge$OFF
 
-   ${MNU}gort$OFF provides five different methods for backporting, as listed above.
+   ${MNU}gort$OFF provides six different methods for backporting, as listed above.
    The reason for that is to appeal to personal preference of the user for
-   handling backports, as well as offering methods that are speedier than
-   others.$MNU patch$OFF is faster than$MNU git apply$OFF which in turn is faster
-   than ${MNU} git cherry-pick$OFF.
+   handling backports, as well as providing faster performing methods vs.
+   more comprehensive ones.
 
-   Each of them handles conflicts differently, and there are other nuances
-   among the five listed options that the discerning user should want to
-   explore.
+   For example,$MNU patch$OFF is faster than$MNU git apply$OFF which in turn is faster
+   than$MNU git cherry-pick$OFF or$MNU patchpal$OFF. But patchpal provides AI assisted
+   conflict resolution
 
    ${INF}New working directory$OFF
       Scratch directory for the tool to use. It is good to know where the
@@ -278,8 +303,9 @@ ${STA}/work/c10s/backports/101/ipmi/0001-Get-rid-of-remove_new-relic-from.patch$
 ${CAU}grep the Patch Log for details:$OFF
 $STA/work/c10s/backports/101/ipmi/patch.log$OFF
 ---------------------------------------
-${INF}Type$CAU gort abort$INF to restore your repo to the state it was in before the conflict.$OFF
-     -----------$INF
+${INF}Type ${CAU}gort abort$INF at the command line after revising the offending patch but$OFF
+${INF}before applying it.$OFF
+-------------------
 ${INF}After fixing the conflicts, you can reenter gort with the following commands.
 ${STA}gort commit$INF   : if you have fixed the conflicts and want the script to stage
 $INF                the commit and create the commit log for you.
