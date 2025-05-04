@@ -1068,17 +1068,17 @@ show_tbackground() {
 show_backport_mode() {
 	ui_log "show_backport_mode"
 	case "$backport_mode" in
-	    "$bm_patchpal"	) echo "patchpal"
+	    "$bm_patchpal"	) echo -e "${STA}patchpal$OFF"
 				;;
-	    "$bm_cherry"	) echo "git cherry-pick"
+	    "$bm_cherry"	) echo -e "${STA}git cherry-pick$OFF"
 				;;
-	    "$bm_apply"	) echo "git apply --reject"
+	    "$bm_apply"	        ) echo -e "${STA}git apply --reject$OFF"
 				;;
-	    "$bm_apply3"	) echo "git apply with 3-way merge"
+	    "$bm_apply3"	) echo -e "${STA}git apply with 3-way merge$OFF"
 				;;
-	    "$bm_patch" 	) echo "patch with rej files"
+	    "$bm_patch" 	) echo -e "${STA}patch$OFF"
 				;;
-	    "$bm_patch_merge"	)  echo "patch --merge, patch with conflict markers"
+	    "$bm_patch_merge"	)  echo -e "${STA}patch --merge$OFF"
 	esac
 }
 
@@ -1249,6 +1249,7 @@ $MNU    ${UND}Downstream Environment  $OFF
 $MNU u $OFF Upstream repo directory  : $STA$updir$OFF
 $MNU b $OFF Current git branch       : $STA$(get_gitbranch)$OFF
 $MNU w $OFF Working directory        : $STA$workdir$OFF
+$MNU B $OFF Backport method          : $(show_backport_mode)
 $MNU O $OFF Options menu
 $MNU
     ${UND}Control                $OFF
@@ -1348,6 +1349,8 @@ menu_parser() {
 #		U )	update_gorp
 #			;;
 		A )	abort_gorp
+			;;
+		B )	get_backport_mode
 	esac
 	return $rc_continue
 }
