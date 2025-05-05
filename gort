@@ -951,6 +951,7 @@ There are $STA$count$OFF commits since Head at Session Start: $STA$dnorighead$OF
 	tmpfile=$(mktemp)
 	extup -m "$dnorighead..HEAD" > "$tmpfile" & mypid=$!
 	ui_waitonproc_tty "$mypid" 0.05 "${INF}Getting the History of commits...$OFF"
+	ui_nclearline 1
 	echo
 	echo -e     "${MNU} Downstream $OFF|$MNU Upstream  "
 	echo -e "$MNU${UND}  Commits   $OFF|$MNU${UND}  Commits   $OFF"
