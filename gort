@@ -2463,7 +2463,16 @@ of available branches.$OFF"
 	select_gitbranch
 }
 
-#** check_repostate
+#** check_repostate - is_repo_consistent?
+#
+# This function will clear all the "done" markers in the backport file if
+# the original branch is no longer valid.
+#
+# Returns
+#   0 - if last upstream commit in the backport file is the same as the
+#       the upstream commit in the commit log of the most recent downstream
+#       commit.
+#   1 - If not the same
 #
 # Globals
 #   backportfile
@@ -2507,10 +2516,16 @@ See Upstream Backports file: $STA$backportfile$OFF"
 #** init_common: common to all init calls
 #
 #     ARGUMENTS:  none
-#       GLOBALS:  upcmtstartline
-#                 backportfile
-#                 b_new
-#       RETURNS:  none
+#     GLOBALS:
+#         updir - directory containing the upstream repo
+#         workdir - scratch directory for gort
+#         upcmtstartline - start line in the backport file, saved in config
+#         backportfile - list of upstream commits to be backported
+#         b_new - indicates new session
+#         mirror - mirror of the upstream repo
+#         patchlog - file to capture patch activity in backport function
+#         cmtsmsgfile - a temp file to form commit messages
+#     RETURNS:  none
 #*
 init_common() {
 	# echo -e "$UND\0init_common$OFF"
