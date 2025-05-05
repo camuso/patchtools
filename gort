@@ -484,47 +484,75 @@ set_next_backport() {
 #*
 validate_last_upstream_hash() {
 	ui_log "validate_last_upstream_hash"
+	local stat=0
+
 	$b_new && b_lasthashvalid=false || b_lasthashvalid=true
 
 	# If we don't have a commits file, show nothing
-	#
-	[[ -f $backportfile ]] || b_lasthashvalid=false
+	[[ -f $backportfile ]] || {
+		b_lasthashvalid=false
+		return 1
+	}
 
-	# If there is no hash saved in the config file, then show nothing.
-	#
-	[[ "$lastuphash" ]] || b_lasthashvalid=false
+	# If there is no hash saved in the config file, then nothing to do.
+	[[ "$lastuphash" ]] || {
+		b_lasthashvalid=false
+		return 1
+	}
 
-	# If the commit stored in the config file is not in the commits file
-	# then show nothing.
-	#
-	grep -m1 -n "$lastuphash" "$backportfile" >/dev/null 2>&1 || b_lasthashvalid=false
-	$b_lasthashvalid && lastuplog=$(git log -n1 --oneline "$lastuphash")
-	$b_lasthashvalid && return 0 || return 1
+	# If the commit stored in the config file is not in the backport file
+	# then nothing to do.
+	grep -m1 -n "$lastuphash" "$backportfile" >/dev/null 2>&1 || {
+		b_lasthashvalid=false
+		return 1
+	}
+
+	# If we can't get a log of that upstream hash, then it's not valid.
+	lastuplog=$(git log -n1 --oneline "$lastuphash") 2>/dev/null || {
+		b_lasthashvalid=false
+		return 1
+	}
+
+	# If we got this far, the lastuphash is valid.
+	$b_lasthashvalid=true
+	return 0
 }
 
 #** get_lastuplog: gitnice of most recent, successfully applied upstream commit
 #
-#  Also inits the lastuphash
+#  Also inits the lastuphash, if there was one.
 #
 # Globals:
-# 	lastuplog
-# 	lastuphash
-# 	backportfile
+#   lastuplog
+#   lastuphash
+#   backportfile
+#
+# Returns
+#   0 - if there was an upstream hash applied
+#   1 - if there was no upstream hash applied yet or if there's no backport
+#       file
 #*
 get_lastuplog() {
 	ui_log "get_lastuplog"
 	local ch="+"
+	local stat=
+
 	lastuphash=
 
-	[ -f "$backportfile" ] || return
+	[ -f "$backportfile" ] || stat=1
 
 	lastuphash="$(tac "$backportfile" | \
 		grep -m 1 '^+' | sed 's/^\+\s*\([^[:space:]]*\).*/\1/')"
 
-	[ -n "$lastuphash" ] &&
-		lastuplog="$(git_upcmd "nice" "$lastuphash")"
+	if [ -n "$lastuphash" ]; then
+		lastuplog="$(git log --oneline -1 "$lastuphash")"
+		stat=0
+	else
+		stat=1
+	fi
 
 	cfg_set_item "lastuphash" "$lastuphash"
+	return "$stat"
 }
 
 #** get_finaluphash: find the last commit in the backport commits file
@@ -740,17 +768,20 @@ EOF
 #   0 extracted upstream hash is not dnorighead and is an actual hash
 #   1 extracted upstream hash is the same as the dnorighead
 #   2 extracted upstream hash field is not a hash
+#   3 dnorighead is null
 #*
 get_lastbackport() {
 	ui_log "get_lastbackport"
 	local bp
-	local hash="$( cut -d' ' -f1 <<< $(gitnice -1) )"
+	local hhash="$(git rev-parse --short HEAD)"
 
-	[ "$(git rev-parse "$hash")" == "$(git rev-parse "$dnorighead")" ] \
+	[ -n "$dnorighead" ] || return 3
+
+	[ "$(git rev-parse "$hhash")" == "$(git rev-parse "$dnorighead")" ] \
 		&& return 1
 
-	extract_upcmt "$hash"
-	[[ $hash =~ ^[0-9a-fA-F]+$ ]] && return 0 || return 2
+	extract_upcmt "$hhash"
+	[[ $hhash =~ ^[0-9a-fA-F]+$ ]] && return 0 || return 2
 }
 
 #** show_most_recent_backport: show the last upstream commit backported
@@ -830,6 +861,7 @@ show_upstream_commits_file() {
 	echo -e "$cmtfilestr"
 
 	[ "$backportfile" ] || return
+	[ "$dnorighead" ] || return
 
 	# Count commits that are not hashed-out
 	nd="$(grep -c -v '^#' "$backportfile")"
@@ -841,10 +873,10 @@ show_upstream_commits_file() {
 	# the current head is same as the dnorighead, then just return, else
 	# report an inconsistent state.
 	lastdncmt="$(git rev-parse --short HEAD)"
+	dnorighead="$(git rev-parse --short "$dnorighead")"
 
 	if ((nb == 0)); then
-
-		if [ "$(git rev-parse "$lastdncmt")" == "$(git rev-parse "$dnorighead")" ]; then
+		if [ "$lastdncmt" == "$dnorighead" ]; then
 			return 0
 		else
 			echo -e "$CAU\
@@ -1219,6 +1251,7 @@ show_altopt() {
 #       GLOBALS:  tcols - number of columns in the current terminal
 #                 menupad - number of to the dynamic menu items
 #                 dncurrenthead - current downstream head
+#                 dnorighead - downstream head at new session start
 #       RETURNS:  none
 #*
 show_settings() {
@@ -1228,13 +1261,13 @@ show_settings() {
 	local subjectprefix
 	local lasttag
 	local lastbrcmt
-	local orighead
+	local orighead=
 	local settings
 
 	subjectprefix="$(git config format.subjectprefix)"
-	orighead="$(git log --oneline -n1 $dnorighead)"
 	lastbrcmt="$(git log -n1 --oneline)"
 	dncurrenthead="$(cut -d' ' -f1 <<< "$lastbrcmt")"
+	[ -n "$dnorighead" ] && orighead="$(git log --oneline -n1 "$dnorighead")"
 
 	settings=$(
 cat <<EOF
@@ -1294,7 +1327,7 @@ menu_parser() {
 	local -i retval
 
 	validate_last_upstream_hash
-	dncurrenthead="$(gitnice | cut -d' ' -f1)"
+	dncurrenthead="$(git rev-parse --short HEAD)"
 	show_settings
 
 	ui_trunclog
