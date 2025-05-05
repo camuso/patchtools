@@ -514,7 +514,7 @@ validate_last_upstream_hash() {
 	}
 
 	# If we got this far, the lastuphash is valid.
-	$b_lasthashvalid=true
+	b_lasthashvalid=true
 	return 0
 }
 
