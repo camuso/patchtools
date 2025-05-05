@@ -1647,6 +1647,11 @@ declare b_ulog_inited=false
 #   1 - string to be sent to the log
 #*
 ui_log() {
+	local b_dbg=false
+	[[ $- == *x* ]] && {
+		set +x
+		b_dbg=true
+	}
 	local str="$1"
 	local logfile="${MYDATA%/}"/"${MYNAME}.log"
 
@@ -1655,6 +1660,7 @@ ui_log() {
 	b_ulog_inited=true
 
 	echo -e "$(date '+%Y-%m-%d %H:%M:%S'): $str" >> "$logfile"
+	$b_dbg && set -x
 }
 
 #** ui_trunclog - truncate the log file
