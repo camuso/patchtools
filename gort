@@ -2840,8 +2840,8 @@ check_command() {
 	return 1
 }
 
-#**############################
-# Start of Script Execution
+###############################
+#** Start of Script Execution
 #*#############################
 ui_log "start of script execution"
 
@@ -2878,8 +2878,8 @@ if ! [ -d .git ]; then
 	exit 1
 fi
 
-#**########################################
-# Command Line Options
+#########################################
+#** Command Line Options
 #*########################################
 
 declare checked_cmd
