@@ -97,20 +97,31 @@ main() {
 	local line=
 	local -i fnamsiz
 	local -a lary=()
+	local -i lnum=0		# line numbers
+	local bar
+	local dash
 
+	init
 	parseopts "$@"
 	shift "$optcount"
 
 	(($# > 0)) || { echo -e "$usagestr"; exit 1; }
+
+	bar="$(printf '=%.0s' {1..75})"
+
+	# Double -- tells printf to take the -% literally, instead of as
+	# another option.
+	dash="$(printf -- "-%.0s" {1..75})"
 
 	file="$1"
 
 	[ -f "$file" ] || { echo -e "$usagestr"; exit 1; }
 
 	while IFS= read -r line; do
+		((++lnum))
 		read -ra lary <<< "$line"
 
-		$b_doc || [ "${line:0:1}" == "#" ] || continue
+		($b_doc || [ "${line:0:1}" == "#" ]) || continue
 		if [ "${lary[0]:0:3}" == "#**" ]; then
 
 			if $b_func; then
@@ -118,10 +129,10 @@ main() {
 				[[ "${lary[1]}" == *"$fname"* ]] || continue
 			fi
 
-			$b_verbose && echo -e "\n$(ui_putnchar "=" 75)"
-			echo "${lary[@]:1}"
+			$b_verbose && echo -e "\n${bar}"
+			echo -e "${STA}$lnum: $MNU${lary[1]}$OFF ${lary[@]:2}"
 			b_doc=true
-			$b_verbose && echo "$(ui_putnchar "-" 75)"
+			$b_verbose && echo "$dash"
 			continue
 		fi
 		$b_verbose || continue
