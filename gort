@@ -1455,7 +1455,8 @@ check_state() {
 #*
 clean_status() {
 	ui_log "clean_status"
-	git cherry-pick --abort > /dev/null 2>&1
+	((backport_mode == bm_cherry)) && git cherry-pick --abort > /dev/null 2>&1
+	git restore --staged . > /dev/null 2>&1
 	git checkout . > /dev/null 2>&1
 	git clean -fd > /dev/null 2>&1
 }
@@ -1477,11 +1478,12 @@ abort_gort() {
 	ui_log "abort_gort upcmtstartline:$upcmtstartline b_conflict:$b_conflict"
 	local cmt
 
-	clean_status
+	# clean_status
+	((backport_mode == bm_cherry)) && git cherry-pick --abort > /dev/null 2>&1
 
 	# Get the last succesful commit and git reset to it.
-	cmt="$(gitnice | cut -d' ' -f1)"
-	git reset --hard "$cmt"
+	cmt="$(git rev-parse --short HEAD)"
+	git reset "$cmt"
 
 	upcmtstartline=1
 	cfg_set_item "b_conflict" "$b_conflict"
@@ -1902,7 +1904,7 @@ backport() {
 	local wcols=$((tcols - 10))
 	local untracked
 	local b_setexit=false
-	commit=$(git_upcmd "nice" "$uphash")
+	commit=$(git log --oneline -n1 "$uphash")
 
 	echo -e "${INF}Processing : $STA${commit:0:$wcols}$OFF"
 
@@ -2002,23 +2004,26 @@ backport() {
 #		  str_cve
 #		  str_upstream
 #		  str_conflicts
-#       RETURNS:  0 all good
-#                 1 for patchpal retry
+#       RETURNS:  none
+#
 #*
 stage_commit() {
 	ui_log "stage_commit"
-	local description
+	local summary
 	local uphash=$currentuphash
 	local uplog
 	local b_crlf=false
-	local b_committed=false	# committed externally to stage_commit
 
 	# If this upstream commit has been committed external to stage_commit,
 	# then flag it.
 	#
 	is_backport_done && {
-		echo -e "$STA$uphash$INF was committed externaly.$OFF"
-		b_committed=true
+		echo -e "
+$STA$uphash$INF was committed externaly.
+The commit log will be displayed in the vim editor for review.
+$OFF"
+		edit_commit
+		return
 	}
 
 	# Create the new commit message in a file consisting of ..
@@ -2034,19 +2039,13 @@ stage_commit() {
 
 	set -f	# disable wildcard
 
-	# Get the upstream commit log and extract the description
-	# from the fifth line.
+	# Get the upstream commit log and extract the summary
+	# from the fifth line, removing leading spaces.
 	#
-	uplog="$(git_upcmd log "$uphash")"
-	description=$(sed -n '5p' <<< "$uplog")
+	uplog="$(git log -n1 "$uphash")"
+	summary=$(sed -n '5{s/^[[:space:]]*//; p}' <<< "$uplog")
 
-	# Trim leading whitespace from description line and append
-	# it to the commit message. Also append the standard commit
-	# message.
-	#
-	description=$(echo -e $description)
-
-	echo -e "$description\n" >> "$cmtmsgfile"
+	echo -e "$summary\n" >> "$cmtmsgfile"
 	[ -n "$str_jira" ] && {
 		echo -e "JIRA: $str_jira" >> "$cmtmsgfile"
 		b_crlf=true
@@ -2069,24 +2068,16 @@ stage_commit() {
 	#
 	echo "$uplog"  >> "$cmtmsgfile"
 
-	# If the uphash has NOT been committed anywhere, then do that now.
+	# Only use git add . if there are untracked
+	# files. It saves time to use git add -u, because the git
+	# logic won't waste time looking for untracked files.
+	# git ls-files is much faster.
 	#
-	! $b_committed && {
-		# Only use git add . if there are untracked
-		# files. It saves time to use git add -u, because the git
-		# logic won't waste time looking for untracked files.
-		# git ls-files is much faster.
-		#
-		[ -n "$(git ls-files --others --exclude-standard | head -n 1)" ] \
-			&& git add . \
-			|| git add -u
-		git commit -a -m"hold" > /dev/null 2>&1
-	}
+	[ -n "$(git ls-files --others --exclude-standard | head -n 1)" ] \
+		&& git add . \
+		|| git add -u
 
-	# Amend the commit messsage with you as author, using the
-	# commit message file we built in the previous few lines,
-	# and a Signed-off-by: ("-s") line.
-	#
+	git commit -a -m'temp' > /dev/null 2>&1
 	git commit -s --amend --reset-author --file="$cmtmsgfile"
 
 	# If there are conflicts, give the user the option to edit
@@ -2118,7 +2109,7 @@ stage_commit() {
 #*
 stage_patchpal() {
 	ui_log "stage_patchpal"
-	local description=
+	local newlog=
 	local uphash=$currentuphash
 	local -i line=
 
@@ -2136,6 +2127,10 @@ $OFF"
 	}
 
 	set -f	# disable wildcards
+
+	# Patchpal creates the full RHEL commit, with the backporting
+	# developer as author, the original upstream commit, and
+	# signed-off-by the backporting developer.
 	git log -1 > "$cmtmsgfile"
 
 	# Find the second instance of "commit <40-char-hash> in the
@@ -2147,27 +2142,27 @@ $OFF"
 	# Insert new stuff above this line, so backup one.
 	line=$((line - 1))
 
-	description="
+	newlog="
 "
 
 	[ -n "$str_jira" ] && {
-		description+="JIRA: $str_jira
+		newlog+="JIRA: $str_jira
 "
 		b_crlf=true
 	}
 	[ -n "$str_cve" ] && {
-		description+="CVE: $str_cve
+		newlog+="CVE: $str_cve
 "
 		b_crlf=true
 	}
 	[ -n "$str_upstream" ] && {
-		description+="Upstream status: $str_upstream
+		newlog+="Upstream status: $str_upstream
 "
 		b_crlf=true
 	}
-	$b_crlf && description+="
+	$b_crlf && newlog+="
 "
-	export ins="$description"
+	export ins="$newlog"
 	gawk -i inplace -v target="$line" '
 	{
 	  if (NR == target) {
@@ -2191,6 +2186,7 @@ $OFF"
 #
 # Globals
 #   currentuphash - the upstream commit hash being backported
+#   dnorighead - the head at session start
 #
 # Returns
 #   0 - if upstream backport was completed
@@ -2207,8 +2203,7 @@ is_backport_done() {
 	# It the test shows that the patch cannot be reversed, then it
 	# will return a 1, indicating that the backport was not done.
 	#
-	git apply --reverse --check  < <(git show "$uphash") > /dev/null 2>&1
-	return $?
+	[ -n "$(git log "$dnorighead".. --grep=$uphash)" ] && return 0 || return 1
 }
 
 #** is_upcmt_marked
@@ -2302,7 +2297,7 @@ is_xrunning() {
 
 	# If we don't already have the xtest binary, then build it.
 	[ -x "$xtest_bin" ] || {
- 
+
 		# Before we build it, we need to be certain that we have the
 		# libX11-devel first, and, if we don't, the user has sudoer
 		# privs to dnf install it.
