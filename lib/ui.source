@@ -1232,6 +1232,7 @@ check_lineargs() {
 
 	((argc == 2)) || return "$ui_err_invargc"
 	ui_isdigit "$number" return "$ui_err_notdigit"
+	((number > 0)) || return "$ui_err_invargc"
 	[ -f "$file" ] || return "$ui_err_invfile"
 	lines=$(wc -l < "$file")
 	((number > lines)) && return "$ui_err_invlinec"
