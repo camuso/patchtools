@@ -104,7 +104,7 @@ $OFF
   happens,$MNU gort$OFF will present the git status as well as messages to
   assist with resolving the conflict, and exit to the command line.
 
-$MNU${UND}Resolve the conflict
+$MNU${UND}Encountering a conflict
 $OFF
   The message presented when a conflict is encountered will provide the
   following salient information, as well as other tool status fields.
@@ -120,21 +120,24 @@ $OFF
     . Instructions for commiting the revised patch and continuing with the
       automation
 
-  When using the$MNU patchpal$OFF method,$MNU patchpal$OFF's AI will offer a conflict
-  resolution in its dialog. If you decide not to accept that solution, then
-  you must resolve the conflicts external to$MNU patchpal$OFF and$MNU gort$OFF.
+  See ${MNU}Resolving Conflicts$OFF below for more details on resolving conflicts
+  for the different backport methods.
 
   Once the conflicts are resolved, and the modified patch can be applied
   cleanly, enter enter$CAU gort abort$OFF at the command line. This will reset the
-  git HEAD and index to your last successful commit and clean any remaining
-  untracked files. Now you can apply the revised patch before re-entering
-  ${MNU}gort$OFF to commit the patch and continue.
+  git HEAD and index to your last successful commit without affecting
+  untracked or modified files. Once you've revised the patch to modify, add,
+  or delete only the files you want, you can clean out the untracked files,
+  un-stage any staged commits, and checkout all other files. Now you can
+  apply the revised patch before re-entering ${MNU}gort$OFF to commit the patch
+  and continue.
 
   You may determine that you do not want to backport the offending commit,
   Edit the backport commits log, and enter a leading$MNU #$OFF in front of the
   commit you want to skip. You may want to enter some commentary with leading
   hashes to use later when creating the$MNU Omitted-fix:$OFF stanza of your Merge
-  Request Description.
+  Request Description. At this point, you should$MNU git reset --hard$OFF to your
+  most recent successful backport and$MNU git clean -df$OFF for good measure.
 
 $UND${MNU}Commit the Modified Patch
 $OFF
@@ -283,73 +286,7 @@ $MNU r$OFF Run all remaining commits$OFF
    message. Back at the shell prompt, the user can make the corrections needed
    to reapply the patch and continue.
 
-   A typical conflict message looks like this.
-____________________________________________________________________________
-
-$INF    Upstream Backports File  :$STA /work/c10s/backports/101/ipmi/backport.log
-$INF                               Commits backported: 2 Commits remaining: 6
-$INF    Last backported commit   :$STA 7868b3a94045 char:ipmi: Fix the wrong format specifier
-$CAU    Conflicting commit$INF       :$STA e70140ba0d2b Get rid of 'remove_new' relic from
-$INF    Current upstream dir     :$STA /work/upstream/kernel
-$INF    Current downstream branch:$STA test
-$INF    Current downstream head  :$STA dc6818601a87 char:ipmi: Fix the wrong format specifier
-$INF    Original downstream head :$STA 53edcb1a920a [redhat] kernel-6.12.0-75.el10
-
-$CAU${UND}There are conflicts$OFF
-
-${CAU}The offending patch is in:
-${STA}/work/c10s/backports/101/ipmi/0001-Get-rid-of-remove_new-relic-from.patch$OFF
--------------------------------------------------------------------------
-${CAU}grep the Patch Log for details:$OFF
-$STA/work/c10s/backports/101/ipmi/patch.log$OFF
----------------------------------------
-${INF}Type ${CAU}gort abort$INF at the command line after revising the offending patch but$OFF
-${INF}before applying it.$OFF
--------------------
-${INF}After fixing the conflicts, you can reenter gort with the following commands.
-${STA}gort commit$INF   : if you have fixed the conflicts and want the script to stage
-$INF                the commit and create the commit log for you.
-${STA}gort continue$INF : if you have fixed the conflicts and made the commit externally
-$INF                and wish to continue with the next backport commit.
-____________________________________________________________________________
-
-   Grep for errors and failed merges in the ${CAU}Patch Log$OFF identified in the
-   conflict message as shown above. The file name will be$MNU patch.log$OFF, but it
-   will be in the work directory you enter when you start a New Session or
-   change it with the$MNU w$OFF hotkey in the Main Menu.
-
-  $MNU cherry-pick$OFF will leave$INF <<<<<<<$OFF and$INF >>>>>>>$OFF conflict
-   markers around the conflicts in conflicted files.
-  ${MNU}  grep -ni 'conflict' <${CAU}Patch Log$MNU>$OFF
-  ... to identify the files having conflicts.
-
-  $MNU git apply --reject$OFF
-  The patch log will identify the files that have conflicts with the
-  following grep command.
-  ${MNU}  grep -ni 'error' <${CAU}Patch Log$MNU>$OFF
-  Additionally, .rej files will be available for examination to help
-  resolve the conflict.
-
-  $MNU git apply --3way$OFF leaves leave$INF <<<<<<<$OFF and$INF >>>>>>>$OFF conflict
-   markers around the conflicts in files that have them.
-   To see which files have conflicts, type...
-  ${MNU}  grep -ni 'error' <${CAU}Patch Log$MNU>$OFF
-
-  $MNU patch$OFF will leave .rej files in the directories of the conflicted
-   files. A patch.log file will be left in the user work directory. It
-   will be explicitly identified by the conflict message.$STA
-   ${MNU}  grep -n -i 'fail' $workdir/patch.log$OFF
-   ...to find the conflicted files.
-   patch will leave .rej files in the home directories of the conflicted
-   files to help resolve conflicts.
-
-  $MNU patch --merge$OFF also creates a patch.log file.
-   ${MNU}grep -n 'NOT MERGED' $workdir/patch.log$OFF to find the conflicted files.
-   The conflicted files will have $INF <<<<<<<$OFF and$INF >>>>>>>$OFF markers
-   around the conflicts.
-
-   New files should be added with$INF git add$OFF if they are required by the
-   backport, and deleted files should be removed with$INF git rm$OFF.
+   See ${MNU}Resolving Conflicts$OFF below.
 
    If the$INF Stop Before$OFF commit has been entered, the automation will
    stop before that commit. This is useful for building and testing the
@@ -369,7 +306,7 @@ $MNU q$OFF Quit this tool
 
 $MNU h$OFF Help
 
-$MNU${UND}  Options Menu$OFF
+$MNU${UND}Options Menu$OFF
 
 $MNU u$OFF Upstream Status${OFF}, e.g. v6.7, will be entered into commit logs
 $MNU j$OFF JIRA Link$OFF will be entered into commit logs
@@ -432,6 +369,110 @@ $MNU setup$OFF     - run the gort menu to setup the runtime environment
              for every parameter.
 $MNU status$OFF    - show the gort session status and git status
 $MNU version$OFF   - show this version of the gort tool
+
+$MNU${UND}Resolving Conflicts$OFF
+
+   A typical conflict message looks like this.
+____________________________________________________________________________
+
+$INF    Upstream Backports File  :$STA /work/c10s/backports/101/ipmi/backport.log
+$INF                               Commits backported: 2 Commits remaining: 6
+$INF    Last backported commit   :$STA 7868b3a94045 char:ipmi: Fix the wrong format specifier
+$CAU    Conflicting commit$INF       :$STA e70140ba0d2b Get rid of 'remove_new' relic from
+$INF    Current upstream dir     :$STA /work/upstream/kernel
+$INF    Current downstream branch:$STA test
+$INF    Current downstream head  :$STA dc6818601a87 char:ipmi: Fix the wrong format specifier
+$INF    Original downstream head :$STA 53edcb1a920a [redhat] kernel-6.12.0-75.el10
+
+$CAU${UND}There are conflicts$OFF
+
+${CAU}The offending patch is in:
+${STA}/work/c10s/backports/101/ipmi/0001-Get-rid-of-remove_new-relic-from.patch$OFF
+-------------------------------------------------------------------------
+${CAU}grep the Patch Log for details:$OFF
+$STA/work/c10s/backports/101/ipmi/patch.log$OFF
+---------------------------------------
+${INF}Type ${CAU}gort abort$INF at the command line after revising the offending patch but$OFF
+${INF}before applying it.$OFF
+-------------------
+${INF}After fixing the conflicts, you can reenter gort with the following commands.
+${STA}gort commit$INF   : if you have fixed the conflicts and want the script to stage
+$INF                the commit and create the commit log for you.
+${STA}gort continue$INF : if you have fixed the conflicts and made the commit externally
+$INF                and wish to continue with the next backport commit.
+____________________________________________________________________________
+
+  Grep for errors and failed merges in the ${CAU}Patch Log$OFF identified in the
+  conflict message as shown above. The file name will be$MNU patch.log$OFF, but it
+  will be in the work directory you enter when you start a New Session or
+  change it with the$MNU w$OFF hotkey in the Main Menu.
+
+  ${MNU}patchpal$OFF does not leave a log, however it does provide an AI generated
+  conflict resolution. You have the option of accepting it or invoking an
+  editor of your choice from within patchpal to resolve the conflict. From
+  within your editor, you can issue CLI commands to do any additional git
+  work.
+
+  ${MNU}cherry-pick$OFF will leave$INF <<<<<<<$OFF and$INF >>>>>>>$OFF conflict
+    markers around the conflicts in conflicted files.
+  ${MNU}  grep -ni 'conflict' <${CAU}Patch Log$MNU>$OFF
+    Identifies the files having conflicts.
+
+  ${MNU}git apply --reject$OFF
+    The patch log will identify the files that have conflicts with the
+    following grep command.
+  ${MNU}  grep -ni 'error' <${CAU}Patch Log$MNU>$OFF
+    Additionally, .rej files will be available for examination to help
+    resolve the conflict.
+
+  ${MNU}git apply --3way$OFF leaves leave$INF <<<<<<<$OFF and$INF >>>>>>>$OFF conflict
+    markers around the conflicts in files that have them.
+    To see which files have conflicts, type...
+  ${MNU}  grep -ni 'error' <${CAU}Patch Log$MNU>$OFF
+
+  ${MNU}patch$OFF will leave .rej files in the directories of the conflicted
+    files. A patch.log file will be left in the user work directory. It
+    will be explicitly identified by the conflict message.$STA
+  ${MNU}  grep -n -i 'fail' <${CAU}Patch Log$MNU>$OFF
+    Finds the conflicted files.
+    patch will leave .rej files in the home directories of the conflicted
+    files to help resolve conflicts.
+
+  ${MNU}patch --merge$OFF also creates a patch.log file.
+  ${MNU}  grep -n 'NOT MERGED' <${CAU}Patch Log$MNU>$OFF to find the conflicted files.
+    The conflicted files will have $INF <<<<<<<$OFF and$INF >>>>>>>$OFF markers
+    around the conflicts.
+
+  In all cases, new files should be added with$INF git add$OFF if they are required
+  by the backport, and deleted files should be removed with$INF git rm$OFF.
+
+  Typically, when an upstream commit modifies and/or adds files outside
+  the scope of your backport, you should first edit the$INF offending$OFF patch
+  shown in the gort status to modify, add, or delete only those files
+  within the scope of your backport. You can also edit to resolve any
+  other conflicts introduced by the patch.
+
+  Once you have the patch edited, you can issue the following commands
+  before actually applying the edited patch.
+   $MNU gort abort     $OFF# clears the internal gort staging
+   $MNU git clean -df  $OFF# removes untracked files
+   $MNU git --restore .$OFF# un-stages any staged commits
+   $MNU git checkout . $OFF# clears all files to their pre-patched state
+   $OFF
+  At this point, you can apply your patch using your preferred methodology
+  and return to$CAU gort$OFF to continue processing,
+  e.g.
+   $MNU git apply <path to your modified patch>$OFF
+   $MNU gort commit
+
+  ${CAU}gort$OFF will commit the newly applied patch and insert a ${MNU}Conflicts:$OFF
+  stanza in the commit message. The vim editor will be invoked for you to
+  edit the ${MNU}Conflicts:$OFF stanza in the commit log. When you exit the editor, you
+  will be given another chance to edit. If you you're done editing the
+  commit log, press "${MNU}n$OFF", and$CAU gort$OFF will return to its main menu.
+
+  From there, you can press "${MNU}r$OFF" to continue with the$CAU gort$OFF backport.
+
 \0
 EOF
 )
