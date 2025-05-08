@@ -354,14 +354,11 @@ ui_putnchar() {
 	local -i num="$2"
 	local -i i
 
-	for ((i = 0; i < num; ++i)); do
-		echo -n "$ch"
-	done
+	((num <= 0)) && return
+	eval printf -- "${ch}%.0s" {1..$num}
 }
 
 #** ui_rptchr: put a chr repeatedly n times
-#
-# This function is preferred over ui_putnchar
 #
 # $1 - char to repeat
 # $2 - number of times to repeat it
