@@ -441,7 +441,7 @@ set_next_backport() {
 	local selected
 
 	[ -f "$backportfile" ] || return
-	linecount=$(wc -l "$backportfile")
+	linecount=$(wc -l < "$backportfile")
 	numwid=${#linecount}
 	cols=$((tcols - 2 - numwid))
 	echo -e "\n${INF}Contents of upstream commits file: $STA$backportfile$OFF"
