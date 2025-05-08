@@ -1522,6 +1522,7 @@ There are $STA$count$INF commits since Head at Session Start: $STA$dnorighead$IN
 	tmpfile=$(mktemp)
 	extup -m "$dnorighead^..HEAD" > "$tmpfile" & mypid=$!
 	ui_waitonproc_tty "$mypid" 0.05 "${INF}Getting the list of commits...$OFF"
+	ui_nclearline 1
 	mapfile -t dncmtary < "$tmpfile"
 	rm -f "$tmpfile"
 
@@ -1598,6 +1599,8 @@ reset_gort() {
 	local linenumber
 
 	clean_status
+	b_conflict=false
+	set_cfg_item "b_conflict" "$b_conflict"
 
 	# Reset: Clear the leading "+ " from the lines in the upstreamcommitsfile to
 	# indicate that the corresponding upstream commits are not applied.
@@ -2077,8 +2080,7 @@ $OFF"
 		&& git add . \
 		|| git add -u
 
-	git commit -a -m'temp' > /dev/null 2>&1
-	git commit -s --amend --reset-author --file="$cmtmsgfile"
+	git commit -a -s --file="$cmtmsgfile"
 
 	# If there are conflicts, give the user the option to edit
 	# the commit log.
@@ -2340,8 +2342,7 @@ check_X() {
 	[ -n "$DISPLAY" ] && return 0
 	echo -e "$CAU
 No X DISPLAY detected.$INF
-You cannot use patchpal for backporting without an X DISPLAY.$OFF
-"
+You cannot use patchpal for backporting without an X DISPLAY.$OFF"
 	return 1
 }
 
@@ -2570,6 +2571,10 @@ init_common() {
 	((backport_mode >= bm_lower && backport_mode <= bm_upper)) || {
 		get_backport_mode
 	}
+
+	if ((backport_mode == bm_patchpal)); then
+		check_X || get_backport_mode
+	fi
 
 	# The mirror repo is going to be parallel to the upstream repo.
 	# If it's not there, create it.
