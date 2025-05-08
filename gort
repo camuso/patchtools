@@ -102,6 +102,7 @@ declare lastuplog	# oneline gitlog of last committed upstream hash
 declare dncurrenthead	# hash of current downstread head
 declare patchlog	# file containing the patching errors
 declare starterr=	# errors on startup
+declare bpfstartline	# used when selecting a commit out of sequence
 
 # Lines in the backport file starting with any of these chars will be
 # ignored.
@@ -416,19 +417,16 @@ lookup_hash() {
 #** set_next_backport: Select the starting commit from the backportfile
 #
 #     ARGUMENTS:  none
-#       GLOBALS:  backportfile - file of upstream commits to backport
-#                 upcmtstartline- starting line for backportfile
-#                 currentupcommit - global storage for current upstream commit
-#                 currentuphash - global storage for current upstream cmt hash
-#                 tlines        - number of lines in the terminal window
-#                 tcols         - number of columns in the terminal window
-#                 qstr          - string with a boldfaced 'q'
-#                 ignore_str    - string of comment chars in commits log
+#       GLOBALS:  backportfile   - file of upstream commits to backport
+#                 bpfstartline   - one time backport file startline
+#                 tlines         - number of lines in the terminal window
+#                 tcols          - number of columns in the terminal window
+#                 qstr           - string with a boldfaced 'q'
+#                 ignore_str     - string of comment chars in commits log
 #       RETURNS:  none
 #*
 set_next_backport() {
 	ui_log "set_next_backport"
-	# echo -e "$UND\0set_next_backport$OFF"
 
 	local counter=0
 	local line
@@ -463,10 +461,8 @@ set_next_backport() {
 	loop_range_q 1 "$idx" selected
 	[ "$selected" = "q" ] && return
 
-	upcmtstartline=${linary[$((selected - 1))]}
-	currentupcommit="$(ui_readline "$upcmtstartline" "$backportfile")"
-	# echo "currentupcommit: $currentupcommit"
-	currentuphash=$(echo "$currentupcommit" | cut -d' ' -f1)
+	bpfstartline=${linary[$((selected - 1))]}
+
 	$b_cmdline && exit_gort $exit_good
 }
 
@@ -627,40 +623,53 @@ git_upcmd() {
 #  leading +, indicating the commit has already been applied to the downstream
 #  branch.
 #
-#     ARGUMENTS:  none
-#       GLOBALS:  backportfile
-#                 upcmtstartline
-#                 currentuphash
-#                 currentupcommit
-#                 ignore_str
-#                 menupad
-#       OUTPUTS:  echoes the hash of next upstream commit in the commits file
-#       RETURNS:  1 if there are no more cherries to pick, else 0
+#     ARGUMENTS:
+#       none
+#     GLOBALS:
+#         backportfile    - file with upstream commits to be backported
+#         upcmtstartline  - startline in the backport commits file
+#         bpfstartline    - when out-of-sequence commit was selected
+#         currentuphash   - the current upstream hash being backported
+#         currentupcommit - the git log --oneline of currentuphash
+#         ignore_str      - string of leading chars to ignore in backport file
+#         menupad         - pad of space characters for menu presentation
+#     OUTPUTS:
+#         echoes the hash of next upstream commit to backport
+#     RETURNS:
+#         1 if there are no more upstream commits to backport
+#         0 otherwise
 #*
 get_next_backport() {
-	# local myname="get_next_backport: "
-	# echo -e "\n$UND$myname$OFF start line: $upcmtstartline"
+	ui_log "get_next_backport upcmtstartline:$upcmtstartline"
 
 	[[ -f "$backportfile" ]] || return 1
 
-	local idx
-	local line
+	local -i line=
 	local -a lary=()
-	local sts=0
+	local -i sts=0
+	local bplog=
 
 	# Make sure we have a valid upstream directory, or prompt the user to
 	# input one.
 	#
 	[ -d "$updir" ] || input_dir "Upstream repo directory" "updir" updir
 
-	# Find the first line that does NOT begin with one of the characters in the
-	# string of characters indicating the line is to be ignored.
+	# If the caller passed in a startline, then use that.
+	# Else find the first line that does NOT begin with one of the characters
+	# in the ignore_string.
 	#
-	mapfile -t lary < <(grep -v "^[${ignore_str}]" "$backportfile" | grep -v '^$')
-	if ((${#lary} > 0)); then
-		currentuphash="$(cut -d' ' -f1 <<< "${lary[0]}")"
+	if [ -n "$bpfstartline" ]; then
+		upcmtstartline="$startline"
+		bplog="$(ui_readline "$bpfstartline" "$backportfile")"
+	else
+		mapfile -t lary < <(grep -v "^[${ignore_str}]" "$backportfile" | grep -v '^$')
+		bplog="${lary[0]}"
+	fi
+
+	if ((${#bplog} > 0)); then
+		currentuphash="$(cut -d' ' -f1 <<< "$bplog")"
 		upcmtstartline="$(grep -n "$currentuphash" "$backportfile" | cut -d: -f1)"
-		currentupcommit="$(git_upcmd "nice" "$currentuphash")"
+		currentupcommit="$(git log --oneline -n1 "$currentuphash")"
 		sts=0
 	else
 		currentuphash=
@@ -668,7 +677,9 @@ get_next_backport() {
 		sts=1
 	fi
 
+echo "currentuphash:$currentuphash"
 	set_cfg_item "upcmtstartline" "$upcmtstartline"
+	bpfstartline=
 	return $sts
 }
 
@@ -691,7 +702,6 @@ get_current_backport() {
 	# echo -e "$OFF\n$UND$myname upcmtstartline: $upcmtstartline$OFF"
 
 	((--upcmtstartline))
-	# echo "$myname startline: $upcmtstartline"
 	get_next_backport
 	return $?
 }
@@ -699,18 +709,18 @@ get_current_backport() {
 #** show_next_backport: show the next upstream commit to backport
 #
 #     ARGUMENTS:  None
-#       GLOBALS:  backportfile
-#                 currentupcommit
-#                 currentuphash
-#                 b_conflict
-#                 b_cmdline
-#                 menupad
-#                 tcols		# calculated in lib/ui.source
+#       GLOBALS:  backportfile - file containing the list of backport commits
+#                 currentupcommit - current upstream oneline commit log
+#                 currentuphash - current upstream short hash
+#                 b_conflict - outstanding conflict
+#                 b_cmdline - command line mode
+#                 b_statflag - user asking for status
+#                 menupad - the space char pad for the main menu
+#                 tcols -  calculated in lib/ui.source
 #       RETURNS:  none
 #*
 show_next_backport() {
-	# ui_log "show_next_backport currentupcommit:$currentupcommit currentuphash:$currentuphash"
-	# echo "\n${UND}show_next_backport$OFF"
+	ui_log "show_next_backport currentupcommit:$currentupcommit currentuphash:$currentuphash"
 
 	local linecount
 	local prstr=
@@ -725,7 +735,7 @@ show_next_backport() {
 	$b_conflict && statstr="${CAU}Conflicting commit       ${OFF}:" \
 		    || statstr="Next backport commit     :$OFF"
 
-	get_current_backport	&& prstr="$STA${currentupcommit:0:$cols}$OFF"
+	get_current_backport && prstr="$STA${currentupcommit:0:$cols}$OFF"
 
 	show_next_backport_str=$(
 cat <<EOF
@@ -734,6 +744,7 @@ $leadstr$statstr $prstr
 EOF
 )
 	[ -n "$currentuphash" ] && echo -e "$show_next_backport_str"
+
 	return 0
 }
 
