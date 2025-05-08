@@ -1941,11 +1941,11 @@ backport() {
 		git apply -3 < <(git show "$uphash") >> "$patchlog" 2>&1
 		;;
 	    "$bm_patch" )
-		patch --batch --verbose \
+		patch --no-backup-if-mismatch --batch --verbose \
 			-p1 < <(git_upcmd show "$uphash") >> "$patchlog" 2>&1
 		;;
             "$bm_patch_merge" )
-                patch --batch --verbose --merge \
+                patch --no-backup-if-mismatch --batch --verbose --merge \
 			-p1 < <(git_upcmd show "$uphash") >> "$patchlog" 2>&1
                 ;;
 	esac
