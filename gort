@@ -146,7 +146,7 @@ print_herald() {
 #       RETURNS:  None
 #*
 exit_gort() {
-	ui_log "exit_gort 1:$1  2:$2"
+	# ui_log "exit_gort 1:$1  2:$2"
 	# echo -e "$UND\0exit_gort $1$OFF"
 	ui_trunclog
 	[ -n "$2" ] && echo -e "\n$2\n"
@@ -693,6 +693,7 @@ echo "currentuphash:$currentuphash"
 #
 #     ARGUMENTS:  none
 #       GLOBALS:  upcmtstartline
+#                 b_cmdline
 #       OUTPUTS:  echoes the hash of next upstream commit in the commits file
 #       RETURNS:  status of call to get_next_backport
 #*
@@ -701,6 +702,7 @@ get_current_backport() {
 	# local myname="get_current_backport:"
 	# echo -e "$OFF\n$UND$myname upcmtstartline: $upcmtstartline$OFF"
 
+	$b_cmdline && return 0
 	((--upcmtstartline))
 	get_next_backport
 	return $?
@@ -2208,6 +2210,8 @@ $OFF"
 is_backport_done() {
 	local uphash="$currentuphash"
 
+	[ -n "$uphash" ] || return 1
+
 	# Following line returns 0 if the upstream commit has already been
 	# backported by doing a dry run of reversing the upstream commit
 	# as a patch.
@@ -2229,10 +2233,12 @@ is_backport_done() {
 #   backportfile
 #
 # Returns
-#   0 - if marked done
-#   1 - if not
+#   0 - if marked done, or if nothing to mark as done.
+#   1 - if not, will start the process of marking it done in the backportfile
 #*
 is_upcmt_marked() {
+
+	[ -n "$currentuphash" ] || return 0
 	[ -f "$backportfile" ] || return 0
 	grep -E "^\+ ${currentuphash}\b" "$backportfile"
 	return $?
@@ -2665,11 +2671,6 @@ init_cmdline_call() {
 
 	read_session
 
-	# If any one of workdir, updir, or backportfile is missing, then this
-	# is a new session, so set $b_new true.
-	#
-	([ -d "$workdir" ] && [ -f "$backportfile" ] && is_valid_gitdir "$updir") ||
-		init_newsession
 	init_common
 }
 
@@ -2820,7 +2821,7 @@ ctrl_c() {
 	ui_log "ctrl_c"
 	set +x
 	echo
-d
+
 	# If user pressed ctrl-c, and the backport was committed but
 	# was left unmarked, then mark it as done now.
 	if is_backport_done && ! is_upcmt_marked; then
@@ -2863,7 +2864,7 @@ ui_testkeypress	# from lib/keypress_support.source: inits promptgetkey_cmd
 
 read_session
 init_global_strings
-
+set -x
 if [ $# -eq 0 ]; then
 	b_cmdline=false
 	print_herald
@@ -2874,8 +2875,11 @@ fi
 # If any one of workdir, updir, or backportfile is missing, then this
 # is a new session, so set $b_new true.
 #
-([ -d "$workdir" ] && [ -f "$backportfile" ] && is_valid_gitdir "$updir") ||
-	init_newsession
+([ -d "$workdir" ] && [ -f "$backportfile" ] && is_valid_gitdir "$updir") || {
+	$b_cmdline || init_newsession
+}
+
+set +x
 init_common
 
 # Determine if we're at the top of a git tree. If not, exit.
