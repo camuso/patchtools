@@ -2560,6 +2560,39 @@ See Upstream Backports file: $STA$backportfile$OFF"
 	return 1
 }
 
+#** init_run - these inits must be done before running from a backport file
+#
+# Globals
+#   updir - directory containing the upstream repo
+#   workdir - scratch directory for gort
+#   backportfile - list of upstream commits to be backported
+#   mirror - mirror of the upstream repo
+#   patchlog - file to capture patch activity in backport function
+#   cmtsmsgfile - a temp file to form commit messages
+#*
+init_run() {
+
+
+	# workdir was declared in init_newsession() or read from the config
+	# file by read_session, called before this.
+	cmtmsgfile="$workdir/.gcpgitlog"
+	patchlog="${workdir%/}/patch.log"
+
+	# If we don't have a backport_mode saved in the .data/gort.conf
+	# then get the backport_mode from the user now.
+	((backport_mode >= bm_lower && backport_mode <= bm_upper)) || {
+		get_backport_mode
+	}
+
+	# If the backport mode was saved, and if it's patchpal, then if
+	# we are not running X, get a new backport_mode.
+	if ((backport_mode == bm_patchpal)); then
+		check_X || get_backport_mode
+	fi
+
+
+}
+
 #** init_common: common to all init calls
 #
 #     ARGUMENTS:  none
@@ -2579,19 +2612,6 @@ init_common() {
 	ui_log "init_common backportfile:$backportfile upcmtstartline:$upcmtstartline"
 	local loc_main
 	local rem_main
-
-	# workdir was declared in init_newsession() or read from the config
-	# file by read_session, called before this.
-	cmtmsgfile="$workdir/.gcpgitlog"
-	patchlog="${workdir%/}/patch.log"
-
-	((backport_mode >= bm_lower && backport_mode <= bm_upper)) || {
-		get_backport_mode
-	}
-
-	if ((backport_mode == bm_patchpal)); then
-		check_X || get_backport_mode
-	fi
 
 	# The mirror repo is going to be parallel to the upstream repo.
 	# If it's not there, create it.
