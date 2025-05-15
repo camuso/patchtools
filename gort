@@ -319,7 +319,7 @@ is_valid_gitdir() {
 #*
 input_backportfile() {
 	ui_log "input_backportfile"
-	local stat
+	local sts
 	local prstr
 	local commitsfilemsg
 	local exitmsg
@@ -352,9 +352,9 @@ EOF
 
 	[ "$backportfile" ] && prstr="$prstr.\n$currentfile"
 	ui_getfilespec "$prstr : " backportfile
-	stat=$?
+	sts=$?
 
-	if [ $stat -ne 0 ]; then
+	if [ $sts -ne 0 ]; then
 		if [ "$backportfile" ]; then
 			echo -e "${INF}Keeping: $STA$backportfile$OFF"
 		else
@@ -365,7 +365,7 @@ EOF
 
 	backportfile="$(realpath "$backportfile")"
 	set_cfg_item "backportfile" "$backportfile"
-	return $stat
+	return $sts
 }
 
 #** pr_nohash_msg: message for hash not among commits in backport file
@@ -432,7 +432,7 @@ set_next_backport() {
 	local line
 	local linary
 	local -i idx=0
-	local -i stat
+	local -i sts
 	local -i linecount
 	local -i numwid=
 	local -i cols=
@@ -480,7 +480,7 @@ set_next_backport() {
 #*
 validate_last_upstream_hash() {
 	ui_log "validate_last_upstream_hash"
-	local stat=0
+	local sts=0
 
 	$b_new && b_lasthashvalid=false || b_lasthashvalid=true
 
@@ -531,24 +531,24 @@ validate_last_upstream_hash() {
 get_lastuplog() {
 	ui_log "get_lastuplog"
 	local ch="+"
-	local stat=
+	local sts=
 
 	lastuphash=
 
-	[ -f "$backportfile" ] || stat=1
+	[ -f "$backportfile" ] || sts=1
 
 	lastuphash="$(tac "$backportfile" | \
 		grep -m 1 '^+' | sed 's/^\+\s*\([^[:space:]]*\).*/\1/')"
 
 	if [ -n "$lastuphash" ]; then
 		lastuplog="$(git log --oneline -1 "$lastuphash")"
-		stat=0
+		sts=0
 	else
-		stat=1
+		sts=1
 	fi
 
 	cfg_set_item "lastuphash" "$lastuphash"
-	return "$stat"
+	return "$sts"
 }
 
 #** get_finaluphash: find the last commit in the backport commits file
@@ -979,28 +979,25 @@ There are $STA$count$OFF commits since Head at Session Start: $STA$dnorighead$OF
 
 #** show_status: prints the current status to the screen
 #
-#     ARGUMENTS:  $1 - If this argument is not empty, then forego the
-#                      init_cmdline_call
+#     ARGUMENTS: none
+#
 #       GLOBALS:  tcols - number of columns in the current terminal
 #                 menupad - number of to the dynamic menu items
 #       RETURNS:  none
 #*
 show_status() {
-	ui_log "show_status $1"
-	# echo -e "$UND\0show_status$OFF"
+	# ui_log "show_status"
 
 	local cols=$((tcols - menupad))
 	local subjectprefix
 	local lastbrcmt
 	local orighead
 	local statstr
-	local b_internal
 
 	echo -e "$INF"
 	git status
 
 	subjectprefix="$(git config format.subjectprefix)"
-	[ "$1" ] && b_internal=true || b_internal=false
 
 	lastbrcmt=$(git log -n1 --oneline)
 	orighead=$(git log --oneline -n1 "$dnorighead")
@@ -1388,9 +1385,6 @@ menu_parser() {
 			;;
 #		V )	ui_popterm "vim $backportfile"
 #			;;
-#		I )	((retval == 1)) || return $rc_continue
-#			init_current_session
-#			;;
 		R )	((retval == 1)) || return $rc_continue
 			reset_gort
 			;;
@@ -1409,20 +1403,20 @@ menu_parser() {
 #       GLOBALS:  workdir
 #                 cmtmsgfile
 #                 backportfile
-#       RETURNS:  stat, which is the value returned by the call to menu_parser
+#       RETURNS:  sts, which is the value returned by the call to menu_parser
 #*
 menu_loop() {
 	ui_log "menu_loop"
-	local stat=0
+	local sts=0
 
 	cfg_update_configfile
 	while :; do
 
 		menu_parser
-		stat=$?
-		# echo "menu_parser_stat: $stat"
+		sts=$?
+		# echo "menu_parser_stat: $sts"
 	done
-	return $stat
+	return $sts
 }
 
 #** edit_commit: Loop through process to edit commit message until done
@@ -1729,7 +1723,9 @@ run_commit() {
 #*
 run_single() {
 	ui_log "run_single"
-	local stat
+	local sts
+
+	cmtmsgfile="/tmp/.gcpgitlog"
 
 	echo -e "$UND\0run_single$OFF"
 	b_single=true
@@ -1737,8 +1733,8 @@ run_single() {
 	set_cfg_item "lastuphash" "$currentuphash"
 
 	backport
-	stat=$?
-	exit $stat
+	sts=$?
+	exit $sts
 }
 
 #** mark_out: mark the line with a leading #
@@ -1916,12 +1912,14 @@ backport() {
 	# echo -e "$UND\0backport$OFF"
 
 	local uphash=$currentuphash
-	local stat
+	local sts
 	local wcols=$((tcols - 10))
 	local untracked
 	local b_setexit=false
 	commit=$(git log --oneline -n1 "$uphash")
+	local outfil=
 
+	outfil=$([[ $b_cmdline == "false" ]] && echo "$patchlog" || echo "/dev/stdout")
 	echo -e "${INF}Processing : $STA${commit:0:$wcols}$OFF"
 
 	# If this upstream commit has already been applied, return now.
@@ -1932,38 +1930,38 @@ backport() {
 		return 0
 	}
 
-	# Prepare the patchlog. It will be refreshed for every patch applied.
-	date '+%Y-%m-%d %H:%M:%S' > "$patchlog"
-	echo "backport mode: $(show_backport_mode)" >> "$patchlog"
+	# Prepare the outfil. It will be refreshed for every patch applied.
+	date '+%Y-%m-%d %H:%M:%S' > "$outfil"
+	echo "backport mode: $(show_backport_mode)" >> "$outfil"
 
 	case "$backport_mode" in
 	    "$bm_cherry" )
 		if $b_nit; then
-			git cherry-pick -n "$uphash" >> "$patchlog" 2>&1
+			git cherry-pick -n "$uphash" >> "$outfil" 2>&1
 		else
 			git -c merge.renameLimit=1 cherry-pick -x \
-				"$uphash" >> "$patchlog" 2>&1
+				"$uphash" >> "$outfil" 2>&1
 		fi
 		;;
 	    "$bm_patchpal" ) patchpal "$uphash"
 		;;
 	    "$bm_apply" )
-		git apply --reject < <(git show "$uphash") >> "$patchlog" 2>&1
+		git apply --reject < <(git show "$uphash") >> "$outfil" 2>&1
 		;;
 	    "$bm_apply3" )
-		git apply -3 < <(git show "$uphash") >> "$patchlog" 2>&1
+		git apply -3 < <(git show "$uphash") >> "$outfil" 2>&1
 		;;
 	    "$bm_patch" )
 		patch --no-backup-if-mismatch --batch --verbose \
-			-p1 < <(git_upcmd show "$uphash") >> "$patchlog" 2>&1
+			-p1 < <(git_upcmd show "$uphash") >> "$outfil" 2>&1
 		;;
             "$bm_patch_merge" )
                 patch --no-backup-if-mismatch --batch --verbose --merge \
-			-p1 < <(git_upcmd show "$uphash") >> "$patchlog" 2>&1
+			-p1 < <(git_upcmd show "$uphash") >> "$outfil" 2>&1
                 ;;
 	esac
 
-	stat=$?
+	sts=$?
 
 	# Check for errors
 	# git cherry-pick returns:
@@ -1976,14 +1974,14 @@ backport() {
 	#    1 conflicts
 	#    2 patch cannot be applied at all
 	#
-	(($stat > 1)) && exit_gort $exit_bogus "$CAU$err$OFF"
+	(($sts > 1)) && exit_gort $exit_bogus "$CAU$err$OFF"
 
 	# If the backport wants to add a new file to the index, or if the
 	# backport exited with a nonzero status greater than 1, then we
 	# must report the conflict and stop.
 	untracked="$(git ls-files --others --exclude-standard)"
 
-	if [ -n "$untracked" ] || ((stat != 0)); then
+	if [ -n "$untracked" ] || ((sts != 0)); then
 		ui_log "backport: conflict"
 		b_setexit=true
 		b_conflict=true
@@ -2572,10 +2570,11 @@ See Upstream Backports file: $STA$backportfile$OFF"
 #*
 init_run() {
 
+	# Let's make sure we have the work directory and the backport file
+	[ -d "$workdir" ] || input_dir "working" "workdir" workdir
+	[ -f "$backportfile" ] || input_backportfile
 
-	# workdir was declared in init_newsession() or read from the config
-	# file by read_session, called before this.
-	cmtmsgfile="$workdir/.gcpgitlog"
+	cmtmsgfile="tmp/.gcpgitlog"
 	patchlog="${workdir%/}/patch.log"
 
 	# If we don't have a backport_mode saved in the .data/gort.conf
@@ -2589,8 +2588,6 @@ init_run() {
 	if ((backport_mode == bm_patchpal)); then
 		check_X || get_backport_mode
 	fi
-
-
 }
 
 #** init_common: common to all init calls
@@ -2612,6 +2609,15 @@ init_common() {
 	ui_log "init_common backportfile:$backportfile upcmtstartline:$upcmtstartline"
 	local loc_main
 	local rem_main
+
+	# If we don't have a valid upstream directory, get it now.
+	([ -d "$updir" ] && is_valid_gitdir "$updir") || {
+		# Get the directory containing the upstream repo
+		while :; do
+			input_dir "Upstream repo" "updir" updir
+			is_valid_gitdir "$updir" && break
+		done
+	}
 
 	# The mirror repo is going to be parallel to the upstream repo.
 	# If it's not there, create it.
@@ -2686,26 +2692,12 @@ init_cmdline_call() {
 	# echo -e "$UND\0init_cmdline_call$OFF"
 	ui_log "init_cmdline_call"
 
-	local stat
+	local sts
 	local newstr="${INF}Please type $MNU$MYNAME new$INF to start.$OFF\n"
 
 	read_session
 
 	init_common
-}
-
-#** init_session: init config variables from the .conf file
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  All sesson variables are affected
-#       RETURNS:  none
-#*
-init_session() {
-	# echo -e "$UND\0init_session$OFF"
-
-	read_session
-	init_common
-	# $b_cmdline && exit_gort $exit_good
 }
 
 #** init_newsession: initialize a new session from scratch
@@ -2755,25 +2747,6 @@ init_newsession() {
 	$b_cmdline && exit_gort $exit_good
 }
 
-#* init_current_session: recover last good conf and internal variables
-#
-#       GLOBALS:  All session variables are affected
-#     ARGUMENTS:  none
-#       RETURNS:  none
-#*
-init_current_session() {
-	upcmtstartline=1
-	lastuphash=
-	b_conflict=false
-	set_cfg_item "upcmtstartline"	"$upcmtstartline"
-	set_cfg_item "b_conflict"	"$b_conflict"
-	set_cfg_item "lastuphash"	"$lastuphash"
-
-	b_lasthashvalid=false
-	git cherry-pick --abort > /dev/null 2>&1
-	init_session
-}
-
 #** run_me: main program loop
 #
 #       GLOBALS:  backportfile
@@ -2794,11 +2767,11 @@ run_me() {
 	ui_log "run_me"
 
 	local uphash
-	local stat
+	local sts
 	local b_one=false
 	local -i input="$1"
 
-	patchlog="${workdir%/}/patch.log"
+	init_run
 
 	[ -n "$input" ] && (($input == 1)) && b_one=true
 
@@ -2820,9 +2793,9 @@ keypress, so you can fix the conflicts.$OFF
 		fi
 		backport
 		get_next_backport
-		stat=$?
+		sts=$?
 
-		if [ $stat -ne 0 ];then
+		if [ $sts -ne 0 ];then
 			echo -e "${CAU}No more commits in $STA$backportfile$OFF"
 			break
 		fi
@@ -2884,7 +2857,7 @@ ui_testkeypress	# from lib/keypress_support.source: inits promptgetkey_cmd
 
 read_session
 init_global_strings
-set -x
+
 if [ $# -eq 0 ]; then
 	b_cmdline=false
 	print_herald
@@ -2893,13 +2866,12 @@ else
 fi
 
 # If any one of workdir, updir, or backportfile is missing, then this
-# is a new session, so set $b_new true.
+# is a new session but only if it's NOT from the command line.
 #
 ([ -d "$workdir" ] && [ -f "$backportfile" ] && is_valid_gitdir "$updir") || {
 	$b_cmdline || init_newsession
 }
 
-set +x
 init_common
 
 # Determine if we're at the top of a git tree. If not, exit.
@@ -2988,11 +2960,6 @@ if $b_cmdline; then
 			;;
 		"--select" )
 			set_next_backport
-			;;
-		"--setup" )
-			init_session
-			menu_loop
-			shift
 			;;
 		-s | "--status" )
 			show_status
