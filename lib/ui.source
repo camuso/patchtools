@@ -491,11 +491,8 @@ ui_nclearline() {
 #*
 ui_waitonproc () {
     local -i pid="$1"
-    local time=1
+    local time="${2:-1}"
     local stat=0
-    local -i argc=$#
-
-    ((argc == 2)) && time="$2"
 
     while kill -0 "$pid" > /dev/null 2>&1; do
         echo -n '.'
@@ -1637,6 +1634,8 @@ declare b_ulog_inited=false
 #
 # Assumes the existence of $MYDATA and $MYNAME, declared in and
 # created by the sourcing script before sourcing this file.
+# If set -x, then will just return without logging, to prevent
+# cluttering the set -x output.
 #
 # Globals
 #   b_ulog_inited - assures that the log file is inited just once
@@ -1645,20 +1644,21 @@ declare b_ulog_inited=false
 #   1 - string to be sent to the log
 #*
 ui_log() {
-	local b_dbg=false
-	[[ $- == *x* ]] && {
-		set +x
-		b_dbg=true
-	}
+	# If set -x, then just return.
+	[[ $- == *x* ]] && return
+
+	[ -d "$MYDATA" ] || return
+	[ -n "$MYNAME" ] || return
+
 	local str="$1"
 	local logfile="${MYDATA%/}"/"${MYNAME}.log"
 
 	[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
-	$b_ulog_inited || > "$logfile"
+
+	$b_ulog_inited || echo -e "Start: $(date '+%Y-%m-%d %H:%M:%S')" > "$logfile"
 	b_ulog_inited=true
 
-	echo -e "$(date '+%Y-%m-%d %H:%M:%S'): $str" >> "$logfile"
-	$b_dbg && set -x
+	echo -e "$(date '+%M:%S'): $str" >> "$logfile"
 }
 
 #** ui_trunclog - truncate the log file
@@ -1670,10 +1670,14 @@ ui_log() {
 #      Default is 100
 #*
 ui_trunclog() {
-	local lines="$1"
-	local tmpfil="$(mktemp)"
-	local logfile="${MYDATA%/}"/"${MYNAME}.log"
+	[ -d "$MYDATA" ] || return
+	[ -n "$MYNAME" ] || return
 
+	local logfile="${MYDATA%/}"/"${MYNAME}.log"
+	[ -f "$logfile" ] || return
+
+	local lines="${1:-100}"
+	local tmpfil="$(mktemp)"
 	[ -z "$lines" ] && lines=100
 	tail -n "$lines" "$logfile" > "$tmpfil"
 	mv -f "$tmpfil" "$logfile" > /dev/null 2>&1
