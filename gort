@@ -55,6 +55,7 @@ declare exit_bad=10	# Exiting from command line call with bad status
 
 declare b_session_inited=false	# boolean to indicate session is inited
 declare b_cmdline=false		# boolean indicating a comman line call
+declare b_log=false
 
 #########################################
 # Config Variables
@@ -116,7 +117,7 @@ declare str_herald=
 declare str_conflicts=
 
 init_global_strings() {
-# ui_log "init_global_strings"
+$b_log && ui_log "init_global_strings"
 str_herald="\n$MNU${UND}patchtools v$version$OFF - \
 ${CAU}G${INF}ort is an ${CAU}O${INF}mnimodal$CAU R${INF}evision$CAU T${INF}ool$OFF"
 str_conflicts="Conflicts:\n"
@@ -134,7 +135,7 @@ test_sanity() { echo -en "${CAU}SANITY$INF : $1$OFF "; ui_press_any; }
 #       RETURNS:  None
 #*
 print_herald() {
-	# ui_log "print_herald"
+	$b_log && ui_log "print_herald"
 	echo -e "$str_herald"
 	echo -e "${CAU}                   Klaatu barada nikto$OFF"
 }
@@ -146,7 +147,7 @@ print_herald() {
 #       RETURNS:  None
 #*
 exit_gort() {
-	# ui_log "exit_gort 1:$1  2:$2"
+	$b_log && ui_log "exit_gort 1:$1  2:$2"
 	# echo -e "$UND\0exit_gort $1$OFF"
 	ui_trunclog
 	[ -n "$2" ] && echo -e "\n$2\n"
@@ -296,7 +297,7 @@ input_dir() {
 #   1 - if not
 #*
 is_valid_gitdir() {
-	# ui_log "is_valid_gitdir"
+	$b_log && ui_log "is_valid_gitdir"
 	local gdir="$1"
 
 	# Strip off any tailing slash
@@ -315,7 +316,7 @@ is_valid_gitdir() {
 #       RETURNS:  status of call to ui_getfilespec()
 #*
 input_backportfile() {
-	# ui_log "input_backportfile"
+	$b_log && ui_log "input_backportfile"
 	local sts
 	local prstr
 	local commitsfilemsg
@@ -372,7 +373,7 @@ EOF
 #       RETURNS:  none
 #*
 pr_nohash_msg () {
-	# ui_log "pr_nohash_msg"
+	$b_log && ui_log "pr_nohash_msg"
 	local hash="$1"
 	local nohash_msg
 
@@ -396,7 +397,7 @@ EOF
 #       RETURNS:  nonzero if lookup fails
 #*
 lookup_hash() {
-	# ui_log "lookup_hash"
+	$b_log && ui_log "lookup_hash"
 	local hash=$1
 	local counter
 	local line
@@ -423,7 +424,7 @@ lookup_hash() {
 #       RETURNS:  none
 #*
 set_next_backport() {
-	# ui_log "set_next_backport"
+	$b_log && ui_log "set_next_backport"
 
 	local counter=0
 	local line
@@ -476,7 +477,7 @@ set_next_backport() {
 #       RETURNS:  nonzero if the last stored hash is not valid
 #*
 validate_last_upstream_hash() {
-	# ui_log "validate_last_upstream_hash"
+	$b_log && ui_log "validate_last_upstream_hash"
 	local sts=0
 
 	$b_new && b_lasthashvalid=false || b_lasthashvalid=true
@@ -526,7 +527,7 @@ validate_last_upstream_hash() {
 #       file
 #*
 get_lastuplog() {
-	# ui_log "get_lastuplog"
+	$b_log && ui_log "get_lastuplog"
 	local ch="+"
 	local sts=
 
@@ -589,7 +590,7 @@ git_verify() {
 #   2 - uphash - the upstream hash for the git command
 #*
 git_upcmd() {
-	# ui_log "git_upcmd cmd:$1 uphash:$2"
+	$b_log && ui_log "git_upcmd cmd:$1 uphash:$2"
 
 	local cmd="$1"
 	local uphash="$2"
@@ -636,7 +637,7 @@ git_upcmd() {
 #         0 otherwise
 #*
 get_next_backport() {
-	# ui_log "get_next_backport upcmtstartline:$upcmtstartline"
+	$b_log && ui_log "get_next_backport upcmtstartline:$upcmtstartline"
 
 	[[ -f "$backportfile" ]] || return 1
 
@@ -693,7 +694,7 @@ get_next_backport() {
 #       RETURNS:  status of call to get_next_backport
 #*
 get_current_backport() {
-	# ui_log "get_current_backport upcmtstartline:$upcmtstartline"
+	$b_log && ui_log "get_current_backport upcmtstartline:$upcmtstartline"
 	# local myname="get_current_backport:"
 	# echo -e "$OFF\n$UND$myname upcmtstartline: $upcmtstartline$OFF"
 
@@ -717,7 +718,7 @@ get_current_backport() {
 #       RETURNS:  none
 #*
 show_next_backport() {
-	# ui_log "show_next_backport currentupcommit:$currentupcommit currentuphash:$currentuphash"
+	$b_log && ui_log "show_next_backport currentupcommit:$currentupcommit currentuphash:$currentuphash"
 
 	local linecount
 	local prstr=
@@ -779,7 +780,7 @@ EOF
 #   3 dnorighead is null
 #*
 get_lastbackport() {
-	# ui_log "get_lastbackport"
+	$b_log && ui_log "get_lastbackport"
 	local bp
 	local hhash="$(git rev-parse --short HEAD)"
 
@@ -802,7 +803,7 @@ get_lastbackport() {
 #       RETURNS:  none
 #*
 show_most_recent_backport() {
-	# ui_log "show_most_recent_backport"
+	$b_log && ui_log "show_most_recent_backport"
 	# echo -e "\n${UND}show_most_recent_backport$OFF"
 
 	local cols=$((tcols - menupad))
@@ -848,7 +849,7 @@ extract_upcmt() {
 #       RETURNS:  none
 #*
 show_upstream_commits_file() {
-	# ui_log "show_upstream_commits_file"
+	$b_log && ui_log "show_upstream_commits_file"
 	# echo -e "${UND}show_upstream_commits_file$OFF"
 
 	local cmtfilestr
@@ -981,7 +982,7 @@ There are $STA$count$OFF commits since Head at Session Start: $STA$dnorighead$OF
 #       RETURNS:  none
 #*
 show_status() {
-	# ui_log "show_status"
+	$b_log && ui_log "show_status"
 
 	local cols=$((tcols - menupad))
 	local subjectprefix
@@ -1026,7 +1027,7 @@ EOF
 #   1 if user quit without entering a new patchdir
 #*
 get_patchdir() {
-	# ui_log "get_patchdir"
+	$b_log && ui_log "get_patchdir"
 	local pdir=
 	local prstr
 
@@ -1048,7 +1049,7 @@ get_patchdir() {
 #
 #*
 create_patches() {
-	# ui_log "create_patches"
+	$b_log && ui_log "create_patches"
 	local dirstr="
 ${MNU}Do you want to use$STA $patchdir$MNU for your patches? y/n :$OFF "
 	local findargs="-maxdepth 1 -type f -name "*.patch" -print -quit"
@@ -1089,7 +1090,7 @@ EOF
 #    tb_dark
 #*
 show_tbackground() {
-	# ui_log "show_tbackground"
+	$b_log && ui_log "show_tbackground"
 	((tbackground == tb_dark)) && echo -n "Dark" ||
 		                      echo -n "Light"
 }
@@ -1105,7 +1106,7 @@ show_tbackground() {
 #    bm_patch_merge
 #*
 show_backport_mode() {
-	# ui_log "show_backport_mode"
+	$b_log && ui_log "show_backport_mode"
 	case "$backport_mode" in
 	    "$bm_patchpal"	) echo -e "${STA}patchpal$OFF"
 				;;
@@ -1131,7 +1132,7 @@ show_backport_mode() {
 #    str_cve
 #*
 show_options() {
-	# ui_log "show_options"
+	$b_log && ui_log "show_options"
 	local options
 
 	options=$(
@@ -1161,7 +1162,7 @@ EOF
 #   $2 - option name by reference, so no leading $
 #*
 input_oneopt() {
-	# ui_log "input_oneopt"
+	$b_log && ui_log "input_oneopt"
 	local prompt="$1"
 	local -n getone_str="$2"
 	local item="$2"
@@ -1191,7 +1192,7 @@ input_oneopt() {
 #  Returns 1 when user types 'q', else returns 0
 #*
 get_options() {
-	# ui_log "get_options"
+	$b_log && ui_log "get_options"
 	local opt=
 
 	show_options
@@ -1230,7 +1231,7 @@ get_options() {
 #  exit condition.
 #*
 options_loop() {
-	# ui_log "options_loop"
+	$b_log && ui_log "options_loop"
 	while :; do
 		get_options || return
 	done
@@ -1243,7 +1244,7 @@ options_loop() {
 #    $2 - The string that goes with it.
 #*
 show_altopt() {
-	# ui_log "show_altopt"
+	$b_log && ui_log "show_altopt"
 	local opt="$1"
 	local str="$2"
 	$ui_b_keypress || return 1
@@ -1261,7 +1262,7 @@ show_altopt() {
 #       RETURNS:  none
 #*
 show_settings() {
-	# ui_log "show_settings"
+	$b_log && ui_log "show_settings"
 	# echo -e "$UND\0show_settings$OFF"
 	local cols=$((tcols - menupad))
 	local subjectprefix
@@ -1326,7 +1327,7 @@ EOF
 #*
 menu_parser() {
 	# echo -e "$UND\0menu_parser$OFF"
-	# ui_log "menu_parser"
+	$b_log && ui_log "menu_parser"
 
 	local pops
 	local setting=
@@ -1401,7 +1402,7 @@ menu_parser() {
 #       RETURNS:  sts, which is the value returned by the call to menu_parser
 #*
 menu_loop() {
-	# ui_log "menu_loop"
+	$b_log && ui_log "menu_loop"
 	local sts=0
 
 	cfg_update_configfile
@@ -1421,7 +1422,7 @@ menu_loop() {
 #       RETURNS:  none
 #*
 edit_commit() {
-	# ui_log "edit_commit"
+	$b_log && ui_log "edit_commit"
 	local yup
 
 	while :; do
@@ -1446,7 +1447,7 @@ edit_commit() {
 #
 #*
 check_state() {
-	# ui_log "check_state"
+	$b_log && ui_log "check_state"
 }
 
 #** clean_status - abort everything and leave git status clean
@@ -1456,7 +1457,7 @@ check_state() {
 # Arguments
 #*
 clean_status() {
-	# ui_log "clean_status"
+	$b_log && ui_log "clean_status"
 	((backport_mode == bm_cherry)) && git cherry-pick --abort > /dev/null 2>&1
 	git restore --staged . > /dev/null 2>&1
 	git checkout . > /dev/null 2>&1
@@ -1477,7 +1478,7 @@ clean_status() {
 #       RETURNS:  none
 #*
 abort_gort() {
-	# ui_log "abort_gort upcmtstartline:$upcmtstartline b_conflict:$b_conflict"
+	$b_log && ui_log "abort_gort upcmtstartline:$upcmtstartline b_conflict:$b_conflict"
 	local cmt
 
 	# clean_status
@@ -1502,7 +1503,7 @@ abort_gort() {
 #   dncurrenthead - this will be modified if caller selects different head
 #*
 get_newhead() {
-	# ui_log "get_newhead dnorighead:$dnorighead dncurrenthead:$dncurrenthead"
+	$b_log && ui_log "get_newhead dnorighead:$dnorighead dncurrenthead:$dncurrenthead"
 	local -a dncmtary=()
 	local new
 	local hashsize
@@ -1565,7 +1566,7 @@ There are $STA$count$INF commits since Head at Session Start: $STA$dnorighead$IN
 #   none
 #*
 update_gort() {
-	# ui_log "update_gort dnorighead:$dnorighead dncurrenthead:$dncurrenthead"
+	$b_log && ui_log "update_gort dnorighead:$dnorighead dncurrenthead:$dncurrenthead"
 	clean_status
 	clear_alldone
 	dnorighead="$dncurrenthead"
@@ -1596,7 +1597,7 @@ update_gort() {
 #       RETURNS:  none
 #*
 reset_gort() {
-	# ui_log "reset_gort dnorighead:$dnorighead dncurrenthead:$dncurrenthead"
+	$b_log && ui_log "reset_gort dnorighead:$dnorighead dncurrenthead:$dncurrenthead"
 	local -a clrary=()
 	local linenumber
 
@@ -1646,7 +1647,7 @@ reset_gort() {
 #*
 run_continue() {
 	# echo -e "$UND\0run_continue$OFF"
-	# ui_log "run_continue"
+	$b_log && ui_log "run_continue"
 
 	local statstr
 	local gitstat
@@ -1686,7 +1687,7 @@ EOF
 #       RETURNS:  none
 #*
 run_commit() {
-	# ui_log "run_commit arg1:$1 currentuphash:$currentuphash conflicthash:$conflicthash"
+	$b_log && ui_log "run_commit arg1:$1 currentuphash:$currentuphash conflicthash:$conflicthash"
 
 	currentuphash="$conflicthash"	# get the stored conflict hash
 	b_conflict="$(get_cfg_item b_conflict)"
@@ -1717,7 +1718,7 @@ run_commit() {
 #       RETURNS:  none
 #*
 run_single() {
-	# ui_log "run_single"
+	$b_log && ui_log "run_single"
 	local sts
 	echo -e "$UND\0run_single$OFF"
 	b_single=true
@@ -1740,7 +1741,7 @@ run_single() {
 #
 #*
 mark_out() {
-	# ui_log "mark_out uphash: $1 mark:${2:-'+'}"
+	$b_log && ui_log "mark_out uphash: $1 mark:${2:-'+'}"
 	local uphash="$1"
 	local mark="${2:-#}"	# the default leading char is +
 
@@ -1761,7 +1762,7 @@ mark_out() {
 #       RETURNS:  0 on success, nonzero on fail
 #*
 mark_done() {
-	# ui_log "mark_done uphash: $1 mark:${2:-'+'}"
+	$b_log && ui_log "mark_done uphash: $1 mark:${2:-'+'}"
 	local uphash="$1"
 	local mark="${2:-+}"	# the default leading char is +
 
@@ -1797,7 +1798,7 @@ clear_done() {
 #       RETURNS:  0 on success, nonzero on fail
 #*
 clear_alldone() {
-	# ui_log "clear_alldone mark:${1:-+}"
+	$b_log && ui_log "clear_alldone mark:${1:-+}"
 	local mark="${1:-+}"	# the default leading char is +
 	local markstr=
 
@@ -1817,7 +1818,7 @@ clear_alldone() {
 #   1 - uphash - the conflicted commit
 #*
 flag_conflict() {
-	# ui_log "flag_conflict uphash:$1"
+	$b_log && ui_log "flag_conflict uphash:$1"
 	local uphash="$1"
 	local patch=
 	local dashpad=
@@ -1852,7 +1853,7 @@ flag_conflict() {
 	# delete the old one and create a new one from the uphash conflict
 	# commit.
 	if ! $b_patvalid || $b_notsame; then
-		# ui_log "flag_conflict: creating new patch file"
+		$b_log && ui_log "flag_conflict: creating new patch file"
 		# Remove any patches in the workdir
 		shopt -s extglob
 		rm -f "${workdir%/}"/*.patch
@@ -1900,7 +1901,7 @@ ${STA}gort continue$INF : if you have fixed the conflicts and made the commit ex
 #       RETURNS:  non-zero if something went wrong
 #*
 backport() {
-	# ui_log "backport"
+	$b_log && ui_log "backport"
 	# echo -e "$UND\0backport$OFF"
 
 	local uphash=$currentuphash
@@ -1974,7 +1975,7 @@ backport() {
 	untracked="$(git ls-files --others --exclude-standard)"
 
 	if [ -n "$untracked" ] || ((sts != 0)); then
-		# ui_log "backport: conflict"
+		$b_log && ui_log "backport: conflict"
 		b_setexit=true
 		b_conflict=true
 		$b_single && git status && exit $exit_conflict
@@ -2014,7 +2015,7 @@ backport() {
 #
 #*
 stage_commit() {
-	# ui_log "stage_commit"
+	$b_log && ui_log "stage_commit"
 	local summary
 	local uphash=$currentuphash
 	local uplog
@@ -2113,7 +2114,7 @@ $OFF"
 #                 1 for patchpal not done
 #*
 stage_patchpal() {
-	# ui_log "stage_patchpal"
+	$b_log && ui_log "stage_patchpal"
 	local newlog=
 	local uphash=$currentuphash
 	local -i line=
@@ -2262,7 +2263,7 @@ get_cfg_item() {
 #   dnorighead
 #*
 get_originhead() {
-	# ui_log "get_originhead"
+	$b_log && ui_log "get_originhead"
 	dnorighead="$(get_cfg_item dnorighead)"
 }
 
@@ -2360,7 +2361,7 @@ You cannot use patchpal for backporting without an X DISPLAY.$OFF"
 #*
 get_backport_mode() {
 while :; do
-	# ui_log "get_backport_mode"
+	$b_log && ui_log "get_backport_mode"
 	echo
 	echo -e "    ${INF}Which backport mode do you want to use?$MNU"
 	echo -e "      1.$OFF patchpal$MNU"
@@ -2397,7 +2398,7 @@ done
 #*
 save_session() {
 	# echo -e "$UND\0save_session$OFF"
-	# ui_log "save_session"
+	$b_log && ui_log "save_session"
 	local -a keys=()
 	local fd
 	exec {fd}< "$configfile"
@@ -2425,7 +2426,7 @@ save_session() {
 #*
 read_session() {
 	# echo -e "$UND\0read_session$OFF"
-	# ui_log "read_session"
+	$b_log && ui_log "read_session"
 	local cfgtemplate=
 
 	# Initialize the paths for the current working directory
@@ -2476,7 +2477,7 @@ read_session() {
 #
 #*
 check_gitbranch() {
-	# ui_log "check_gitbranch backportfile:$backportfile"
+	$b_log && ui_log "check_gitbranch backportfile:$backportfile"
 	local cbranch	# current branch
 	local sbranch	# saved branch
 
@@ -2518,7 +2519,7 @@ of available branches.$OFF"
 #
 #*
 check_repostate() {
-	# ui_log "check_repostate backportfile:$backportfile"
+	$b_log && ui_log "check_repostate backportfile:$backportfile"
 	local uphash
 	local exhash
 	local currenthead
@@ -2597,7 +2598,7 @@ init_run() {
 #*
 init_common() {
 	# echo -e "$UND\0init_common$OFF"
-	# ui_log "init_common backportfile:$backportfile upcmtstartline:$upcmtstartline"
+	$b_log && ui_log "init_common backportfile:$backportfile upcmtstartline:$upcmtstartline"
 	local loc_main
 	local rem_main
 	local line
@@ -2623,7 +2624,7 @@ init_common() {
 	# If the mirror bare-repo has not been created yet, let's do
 	# that now.
 	git --git-dir="$mirror" rev-parse --is-bare-repository > /dev/null 2>&1 || {
-		# ui_log "init_common: git clone --mirror $updir $mirror"
+		$b_log && ui_log "init_common: git clone --mirror $updir $mirror"
 		local repostr="$INF
 If this is the first time running this script in this directory,
 please allow a couple minutes to fetch the upstream mirror.
@@ -2638,14 +2639,14 @@ $STA$mirror$INF"
 
 	# Update the mirror
 	gu_pushd "$mirror"
-	# ui_log "init_common: git fetch origin --prune"
+	$b_log && ui_log "init_common: git fetch origin --prune"
 	git fetch origin --prune
 	gu_popd
 
 	# If we don't have a reference to the upstream mirror yet, then
 	# add it.
 	if ! git config --get remote.mirror.url > /dev/null; then
-		# ui_log "init_common: remote add mirror $mirror"
+		$b_log && ui_log "init_common: remote add mirror $mirror"
 		git remote add mirror "$mirror"
 	fi
 
@@ -2660,7 +2661,7 @@ $STA$mirror$INF"
 Fetching the upstream mirror...
 "
 	    echo -e "$infostr"
-	    # ui_log "Master branch updated; fetching changes..."
+	    $b_log && ui_log "Master branch updated; fetching changes..."
 	    git fetch mirror --prune 2>&1 | while read -r line; do echo "$line"; done &
 	    ui_waitonproc $!
 	fi
@@ -2691,7 +2692,7 @@ Fetching the upstream mirror...
 #*
 init_cmdline_call() {
 	# echo -e "$UND\0init_cmdline_call$OFF"
-	# ui_log "init_cmdline_call"
+	$b_log && ui_log "init_cmdline_call"
 
 	local sts
 	local newstr="${INF}Please type $MNU$MYNAME new$INF to start.$OFF\n"
@@ -2709,7 +2710,7 @@ init_cmdline_call() {
 #*
 init_newsession() {
 	# echo -e "\n$UND\0init_newsession$OFF"
-	# ui_log "init_newsession"
+	$b_log && ui_log "init_newsession"
 	local time="$(date '+%Y-%m-%d %H:%M:%S')"
 
 	> "$configfile"
@@ -2765,7 +2766,7 @@ init_newsession() {
 #*
 run_me() {
 	# echo -e "$UND\0run_me$OFF"
-	# ui_log "run_me"
+	$b_log && ui_log "run_me"
 
 	local uphash
 	local sts
@@ -2812,7 +2813,7 @@ keypress, so you can fix the conflicts.$OFF
 # run if user hits control-c
 #*
 ctrl_c() {
-	# ui_log "ctrl_c"
+	$b_log && ui_log "ctrl_c"
 	set +x
 	echo
 
@@ -2834,7 +2835,7 @@ ctrl_c() {
 #   $2 - receives the validated command from the command line
 #*
 check_command() {
-	# ui_log "check_command"
+	$b_log && ui_log "check_command"
 	local cmd="$1"
 	local lead="--"
 
@@ -2849,7 +2850,7 @@ check_command() {
 ###############################
 #** Start of Script Execution
 #*#############################
-# ui_log "start of script execution"
+$b_log && ui_log "start of script execution"
 
 # trap keyboard interrupt (control-c)
 #
