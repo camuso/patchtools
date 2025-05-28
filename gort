@@ -222,7 +222,7 @@ select_gitbranch() {
 	done < "$branchlistfile"
 
 	# echo -e "$brmsg"
-	loop_range 1 $((index - 1)) linenumber
+	loop_range_q 1 $((index - 1)) linenumber || return
 	gitbranch="$(ui_readline "$linenumber" "$branchlistfile" | tr -d [\*" "])"
 	echo -e "${MNU}git checkout $STA$gitbranch$OFF"
 	clean_status
@@ -235,9 +235,65 @@ select_gitbranch() {
 	git log --oneline -1
 	set_cfg_item gitbranch "$gitbranch"
 
-	get_originhead
+	# The new head will be whatever the head is of this branch
+	# The startline will be reset to 1, and the done markers will
+	# be cleared.
+	init_newhead
+
 	$b_cmdline && exit_gort $exit_good || return 0
 }
+
+#** init_newhead: common init procedure for new head
+#
+# Globals:
+#   dnorighead
+#   upcmtstartline
+#
+# Arguments;
+#   none
+#*
+init_newhead() {
+	dnorighead="$(git rev-parse --short HEAD)"
+	set_cfg_item dnorighead "$dnorighead"
+	upcmtstartline=1
+	clear_alldone
+}
+
+#** enter_newhead: ask user to enter new starting head
+#
+# Globals:
+#   dnorighead
+#   upcmtstartline
+#
+# Arguments:
+#   none
+#*
+enter_newhead() {
+	local newhead=
+	local fmthead=
+	local currentlog=
+
+	currentlog=$(git log --oneline -n1 "$dnorighead" 2> /dev/null)
+
+	echo -e "${MNU}Enter a commit hash for a new head or $qstr$MNU to keep the"
+	echo -e "${MNU}current head:$STA $currentlog$OFF"
+	while :; do
+		getuser "${MNU}Commit hash for new head: " newhead
+		[[ "$newhead" =~ ^[qQ]$ ]] && return
+		fmthead=$(git rev-parse --short "$newhead" 2> /dev/null) || {
+			echo -e "
+${CAU}$newhead$OFF$MNU is not a valid commit hash
+${INF}Press$STA ctrl-c$INF to quit and use '${CAU}git log$INF' to find a valid commit hash
+for your new head.$OFF"
+			continue
+		}
+		break
+	done
+
+	git reset --hard "$fmthead"
+	init_newhead
+}
+
 
 #** git_set_subjectprefix: Set the subject prefix in .git/config
 #
@@ -1303,6 +1359,7 @@ $MNU 1 $OFF Run the next commit and stop
 $MNU s $OFF gort status
 $MNU A $OFF Abort, reset to last good commit and clean status
 $(show_altopt "R" "RESET to an earlier commit in this session ")
+$(show_altopt "H" "Select a new starting HEAD ")
 $MNU q $OFF Quit this tool
 $MNU h $OFF Help
 $OFF
@@ -1313,8 +1370,6 @@ EOF
 
 	echo -e "$settings"
 }
-## Deprecated menu items
-## $(show_altopt "I" "Init or restart session")
 
 #** menu_parser: parse the user input at the main menu
 #
@@ -1359,8 +1414,6 @@ menu_parser() {
 			;;
 		N )	read_session; init_newsession
 			;;
-		H )	show_history
-			;;
 		h )	ptpage -b "$tbackground" "$MYHLP"
 			;;
 		q )	exit_gort $exit_good
@@ -1383,6 +1436,8 @@ menu_parser() {
 #			;;
 		R )	((retval == 1)) || return $rc_continue
 			reset_gort
+			;;
+		H )	((retval == 1)) && enter_newhead || show_history
 			;;
 #		U )	update_gort
 #			;;
@@ -2051,7 +2106,7 @@ $OFF"
 	#
 	uplog="$(git log -n1 "$uphash")"
 	summary=$(sed -n '5{s/^[[:space:]]*//; p}' <<< "$uplog")
-
+set -x
 	echo -e "$summary\n" >> "$cmtmsgfile"
 	[ -n "$str_jira" ] && {
 		echo -e "JIRA: $str_jira" >> "$cmtmsgfile"
@@ -2068,7 +2123,7 @@ $OFF"
 	$b_crlf && echo >> "$cmtmsgfile"
 
 	set +f	# re-enable wildcards
-
+set +x ; ui_press_any
 	$b_conflict && echo -e "$str_conflicts" >> "$cmtmsgfile"
 
 	# Append the original commit message.
@@ -2669,12 +2724,7 @@ Fetching the upstream mirror...
 	check_gitbranch
 	check_repostate
 
-	$b_new && {
-		# The "Head at Session Start" will be the current HEAD
-		dnorighead="$(git rev-parse --short HEAD)"
-		set_cfg_item dnorighead "$dnorighead"
-		upcmtstartline=1
-	}
+	$b_new && init_newhead
 
 	get_current_backport
 
