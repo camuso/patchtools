@@ -181,6 +181,25 @@ gu_popd() {
 		exit_gort 1 "${CAU}Directory stack empty!$OFF"
 }
 
+#** normalize_githash - use git rev-parse --short
+#
+# Globals:
+#   none
+#
+# Arguments
+#   1 - the hash to normalize
+#
+# Returns
+#   0 - all good
+#   1 - not a valid hash
+#*
+normalize_githash() {
+	local inhash="$1"
+
+	git rev-parse --short "$inhash" 2> /dev/null || return 1
+	return 0
+}
+
 #** get_gitbranch: prints the name of the current git branch
 #
 #     ARGUMENTS:  None
@@ -244,6 +263,10 @@ select_gitbranch() {
 }
 
 #** init_newhead: common init procedure for new head
+#
+# Set the dnorighead HEAD to current HEAD.
+# Set the upcmtstartline to 1
+# Clear all the done markers in the backport commits file, if it exists.
 #
 # Globals:
 #   dnorighead
@@ -831,19 +854,19 @@ EOF
 #
 # Returns:
 #   0 extracted upstream hash is not dnorighead and is an actual hash
-#   1 extracted upstream hash is the same as the dnorighead
+#   1 current head is the same as the dnorighead
 #   2 extracted upstream hash field is not a hash
 #   3 dnorighead is null
+#   4 dnorighead is invalid
 #*
 get_lastbackport() {
 	$b_log && ui_log "get_lastbackport"
 	local bp
-	local hhash="$(git rev-parse --short HEAD)"
+	local hhash="$(normalize_githash HEAD)"
 
 	[ -n "$dnorighead" ] || return 3
-
-	[ "$(git rev-parse "$hhash")" == "$(git rev-parse "$dnorighead")" ] \
-		&& return 1
+	dnorighead="$(normalize_githash "$dnorighead")" || return 4
+	[ "$hhash" == "$dnorighead" ] 	&& return 1
 
 	extract_upcmt "$hhash"
 	[[ $hhash =~ ^[0-9a-fA-F]+$ ]] && return 0 || return 2
@@ -867,11 +890,13 @@ show_most_recent_backport() {
 	local padstr="$(printf "%*c" "$menupad" " ")"
 	local eofstr="$CAU${padstr}was the last commit in Backports File$OFF"
 	local lastbackport=
+	local lastbackportline=
 
 	[ -f "$backportfile" ] || return
 	lastbackport="$(get_lastbackport)" || { echo -n; return; }
+	lastbackportline="$(git log --oneline -n1 "$lastbackport")"
 
-	laststr="\n    Last backported commit   : $STA${lastbackport:0:$cols}$OFF"
+	laststr="\n    Last backported commit   : $STA${lastbackportline:0:$cols}$OFF"
 	echo -e "$laststr"
 	((upcmtstartline > $(wc -l < "$backportfile"))) && echo -e "$eofstr"
 }
@@ -1359,7 +1384,7 @@ $MNU 1 $OFF Run the next commit and stop
 $MNU s $OFF gort status
 $MNU A $OFF Abort, reset to last good commit and clean status
 $(show_altopt "R" "RESET to an earlier commit in this session ")
-$(show_altopt "H" "Select a new starting HEAD ")
+$(show_altopt "H" "Enter a new starting HEAD ")
 $MNU q $OFF Quit this tool
 $MNU h $OFF Help
 $OFF
@@ -2106,7 +2131,7 @@ $OFF"
 	#
 	uplog="$(git log -n1 "$uphash")"
 	summary=$(sed -n '5{s/^[[:space:]]*//; p}' <<< "$uplog")
-set -x
+
 	echo -e "$summary\n" >> "$cmtmsgfile"
 	[ -n "$str_jira" ] && {
 		echo -e "JIRA: $str_jira" >> "$cmtmsgfile"
@@ -2123,7 +2148,7 @@ set -x
 	$b_crlf && echo >> "$cmtmsgfile"
 
 	set +f	# re-enable wildcards
-set +x ; ui_press_any
+
 	$b_conflict && echo -e "$str_conflicts" >> "$cmtmsgfile"
 
 	# Append the original commit message.
