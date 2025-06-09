@@ -918,18 +918,18 @@ get_merge_request() {
 	return 0
 }
 
-# get_mrcommits_labmr
+#** get_mrcommits_labmr - use prarit's lab utitlity to get the MR commits
 #
 # Arguments
 # 	$1 - the MR
 #
 # Globals
 #      origin - the baseline commit of the main branch
-#      patchcount - number of patches in the patch series
+#      patchcount - gets number of patches in the patch series
 #      bp_commits - file that will contain the backported commits
-#
-# Total number of commits analyzed
+#*
 get_mrcommits_labmr() {
+# ui_b_debug=true
 $ui_b_debug && echo "get_mr_commits_labmr"
 	local mr="$1"
 	local basecmt="OK"
@@ -938,14 +938,20 @@ $ui_b_debug && echo "get_mr_commits_labmr"
 	local newbranch
 	local -a tary=()
 	local -a depend=()
+	local b_nodep=true
+
 $ui_b_debug && set -x
 	mapfile -t depend < <(grep -o 'Dependencies::[^,]*' "$mrcomments")
+
+	shopt -s nocasematch  # Enable case-insensitive matching
 	for ((i = 0; i < ${#depend[@]}; ++i)); do
 		basecmt="$(echo "$depend" | cut -d':' -f3)"
-		[ "$basecmt" == "OK" ] && continue || break
+		[[ "$basecmt" == "OK" || "$basecmt" == "none" ]] || b_nodep=false
+		$b_nodep && continue || break
 	done
+	shopt -u nocasematch  # Reset back to case-sensitive
 
-	if [ "$basecmt" == "OK" ]; then
+	if $b_nodep; then
 		lab mr show "$origin" "$mr" -p --reverse | \
 		       grep '^commit ' | cut -d ' ' -f2 > "$bp_commits"
 	else
