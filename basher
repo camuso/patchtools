@@ -8,7 +8,7 @@ declare MYDIR=
 declare MYLIB=
 declare usagestr=
 
-MYDIR="$(dirname "$(which "$(basename "$0")")")"
+MYDIR="$(dirname "$(readlink -f "$0")")"
 MYLIB="$MYDIR"/lib
 
 source "$MYLIB"/ui.source
@@ -250,7 +250,7 @@ $b_source && echo -en '
 echo -en '
 [ -n "$MYDIR" ] || {
 	declare MYDIR=
-	MYDIR="$(dirname "$(which "$(basename "$0")")")"
+	MYDIR="$(dirname "$(readlink -f "$0")")"
 }
 ' >> "$ofile"
 
