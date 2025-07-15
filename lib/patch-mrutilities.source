@@ -53,7 +53,7 @@ shopt -s extglob
 #######################################
 declare -i opmode
 declare -i opmode_mr=0
-declare -i opmode_email=1
+declare -i opmode_dev=1
 declare -i opmode_states=2
 
 declare current_mr=
@@ -165,7 +165,7 @@ EOF
 # Globals
 # 	opmode
 # 	opmode_mr
-# 	opmode_email
+# 	opmode_dev
 # 	opmode_states
 # 	cmpmode
 # 	cmpmode_batch
@@ -186,7 +186,7 @@ change_opmode() {
 			  cmpmode=$cmpmode_batch
 			  applymode=$applymode_off
 			  ;;
-	"$opmode_email" ) b_mrflag=false
+	"$opmode_dev" ) b_mrflag=false
 			  b_rename_files=false
 			  b_fmt_upstream=true
 			  cmpmode=$cmpmode_batch
@@ -200,13 +200,13 @@ change_opmode() {
 # Globals:
 # 	opmode
 # 	opmode_mr
-# 	opmode_email
+# 	opmode_dev
 # 	prj_opmode
 #
 show_opmode() {
 	case $opmode in
 		"$opmode_mr"    ) echo "Merge Request Mode" ;;
-		"$opmode_email" ) echo "Email Patch Mode" ;;
+		"$opmode_dev" ) echo "Patch Development Mode" ;;
 	esac
 }
 

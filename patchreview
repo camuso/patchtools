@@ -533,7 +533,7 @@ menu_parser() {
 		;;
 	    o )	ui_cycle_state opmode $opmode_states
 		set_cfg_item "opmode" "$opmode"
-		((opmode == opmode_mr)) && b_mrflag=true || b_mrflag=false fi
+		((opmode == opmode_mr)) && b_mrflag=true || b_mrflag=false
 		;;
 	    g )	grep_mrlist && return $rc_run
 		;;
