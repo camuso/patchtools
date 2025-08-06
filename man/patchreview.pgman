@@ -38,7 +38,7 @@ For example:
 $MNU	$ ${OFF}cd $HOME
 $MNU	$ ${OFF}git -c http.sslVerify=false \\\
 
-	  clone https://tosmith@gitlab.cee.redhat.com/tcamuso/patchtools.git \\\
+	  clone https://github.com/camuso/patchtools.git \\\
 
 	  mybin
 $MNU	$ ${OFF}export PATH=\$PATH:~/mybin
