@@ -24,7 +24,7 @@
 
 # Global background color declared here to provide color for all
 # messages.
-declare -i background=
+declare -i bckgrnd=
 
 #######################################
 # Default file locations
@@ -56,7 +56,7 @@ MYDATA="$PWD"/.data
 # ui must be sourced before anything else happens.
 source "$MYLIB"/ui.source
 
-ui_setbg background
+ui_setbg bckgrnd
 
 [ -d "$MYDATA" ] || mkdir -p "$MYDATA" || {
 	echo -e "\
@@ -331,7 +331,7 @@ config_parser() {
 		s )	ui_toggle b_seekfixes
 			set_cfg_item "b_seekfixes" "$b_seekfixes"
 			;;
-		C )	ui_cycle_state background 2
+		C )	ui_cycle_state_ofs background 2 1
 			cfg_set_item background "$background"
 			terminal_background="$background"
 			ui_set_colors
@@ -752,7 +752,7 @@ init_parms() {
 	last_tag_file="$MYDATA/lasttag"
 
 	cfg_start "$cfgtemplate" "$configfile"
-	cfg_set_item "background" "$background"
+	cfg_set_item "background" "$bckgrnd"
 
 	# Trap for control-c
 	#
