@@ -1,7 +1,95 @@
 #!/bin/bash
-commits=
-index=0
-len=0
+#
+# check-for-fixes
+#
+# Shamelessly stolen from Dave Arcari's script, with some minor
+# embellishments.
+#
+
+declare commits=
+declare index=0
+declare len=0
+declare updir=
+declare path=
+declare -i tcols=$(tput cols)	# number of columns in the terminal
+
+usage() {
+	local usgstr="
+Usage:
+check-for-fixes updir [psdir]
+
+updir - the directory containing the upstream repo
+psdir - OPTIONAL directory containing the patch series
+        Default is current directory
+"
+	echo "$usgstr"
+	exit 1
+}
+
+declare CL1="\e["$tcols"D"	# column 1 of the current line
+declare CCR="\e[K"    		# clear line and carriage return
+declare UP1="\e[1A"		# move cursor up one line
+
+#** ui_clrline: clear the current line
+#
+# $1 - if not empty, moves the cursor up one line.
+#*
+# GLOBALS
+# 	CL1 - puts cursor at column 1
+# 	CCR - clears the line and issues a carriage return
+# 	UP1 - moves the cursor up one line
+#
+ui_clearline() {
+	# Erase the line and put the cursor back in the first column of the
+	# line. Leave the TTY calls as discrete echos for the sake of
+	# clarity. The bash interpreter will merge them anyway.
+	#
+	echo -en "$CL1"
+	echo -en "$CCR"
+	echo -en "$CL1"
+	echo -en "$CCR"
+}
+
+#** ui_waitonproc_tty: prints dots and erases line while waiting for pid
+#
+# $1 - PID of process we are waiting for.
+# $2 - time argument can be given as decimal fractions of a second
+# $3 - optional text
+#
+# Prints a dot to the screen according to the time argument. When the dots
+# reach the rightmost column of the screen, the line is erased and the dots
+# start again from the leftmost column.
+#
+# An optional text message is written first before the dots.
+#*
+# GLOBALS
+#   tcols - number of columns in the terminal
+#
+ui_waitonproc_tty () {
+    local -i pid="$1"
+    local tmo="$2"
+    local txt="$3"
+    local -i tcnt=1
+    local -i stat=0
+
+    [ -z "$txt" ] || echo -e "$txt"
+    while kill -0 "$pid" > /dev/null 2>&1; do
+        echo -n '.'
+        sleep "$tmo"
+	((++tcnt))
+
+	((tcnt >= tcols)) && {
+            ui_clearline
+	    tcnt=1
+    	}
+    done
+
+    # Leave the TTY as it was before we were called.
+    #
+    ui_clearline
+    wait "$pid" || stat=$?
+    return $stat
+}
 
 fix_in_series()
 {
@@ -29,31 +117,35 @@ check_commit()
     [ "$ok" = "true" ] && echo "commit: $1 is OK"
 }
 
-updir="$1"
+run() {
+	local mypid=
 
+	for (( i=0; i<$len; ++i)); do
+    		cmt=$(git rev-parse --short "${commits[$i]}" 2> /dev/null) || continue
+    	check_commit "$cmt" &
+	mypid=$!
+	ui_waitonproc_tty $mypid .05
+	done
+}
+
+(( $# >= 1 )) || { echo "Missing argument!" ; usage; }
+
+updir="$1"
 path="*"
-if [ ! -z "$1" ]; then
-    if [ -d "$1" ]; then
-	cd "$1" &> /dev/null
+if [ ! -z "$2" ]; then
+    if [ -d "$2" ]; then
+	cd "$2" &> /dev/null
 	[ $? -ne 0 ] && echo "invalid directory: $1" && exit 1
-    elif [ -f "$1" ]; then
-	path="$1"
+    elif [ -f "$2" ]; then
+	path="$2"
     else
-	echo "invalid path: $1"
-	exit 1
+	echo "invalid path: $2"
+	usage
     fi
 fi
 
 commits=($(grep -d skip -h "^commit" $path |  awk '{print $2}' | cut -c1-12))
 len=${#commits[@]}
 cd "$updir" || exit 1
-for (( i=0; i<$len; ++i)); do
-    check_commit ${commits[$i]}
-done
-
-
-
-
-
-
-
+[ -d "$updir/.git" ] || { echo "$updir is not a git repo!"; usage; }
+run
