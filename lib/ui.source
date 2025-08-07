@@ -853,14 +853,14 @@ loop_range_q() {
 	while true; do
 		$cmd "$pstr" number
 
-		[ "$number" = "q" ] && return 1
-
 		if [[ $number =~ ^-?[0-9]+$ ]]  && \
 		   [[ $number -ge $min ]]       && \
 		   [[ $number -le $max ]]; then
 			eval "$3"="$number"
 			echo
 			return 0
+		elif [ "$number" = "q" ]; then
+			return 1
 		fi
 	done
 }
