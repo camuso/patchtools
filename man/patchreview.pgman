@@ -3,7 +3,7 @@
 declare prman="$(
 cat <<EOF
 ${MNU}==============================
-${STA}patchreview - patchtools v12.*
+${STA}patchreview - patchtools v13.*
 ${MNU}==============================
 $OFF
 This menu-driven script allows the user to compare a set of patches
