@@ -1,0 +1,59 @@
+#!/bin/bash
+commits=
+index=0
+len=0
+
+fix_in_series()
+{
+    found=0
+    index=$((index+1))
+    for (( j=$index; j<$len; ++j)); do
+	if [ "$1" = "${commits[$j]}" ]; then
+	    found=1
+	    break
+	fi
+    done
+    return $found
+}
+
+check_commit()
+{
+    ok=true
+    fixes=$(git log $1..HEAD --grep=$1)
+    if [ ! -z "$fixes" ]; then
+	fix_commit=$(echo "$fixes" | grep "^commit" | awk '{print $2}' | cut -c1-12)
+	fix_in_series "$fix_commit"
+	[ $? -eq 0 ] && echo "commit: $1 requires fix: $fix_commit" && ok=false
+    fi
+
+    [ "$ok" = "true" ] && echo "commit: $1 is OK"
+}
+
+updir="$1"
+
+path="*"
+if [ ! -z "$1" ]; then
+    if [ -d "$1" ]; then
+	cd "$1" &> /dev/null
+	[ $? -ne 0 ] && echo "invalid directory: $1" && exit 1
+    elif [ -f "$1" ]; then
+	path="$1"
+    else
+	echo "invalid path: $1"
+	exit 1
+    fi
+fi
+
+commits=($(grep -d skip -h "^commit" $path |  awk '{print $2}' | cut -c1-12))
+len=${#commits[@]}
+cd "$updir" || exit 1
+for (( i=0; i<$len; ++i)); do
+    check_commit ${commits[$i]}
+done
+
+
+
+
+
+
+
