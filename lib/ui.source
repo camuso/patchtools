@@ -1347,6 +1347,22 @@ ui_toggle() {
 	if $boolean; then eval "$1"=false; else eval "$1"=true; fi
 }
 
+#** ui_cycle_state_ofs - cycle through the states of a variable starting at
+#
+# $1 - variable value changed by reference
+# $2 - number of states
+# $3 - minimum state value
+#*
+ui_cycle_state_ofs() {
+	local -n uics_var=$1
+	local states=$2
+	local minstat=$3
+	local maxstat=$((minstat + states))
+
+	((++uics_var))
+	((uics_var >= maxstat)) && uics_var=$minstat
+}
+
 #** ui_cycle_state - cycle through the states of a variable
 #
 # $1 - variable value changed by reference
