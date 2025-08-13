@@ -8,7 +8,7 @@ MYLIB="$MYDIR"/lib
 declare prman="$(
 cat <<EOF
 ${MNU}================================
-${STA}mkbackportlog - patchtools v12.*
+${STA}mkbackportlog - patchtools v13.*
 ${MNU}================================
 $OFF
 This menu-driven script creates a list of commts to be backported
