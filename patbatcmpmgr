@@ -23,7 +23,7 @@ trap control_c SIGINT
 shopt -s extglob
 
 declare MYDIR=
-MYDIR="$(dirname "$(which "$(basename "$0")")")"
+MYDIR="$(dirname "$(readlink -f "$0")")"
 declare MYLIB="$MYDIR"/lib
 declare MYDATA="./.data"
 

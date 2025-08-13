@@ -42,7 +42,7 @@ declare upcmt=
 declare updir=
 
 declare MYDIR=
-MYDIR="$(dirname "$(which "$(basename "$0")")")"
+MYDIR="$(dirname "$(readlink -f "$0")")"
 declare MYLIB="$MYDIR"/lib
 
 source "$MYLIB"/ui.source

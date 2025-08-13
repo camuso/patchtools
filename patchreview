@@ -42,7 +42,7 @@ declare -i bckgrnd=
 # source files that follow.
 #
 declare MYDIR=
-MYDIR="$(dirname "$(which "$(basename "$0")")")"
+MYDIR="$(dirname "$(readlink -f "$0")")"
 
 declare MYLIB=
 MYLIB="$MYDIR"/lib

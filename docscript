@@ -13,7 +13,7 @@ declare b_verbose=false
 declare file=
 declare b_func=false
 
-MYDIR="$(dirname "$(which "$(basename "$0")")")"
+MYDIR="$(dirname "$(readlink -f "$0")")"
 MYLIB="$MYDIR"/lib
 MYDATA=$(realpath ./.data)
 [ -d "$MYDATA" ] || mkdir -p "$MYDATA"

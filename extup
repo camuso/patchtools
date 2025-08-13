@@ -5,7 +5,7 @@
 #
 [ "$MYDIR" ] || {
 	declare MYDIR=
-	MYDIR="$(dirname "$(which "$(basename "$0")")")"
+	MYDIR="$(dirname "$(readlink -f "$0")")"
 }
 [ "$MYLIB" ] || {
 	declare MYLIB=

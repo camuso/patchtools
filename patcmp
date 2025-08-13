@@ -5,7 +5,7 @@
 declare version="8.0"
 
 declare MYDIR=
-MYDIR="$(dirname "$(which "$(basename "$0")")")"
+MYDIR="$(dirname "$(readlink -f "$0")")"
 declare MYLIB="$MYDIR"/lib
 
 [ "$ui_loaded" ]         || source "$MYLIB"/ui.source

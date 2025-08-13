@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-MYDIR="$(dirname "$(which "$(basename "$0")")")"
+MYDIR="$(dirname "$(readlink -f "$0")")"
 MYLIB="$MYDIR"/lib
 
 [ "$ptversion_loaded" ]     || source "$MYLIB"/patchtools-version.source
