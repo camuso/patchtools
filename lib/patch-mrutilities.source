@@ -266,6 +266,7 @@ show_mrstatus() {
 #
 # Globals:
 # 	mrhistoryfile
+# 	patchcount
 #
 # Arguments
 # 	$1 - MR number
@@ -302,7 +303,7 @@ update_history() {
 	# Else record the latest action.
 	if (($? != 0)); then
 		echo "$mridpad $url" >> "$mrhistoryfile"
-		echo "$spc $(date)  $action" >> "$mrhistoryfile"
+		echo "$spc $(date)  $action : $patchcount" >> "$mrhistoryfile"
 	else
 		# Find the NEXT mrid in the file. This number will be the offset
 		# from the current mrid to the next mrid.
@@ -317,7 +318,7 @@ update_history() {
 			linenumber=$((linenumber + nextitem))
 			ui_insertline "$linenumber" "$spc $(date)  $action" "$mrhistoryfile"
 		else
-			echo "$spc $(date)  $action" >> "$mrhistoryfile"
+			echo "$spc $(date)  $action : $patchcount" >> "$mrhistoryfile"
 		fi
 	fi
 }
