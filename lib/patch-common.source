@@ -1542,6 +1542,7 @@ exec_patcmp() {
 # echo
 # echo "valpatchlist:"
 # echo "${valpatchlist[@]}"
+# echo "b_reviewed: $b_reviewed"
 # ui_press_any
 
 	# If the mmfile does not contain the same number of patches

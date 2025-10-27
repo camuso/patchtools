@@ -598,7 +598,7 @@ menu_parser() {
 		;;
 	    B )	create_branch
 		;;
-	    P )	compare_patches
+	    P )	b_reviewed=false; compare_patches
 		;;
 	    i )	init_menu
 		;;
