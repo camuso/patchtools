@@ -9,9 +9,9 @@ declare MYLIB=
 declare usagestr=
 
 MYDIR="$(dirname "$(readlink -f "$0")")"
-MYLIB="$MYDIR"/lib
+MYLIB="${MYDIR}/lib"
 
-source "$MYLIB"/ui.source
+source "${MYLIB}/ui.source"
 
 declare b_opts=false
 declare b_args=false
@@ -37,7 +37,7 @@ declare b_nolib=false
 
 usagestr="$(
 cat <<EOF
-$(basename $0) [ options ] <bashscript>
+$(basename "$0") [ options ] <bashscript>
 
 Create an empty bash script with placeholders for help text and
 a usage function
@@ -113,7 +113,7 @@ test_help() {
 	local opt="$1"
 
 	shopt -s nocasematch
-	( [ -z "$opt" ] || [[ $opt =~ (\bh\b|^help) ]] ) && exit_me $ui_exit_ok
+	( [ -z "$opt" ] || [[ $opt =~ (\bh\b|^help) ]] ) && exit_me "$ui_exit_ok"
 	shopt -u nocasematch
 }
 
@@ -124,7 +124,7 @@ test_help() {
 #   $2 - the char
 #   $3 - send "crlf" to get crlf at end of string
 #
-print_pad() {
+	print_pad() {
 	local -i num=$1
 	local char="$2"
 	local crlf="$3"
@@ -132,7 +132,7 @@ print_pad() {
 
 	((num <= 0)) && return
 	[ -n "$crlf" ] && crlf="\n" || crlf=""
-	tstr=$(printf "%*c%s" $num "$char" "$crlf")
+	tstr=$(printf "%*c%s" "$num" "$char" "$crlf")
 	echo -en "${tstr// /"$char"}"
 }
 
@@ -156,12 +156,12 @@ print_usagearts() {
 	done
 
 	echo -e "$artname" >> "$ofile"
-	print_pad ${#artname} "-" "crlf" >> "$ofile"
+	print_pad "${#artname}" "-" "crlf" >> "$ofile"
 
 	for art in $arts; do
 		echo -en "   $art" >> "$ofile"
 		padwid=$((artwid - ${#art}))
-		print_pad $padwid " " >> "$ofile"
+		print_pad "$padwid" " " >> "$ofile"
 		echo " : " >> "$ofile"
 	done
 	echo >> "$ofile"
@@ -176,47 +176,117 @@ declare opt=
 
 test_help "$1"
 
-if [[ $@ == *"-C"* && $@ == *"-a"* ]]; then
+if [[ "$*" == *"-C"* && "$*" == *"-a"* ]]; then
   echo "You cannot have both the -a and -C options."
   echo "This is either a command script or a script that takes args."
   echo "it cannot be both"
   exit "$ui_err_invargc"
 fi
 
-for arg in "$@"; do
+# Define options that require arguments
+# Format: option_requires_arg[option]="description for error message"
+declare -A option_requires_arg
+option_requires_arg[o]="option string"
+option_requires_arg[a]="argument list"
+option_requires_arg[C]="command list"
 
-    if [ "${arg:0:1}" == '-' ]; then
-	opt="${arg:1}"
+#* validate_option_arg() - validate that an option's argument is not empty
+#
+# Arguments:
+#   $1 - option name (e.g., "o", "a", "C")
+#   $2 - argument value to validate
+#
+# Exits with error code 127 if argument is empty
+#
+validate_option_arg() {
+    local opt="$1"
+    local argval="$2"
+    if [ -z "$argval" ]; then
+	echo "Error: Option -$opt requires a non-empty ${option_requires_arg[$opt]}" >&2
+	exit 127
+    fi
+}
+
+# Option parsing loop
+while (($# > 0)); do
+    # Handle explicit end-of-options marker
+    if [[ "$1" == "--" ]]; then
 	shift
-
+	break
+    fi
+    
+    # Check if current argument is an option (starts with -)
+    if [[ "$1" =~ ^-([a-zA-Z]+)$ ]]; then
+	opt="${BASH_REMATCH[1]}"
+	
+	# Check if this option requires an argument
+	if [[ -n "${option_requires_arg[$opt]}" ]]; then
+	    # Check if next argument exists and is not another option
+	    if (( $# < 2 )) || [[ "$2" =~ ^- ]]; then
+		echo "Error: Option -$opt requires a ${option_requires_arg[$opt]}" >&2
+		echo -e "$usagestr" >&2
+		exit 127
+	    fi
+	    # Shift to consume the option itself
+	    shift
+	    # Now $1 contains the argument value
+	fi
+	
+	# Process the option
 	case "$opt" in
-	o ) opts="$1"
-	    b_opts=true
-	    shift
-	    ;;
-	a ) [ -z args ] && args="$1" || args="$args $1"
-	    b_args=true
-	    shift
-	    ;;
-	C ) [ -z "$cmds" ] && cmds="$1" || cmds="$cmds $1"
-	    b_cmds=true
-	    shift
-	    ;;
-	k ) b_color=true
-	    b_ui=true
-	    ;;
-	c ) b_cfgmgr=true
-	    ;;
-	u ) b_ui=true
-	    ;;
-	s ) b_source=true
-	    ;;
-	n ) b_nolib=true
-	    ;;
-	* ) echo "unrecognized option"
-	    echo -e "$usagestr"
-	    exit 127
+	    o )
+		validate_option_arg "$opt" "$1"
+		opts="$1"
+		b_opts=true
+		;;
+	    a )
+		validate_option_arg "$opt" "$1"
+		if [ -z "$args" ]; then
+		    args="$1"
+		else
+		    args="$args $1"
+		fi
+		b_args=true
+		;;
+	    C )
+		validate_option_arg "$opt" "$1"
+		if [ -z "$cmds" ]; then
+		    cmds="$1"
+		else
+		    cmds="$cmds $1"
+		fi
+		b_cmds=true
+		;;
+	    k )
+		b_color=true
+		b_ui=true
+		;;
+	    c )
+		b_cfgmgr=true
+		;;
+	    u )
+		b_ui=true
+		;;
+	    s )
+		b_source=true
+		;;
+	    n )
+		b_nolib=true
+		;;
+	    * )
+		echo "Error: Unrecognized option -$opt" >&2
+		echo -e "$usagestr" >&2
+		exit 127
+		;;
 	esac
+	
+	# Shift to consume the processed item(s):
+	# - If option required argument: we already shifted once, $1 is the arg, shift again
+	# - If option had no argument: $1 is the option itself, shift once
+	shift
+    else
+	# Not an option, break out of loop to process as positional arguments
+	break
     fi
 done
 
@@ -296,7 +366,7 @@ $b_args && {
 	echo "declare -i argc=$argc" >> "$ofile"
 }
 
-$b_cmd && {
+$b_cmds && {
 	for cmd in $cmds; do
 		echo "declare ${cmd}=" >> "$ofile"
 		let ++argc
