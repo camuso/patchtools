@@ -29,6 +29,184 @@ if [[ ! -d $search_dir ]]; then
 	exit 1
 fi
 
+# Search for function definitions first
+# Use grep with context to find potential definitions, then awk to filter out comments and validate patterns
+def_found=0
+definition=$(grep -RInIA 5 -E -w -- "$func_name" "$search_dir" | sed "s|^|$search_dir/|" | sed "s|$search_dir/\./|$search_dir/|" | awk -v fname="$func_name" '
+BEGIN {
+	# Comment patterns to exclude
+	comment_sh = "^[[:space:]]*#"
+	comment_sl = "^[[:space:]]*//"
+	comment_bl = "^[[:space:]]*/\\*"
+
+	# Function definition patterns (opposite of what we exclude for calls)
+	# Bash style: name() or function name()
+	def_bash1 = "^[[:space:]]*" fname "[[:space:]]*\\(\\)[[:space:]]*\\{?"
+	def_bash2 = "^[[:space:]]*function[[:space:]]+" fname "[[:space:]]*\\(\\)[[:space:]]*\\{?"
+
+	# Other languages
+	def_js = "^[[:space:]]*function[[:space:]]+" fname "[[:space:]]*\\("
+	def_go = "^[[:space:]]*func[[:space:]]+" fname "[[:space:]]*\\("
+
+	# Python: def name(
+	def_py = "^[[:space:]]*def[[:space:]]+" fname "[[:space:]]*\\("
+
+	# Rust: fn name(
+	def_rust = "^[[:space:]]*fn[[:space:]]+" fname "[[:space:]]*\\("
+
+	# C/C++ same-line definition heuristic: type qualifiers then name(...) { at end
+	def_c_same = "(^|[[:space:][:punct:]])" fname "[[:space:]]*\\)[[:space:]]*\\{[[:space:]]*$"
+
+	# Track a pending C/C++ function header that ends with ) and no ; and no {
+	pending = 0
+	pfile = ""
+	pline = 0
+	current_file = ""
+}
+{
+		# Handle grep output format with context lines
+	line = $0
+
+	# Skip separator lines
+		if (line ~ /^--$/) {
+		current_file = ""
+		if (pending == 1) {
+			pending = 0
+			pfile = ""
+			pline = 0
+		}
+		next
+	}
+
+	# Check if this is a context line (format: file-line-content)
+	# Context lines have dashes instead of colons
+	first_sep = index(line, ":")
+	first_dash = index(line, "-")
+
+	# Context line if: has dash AND (no colon OR dash comes right after colon)
+	if (first_dash > 0 && (first_sep == 0 || first_dash == first_sep + 1)) {
+		# This is a context line
+		if (pending == 1) {
+			# Parse file-line-content format
+			file_part = substr(line, 1, first_dash-1)
+			rest = substr(line, first_dash+1)
+			dash_pos = index(rest, "-")
+			if (dash_pos == 0) next
+			lineno_str = substr(rest, 1, dash_pos-1)
+			linenum = lineno_str + 0
+			text = substr(rest, dash_pos+1)
+
+			# Only process if same file as pending definition
+			if (file_part == pfile && linenum > pline && linenum <= pline + 5) {
+				# Allow blank lines and comments
+				if (text ~ /^[[:space:]]*$/ || text ~ comment_sh || text ~ comment_sl || text ~ comment_bl || text ~ /^[[:space:]]*#/) {
+					next
+				}
+				# Check for opening brace
+				if (text ~ /^[[:space:]]*\{/) {
+					print pfile ":" pline
+					exit 0
+				}
+				# Not the brace - reset pending
+				pending = 0
+				pfile = ""
+				pline = 0
+			}
+		}
+		next
+	}
+
+	# Regular match line: file:line:text
+	i = index(line, ":")
+	if (i == 0) next
+	file = substr(line, 1, i-1)
+	rest = substr(line, i+1)
+	j = index(rest, ":")
+	if (j == 0) {
+		# Only one colon - rest is the line number, no text
+		lineno = rest
+		text = ""
+	} else {
+		lineno = substr(rest, 1, j-1)
+		text = substr(rest, j+1)
+	}
+
+	# Track current file for context lines
+	current_file = file
+
+	# Convert lineno to number for comparison
+	linenum = lineno + 0
+
+	# If we are waiting for an opening brace for a C definition, check current line
+	if (pending == 1) {
+		# Must be from the same file and be a context line (consecutive line numbers)
+		if (file == pfile && linenum > pline && linenum <= pline + 5) {
+			# Context line from same file - allow blank/comments, check for brace
+			if (text ~ /^[[:space:]]*$/ || text ~ comment_sh || text ~ comment_sl || text ~ comment_bl || text ~ /^[[:space:]]*#/) {
+				# Blank or comment line, continue waiting
+				next
+			}
+			if (text ~ /^[[:space:]]*\{/) {
+				# Found the opening brace!
+				print pfile ":" pline
+				exit 0
+			}
+		}
+		# Not a context line or not the brace - reset pending
+		# (Will be set again if we find another potential header)
+		pending = 0
+		pfile = ""
+		pline = 0
+	}
+
+	# Exclude comments
+	if (text ~ comment_sh) next
+	if (text ~ comment_sl) next
+	if (text ~ comment_bl) next
+
+	# Check for function definitions
+	if (text ~ def_bash1 || text ~ def_bash2 || text ~ def_js || text ~ def_go || text ~ def_py || text ~ def_rust) {
+		print file ":" lineno
+		exit 0  # Exit on first match
+	}
+
+	# Heuristic for C/C++ definitions where brace may be on next line:
+	# Look for a line containing fname( ... ) not ending with ;, and either
+	#  - ending with { on same line (handled by def_c_same below), or
+	#  - next non-comment line is a {.
+    # Skip typical function pointer typedefs/declarations: (*fname)(
+    ptr_pat = "\\(\\*[[:space:]]*" fname "[[:space:]]*\\("
+    if (text ~ ptr_pat) {
+		# function pointer declaration, skip
+		next
+	}
+	# Same-line C definition
+	if (text ~ def_c_same) {
+		print file ":" lineno
+		exit 0
+	}
+	# Header-only line: contains name( and ends with ) possibly with spaces, not with ;
+	header_pat = "(^|[[:space:][:punct:]])" fname "[[:space:]]*\\("
+	if (text ~ header_pat && text ~ /\)[[:space:]]*$/ && !(text ~ /;[[:space:]]*$/)) {
+		pending = 1
+		pfile = file
+		pline = linenum
+	}
+}
+')
+
+# Print definition location or "not found" message
+if [[ -n "$definition" ]]; then
+	printf 'Defined in: %s\n' "$definition"
+	def_found=1
+else
+	printf 'Definition not found in this directory tree.\n'
+fi
+
+# Separate definition output from call sites with blank line
+printf '\n'
+
+# Now search for call sites
 # Grep candidates: text files only, with line numbers; -I ignores binary
 # Use -w to get word-boundary hits, then filter with awk
 grep -RInI -E -w -- "$func_name" "$search_dir" | awk -v fname="$func_name" '
@@ -99,5 +277,3 @@ BEGIN {
 	}
 }
 '
-
-
