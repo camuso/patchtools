@@ -5,10 +5,36 @@
 set -euo pipefail
 
 usage() {
-	printf '%s\n' "Usage: $(basename "$0") <function_name> [directory]" \
-	               "Searches recursively for calls to the function (not definitions or comments)." \
-	               "Prints: filepath:line_number:line_text" \
-	               "Defaults directory to current directory."
+	cat << EOF
+Usage: $(basename "$0") <function_name> [directory]
+
+Searches recursively for function definitions and call sites in a code tree.
+
+FEATURES:
+  • Identifies function definitions (if found in the current tree)
+  • Lists all call sites (excluding definitions and comments)
+  • Supports multi-line function definitions (e.g., C functions with opening brace on next line)
+
+SUPPORTED LANGUAGES:
+  • Bash/Shell: function name() or function name()
+  • C/C++: type name(...) { or type name(...) followed by { on next line
+  • JavaScript: function name(...)
+  • Go: func name(...)
+  • Python: def name(...)
+  • Rust: fn name(...)
+
+OUTPUT FORMAT:
+  Definition: Defined in: filepath:line_number
+  Call sites: filepath:line_number:line_text
+
+ARGUMENTS:
+  function_name    Name of the function to search for
+  directory        Directory to search (default: current directory)
+
+EXAMPLES:
+  $(basename "$0") update_history
+  $(basename "$0") ipmi_remove_platform_device_by_name /path/to/kernel/source
+EOF
 	exit 2
 }
 
