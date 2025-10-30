@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# funcprof: Find call sites of a function in a code tree
+# Usage: funcprof <function_name> [directory]
+
+set -euo pipefail
+
+usage() {
+	printf '%s\n' "Usage: $(basename "$0") <function_name> [directory]" \
+	               "Searches recursively for calls to the function (not definitions or comments)." \
+	               "Prints: filepath:line_number:line_text" \
+	               "Defaults directory to current directory."
+	exit 2
+}
+
+# Args
+[[ $# -ge 1 ]] || usage
+func_name=$1
+search_dir=${2:-.}
+
+# Validate function name: allow typical identifier names
+if [[ ! $func_name =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+	printf 'Error: Invalid function name: %s\n' "$func_name" >&2
+	exit 1
+fi
+
+# Validate directory
+if [[ ! -d $search_dir ]]; then
+	printf 'Error: Not a directory: %s\n' "$search_dir" >&2
+	exit 1
+fi
+
+# Grep candidates: text files only, with line numbers; -I ignores binary
+# Use -w to get word-boundary hits, then filter with awk
+grep -RInI -E -w -- "$func_name" "$search_dir" | awk -v fname="$func_name" '
+BEGIN {
+	# Precompile regex components
+	# Comments (shell, C/C++/JS single-line, block start)
+	comment_sh = "^[[:space:]]*#"
+	comment_sl = "^[[:space:]]*//"
+	comment_bl = "^[[:space:]]*/\\*"
+
+	# Function definitions we want to exclude:
+	# Bash style: name() or function name()
+	def_bash1 = "^[[:space:]]*" fname "[[:space:]]*\\(\\)[[:space:]]*\\{?"
+	def_bash2 = "^[[:space:]]*function[[:space:]]+" fname "[[:space:]]*\\(\\)[[:space:]]*\\{?"
+
+	# Other languages:
+	# JS/C: function name(...)
+	def_js  = "^[[:space:]]*function[[:space:]]+" fname "[[:space:]]*\\("
+	# Go: func name(...)
+	def_go  = "^[[:space:]]*func[[:space:]]+" fname "[[:space:]]*\\("
+
+	# A generic pattern where the token is followed by `()`, which often denotes a def in bash
+	name_paren_empty = fname "[[:space:]]*\\(\\)[[:space:]]*\\{?"
+}
+{
+	# Split grep output: file:line:rest
+	line = $0
+	# Find first colon
+	i = index(line, ":")
+	if (i == 0) next
+	file = substr(line, 1, i-1)
+	rest = substr(line, i+1)
+	# Find second colon
+	j = index(rest, ":")
+	if (j == 0) next
+	lineno = substr(rest, 1, j-1)
+	text = substr(rest, j+1)
+
+	# Exclude obvious comments
+	if (text ~ comment_sh)  next
+	if (text ~ comment_sl)  next
+	if (text ~ comment_bl)  next
+
+	# Exclude function definitions
+	if (text ~ def_bash1)   next
+	if (text ~ def_bash2)   next
+	if (text ~ def_js)      next
+	if (text ~ def_go)      next
+
+	# Also exclude empty-paren token typical in defs (bash), conservatively
+	if (text ~ name_paren_empty) {
+		next
+	}
+
+	# Detect calls:
+	# 1) Languages with parentheses: token followed by optional space then "("
+	call_paren = "([[:space:][:punct:]]|^)" fname "[[:space:]]*\\("
+	if (text ~ call_paren) {
+		print file ":" lineno ":" text
+		next
+	}
+
+	# 2) Shell-like calls: token appears as a command word boundary
+	call_cmd = "(^|[;|&()[:space:]])" fname "([[:space:]]|$)"
+	if (text ~ call_cmd) {
+		print file ":" lineno ":" text
+		next
+	}
+}
+'
+
+
