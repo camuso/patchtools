@@ -63,6 +63,7 @@ declare b_reviewed=
 declare b_acked=
 declare b_nacked=
 declare b_unapp=
+declare -i patchcount=0
 declare mergelist_filter=
 declare mergelist_file=
 declare gl_projid=24118165	# gitlab project ID
@@ -266,21 +267,24 @@ show_mrstatus() {
 #
 # Globals:
 # 	mrhistoryfile
-# 	patchcount
 #
 # Arguments
 # 	$1 - MR number
 # 	$2 - Action
+# 	$3 - Patch count
 #
 update_history() {
 	local mrid="$1"
 	local action="$2"
+	local patchcount="$3"
 	local linenumber
 	local nextitem
 	local fldwid
 	local spc
 	local mridpad
 	local url
+
+	$ui_b_debug && echo "DEBUG: update_history called with patchcount=$patchcount"
 
 	url="url=$(grep -A1 "origin" .git/config | grep url | cut -d'=' -f2)"
 	# Remove the 'git@'
@@ -563,7 +567,7 @@ query_acknack() {
 			    actstr="${STA}Approve$OFF"
 			    confirm_acknack "$actstr" "$labflags" || continue
 			    set_acknack
-			    update_history $current_mr "Approved$withcomment"
+			    update_history $current_mr "Approved$withcomment" "$patchcount"
 			    ;;
 			b ) labflags=
 			    b_nacked=true
@@ -573,7 +577,7 @@ query_acknack() {
 			    actstr="${WRN}Block$OFF"
 			    confirm_acknack "$actstr" "$labflags" || continue
 			    set_acknack
-			    update_history $current_mr "Blocked/Discussion"
+			    update_history $current_mr "Blocked/Discussion" "$patchcount"
 			    ;;
 			u ) labflags=
 			    b_unapp=true
@@ -583,11 +587,11 @@ query_acknack() {
 			    actstr="${WRN}Unapprove$OFF"
 			    confirm_acknack "$actstr" "$labflags" || continue
 			    set_acknack
-			    update_history $current_mr "Unapproved"
+			    update_history $current_mr "Unapproved" "$patchcount"
 			    ;;
 			c ) echo -e "$INF   Comment on $STA$current_mr$INF ...$OFF"
 			    lab mr note "$origin" "$current_mr" --force-linebreak
-			    update_history $current_mr "Comment-only"
+			    update_history $current_mr "Comment-only" "$patchcount"
 			    ;;
 			v ) update_mrcomments_log
 			    less "$mrcomments"
@@ -1092,8 +1096,15 @@ $ui_b_debug && echo "mr:$mr:"
 	ui_waitonproc_tty $mypid .05 "${INF}Getting patches from MR $STA$current_mr$OFF"
 	echo
 
+	# Get the patch count from the commits file and make it global
+	patchcount=$(wc -l < "$bp_commits")
+	$ui_b_debug && echo "DEBUG: patchcount set to $patchcount in get_merge_request_patches"
+
 	# Format the patches extracted from the MR
 	git_file2patchset "$bp_commits" "$indir" $b_verbose || return $mr_nop
+
+	# Export patchcount for use by update_history
+	export patchcount
 
 	return 0
 }
