@@ -167,6 +167,501 @@ print_usagearts() {
 	echo >> "$ofile"
 }
 
+#* emit_header() - emit script header with shebang and file comment
+#
+# Globals:
+#   ofile - output file
+#   ofile - filename (basename of ofile used in comment)
+#
+emit_header() {
+	echo -en '#!/bin/bash
+#
+# '"${ofile}"'
+#
+' >> "$ofile"
+}
+
+#* emit_source_marker() - emit source library marker variable
+#
+# Globals:
+#   ofile - output file
+#   ofile - filename used in variable name
+#
+emit_source_marker() {
+	echo -en '
+'"${ofile}"'_loaded=true
+' >> "$ofile"
+}
+
+#* emit_variable_declarations() - emit MYDIR, MYLIB, MYDATA variable declarations
+#
+# Globals:
+#   ofile - output file
+#   b_ui - flag for UI inclusion
+#   b_cfgmgr - flag for config manager inclusion
+#
+emit_variable_declarations() {
+	echo -en '
+[ -n "$MYDIR" ] || {
+	declare MYDIR=
+	MYDIR="$(dirname "$(readlink -f "$0")")"
+}
+' >> "$ofile"
+
+	if $b_ui || $b_cfgmgr; then
+		echo -en '
+[ -n "$MYLIB" ] || {
+	declare MYLIB=
+	MYLIB="${MYDIR}/lib"
+}
+' >> "$ofile"
+	fi
+
+	if $b_cfgmgr; then
+		echo -en '
+[ -n "$MYDATA" ] || {
+	declare MYDATA=
+	MYDATA="${PWD}/.data"
+}
+[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
+' >> "$ofile"
+	fi
+}
+
+#* emit_source_includes() - emit source statements for UI and config manager
+#
+# Globals:
+#   ofile - output file
+#   b_ui - flag for UI inclusion
+#   b_cfgmgr - flag for config manager inclusion
+#
+emit_source_includes() {
+	if $b_ui; then
+		echo -en '
+[ "$ui_loaded" ] || source "${MYLIB}/ui.source"
+' >> "$ofile"
+	fi
+
+	if $b_cfgmgr; then
+		echo -en '
+[ "$cfgmgr_loaded" ] || source "${MYLIB}/cfgmgr.source"
+
+#** Configuration (sticky) variables
+#*
+declare configfile="${MYDATA}/$(basename "$0").conf"
+declare -A configtable
+configtable[var]=	# Rename and add new conf vars as needed
+' >> "$ofile"
+	fi
+}
+
+#* emit_term_bkgnd() - emit terminal background variable declaration
+#
+# Globals:
+#   ofile - output file
+#   b_color - flag for color support
+#
+emit_term_bkgnd() {
+	if $b_color; then
+		echo -e '
+declare -i termbkgnd=' >> "$ofile"
+	fi
+}
+
+#* emit_arg_cmd_declarations() - emit argument and command variable declarations
+#
+# Globals:
+#   ofile - output file
+#   b_args - flag for arguments
+#   b_cmds - flag for commands
+#   args - space-separated argument list
+#   cmds - space-separated command list
+#
+emit_arg_cmd_declarations() {
+	if $b_args; then
+		local -i argc=0
+		local arg
+		for arg in $args; do
+			echo "declare ${arg}=" >> "$ofile"
+			((++argc))
+		done
+		echo "declare -a argv=()" >> "$ofile"
+		echo "declare -i argc=$argc" >> "$ofile"
+	fi
+
+	if $b_cmds; then
+		local cmd
+		for cmd in $cmds; do
+			echo "declare ${cmd}=" >> "$ofile"
+		done
+	fi
+}
+
+#* emit_usage() - emit usage string and usage function
+#
+# Globals:
+#   ofile - output file
+#   b_opts - flag for options
+#   b_args - flag for arguments
+#   b_cmds - flag for commands
+#   args - space-separated argument list
+#   opts - space-separated option list
+#   cmds - space-separated command list
+#
+emit_usage() {
+	echo -en '
+declare usagestr="$(
+cat <<EOF
+
+$(basename "$0")' >> "$ofile"
+
+	if $b_opts; then
+		echo -en ' [options]' >> "$ofile"
+	fi
+
+	if $b_args; then
+		echo -e "$args" >> "$ofile"
+	fi
+
+	echo >> "$ofile"
+
+	if $b_args; then
+		print_usagearts "$args" "Arguments"
+	fi
+
+	if $b_opts; then
+		print_usagearts "$opts" "Options"
+		echo >> "$ofile"
+	fi
+
+	if $b_cmds; then
+		print_usagearts "$cmds" "Commands"
+		echo >> "$ofile"
+	fi
+
+	echo -en '\\0
+EOF
+)"
+
+#** usage: print info and instructions to screen
+#
+# Global
+# 	usagestr
+#*
+usage() {
+	echo -e "$usagestr"
+}
+' >> "$ofile"
+}
+
+#* emit_trap() - emit control_c trap function
+#
+# Globals:
+#   ofile - output file
+#   b_cfgmgr - flag for config manager inclusion
+#
+emit_trap() {
+	echo -en '
+#** control_c: control-c trap
+#
+# Global
+#   CTLC_EXIT - bash environment variable
+#*
+control_c() {
+	echo -e "\\nCtrl-c detected\\nCleaning up and exiting."
+' >> "$ofile"
+
+	if $b_cfgmgr; then
+		echo -e "\tcfg_write_cfgfile configtable" >> "$ofile"
+	fi
+
+	echo -en '	exit $CTLC_EXIT
+}
+' >> "$ofile"
+}
+
+#* emit_cfgmgr_functions() - emit config manager helper functions
+#
+# Globals:
+#   ofile - output file
+#   b_cfgmgr - flag for config manager inclusion
+#
+emit_cfgmgr_functions() {
+	if $b_cfgmgr; then
+		echo -en '
+#** cfg_write - write the configtable into the configfile
+#
+# See lib/cfgmgr.source for details
+#
+# Global
+#   configtable
+#   configfile
+#*
+cfg_write() {
+	cfg_write_cfgfile configtable
+}
+
+#** cfg_read - read the configfile into the configtable
+#
+# see lib/cfgmgr.cource for details
+#
+# Global
+#   configtable
+#   configfile
+#*
+cfg_read() {
+	cfg_read_cfgfile configtable
+}
+' >> "$ofile"
+	fi
+}
+
+#* emit_exitme() - emit exitme function (UI or non-UI version)
+#
+# Globals:
+#   ofile - output file
+#   b_ui - flag for UI inclusion
+#   b_cfgmgr - flag for config manager inclusion
+#
+emit_exitme() {
+	if $b_ui; then
+		echo -en '
+#** exitme
+#
+# Global
+#   ui exit codes - see lib/ui.source
+#   ui_err_msg array
+' >> "$ofile"
+
+		echo -en '#
+# Arguments
+#   $1 - exit code
+#   $2 - optional string to precede cli message
+#*
+exitme() {
+	local -i code=$1
+	local str="$2"
+' >> "$ofile"
+
+		if $b_cfgmgr; then
+			echo -e "\n\tcfg_write" >> "$ofile"
+		else
+			echo >> "$ofile"
+		fi
+
+		echo -en '	((code == ui_exit_ok)) && exit "$code"
+	ui_print_climsg "$code" "$str"
+	usage
+	exit "$code"
+}
+'>> "$ofile"
+	else
+		echo -en '
+#** exitme
+#' >> "$ofile"
+
+		if $b_cfgmgr; then
+			echo -en '
+# Global
+#   configfile - these are implicit in the call to cfg_write
+#   configtable
+#' >> "$ofile"
+		fi
+
+		echo -en '
+# Arguments
+#   $1 - exit code
+#   $2 - optional message
+#*
+exitme() {
+	local -i code="$1"
+	local msg="$2"
+' >> "$ofile"
+
+		if $b_cfgmgr; then
+			echo -e "\tcfg_write" >> "$ofile"
+		fi
+
+		echo -en '
+	((code == 0)) && exit "$code"
+	echo -e "$msg"
+	usage
+	exit "$code"
+}
+'>> "$ofile"
+	fi
+}
+
+#* emit_init() - emit init function
+#
+# Globals:
+#   ofile - output file
+#   b_color - flag for color support
+#   b_cfgmgr - flag for config manager inclusion
+#
+emit_init() {
+	if $b_color || $b_cfgmgr; then
+		echo -en '
+#** init
+#
+# Global
+' >> "$ofile"
+
+		if $b_cfgmgr; then
+			echo -e "#   configtable" >> "$ofile"
+		fi
+
+		echo -en '#*
+init() {
+' >> "$ofile"
+
+		if $b_color; then
+			echo -e "\tui_setbg termbkgnd" >> "$ofile"
+		fi
+
+		if $b_cfgmgr; then
+			echo -e "\tcfg_start configtable \"\$configfile\"" >> "$ofile"
+		fi
+
+		echo -en '}
+' >> "$ofile"
+	fi
+}
+
+#* emit_parseopts() - emit check_arg and parseopts functions
+#
+# Globals:
+#   ofile - output file
+#   b_args - flag for arguments
+#   b_opts - flag for options
+#   opts - space-separated option list
+#
+emit_parseopts() {
+	if ($b_args || $b_opts); then
+		echo -en '
+#** check_arg
+#
+# Global
+#   argv - array containing command line arguments
+#*
+check_arg() {
+        local arg="$1"
+
+        # If 1st char is a hyphen, then invalid switch
+        [ "${arg:0:1}" == "-" ] && return 1
+
+        # Otherwise, add the arg to the argary
+        argv+=("$arg")
+        return 0
+}
+
+#** parseopts
+#
+# Global
+#   argv
+#   argc
+#*
+parseopts() {
+	while (($# > 0)); do
+	    case "$1" in
+' >> "$ofile"
+
+		local var
+		local -a optary=()
+		local opt
+
+		for opt in $opts; do
+			[ "$opt" == "h" ] && continue
+			var=
+			optary=()
+
+			# If there's a colon in the opt string, then it has a value
+			# associated with it.
+			[[ "$opt" == *:* ]] && {
+				IFS=":" read -ra optary <<< "$opt"
+				opt="${optary[0]}"
+				var="${optary[1]}"
+			}
+			echo -en "\t\t-$opt ) " >> "$ofile"
+
+			if [ -n "$var" ]; then
+				echo -e "shift" >> "$ofile"
+				echo -e "\t\t     $var=\"\$1\"" >> "$ofile"
+			else
+				echo >> "$ofile"
+			fi
+			echo -e "\t\t     ;;" >> "$ofile"
+		done
+
+		echo -en '		-h | --help )
+		     echo -e "$usagestr"
+		     exit 0
+		     ;;
+		* )  argv+=("$1")
+		     ;;
+	    esac
+	    shift
+	done
+}
+
+' >> "$ofile"
+	else
+		echo >> "$ofile"
+	fi
+}
+
+#* emit_main() - emit main function
+#
+# Globals:
+#   ofile - output file
+#   b_cfgmgr - flag for config manager inclusion
+#   b_color - flag for color support
+#   b_args - flag for arguments
+#   b_opts - flag for options
+#   b_ui - flag for UI inclusion
+#   args - space-separated argument list
+#
+emit_main() {
+	echo -en '#** main
+#*
+main() {
+        # Trap for control-c
+        trap control_c SIGINT
+' >> "$ofile"
+
+	if $b_cfgmgr || $b_color; then
+		echo -e "\n\tinit" >> "$ofile"
+	fi
+
+	if ($b_args || $b_opts); then
+		echo -e "\n\tparseopts \"\$@\"" >> "$ofile"
+	fi
+
+	if $b_args; then
+		local -a argary=()
+		local -i idx
+
+		IFS=" " read -ra argary <<< "$args"
+		for ((idx = 0; idx < ${#argary[@]}; idx++)); do
+			echo -e "\t${argary[idx]}=\"\${argv[$idx]}\"" >> "$ofile"
+		done
+		echo >> "$ofile"
+	else
+		echo >> "$ofile"
+	fi
+
+	if $b_ui; then
+		echo -e "\texitme \$ui_exit_ok" >> "$ofile"
+	else
+		echo -e "\texitme 0" >> "$ofile"
+	fi
+
+	echo -en '}
+
+main "$@"
+' >> "$ofile"
+}
+
 #############################
 # Start execution
 #############################
@@ -214,11 +709,11 @@ while (($# > 0)); do
 	shift
 	break
     fi
-    
+
     # Check if current argument is an option (starts with -)
     if [[ "$1" =~ ^-([a-zA-Z]+)$ ]]; then
 	opt="${BASH_REMATCH[1]}"
-	
+
 	# Check if this option requires an argument
 	if [[ -n "${option_requires_arg[$opt]}" ]]; then
 	    # Check if next argument exists and is not another option
@@ -231,7 +726,7 @@ while (($# > 0)); do
 	    shift
 	    # Now $1 contains the argument value
 	fi
-	
+
 	# Process the option
 	case "$opt" in
 	    o )
@@ -279,7 +774,7 @@ while (($# > 0)); do
 		exit 127
 		;;
 	esac
-	
+
 	# Shift to consume the processed item(s):
 	# - If option required argument: we already shifted once, $1 is the arg, shift again
 	# - If option had no argument: $1 is the option itself, shift once
@@ -307,326 +802,23 @@ fi
 
 $b_opts && optstr="[options]"
 
-echo -en '#!/bin/bash
-#
-# '$ofile'
-#
-' >> "$ofile"
+emit_header
 
-$b_source && echo -en '
-'$ofile'_loaded=true
-' >> "$ofile"
-
-echo -en '
-[ -n "$MYDIR" ] || {
-	declare MYDIR=
-	MYDIR="$(dirname "$(readlink -f "$0")")"
-}
-' >> "$ofile"
-
-$b_ui || $b_cfgmgr && echo -en '
-[ -n "$MYLIB" ] || {
-	declare MYLIB=
-	MYLIB="${MYDIR}/lib"
-}
-' >> "$ofile"
-
-$b_cfgmgr && echo -en '
-[ -n "$MYDATA" ] || {
-	declare MYDATA=
-	MYDATA="${PWD}/.data"
-}
-[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
-' >> "$ofile"
-
-$b_ui && echo -en '
-[ "$ui_loaded" ] || source "${MYLIB}/ui.source"
-' >> "$ofile"
-
-$b_cfgmgr && echo -en '
-[ "$cfgmgr_loaded" ] || source "${MYLIB}/cfgmgr.source"
-
-#** Configuration (sticky) variables
-#*
-declare configfile="${MYDATA}/$(basename "$0").conf"
-declare -A configtable
-configtable[var]=	# Rename and add new conf vars as needed
-' >> "$ofile"
-
-$b_color && echo -e '
-declare -i termbkgnd=' >> "$ofile"
-
-$b_args && {
-	argc=0
-	for arg in $args; do
-		echo "declare ${arg}=" >> "$ofile"
-		let ++argc
-	done
-	echo "declare -a argv=()" >> "$ofile"
-	echo "declare -i argc=$argc" >> "$ofile"
-}
-
-$b_cmds && {
-	for cmd in $cmds; do
-		echo "declare ${cmd}=" >> "$ofile"
-		let ++argc
-	done
-}
-
-echo -en '
-declare usagestr="$(
-cat <<EOF
-
-$(basename "$0")' >> "$ofile"
-
-$b_opts && echo -en ' [options]' >> "$ofile"
-$b_args && echo -e "$args" >> "$ofile"
-
-echo >> "$ofile"
-
-$b_args && print_usagearts "$args" "Arguments"
-$b_opts && { print_usagearts "$opts" "Options"; echo >> "$ofile"; }
-$b_cmds && { print_usagearts "$cmds" "Commands"; echo >> "$ofile"; }
-echo -en '\\0
-EOF
-)"
-
-#** usage: print info and instructions to screen
-#
-# Global
-# 	usagestr
-#*
-usage() {
-	echo -e "$usagestr"
-}
-
-#** control_c: control-c trap
-#
-# Global
-#   CTLC_EXIT - bash environment variable
-#*
-control_c() {
-	echo -e "\\nCtrl-c detected\\nCleaning up and exiting."
-' >> "$ofile"
-
-$b_cfgmgr && echo -e "\tcfg_write_cfgfile configtable" >> "$ofile"
-
-echo -en '	exit $CTLC_EXIT
-}
-' >> "$ofile"
-
-if $b_cfgmgr; then echo -en '
-#** cfg_write - write the configtable into the configfile
-#
-# See lib/cfgmgr.source for details
-#
-# Global
-#   configtable
-#   configfile
-#*
-cfg_write() {
-	cfg_write_cfgfile configtable
-}
-
-#** cfg_read - read the configfile into the configtable
-#
-# see lib/cfgmgr.cource for details
-#
-# Global
-#   configtable
-#   configfile
-#*
-cfg_read() {
-	cfg_read_cfgfile configtable
-}
-' >> "$ofile"
+if $b_source; then
+	emit_source_marker
 fi
 
-# There will be two different exitme functions. One for if lib/ui
-# is included, and one if not.
-# Additionally, each of the exitme functions will have to add
-# cfg_write if b_cfgmgr is true.
-
-# For the lib/ui case ...
-if $b_ui; then
-	echo -en '
-#** exitme
-#
-# Global
-#   ui exit codes - see lib/ui.source
-#   ui_err_msg array
-' >> "$ofile"
-
-	echo -en '#
-# Arguments
-#   $1 - exit code
-#   $2 - optional string to precede cli message
-#*
-exitme() {
-	local -i code=$1
-	local str="$2"
-' >> "$ofile"
-	$b_cfgmgr && echo -e "\n\tcfg_write" >> "$ofile" || echo >> "$ofile"
-	echo -en '	((code == ui_exit_ok)) && exit "$code"
-	ui_print_climsg "$code" "$str"
-	usage
-	exit "$code"
-}
-'>> "$ofile"
-
-# For the case without lib/ui
-else echo -en '
-#** exitme
-#' >> "$ofile"
-
-	if $b_cfgmgr; then echo -en '
-# Global
-#   configfile - these are implicit in the call to cfg_write
-#   configtable
-#' >> "$ofile"
-	fi
-
-	echo -en '
-# Arguments
-#   $1 - exit code
-#   $2 - optional message
-#*
-exitme() {
-	local -i code="$1"
-	local msg="$2"
-' >> "$ofile"
-	$b_cfgmgr && echo -e "\tcfg_write" >> "$ofile"
-	echo -en '
-	((code == 0)) && exit "$code"
-	echo -e "$msg"
-	usage
-	exit "$code"
-}
-'>> "$ofile"
-fi
-
-$b_color || $b_cfgmgr && echo -en '
-#** init
-#
-# Global
-' >> "$ofile"
-
-$b_cfgmgr && echo -e "#   configtable" >> "$ofile"
-
-($b_color || $b_cfgmgr) && echo -en '#*
-init() {
-' >> "$ofile"
-
-$b_color && echo -e "\tui_setbg termbkgnd" >> "$ofile"
-
-$b_cfgmgr && echo -e "\t"'cfg_start configtable "$configfile"' >> "$ofile"
-
-$b_color || $b_cfgmgr && echo -en '}
-' >> "$ofile"
-
-($b_args || $b_opts) && echo -en '
-#** check_arg
-#
-# Global
-#   argv - array containing command line arguments
-#*
-check_arg() {
-        local arg="$1"
-
-        # If 1st char is a hyphen, then invalid switch
-        [ "${arg:0:1}" == "-" ] && return 1
-
-        # Otherwise, add the arg to the argary
-        argv+=("$arg")
-        return 0
-}
-
-#** parseopts
-#
-# Global
-#   argv
-#   argc
-#*
-parseopts() {
-	while (($# > 0)); do
-	    case "$1" in
-' >> "$ofile"
-
-if ($b_args || $b_opts); then
-	declare var
-	declare -a optary=()
-
-	for opt in $opts; do
-		[ "$opt" == "h" ] && continue
-		var=
-		optary=()
-
-		# If there's a colon in the opt string, then it has a value
-		# associated with it.
-		[[ "$opt" == *:* ]] && {
-			IFS=":" read -ra optary <<< "$opt"
-			opt="${optary[0]}"
-			var="${optary[1]}"
-		}
-		echo -en "\t\t-$opt ) " >> "$ofile"
-
-		if [ -n "$var" ]; then
-			echo -e "shift" >> "$ofile"
-			echo -e "\t\t     $var"'="$1"' >> "$ofile"
-		else
-			echo >> "$ofile"
-		fi
-		echo -e "\t\t     ;;" >> "$ofile"
-	done
-	echo -en \
-'		-h | --help )
-		     echo -e "$usagestr"
-		     exit 0
-		     ;;
-		* )  argv+=("$1")
-		     ;;
-	    esac
-	    shift
-	done
-}
-
-' >> "$ofile"
-else
-	echo >> "$ofile"
-fi
-
-echo -en '#** main
-#*
-main() {
-        # Trap for control-c
-        trap control_c SIGINT
-' >> "$ofile"
-
-$b_cfgmgr || $b_color && echo -e "\n\tinit" >> "$ofile"
-($b_args || $b_opts) && echo -e "\n\tparseopts "'"$@"' >> "$ofile"
-
-$b_args && {
-	declare -a argary=()
-	declare -i idx
-
-	IFS=" " read -ra argary <<< "$args"
-	for ((idx = 0; idx < ${#argary[@]}; idx++)); do
-		echo -e "\t${argary[idx]}="'"${argv['"$idx"']}"' >> "$ofile"
-	done
-	echo >> "$ofile"
-} || echo >> "$ofile"
-
-
-if $b_ui; then
-	echo -e "\texitme "'$ui_exit_ok' >> "$ofile"
-else
-	echo -e "\texitme 0" >> "$ofile"
-fi
-
-echo -en '}
-
-main "$@"
-' >> "$ofile"
+emit_variable_declarations
+emit_source_includes
+emit_term_bkgnd
+emit_arg_cmd_declarations
+emit_usage
+emit_trap
+emit_cfgmgr_functions
+emit_exitme
+emit_init
+emit_parseopts
+emit_main
 
 chmod +x "$ofile"
 
