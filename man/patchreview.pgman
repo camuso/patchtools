@@ -33,7 +33,9 @@ ${MNU}1. ${UND}Installation$OFF
 The patchreview script and its dependencies can be git-cloned into any
 directory, however that directory must be in your executable path.
 
-For example:
+You can clone this toolkit into any directory, but you must that
+directory to your executable path.
+For example, if you clone into \"mybin\"
 
 $MNU	$ ${OFF}cd $HOME
 $MNU	$ ${OFF}git -c http.sslVerify=false \\\
@@ -42,6 +44,12 @@ $MNU	$ ${OFF}git -c http.sslVerify=false \\\
 
 	  mybin
 $MNU	$ ${OFF}export PATH=\$PATH:~/mybin
+
+Add this to .bashrc in your home directory.
+
+if [[ ":$PATH:" != *":$HOME/mybin:"* ]]; then
+    export PATH="$PATH:$HOME/mybin"
+fi
 
 If you are contributing to the development of the script, send email
 to tcamuso@redhat.com for 'git push' access credentials.
