@@ -35,21 +35,21 @@ directory, however that directory must be in your executable path.
 
 You can clone this toolkit into any directory, but you must that
 directory to your executable path.
-For example, if you clone into \"mybin\"
+For example, if you clone into "${INF}\$HOME/mybin":
 
-$MNU	$ ${OFF}cd $HOME
+$MNU	$ ${OFF}cd \$HOME
 $MNU	$ ${OFF}git -c http.sslVerify=false \\\
 
 	  clone https://github.com/camuso/patchtools.git \\\
 
 	  mybin
-$MNU	$ ${OFF}export PATH=\$PATH:~/mybin
+$MNU	$ ${OFF}export PATH=\$PATH:\$HOME/mybin
 
 Add this to .bashrc in your home directory.
 
-if [[ ":$PATH:" != *":$HOME/mybin:"* ]]; then
-    export PATH="$PATH:$HOME/mybin"
-fi
+${INF}if [[ ":\$PATH:" != *":\$HOME/mybin:"* ]]; then
+${INF}    export PATH="\$PATH:\$HOME/mybin"
+${INF}fi
 
 If you are contributing to the development of the script, send email
 to tcamuso@redhat.com for 'git push' access credentials.
