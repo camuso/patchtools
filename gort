@@ -242,7 +242,7 @@ select_gitbranch() {
 
 	# echo -e "$brmsg"
 	loop_range_q 1 $((index - 1)) linenumber || return
-	gitbranch="$(ui_readline "$linenumber" "$branchlistfile" | tr -d [\*" "])"
+	gitbranch="$(ui_readline "$linenumber" "$branchlistfile" | tr -d '* ')"
 	echo -e "${MNU}git checkout $STA$gitbranch$OFF"
 	clean_status
 
@@ -383,7 +383,7 @@ is_valid_gitdir() {
 	#
 	gdir="${gdir%/}"
 
-	[ "$gdir" == "$(git -C $gdir rev-parse --show-toplevel 2>&1)" ] \
+	[ "$gdir" == "$(git -C "$gdir" rev-parse --show-toplevel 2>&1)" ] \
 		&& return 0 \
 		|| return 1
 }
@@ -735,7 +735,7 @@ get_next_backport() {
 	# in the ignore_string.
 	#
 	if [ -n "$bpfstartline" ]; then
-		upcmtstartline="$startline"
+		upcmtstartline="$bpfstartline"
 		bplog="$(ui_readline "$bpfstartline" "$backportfile")"
 	else
 		mapfile -t lary < <(grep -v "^[${ignore_str}]" "$backportfile" | grep -v '^$')
@@ -1029,7 +1029,6 @@ $padstr Upstream Backports File says it should be: $STA$lastdnup$OFF"
 #*
 show_history() {
 	local tmpfile=$(mktemp)
-	local tmpfile
 	local -i count
 	local -i mypid
 	local -a dncmtary=()
@@ -1569,6 +1568,7 @@ abort_gort() {
 	git reset "$cmt"
 
 	upcmtstartline=1
+	b_conflict=false
 	cfg_set_item "b_conflict" "$b_conflict"
 	cfg_set_item "upcmtstartline" "$upcmtstartline"
 	get_current_backport
@@ -2198,6 +2198,7 @@ stage_patchpal() {
 	local newlog=
 	local uphash=$currentuphash
 	local -i line=
+	local b_crlf=false
 
 	# If the backport was not completed, then tell the user and
 	# try again.
@@ -2619,7 +2620,7 @@ check_repostate() {
 	[ -n "$exhash" ] && {
 		starterr+="$CAU
 Inconsistent state: $STA$uphash$INF in $STA$backportfile$INF
-is not the same as: $STA$exhahs$INF in git HEAD: $STA$currenthead$INF
+is not the same as: $STA$exhash$INF in git HEAD: $STA$currenthead$INF
 See Upstream Backports file: $STA$backportfile$OFF"
 		return 1
 	}
@@ -2922,126 +2923,56 @@ check_command() {
 	return 1
 }
 
-###############################
-#** Start of Script Execution
-#*#############################
-$b_log && ui_log "start of script execution"
+parse_command_line() {
+	#########################################
+	#** Commands and Options
+	#*########################################
 
-# trap keyboard interrupt (control-c)
-#
-trap ctrl_c SIGINT
-ui_testkeypress	# from lib/keypress_support.source: inits promptgetkey_cmd
+	local infostr=
+	infostr="${INF}Type ${STA}\"$(basename "$0") help\"$INF for more info.$OFF"
+	local invoptstr="${CAU}Invalid command or option.\n$infostr"
+	local needcmtstr="${CAU}Must supply commit hash with ${MNU}-p${OFF} | ${MNU}pick\n$infostr"
 
-read_session
-init_global_strings
-
-if [ $# -eq 0 ]; then
-	b_cmdline=false
-	print_herald
-else
-	b_cmdline=true
-fi
-
-# If any one of workdir, updir, or backportfile is missing, then this
-# is a new session but only if it's NOT from the command line.
-#
-([ -d "$workdir" ] && [ -f "$backportfile" ] && is_valid_gitdir "$updir") || {
-	$b_cmdline || init_newsession
-}
-
-init_common
-
-# Determine if we're at the top of a git tree. If not, exit.
-#
-if ! [ -d .git ]; then
-	echo -3 "$CAU"
-	echo -e "The current directory... $STA$PWD$CAU"
-	echo -e "\t ...is not the top of a git tree.$INF"
-	echo "Please cd to the top of a git tree.$OFF"
-	echo
-	exit 1
-fi
-
-#########################################
-#** Command Line Options
-#*########################################
-
-declare checked_cmd
-declare infostr
-infostr="Type \"$(basename "$0") -h\" for more info."
-declare invoptstr="\nInvalid option.\n$infostr"
-declare needcmtstr="\nMust supply commit hash with -p | pick\n$infostr"
-declare shortopts="sp:h"
-declare longopts="\
-abort,\
-branch,\
-apply:,\
-commit,\
-directory,\
-hashlist,\
-help,\
-history,\
-new,\
-nit,\
-pick:,\
-run,\
-select,\
-setup,\
-status,\
-version,\
-"
-
-# If running from the command line ...
-if $b_cmdline; then
-
-	check_command "$1" checked_cmd || shift
-
-	# [ $# -gt 1 ] && checked_cmd="$checked_cmd ${@:2:$#}"
-
-	opts=$(getopt --options $shortopts --long $longopts --name "$0" -- "$@")
-	eval set -- "$opts"
-
-	while :; do
-	    case "$checked_cmd" in
-		"--abort" )
+	case "$1" in
+		"abort" )
 			abort_gort
 			;;
-		"--branch" )
+		"branch" )
 			select_gitbranch
 			;;
-		"--commit" )
+		"commit" )
 			[ "$2" == "1" ] && b_one=true || b_one=false
 			run_commit
 			;;
-		-h | "--help" 	)
+		-h | "--help" | "help" 	)
 			ptpage -b "$tbackground" "$MYHLP"
 			exit 0
 			;;
-		"--history" )
+		"history" )
 			show_history
 			;;
-		"--new" )
+		"new" )
 			read_session
 			init_newsession
 			;;
-		-p | "--pick" )
+		-p | "pick" )
 			currentuphash=$2
 			[ "$currentuphash" ] || { echo -e "$needcmtstr"; exit 1; }
 			run_single
 			;;
-		"--reset" )
+		"reset" )
 			reset_gort
 			;;
-		-r | "--run" )
+		-r | "run" )
 			run_me
 			;;
-		"--select" )
+		"select" )
 			set_next_backport
 			;;
-		-s | "--status" )
+		-s | "status" )
 			show_status
 			;;
-		"--version" )
+		"version" )
 			print_herald
 			echo
 			;;
@@ -3051,25 +2982,58 @@ if $b_cmdline; then
 		* )	echo -e "$invoptstr"
 			exit 1
 			;;
-	    esac
-	    exit 0
-	done
-fi
+	esac
+}
 
 ##############################################
 # Main Program
 ##############################################
 
-# The following line will single step through this script.
-# Use the # to comment it out.
-# trap 'read -p "$(printf "%$((${#BASH_SOURCE[0]}+8))s" "")" \
-#       line && eval "$line" || exit $?' DEBUG
+main() {
+	# trap keyboard interrupt (control-c)
+	#
+	trap ctrl_c SIGINT
+	ui_testkeypress	# from lib/keypress_support.source: inits promptgetkey_cmd
 
+	$b_log && ui_log "start of script execution"
 
-# Present the ui and get the parameters for the commits to apply.
-#
-menu_loop
+	read_session
+	init_global_strings
 
-echo
-exit_gort $exit_good
+	if [ $# -eq 0 ]; then
+		b_cmdline=false
+		print_herald
+	else
+		b_cmdline=true
+	fi
 
+	# If any one of workdir, updir, or backportfile is missing, then this
+	# is a new session but only if it's NOT from the command line.
+	#
+	if $b_cmdline; then
+		parse_command_line "$@"
+	else
+		([ -d "$workdir" ] && [ -f "$backportfile" ] && is_valid_gitdir "$updir") || {
+			init_newsession
+		}
+	fi
+
+	# Determine if we're at the top of a git tree. If not, exit.
+	#
+	git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit_gort 1 "$(cat <<EOF
+${CAU}The current directory... $STA$PWD$CAU
+\t ...is not the top of a git tree.$INF
+Please cd to the top of a git tree.$OFF
+EOF
+)"
+	init_common
+
+	# Present the ui and get the parameters for the commits to apply.
+	#
+	menu_loop
+
+	echo
+	exit_gort $exit_good
+}
+
+main "$@"
