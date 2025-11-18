@@ -480,10 +480,22 @@ lookup_hash() {
 	local hash=$1
 	local counter
 	local line
+	local -i actual_line=0
 
 	[[ -f "$backportfile" ]] || return 1
 
-	counter=$(grep -m1 -n "^$hash" "$backportfile" | cut -d':' -f1)
+	# Search only in non-ignored lines
+	while IFS= read -r line; do
+		((actual_line++))
+		# Skip ignored lines and empty lines
+		[ "$(ui_strindex "$ignore_str" "${line:0:1}")" -ge 0 ] && continue
+		[ -z "$line" ] && continue
+		# Check if this line starts with the hash
+		if [[ "$line" =~ ^[[:space:]]*$hash ]]; then
+			counter=$actual_line
+			break
+		fi
+	done < "$backportfile"
 
 	[ -z "$counter" ] && return 1
 
@@ -732,19 +744,87 @@ get_next_backport() {
 
 	# If the caller passed in a startline, then use that.
 	# Else find the first line that does NOT begin with one of the characters
-	# in the ignore_string.
+	# in the ignore_string, starting from upcmtstartline if it's set.
 	#
 	if [ -n "$bpfstartline" ]; then
-		upcmtstartline="$bpfstartline"
 		bplog="$(ui_readline "$bpfstartline" "$backportfile")"
+		# Check if the selected line starts with an ignored character
+		if [ -n "$bplog" ] && [ "$(ui_strindex "$ignore_str" "${bplog:0:1}")" -ge 0 ]; then
+			# Skip to the next non-ignored line
+			mapfile -t lary < <(grep -v "^[${ignore_str}]" "$backportfile" | grep -v '^$')
+			bplog="${lary[0]}"
+		else
+			upcmtstartline="$bpfstartline"
+		fi
 	else
-		mapfile -t lary < <(grep -v "^[${ignore_str}]" "$backportfile" | grep -v '^$')
-		bplog="${lary[0]}"
+		# Start from upcmtstartline if set, otherwise from beginning
+		local -i start_from=1
+		[ -n "$upcmtstartline" ] && [ "$upcmtstartline" -gt 0 ] && start_from=$upcmtstartline
+
+		# Read file from start_from, skipping ignored lines
+		local -i current_line=0
+		local line_content
+		while IFS= read -r line_content || [ -n "$line_content" ]; do
+			current_line=$((current_line + 1))
+			# Skip lines before start_from
+			[ $current_line -lt $start_from ] && continue
+			# Skip ignored lines and empty lines
+			[ -z "$line_content" ] && continue
+			[ "$(ui_strindex "$ignore_str" "${line_content:0:1}")" -ge 0 ] && continue
+			# Found the next non-ignored line
+			bplog="$line_content"
+			break
+		done < "$backportfile"
+
+		# If we didn't find anything from start_from, get the first non-ignored line
+		[ -z "$bplog" ] && {
+			mapfile -t lary < <(grep -v "^[${ignore_str}]" "$backportfile" | grep -v '^$')
+			bplog="${lary[0]}"
+		}
 	fi
 
 	if ((${#bplog} > 0)); then
+		# Double-check that we didn't accidentally get an ignored line
+		[ "$(ui_strindex "$ignore_str" "${bplog:0:1}")" -ge 0 ] && {
+			# This shouldn't happen, but if it does, skip to next non-ignored line
+			mapfile -t lary < <(grep -v "^[${ignore_str}]" "$backportfile" | grep -v '^$')
+			bplog="${lary[0]}"
+		}
+		[ -z "$bplog" ] && {
+			currentuphash=
+			upcmtstartline="$(($(wc -l < "$backportfile") + 1))"
+			sts=1
+			set_cfg_item "upcmtstartline" "$upcmtstartline"
+			bpfstartline=
+			return $sts
+		}
 		currentuphash="$(cut -d' ' -f1 <<< "$bplog")"
-		upcmtstartline="$(grep -n "$currentuphash" "$backportfile" | cut -d: -f1)"
+		# Find the line number, searching only in non-ignored lines
+		# Then map back to the actual line number in the original file
+		local -i filtered_line=0
+		local -i actual_line=0
+		local -i found_line=0
+		local line_content
+		# Read file line by line, skipping ignored lines
+		while IFS= read -r line_content || [ -n "$line_content" ]; do
+			actual_line=$((actual_line + 1))
+			# Skip ignored lines and empty lines
+			[ -z "$line_content" ] && continue
+			[ "$(ui_strindex "$ignore_str" "${line_content:0:1}")" -ge 0 ] && continue
+			filtered_line=$((filtered_line + 1))
+			# Check if this line contains our hash (at the start, possibly after whitespace)
+			if [[ "$line_content" =~ ^[[:space:]]*$currentuphash ]]; then
+				found_line=$actual_line
+				break
+			fi
+		done < "$backportfile"
+		if [ $found_line -gt 0 ]; then
+			upcmtstartline=$found_line
+		else
+			# This should not happen - hash came from filtered list, so it should be found
+			# If it's not found, there's a logic error, but set to 0 to indicate error
+			upcmtstartline=0
+		fi
 		currentupcommit="$(git log --oneline -n1 "$currentuphash")"
 		sts=0
 	else
@@ -2865,19 +2945,24 @@ keypress, so you can fix the conflicts.$OFF
 	fi
 
 	while :; do
-		if [ "$currentuphash" == "$stophash" ]; then
+		# Get the next commit to process
+		get_next_backport
+		sts=$?
+		[ $sts -ne 0 ] && {
+			echo -e "${CAU}No more commits in $STA$backportfile$OFF"
+			break
+		}
+
+		# Check if we should stop before this commit
+		if [ -n "$stophash" ] && [ "$currentuphash" == "$stophash" ]; then
 			echo -e "${INF}Stopping before $MNU$stophash$OFF"
 			break
 		fi
+
+		# Process the commit
 		backport
-		get_next_backport
-		sts=$?
 
-		if [ $sts -ne 0 ];then
-			echo -e "${CAU}No more commits in $STA$backportfile$OFF"
-			break
-		fi
-
+		# If we only want to process one commit, break now
 		$b_one && break
 	done
 
@@ -2954,6 +3039,9 @@ parse_command_line() {
 		"new" )
 			read_session
 			init_newsession
+			;;
+		"next" )
+			run_me 1
 			;;
 		-p | "pick" )
 			currentuphash=$2
