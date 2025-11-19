@@ -2235,6 +2235,12 @@ $OFF"
 	#
 	echo "$uplog"  >> "$cmtmsgfile"
 
+	# Verify the commit message file exists and has content
+	[ ! -f "$cmtmsgfile" ] || [ ! -s "$cmtmsgfile" ] && {
+		echo -e "${CAU}Error: Commit message file is empty or missing.$OFF"
+		return 1
+	}
+
 	# Only use git add . if there are untracked
 	# files. It saves time to use git add -u, because the git
 	# logic won't waste time looking for untracked files.
@@ -2244,10 +2250,10 @@ $OFF"
 		&& git add . \
 		|| git add -u
 
-	git commit -a -s --file="$cmtmsgfile"
+	git commit -s -F "$cmtmsgfile" --no-edit
 
 	# If there are conflicts, give the user the option to edit
-	# the commit log.
+	# the commit log (including in command-line mode for conflict resolution).
 	#
 	$b_conflict && edit_commit
 
@@ -2729,6 +2735,9 @@ init_run() {
 	[ -f "$backportfile" ] || input_backportfile
 
 	patchlog="${workdir%/}/patch.log"
+
+	# We need this file for any op that creates a commit.
+	cmtmsgfile="/tmp/.gcpgitlog"
 
 	# If we don't have a backport_mode saved in the .data/gort.conf
 	# then get the backport_mode from the user now.
