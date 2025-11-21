@@ -1,0 +1,133 @@
+#!/bin/bash
+
+# Script-level variables
+declare config_file="$HOME/.config/lab/lab.toml"
+declare token=""
+declare state="merged"
+declare usagestr="$(
+cat <<EOF
+$(basename "$0") [STATE]
+
+List GitLab merge requests authored by you, filtered by state.
+
+STATE options:
+	merged	 Show merged merge requests (default)
+	open	 Show open merge requests
+	closed	 Show closed merge requests
+
+Examples:
+	$(basename "$0") merged
+	$(basename "$0") open
+	$(basename "$0") closed
+
+EOF
+)"
+
+#** usage: print usage information
+#*
+usage() {
+	echo -e "$usagestr"
+}
+
+#** exitme: exit with code and optional message
+#*
+# Arguments
+#   $1 - exit code
+#   $2 - optional message
+#*
+exitme() {
+	local -i code="$1"
+	local msg="$2"
+
+	((code == 0)) && exit "$code"
+	[[ -n "$msg" ]] && echo -e "$msg" >&2
+	usage
+	exit "$code"
+}
+
+#** control_c: control-c trap
+#*
+control_c() {
+	echo -e "\nCtrl-c detected\nCleaning up and exiting."
+	exitme 1
+}
+
+#** get_token: extract token from lab.toml (robust)
+#*
+get_token() {
+	if [[ ! -f "$config_file" ]]; then
+	    exitme 1 "Error: Config file not found at $config_file"
+	fi
+
+	token=$(
+	    awk -F'=' '
+		/^[[:space:]]*(token|api_token)[[:space:]]*=/ {
+		    val=$2
+		    gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+		    gsub(/#.*/, "", val)
+		    gsub(/^"[[:space:]]*|[[:space:]]*"$/, "", val)
+		    gsub(/^'\''[[:space:]]*|[[:space:]]*'\''$/, "", val)
+		    if (val != "") { print val; exit }
+		}
+	    ' "$config_file"
+	)
+
+	if [[ -z "$token" ]]; then
+	    exitme 1 "Error: Could not extract token from $config_file"
+	fi
+}
+
+#** list_mrs: list merge requests by state
+#*
+# Arguments
+#   $1 - state (merged, open, closed)
+#*
+list_mrs() {
+	local state_arg="$1"
+	local -i page=1
+
+	while true; do
+	    local response
+	    response=$(curl -s --header "PRIVATE-TOKEN: $token" \
+		"https://gitlab.com/api/v4/merge_requests?scope=created_by_me&state=$state_arg&per_page=100&page=$page")
+
+	    local -i count
+	    count=$(echo "$response" | jq 'length')
+
+	    if (( count == 0 )); then
+		break
+	    fi
+
+	    echo "$response" | jq '.[] | {
+		    project: (.references.full // .web_url),
+		    title: .title,
+		    merged_at: .merged_at,
+		    url: .web_url
+		}'
+
+	    ((page++))
+	done
+}
+
+#** main: entry point
+#*
+main() {
+	trap control_c SIGINT
+
+	if [[ $# -gt 0 ]]; then
+	    case "$1" in
+		-h|--help|help)
+		    usage; exit 0 ;;
+		merged|opened|closed)
+		    state="$1" ;;
+		*)
+		    exitme 1 "Invalid argument: $1" ;;
+	    esac
+	fi
+
+	get_token
+	list_mrs "$state"
+}
+
+main "$@"
+
