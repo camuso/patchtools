@@ -101,7 +101,7 @@ declare currentuphash	# next hash in the backportfile
 declare currentupcommit # oneline gitlog of next hash in the backportfile
 declare lastuplog	# oneline gitlog of last committed upstream hash
 declare dncurrenthead	# hash of current downstread head
-declare patchlog	# file containing the patching errors
+declare gortlog	# file containing the patching errors
 declare starterr=	# errors on startup
 declare bpfstartline	# used when selecting a commit out of sequence
 
@@ -1971,7 +1971,7 @@ clear_alldone() {
 #** flag_conflict - print conflit message and status
 #
 # Globals
-#   patchlog
+#   gortlog
 #   b_conflict
 #
 # Arguments
@@ -2025,7 +2025,7 @@ flag_conflict() {
 	fi
 
 	patpad="$(printf '%*s\n' "${#patch}" "" | tr ' ' '-'})"
-	dashpad="$(printf '%*s\n' "${#patchlog}" "" | tr ' ' '-'})"
+	dashpad="$(printf '%*s\n' "${#gortlog}" "" | tr ' ' '-'})"
 
 	echo -e "
 $CAU${UND}There are conflicts$INF
@@ -2033,8 +2033,8 @@ $CAU${UND}There are conflicts$INF
 ${CAU}The offending patch is in:
 $STA$patch$OFF
 $patpad
-${CAU}grep the Patch Log for details:$OFF
-$STA$patchlog$OFF
+${CAU}grep the Gort Log for details:$OFF
+$STA$gortlog$OFF
 $dashpad$INF
 Type ${CAU}gort abort$INF to restore your repo to the state it was in \
 before the conflict.$OFF
@@ -2072,7 +2072,7 @@ backport() {
 	commit=$(git log --oneline -n1 "$uphash")
 	local outfil=
 
-	outfil=$([[ $b_cmdline == "false" ]] && echo "$patchlog" || echo "/dev/stdout")
+	outfil=$([[ $b_cmdline == "false" ]] && echo "$gortlog" || echo "/dev/stdout")
 	echo -e "${INF}Processing : $STA${commit:0:$wcols}$OFF"
 
 	# If this upstream commit has already been applied, return now.
@@ -2725,7 +2725,7 @@ See Upstream Backports file: $STA$backportfile$OFF"
 #   workdir - scratch directory for gort
 #   backportfile - list of upstream commits to be backported
 #   mirror - mirror of the upstream repo
-#   patchlog - file to capture patch activity in backport function
+#   gortlog - file to capture patch activity in backport function
 #   cmtsmsgfile - a temp file to form commit messages
 #*
 init_run() {
@@ -2734,7 +2734,7 @@ init_run() {
 	[ -d "$workdir" ] || input_dir "working" "workdir" workdir
 	[ -f "$backportfile" ] || input_backportfile
 
-	patchlog="${workdir%/}/patch.log"
+	gortlog="${workdir%/}/gort.log"
 
 	# We need this file for any op that creates a commit.
 	cmtmsgfile="/tmp/.gcpgitlog"
@@ -2762,7 +2762,7 @@ init_run() {
 #         backportfile - list of upstream commits to be backported
 #         b_new - indicates new session
 #         mirror - mirror of the upstream repo
-#         patchlog - file to capture patch activity in backport function
+#         gortlog - file to capture patch activity in backport function
 #         cmtsmsgfile - a temp file to form commit messages
 #     RETURNS:  none
 #*
@@ -2897,10 +2897,10 @@ init_newsession() {
 	input_backportfile
 	select_gitbranch
 
-	# Create and init the patch.log file in the workdir.
+	# Create and init the gort.log file in the workdir.
 	# This file will be refreshed with each patch applied.
-	patchlog="${workdir%/}"/patch.log
-	> "$patchlog"
+	gortlog="${workdir%/}"/gort.log
+	> "$gortlog"
 
 	echo -e "\n${CAU}The following will be in the Options Menu.$OFF"
 	input_oneopt "${MNU}JIRA link: $OFF" "str_jira"
@@ -2922,7 +2922,7 @@ init_newsession() {
 #                 exit_good
 #                 updir
 #                 workdir
-#                 patchlog
+#                 gortlog
 #                 b_cmdline
 #                 b_conflict
 #                 b_session_inited
