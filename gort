@@ -1849,6 +1849,11 @@ EOF
 run_commit() {
 	$b_log && ui_log "run_commit arg1:$1 currentuphash:$currentuphash conflicthash:$conflicthash"
 
+	# Ensure cmtmsgfile is initialized (needed when called from command line)
+	cmtmsgfile="/tmp/.gcpgitlog"
+
+	# Load conflicthash from config (needed when called from command line)
+	conflicthash="$(get_cfg_item conflicthash)"
 	currentuphash="$conflicthash"	# get the stored conflict hash
 	b_conflict="$(get_cfg_item b_conflict)"
 
