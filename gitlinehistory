@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+
+#===========================================================
+# Script: gitlinehistory
+# Purpose: Trace the history of lines in a file matching a
+#	   regex or literal string, walking back through git.
+#	   Also provides shortcuts using git log -L for lines,
+#	   ranges, and functions.
+#===========================================================
+
+#-----------------------------------------------------------
+# Script-level variables
+#-----------------------------------------------------------
+declare -i exit_code=0
+declare -a args=()
+declare -l file=""
+declare -l pattern=""
+declare -l func_name=""
+declare -i b_regex=0
+declare -i b_line=0
+declare -i b_func=0
+declare -i b_range=0
+declare -i line_num=0
+declare -i start_line=0
+declare -i end_line=0
+declare id=""
+
+#-----------------------------------------------------------
+# usage()
+# Display usage information
+#-----------------------------------------------------------
+usage() {
+	cat <<-EOF
+	Usage: $0 [options] <file> <pattern>
+
+	Options:
+	    -r, --regex		Treat pattern as a regex (default: literal match)
+	    -l, --line N	Trace history of a specific line number N using git log -L
+	    -R, --range S E	Trace history of a line range S..E using git log -L
+	    -f, --function FN	Trace history of a function named FN using git log -L
+	    -h, --help, help	Show this help message
+
+	Arguments:
+	    file		Path to the file to analyze
+	    pattern		Regex or literal string to search for (ignored if -l, -R, or -f is used)
+
+	Examples:
+	    $0 src/main.c "return 0"
+	    $0 -r src/main.c "ret.*0"
+	    $0 -l 42 src/main.c
+	    $0 -R 10 20 src/main.c
+	    $0 -f main src/main.c
+	EOF
+}
+
+#-----------------------------------------------------------
+# exitme()
+# Handle Control-C gracefully
+#-----------------------------------------------------------
+exitme() {
+	echo "Interrupted. Exiting..."
+	exit 130
+}
+
+trap exitme INT
+
+#-----------------------------------------------------------
+# parse_args()
+# Parse command-line arguments
+#-----------------------------------------------------------
+parse_args() {
+	local -i i=0
+	while [[ $# -gt 0 ]]; do
+	    case "$1" in
+		-r|--regex)
+		    b_regex=1
+		    shift
+		    ;;
+		-l|--line)
+		    b_line=1
+		    line_num="$2"
+		    shift 2
+		    ;;
+		-R|--range)
+		    b_range=1
+		    start_line="$2"
+		    end_line="$3"
+		    shift 3
+		    ;;
+		-f|--function)
+		    b_func=1
+		    func_name="$2"
+		    shift 2
+		    ;;
+		-h|--help|help)
+		    usage
+		    exit 0
+		    ;;
+		*)
+		    args[i]="$1"
+		    ((i++))
+		    shift
+		    ;;
+	    esac
+	done
+
+	if [[ $b_line -eq 1 || $b_func -eq 1 || $b_range -eq 1 ]]; then
+	    if [[ ${#args[@]} -ne 1 ]]; then
+		usage
+		exit 1
+	    fi
+	    file="${args[0]}"
+	else
+	    if [[ ${#args[@]} -ne 2 ]]; then
+		usage
+		exit 1
+	    fi
+	    file="${args[0]}"
+	    pattern="${args[1]}"
+	fi
+}
+
+#-----------------------------------------------------------
+# find_history()
+# Walk back through git history, printing commits that
+# modified lines matching the pattern.
+#-----------------------------------------------------------
+find_history() {
+	id=$(git rev-parse HEAD)
+
+	while [[ -n "$id" ]]; do
+	    if [[ $b_regex -eq 1 ]]; then
+		# Regex mode
+		line=$(git blame -l -s "${id}^1" "$file" 2>/dev/null | \
+		    perl -ne "print \"\$1:\$3\n\" if /^([0-9a-f]{40})\\s+(.*\\s+)?[0-9]+\\)(.*$pattern.*)\$/;")
+	    else
+		# Literal mode (quote metacharacters)
+		line=$(git blame -l -s "${id}^1" "$file" 2>/dev/null | \
+		    perl -ne "print \"\$1:\$3\n\" if /^([0-9a-f]{40})\\s+(.*\\s+)?[0-9]+\\)(.*\\Q$pattern\\E.*)\$/;")
+	    fi
+
+	    if [[ -n "$line" ]]; then
+		echo "$line"
+		id=$(echo "$line" | cut -f1 -d':')
+	    else
+		id=""
+	    fi
+	done
+}
+
+#-----------------------------------------------------------
+# find_line_history()
+# Use git log -L to trace the history of a specific line
+#-----------------------------------------------------------
+find_line_history() {
+	echo "Tracing history of line $line_num in $file..."
+	git log -L "$line_num,$line_num:$file"
+}
+
+#-----------------------------------------------------------
+# find_range_history()
+# Use git log -L to trace the history of a line range
+#-----------------------------------------------------------
+find_range_history() {
+	echo "Tracing history of lines $start_line..$end_line in $file..."
+	git log -L "$start_line,$end_line:$file"
+}
+
+#-----------------------------------------------------------
+# find_function_history()
+# Use git log -L to trace the history of a function
+#-----------------------------------------------------------
+find_function_history() {
+	echo "Tracing history of function '$func_name' in $file..."
+	git log -L ":$func_name:$file"
+}
+
+#-----------------------------------------------------------
+# main()
+# Entry point
+#-----------------------------------------------------------
+main() {
+	parse_args "$@"
+
+	if [[ $b_line -eq 1 ]]; then
+	    find_line_history
+	elif [[ $b_range -eq 1 ]]; then
+	    find_range_history
+	elif [[ $b_func -eq 1 ]]; then
+	    find_function_history
+	else
+	    find_history
+	fi
+}
+
+#-----------------------------------------------------------
+# Script execution
+#-----------------------------------------------------------
+main "$@"
