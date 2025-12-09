@@ -946,7 +946,8 @@ $ui_b_debug && echo "get_mr_commits_labmr"
 	local b_nodep=true
 
 $ui_b_debug && set -x
-	mapfile -t depend < <(grep -o 'Dependencies::[^,]*' "$mrcomments")
+	[ -f "$mrcomments" ] && \
+		mapfile -t depend < <(grep -o 'Dependencies::[^,]*' "$mrcomments")
 
 	shopt -s nocasematch  # Enable case-insensitive matching
 	for ((i = 0; i < ${#depend[@]}; ++i)); do
@@ -985,6 +986,8 @@ $ui_b_debug && set +x
 }
 
 update_mrcomments_log() {
+	# Ensure outdir exists before writing to mrcomments
+	[ -d "$outdir" ] || mkdir -p "$outdir"
 	lab mr show "$origin" "$current_mr" --full > "$mrcomments" & mypid=$!
 	ui_waitonproc_tty $mypid .05 \
 		"${INF}Updating comments from MR $STA$current_mr$OFF" \
@@ -993,6 +996,8 @@ update_mrcomments_log() {
 }
 
 make_mrcomments_log() {
+	# Ensure outdir exists before writing to mrcomments
+	[ -d "$outdir" ] || mkdir -p "$outdir"
 	lab mr show "$origin" "$current_mr" --comments > "$mrcomments" & mypid=$!
 	ui_waitonproc_tty $mypid .05 \
 		"${INF}Getting comments from MR $STA$current_mr$OFF" \
@@ -1002,6 +1007,9 @@ make_mrcomments_log() {
 }
 
 is_already_approved() {
+	# If the mrcomments file doesn't exist, user can't be already approved
+	[ -f "$mrcomments" ] || return 1
+
 	if grep '^Approved By' "$mrcomments" | grep "$labuser" > /dev/null 2>&1
 	then
 		return 0

@@ -294,6 +294,8 @@ EOF
 
 	MYDATA="$PWD"/.data
 	init_parms
+	# Ensure outdir exists after switching repos
+	[ -d "$outdir" ] || mkdir -p "$outdir"
 	missing_fixes="$outdir/missing_fixes"
 	git_get_lasttag lasttag "$last_tag_file"
 	return 0
