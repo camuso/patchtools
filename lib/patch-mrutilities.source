@@ -1006,6 +1006,33 @@ make_mrcomments_log() {
 	return 0
 }
 
+# quick_check_already_approved - fast check if user already approved MR
+#
+# This function queries GitLab directly without fetching full comments,
+# making it faster for early rejection of already-approved MRs.
+#
+# Globals:
+#	origin
+#	labuser
+#
+# Arguments:
+#	$1 - MR number
+#
+# Returns:
+#	0 - if user has already approved this MR
+#	1 - if user has not approved this MR
+#
+quick_check_already_approved() {
+	local mr="$1"
+
+	if lab mr show "$origin" "$mr" 2>/dev/null | \
+	   grep '^Approved By' | grep -q "$labuser"
+	then
+		return 0
+	fi
+	return 1
+}
+
 is_already_approved() {
 	# If the mrcomments file doesn't exist, user can't be already approved
 	[ -f "$mrcomments" ] || return 1
@@ -1074,6 +1101,13 @@ $ui_b_debug && echo "mr:$mr:"
 
 	: > "$missing_fixes"
 	valpatchlist=
+
+	# Quick check if user has already approved this MR before fetching comments
+	if quick_check_already_approved "$mr"; then
+		print_already_approved "$mr"
+		loop_yn "${MNU}Continue with review anyway? y/n : $OFF" || return $mr_norev
+	fi
+
 	make_mrcomments_log || return $mr_inv
 	less "$mrcomments"
 	approvals=$(grep '^Approved By' "$mrcomments")
@@ -1084,8 +1118,6 @@ $ui_b_debug && echo "mr:$mr:"
 		ackcount=$(echo "$approvals" | cut -d':' -f2- | wc -w)
 		echo -e "${INF}MR $STA$mr$INF has $MNU$ackcount$INF Approvals.$OFF"
 	fi
-
-	is_already_approved && print_already_approved "$mr"
 
 	loop_yn "${MNU}Continue with review? y/n : $OFF" || return $mr_norev
 
