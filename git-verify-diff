@@ -1,0 +1,127 @@
+#!/bin/bash
+#
+# git-verify-diff
+#
+# Confirm semantic equivalence between upstream and downstream patches
+# using git range-diff in a non-interactive, reproducible manner.
+
+#######################################
+# Script-level variables
+#######################################
+
+declare script_name=
+script_name="$(basename "$0")"
+
+declare git_bin=
+git_bin="$(command -v git || true)"
+
+declare usagestr="$(
+cat <<EOF
+$script_name <upstream_commit> <downstream_commit>
+
+Compare two commits using git range-diff to confirm semantic equivalence.
+
+Options:
+  -h, --help, help    Show this help message and exit.
+
+Example:
+  $script_name abc123 def456
+
+EOF
+)"
+
+#######################################
+# Functions
+#######################################
+
+#** usage: print usage information
+#*
+usage() {
+	echo -e "$usagestr"
+}
+
+#** control_c: control-c trap
+#*
+control_c() {
+	echo -e "\nCtrl-c detected\nCleaning up and exiting."
+	exitme 130
+}
+
+#** exitme: exit with code and optional message
+#*
+# Arguments
+#   $1 - exit code
+#   $2 - optional message
+#*
+exitme() {
+	local -i code="$1"
+	local msg="$2"
+
+	((code == 0)) && exit "$code"
+	[[ -n "$msg" ]] && echo -e "$msg" >&2
+	usage
+	exit "$code"
+}
+
+#** verify_commits: Run git range-diff between two commits
+#*
+# Arguments
+#   $1 - upstream commit hash
+#   $2 - downstream commit hash
+#*
+verify_commits() {
+	local upstream_commit="${1:?Upstream commit hash required}"
+	local downstream_commit="${2:?Downstream commit hash required}"
+	local upstream_range="${upstream_commit}^..${upstream_commit}"
+	local downstream_range="${downstream_commit}^..${downstream_commit}"
+
+	echo "=== Running git range-diff ==="
+	echo "Upstream:   ${upstream_range}"
+	echo "Downstream: ${downstream_range}"
+	echo
+
+	"${git_bin}" range-diff "${upstream_range}" "${downstream_range}" || true
+
+	echo
+	echo "=== Verification complete ==="
+	echo "If no substantive differences are reported above, the resultant code is identical."
+}
+
+#** main: Entry point of the script
+#*
+main() {
+	# Trap Control-C
+	trap control_c SIGINT
+
+	# Handle help options
+	if [[ $# -eq 0 ]]; then
+		usage
+		exit 0
+	fi
+
+	case "$1" in
+		-h|--help|help)
+			usage
+			exit 0
+			;;
+	esac
+
+	# Ensure git is available
+	if [[ -z "${git_bin}" ]]; then
+		exitme 1 "Error: git not found in PATH."
+	fi
+
+	# Ensure we are inside a git repository
+	if ! "${git_bin}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+		exitme 1 "Error: Not inside a git repository."
+	fi
+
+	# Require two arguments
+	if [[ $# -ne 2 ]]; then
+		exitme 1 "Error: Two commit hashes required."
+	fi
+
+	verify_commits "$1" "$2"
+}
+
+main "$@"
