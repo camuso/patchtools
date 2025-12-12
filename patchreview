@@ -932,36 +932,71 @@ EOF
 	echo -e "$statscreen"
 }
 
-check_labstatus() {
+#** check_lab: check if lab is installed, offer to install if not
+#*
+check_lab() {
+	local repo_file="/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:bmeneguele:rhkernel-devtools.repo"
+	local response
+
+	command -v lab &>/dev/null && return 0
+
+	echo -e "${INF}lab is required but not installed.$OFF"
+
+	if [[ ! -f "$repo_file" ]]; then
+		echo -e "
+${INF}The rhkernel-devtools COPR repo is not configured.
+To install lab, you need to add the repo first:
+
+  ${MNU}sudo dnf copr enable bmeneguele/rhkernel-devtools$INF
+
+Then run this script again.$OFF"
+		exit 1
+	fi
+
+	read -rp "Would you like to install lab now? (y/n): " response
+	if [[ "$response" =~ ^[Yy] ]]; then
+		echo "Installing lab..."
+		sudo dnf install -y lab || { echo "Failed to install lab"; exit 1; }
+		echo -e "${STA}lab installed successfully.$OFF"
+	else
+		echo -e "${WRN}lab is required to run this script.$OFF"
+		exit 1
+	fi
+}
+
+#** check_labconfig: check if lab.toml exists and is configured
+#*
+check_labconfig() {
+	local config_file="$HOME/.config/lab/lab.toml"
 	local labmsg
+
+	[[ -f "$config_file" ]] && return 0
 
 	labmsg=$(
 cat <<EOF
 $INF
-  You must install the$MNU lab$OFF ustility from this repo: $STA
-  Repo        : copr:copr.fedorainfracloud.org:bmeneguele:rhkernel-devtools
-$INF
-  You must also create a$MNU lab.toml$INF file in$MNU ~/.config/lab$INF with the following
-  contents.
+  lab configuration file not found at: $STA$config_file$INF
+
+  You must create a$MNU lab.toml$INF file in$MNU ~/.config/lab$INF with the following
+  contents:
 $MNU
   [core]
     host = "https://gitlab.com"
     token = "<your-gitlab-token>"
     user = "<your-gitlab-username>"
 $INF
-  Please see: $URL
+  Please see: $STA
     https://docs.google.com/document/d/1PLPBqrnV-m4hr8Jos_7dhYGYqtMdiuCZZC72t2ljyEA/edit
 $OFF
 EOF
 )
-	which lab > /dev/null 2>&1 || {
-		echo -e "$labmsg"
-		exit 1
-	}
+	echo -e "$labmsg"
+	exit 1
 }
 
 check_env() {
-	check_labstatus
+	check_lab
+	check_labconfig
 	git_checkrepo || { git_invrepomsg && exit 1; }
 	init_parms
 	init_files
