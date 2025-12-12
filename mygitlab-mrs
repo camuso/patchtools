@@ -4,9 +4,10 @@
 declare config_file="$HOME/.config/lab/lab.toml"
 declare token=""
 declare state="merged"
+declare filter_string=""
 declare usagestr="$(
 cat <<EOF
-$(basename "$0") [STATE]
+$(basename "$0") [STATE] [FILTER]
 
 List GitLab merge requests authored by you, filtered by state.
 
@@ -15,10 +16,19 @@ STATE options:
 	open	 Show open merge requests
 	closed	 Show closed merge requests
 
+FILTER (optional):
+	A string to filter the output. Only records containing
+	this string (case-insensitive) will be displayed.
+
+	Use quotes around the filter if it contains spaces or
+	special regex characters (. * + ? [ ] ( ) | ^ $).
+
 Examples:
 	$(basename "$0") merged
 	$(basename "$0") open
 	$(basename "$0") closed
+	$(basename "$0") merged "usb"
+	$(basename "$0") open "xhci"
 
 EOF
 )"
@@ -81,9 +91,11 @@ get_token() {
 #*
 # Arguments
 #   $1 - state (merged, open, closed)
+#   $2 - filter string (optional)
 #*
 list_mrs() {
 	local state_arg="$1"
+	local filter="$2"
 	local -i page=1
 
 	while true; do
@@ -98,12 +110,26 @@ list_mrs() {
 		break
 	    fi
 
-	    echo "$response" | jq '.[] | {
+	    # Apply filter if provided, using jq --arg for safe variable passing
+	    if [[ -n "$filter" ]]; then
+		echo "$response" | jq --arg f "$filter" '.[] | {
+		    project: (.references.full // .web_url),
+		    title: .title,
+		    merged_at: .merged_at,
+		    url: .web_url
+		} | select(
+		    ((.project // "") | test($f; "i")) or
+		    ((.title // "") | test($f; "i")) or
+		    ((.url // "") | test($f; "i"))
+		)'
+	    else
+		echo "$response" | jq '.[] | {
 		    project: (.references.full // .web_url),
 		    title: .title,
 		    merged_at: .merged_at,
 		    url: .web_url
 		}'
+	    fi
 
 	    ((page++))
 	done
@@ -125,8 +151,13 @@ main() {
 	    esac
 	fi
 
+	# Capture optional filter string (second argument)
+	if [[ $# -gt 1 ]]; then
+	    filter_string="$2"
+	fi
+
 	get_token
-	list_mrs "$state"
+	list_mrs "$state" "$filter_string"
 }
 
 main "$@"
