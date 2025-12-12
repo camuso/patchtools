@@ -62,13 +62,65 @@ control_c() {
 	exitme 1
 }
 
+#** check_jq: check if jq is installed, offer to install if not
+#*
+check_jq() {
+	command -v jq &>/dev/null && return 0
+
+	echo "jq is required but not installed."
+	read -rp "Would you like to install jq now? (y/n): " response
+	if [[ "$response" =~ ^[Yy] ]]; then
+	    echo "Installing jq..."
+	    sudo dnf install -y jq || exitme 1 "Failed to install jq"
+	    echo "jq installed successfully."
+	else
+	    exitme 1 "jq is required to run this script."
+	fi
+}
+
+#** check_lab: check if lab is installed, offer to install if not
+#*
+check_lab() {
+	local repo_file="/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:bmeneguele:rhkernel-devtools.repo"
+
+	command -v lab &>/dev/null && return 0
+
+	echo "lab is required but not installed."
+
+	if [[ ! -f "$repo_file" ]]; then
+	    echo -e "\nThe rhkernel-devtools COPR repo is not configured."
+	    echo "To install lab, you need to add the repo first:"
+	    echo ""
+	    echo "  sudo dnf copr enable bmeneguele/rhkernel-devtools"
+	    echo ""
+	    echo "Then run this script again."
+	    exitme 1 "Missing required repo for lab installation."
+	fi
+
+	read -rp "Would you like to install lab now? (y/n): " response
+	if [[ "$response" =~ ^[Yy] ]]; then
+	    echo "Installing lab..."
+	    sudo dnf install -y lab || exitme 1 "Failed to install lab"
+	    echo "lab installed successfully."
+	else
+	    exitme 1 "lab is required to run this script."
+	fi
+}
+
+#** check_labconfig: check if lab.toml exists
+#*
+check_labconfig() {
+	if [[ ! -f "$config_file" ]]; then
+	    echo "lab configuration file not found at: $config_file"
+	    echo ""
+	    echo "Please run 'lab' once to configure it with your GitLab token."
+	    exitme 1 "Missing lab configuration."
+	fi
+}
+
 #** get_token: extract token from lab.toml (robust)
 #*
 get_token() {
-	if [[ ! -f "$config_file" ]]; then
-	    exitme 1 "Error: Config file not found at $config_file"
-	fi
-
 	token=$(
 	    awk -F'=' '
 		/^[[:space:]]*(token|api_token)[[:space:]]*=/ {
@@ -155,6 +207,11 @@ main() {
 	if [[ $# -gt 1 ]]; then
 	    filter_string="$2"
 	fi
+
+	# Check dependencies
+	check_jq
+	check_lab
+	check_labconfig
 
 	get_token
 	list_mrs "$state" "$filter_string"
