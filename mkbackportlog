@@ -1011,12 +1011,25 @@ run() {
 
 	> "$outdir/$dnlog"
 	while read line; do
-		local tuc="$(cut -d' ' -f1 <<< "$line")" # upstream commit
+		local tuc="$(cut -d' ' -f1 <<< "$line")" # upstream commit hash
 		local upd="$(cut -d' ' -f3 <<< "$line")" # date of upstream commit
-		local tdc	                         # downstream commit
 
-		tdc="$(gitnice -d --since=$upd $path | grep "^$tuc")"
-		[ -n "$tdc" ] && echo "$tdc" | tee -a "$outdir/$dnlog"
+		# First check if this upstream commit is part of the base kernel
+		# that the downstream repo was created from (e.g., v6.6). If so,
+		# it's already downstream as part of the original kernel base.
+		# This is faster than searching commit messages.
+		if git -C "$updir" merge-base --is-ancestor "$tuc" "$upbase" 2>/dev/null; then
+			echo "$line" | tee -a "$outdir/$dnlog"
+			continue
+		fi
+
+		# Search for downstream commits that reference this upstream commit
+		# in their commit message (standard for cherry-picked/backported commits).
+		# If found, write the upstream commit line to downstream.log so that
+		# compare_strings can match it against upstream.log.
+		if git log --oneline --grep="$tuc" --since="$upd" -- $path 2>/dev/null | grep -q .; then
+			echo "$line" | tee -a "$outdir/$dnlog"
+		fi
 	done < "$outdir/$uplog"
 
 	echo
