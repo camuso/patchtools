@@ -3,32 +3,43 @@
 # Script-level variables
 declare config_file="$HOME/.config/lab/lab.toml"
 declare token=""
-declare state="merged"
-declare filter_string=""
+declare state=""
+declare project_filter=""
+declare regex_filter=""
+declare -i b_count_only=0
 declare usagestr="$(
 cat <<EOF
-$(basename "$0") [STATE] [FILTER]
+$(basename "$0") [-s state] [-p project] [-r regex] [-c]
 
-List GitLab merge requests authored by you, filtered by state.
+List GitLab merge requests authored by you.
 
-STATE options:
-	merged	 Show merged merge requests (default)
-	open	 Show open merge requests
-	closed	 Show closed merge requests
+By default, all MRs are returned. Use filters to narrow the results.
 
-FILTER (optional):
-	A string to filter the output. Only records containing
-	this string (case-insensitive) will be displayed.
-
-	Use quotes around the filter if it contains spaces or
-	special regex characters (. * + ? [ ] ( ) | ^ $).
+Switches (all optional, can be combined):
+  -s state    Filter by state: open, merged, or closed
+  -p project  Filter by project name (partial match, case-insensitive)
+  -r regex    Filter by regex pattern (matches project, title, or URL)
+  -c          Print only the count of MRs matching the filter(s)
+  -h          Show this help message
 
 Examples:
-	$(basename "$0") merged
-	$(basename "$0") open
-	$(basename "$0") closed
-	$(basename "$0") merged "usb"
-	$(basename "$0") open "xhci"
+  $(basename "$0")
+      List all MRs (open, merged, and closed)
+
+  $(basename "$0") -s merged
+      List only merged MRs
+
+  $(basename "$0") -s open -p kernel
+      List open MRs in projects containing "kernel"
+
+  $(basename "$0") -p rhel -r "usb|xhci"
+      List all MRs in "rhel" projects matching "usb" or "xhci"
+
+  $(basename "$0") -s merged -c
+      Print only the count of merged MRs
+
+  $(basename "$0") -s open -p kernel -r "net" -c
+      Count open MRs in "kernel" projects matching "net"
 
 EOF
 )"
@@ -139,51 +150,135 @@ get_token() {
 	fi
 }
 
-#** list_mrs: list merge requests by state
+#** list_mrs: list merge requests with filters
 #*
-# Arguments
-#   $1 - state (merged, open, closed)
-#   $2 - filter string (optional)
+# Globals used:
+#   state          - state filter (open, merged, closed) or empty for all
+#   project_filter - project name filter (partial match)
+#   regex_filter   - regex filter for project/title/url
+#   b_count_only   - if 1, only output the count
 #*
 list_mrs() {
-	local state_arg="$1"
-	local filter="$2"
 	local -i page=1
+	local -a all_results=()
+	local api_url="https://gitlab.com/api/v4/merge_requests?scope=created_by_me&per_page=100"
+
+	# Add state filter to API call if specified
+	if [[ -n "$state" ]]; then
+		api_url+="&state=$state"
+	else
+		# Fetch all states by using 'all'
+		api_url+="&state=all"
+	fi
 
 	while true; do
-	    local response
-	    response=$(curl -s --header "PRIVATE-TOKEN: $token" \
-		"https://gitlab.com/api/v4/merge_requests?scope=created_by_me&state=$state_arg&per_page=100&page=$page")
+		local response
+		response=$(curl -s --header "PRIVATE-TOKEN: $token" \
+			"${api_url}&page=$page")
 
-	    local -i count
-	    count=$(echo "$response" | jq 'length')
+		local -i count
+		count=$(echo "$response" | jq 'length')
 
-	    if (( count == 0 )); then
-		break
-	    fi
+		if (( count == 0 )); then
+			break
+		fi
 
-	    # Apply filter if provided, using jq --arg for safe variable passing
-	    if [[ -n "$filter" ]]; then
-		echo "$response" | jq --arg f "$filter" '.[] | {
-		    project: (.references.full // .web_url),
-		    title: .title,
-		    merged_at: .merged_at,
-		    url: .web_url
-		} | select(
-		    ((.project // "") | test($f; "i")) or
-		    ((.title // "") | test($f; "i")) or
-		    ((.url // "") | test($f; "i"))
-		)'
-	    else
-		echo "$response" | jq '.[] | {
-		    project: (.references.full // .web_url),
-		    title: .title,
-		    merged_at: .merged_at,
-		    url: .web_url
+		# Build jq filter based on provided options
+		local jq_filter='.[] | {
+			project: (.references.full // .web_url),
+			title: .title,
+			merged_at: .merged_at,
+			url: .web_url
 		}'
-	    fi
 
-	    ((page++))
+		# Add project filter if specified
+		if [[ -n "$project_filter" ]]; then
+			jq_filter+=" | select((.project // \"\") | test(\"$project_filter\"; \"i\"))"
+		fi
+
+		# Add regex filter if specified
+		if [[ -n "$regex_filter" ]]; then
+			jq_filter+=" | select(
+				((.project // \"\") | test(\"$regex_filter\"; \"i\")) or
+				((.title // \"\") | test(\"$regex_filter\"; \"i\")) or
+				((.url // \"\") | test(\"$regex_filter\"; \"i\"))
+			)"
+		fi
+
+		# Collect results
+		local page_results
+		page_results=$(echo "$response" | jq "$jq_filter")
+
+		if [[ -n "$page_results" ]]; then
+			all_results+=("$page_results")
+		fi
+
+		((page++))
+	done
+
+	# Output results
+	if (( b_count_only )); then
+		# Count the number of JSON objects in all results
+		local -i total=0
+		for result in "${all_results[@]}"; do
+			local -i cnt
+			cnt=$(echo "$result" | jq -s 'length')
+			((total += cnt))
+		done
+		echo "$total"
+	else
+		# Print all results
+		for result in "${all_results[@]}"; do
+			echo "$result"
+		done
+	fi
+}
+
+#** parse_args: parse command line arguments
+#*
+parse_args() {
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			-h|--help)
+				usage
+				exit 0
+				;;
+			-s)
+				shift
+				if [[ -z "$1" || "$1" == -* ]]; then
+					exitme 1 "Error: -s requires a state argument (open, merged, closed)"
+				fi
+				case "$1" in
+					open|opened|merged|closed)
+						state="$1"
+						;;
+					*)
+						exitme 1 "Error: Invalid state '$1'. Use: open, merged, or closed"
+						;;
+				esac
+				;;
+			-p)
+				shift
+				if [[ -z "$1" || "$1" == -* ]]; then
+					exitme 1 "Error: -p requires a project filter string"
+				fi
+				project_filter="$1"
+				;;
+			-r)
+				shift
+				if [[ -z "$1" || "$1" == -* ]]; then
+					exitme 1 "Error: -r requires a regex pattern"
+				fi
+				regex_filter="$1"
+				;;
+			-c)
+				b_count_only=1
+				;;
+			*)
+				exitme 1 "Error: Unknown option '$1'"
+				;;
+		esac
+		shift
 	done
 }
 
@@ -192,21 +287,7 @@ list_mrs() {
 main() {
 	trap control_c SIGINT
 
-	if [[ $# -gt 0 ]]; then
-	    case "$1" in
-		-h|--help|help)
-		    usage; exit 0 ;;
-		merged|opened|closed)
-		    state="$1" ;;
-		*)
-		    exitme 1 "Invalid argument: $1" ;;
-	    esac
-	fi
-
-	# Capture optional filter string (second argument)
-	if [[ $# -gt 1 ]]; then
-	    filter_string="$2"
-	fi
+	parse_args "$@"
 
 	# Check dependencies
 	check_jq
@@ -214,7 +295,7 @@ main() {
 	check_labconfig
 
 	get_token
-	list_mrs "$state" "$filter_string"
+	list_mrs
 }
 
 main "$@"
