@@ -1,45 +1,70 @@
 #!/bin/bash
+#
+# mygitlab-mrs
 
 # Script-level variables
 declare config_file="$HOME/.config/lab/lab.toml"
 declare token=""
-declare state=""
+declare -i b_state_open=0
+declare -i b_state_merged=0
+declare -i b_state_closed=0
 declare project_filter=""
-declare regex_filter=""
+declare title_regex=""
+declare date_before=""
+declare date_after=""
 declare -i b_count_only=0
 declare usagestr="$(
 cat <<EOF
-$(basename "$0") [-s state] [-p project] [-r regex] [-c]
+$(basename "$0") [-so] [-sm] [-sc] [-p project] [-r regex] [-da date] [-db date] [-c]
 
 List GitLab merge requests authored by you.
 
-By default, all MRs are returned. Use filters to narrow the results.
+By default, all your MRs are returned. Use filter switches to narrow the results.
 
-Switches (all optional, can be combined):
-  -s state    Filter by state: open, merged, or closed
+Filter Switches (all optional, can be combined):
+  -so         Include open MRs
+  -sm         Include merged MRs
+  -sc         Include closed MRs
   -p project  Filter by project name (partial match, case-insensitive)
-  -r regex    Filter by regex pattern (matches project, title, or URL)
+  -r regex    Filter MR titles by regex pattern (case-insensitive)
+  -da date    Filter MRs created after (since) the given date
+  -db date    Filter MRs created before the given date
   -c          Print only the count of MRs matching the filter(s)
   -h          Show this help message
+
+State switches can be combined: -so -sm shows both open and merged MRs.
+Using all state switches (-so -sm -sc) is the same as the default (all MRs).
+
+Date expressions can be in various formats, e.g.:
+  2025-12-17, 17-Dec-2025, Dec-17-2025, 20251217, "2 weeks ago"
 
 Examples:
   $(basename "$0")
       List all MRs (open, merged, and closed)
 
-  $(basename "$0") -s merged
+  $(basename "$0") -sm
       List only merged MRs
 
-  $(basename "$0") -s open -p kernel
-      List open MRs in projects containing "kernel"
+  $(basename "$0") -so -p stream-9
+      List open MRs in projects containing "stream-9"
 
-  $(basename "$0") -p rhel -r "usb|xhci"
-      List all MRs in "rhel" projects matching "usb" or "xhci"
+  $(basename "$0") -so -sm
+      List both open and merged MRs
 
-  $(basename "$0") -s merged -c
+  $(basename "$0") -p "stream-10" -r "usb|xhci"
+      List all MRs in "stream-10" projects with titles matching "usb" or "xhci"
+
+  $(basename "$0") -sm -da 2025-01-01
+      List MRs merged since January 1, 2025
+
+  $(basename "$0") -sm -da "3 months ago" -db "1 month ago"
+      List MRs merged between 3 months ago and 1 month ago
+
+  $(basename "$0") -sm -c
       Print only the count of merged MRs
 
-  $(basename "$0") -s open -p kernel -r "net" -c
-      Count open MRs in "kernel" projects matching "net"
+  $(basename "$0") -so -p "rhel-9" -r "net" -c
+      Count open MRs in "rhel-9" projects with titles matching "net"
 
 EOF
 )"
@@ -150,12 +175,35 @@ get_token() {
 	fi
 }
 
+#** convert_date: convert a date expression to ISO 8601 format for GitLab API
+#*
+# Arguments:
+#   $1 - date expression (e.g., "2025-12-17", "Dec-17-2025", "2 weeks ago")
+#
+# Output:
+#   ISO 8601 formatted date string (YYYY-MM-DDTHH:MM:SSZ)
+#*
+convert_date() {
+	local date_expr="$1"
+	local iso_date
+
+	iso_date=$(date -d "$date_expr" -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)
+	if [[ -z "$iso_date" ]]; then
+		exitme 1 "Error: Invalid date expression '$date_expr'"
+	fi
+	echo "$iso_date"
+}
+
 #** list_mrs: list merge requests with filters
 #*
 # Globals used:
-#   state          - state filter (open, merged, closed) or empty for all
+#   b_state_open   - include open MRs
+#   b_state_merged - include merged MRs
+#   b_state_closed - include closed MRs
 #   project_filter - project name filter (partial match)
-#   regex_filter   - regex filter for project/title/url
+#   title_regex    - regex filter for title only
+#   date_before    - filter MRs created before this date
+#   date_after     - filter MRs created after this date
 #   b_count_only   - if 1, only output the count
 #*
 list_mrs() {
@@ -163,18 +211,44 @@ list_mrs() {
 	local -a all_results=()
 	local api_url="https://gitlab.com/api/v4/merge_requests?scope=created_by_me&per_page=100"
 
-	# Add state filter to API call if specified
-	if [[ -n "$state" ]]; then
-		api_url+="&state=$state"
-	else
-		# Fetch all states by using 'all'
-		api_url+="&state=all"
+	# Determine state filtering strategy
+	# Count how many state filters are set
+	local -i state_count=$((b_state_open + b_state_merged + b_state_closed))
+
+	# If none or all states selected, fetch all (no client-side state filtering needed)
+	# If some states selected, we'll filter client-side
+	api_url+="&state=all"
+
+	# Add date filters to API call (more efficient than client-side filtering)
+	if [[ -n "$date_after" ]]; then
+		local iso_after
+		iso_after=$(convert_date "$date_after")
+		api_url+="&created_after=$iso_after"
+	fi
+
+	if [[ -n "$date_before" ]]; then
+		local iso_before
+		iso_before=$(convert_date "$date_before")
+		api_url+="&created_before=$iso_before"
 	fi
 
 	while true; do
 		local response
 		response=$(curl -s --header "PRIVATE-TOKEN: $token" \
 			"${api_url}&page=$page")
+
+		# Check if response is a valid JSON array
+		if ! echo "$response" | jq -e 'type == "array"' > /dev/null 2>&1; then
+			# Check if it's an error response from GitLab
+			local error_msg
+			error_msg=$(echo "$response" | jq -r '.message // .error // empty' 2>/dev/null)
+			if [[ -n "$error_msg" ]]; then
+				echo "GitLab API error: $error_msg" >&2
+			else
+				echo "Unexpected API response format" >&2
+			fi
+			exit 1
+		fi
 
 		local -i count
 		count=$(echo "$response" | jq 'length')
@@ -183,31 +257,46 @@ list_mrs() {
 			break
 		fi
 
-		# Build jq filter based on provided options
+		# Build jq arguments for safe variable passing
+		local -a jq_args=()
 		local jq_filter='.[] | {
 			project: (.references.full // .web_url),
 			title: .title,
+			state: .state,
+			created_at: .created_at,
 			merged_at: .merged_at,
 			url: .web_url
 		}'
 
-		# Add project filter if specified
-		if [[ -n "$project_filter" ]]; then
-			jq_filter+=" | select((.project // \"\") | test(\"$project_filter\"; \"i\"))"
+		# Add state filter if some (but not all or none) states are selected
+		if (( state_count > 0 && state_count < 3 )); then
+			# Build state filter expression
+			local -a state_conditions=()
+			(( b_state_open )) && state_conditions+=('.state == "opened"')
+			(( b_state_merged )) && state_conditions+=('.state == "merged"')
+			(( b_state_closed )) && state_conditions+=('.state == "closed"')
+
+			# Join conditions with " or "
+			local state_expr
+			state_expr=$(IFS=' or '; echo "${state_conditions[*]}")
+			jq_filter+=" | select($state_expr)"
 		fi
 
-		# Add regex filter if specified
-		if [[ -n "$regex_filter" ]]; then
-			jq_filter+=" | select(
-				((.project // \"\") | test(\"$regex_filter\"; \"i\")) or
-				((.title // \"\") | test(\"$regex_filter\"; \"i\")) or
-				((.url // \"\") | test(\"$regex_filter\"; \"i\"))
-			)"
+		# Add project filter if specified
+		if [[ -n "$project_filter" ]]; then
+			jq_args+=(--arg pf "$project_filter")
+			jq_filter+=' | select((.project // "") | test($pf; "i"))'
+		fi
+
+		# Add title regex filter if specified
+		if [[ -n "$title_regex" ]]; then
+			jq_args+=(--arg tr "$title_regex")
+			jq_filter+=' | select((.title // "") | test($tr; "i"))'
 		fi
 
 		# Collect results
 		local page_results
-		page_results=$(echo "$response" | jq "$jq_filter")
+		page_results=$(echo "$response" | jq "${jq_args[@]}" "$jq_filter")
 
 		if [[ -n "$page_results" ]]; then
 			all_results+=("$page_results")
@@ -243,19 +332,14 @@ parse_args() {
 				usage
 				exit 0
 				;;
-			-s)
-				shift
-				if [[ -z "$1" || "$1" == -* ]]; then
-					exitme 1 "Error: -s requires a state argument (open, merged, closed)"
-				fi
-				case "$1" in
-					open|opened|merged|closed)
-						state="$1"
-						;;
-					*)
-						exitme 1 "Error: Invalid state '$1'. Use: open, merged, or closed"
-						;;
-				esac
+			-so)
+				b_state_open=1
+				;;
+			-sm)
+				b_state_merged=1
+				;;
+			-sc)
+				b_state_closed=1
 				;;
 			-p)
 				shift
@@ -269,7 +353,21 @@ parse_args() {
 				if [[ -z "$1" || "$1" == -* ]]; then
 					exitme 1 "Error: -r requires a regex pattern"
 				fi
-				regex_filter="$1"
+				title_regex="$1"
+				;;
+			-da)
+				shift
+				if [[ -z "$1" || "$1" == -* ]]; then
+					exitme 1 "Error: -da requires a date expression"
+				fi
+				date_after="$1"
+				;;
+			-db)
+				shift
+				if [[ -z "$1" || "$1" == -* ]]; then
+					exitme 1 "Error: -db requires a date expression"
+				fi
+				date_before="$1"
 				;;
 			-c)
 				b_count_only=1
