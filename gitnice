@@ -1,7 +1,16 @@
 #!/bin/bash
 #
-# gitnice
+# @description Enhanced git log --oneline with flexible formatting options
 #
+# Displays commits in --oneline format with options for dates, author,
+# hash width, and reverse order. Options and arguments can be entered
+# in any order.
+#
+# @example
+#   gitnice                    # Most recent commit
+#   gitnice -d -5              # Last 5 commits with author dates
+#   gitnice -d -c -a HEAD~10.. # Last 10 with dates and author
+#   gitnice -r commit1..commit2 drivers/usb  # Commits in range for path
 
 declare arg=
 declare opt=
@@ -77,9 +86,9 @@ $(basename "$0") [options] [commitexpr] [path]
        prints the 5 most recent commits with the author date and the
        actuall commit date
 
-   $(basename "$0") -d --no-merges \\\
+   $(basename "$0") -d --no-merges \\
 
-     c68432e802b11.. \\\
+     c68432e802b11.. \\
 
      drivers/char/ipmi include/linux/ipmi.h
        prints all commits with author dates, except for merges, for
@@ -89,22 +98,28 @@ $(basename "$0") [options] [commitexpr] [path]
 EOF
 )
 
+# @description Display usage information and exit
+#
+# @arg $1 int Exit code
+#
+# @exitcode As specified by $1
 usage() {
 	echo -e "$usagestr"
 	exit "$1"
 }
 
-# If output is to terminal, then do the special formatting.
-# Else, if being redirected, just plain output.
+# @description Validate a git commit expression
 #
-# [ -t 1 ] && b_format=true || b_format=false
-
-# is_validcmtexpr
+# Breaks the commit expression on double-dot (..) and validates
+# each component using git rev-parse.
 #
-# Break the commit expression into separate strings, dividing on a
-# double dot elipsis, and cycle through the resulting array to
-# check each of the commits.
+# @arg $1 string Commit expression to validate
 #
+# @set errstr string Error message if validation fails
+# @set stat int Exit status from git rev-parse
+#
+# @exitcode 0 Valid commit expression
+# @exitcode non-zero Invalid commit expression
 is_validcmtexpr() {
 	local tmp=$1
 	local -a cary=()
@@ -121,70 +136,92 @@ is_validcmtexpr() {
 	return 0
 }
 
-while (($# > 0)); do
-	arg="$1"
+# @description Main argument processing loop
+#
+# Parses all command-line arguments, handling options, commit expressions,
+# and file paths. Options and arguments can be in any order.
+#
+# @set number string Number of commits to show
+# @set cmtexpr string Git commit expression
+# @set path string Space-separated list of paths
+# @set gitopt array Additional git log options
+# @set cmtauth string Author format string
+# @set cmtdate string Commit date format string
+# @set autdate string Author date format string
+# @set reverse string --reverse flag if enabled
+# @set hashsiz string Hash size specifier (h or H)
+#
+# @exitcode 0 Success
+# @exitcode non-zero Invalid commit expression
+main() {
+	while (($# > 0)); do
+		arg="$1"
 
-	if [ "${arg:0:1}" == '-' ]; then
-		opt="${arg:1}"
+		if [ "${arg:0:1}" == '-' ]; then
+			opt="${arg:1}"
 
-		if [[ $opt =~ $numregex ]]; then
-			number=$opt;
-			b_usernum=true
-			shift
-			continue
-		fi
+			if [[ $opt =~ $numregex ]]; then
+				number=$opt;
+				b_usernum=true
+				shift
+				continue
+			fi
 
-		case "$opt" in
-		s ) $gitold && continue
-			shift
-			authwid="%<($arg,mtrunc)"
-			;;
-		c ) $b_format && cmtdate="%C(bold green)%cd " || autdate="%cd "
-			;;
-		d ) $b_format && autdate="%C(bold green)%ad " || autdate="%ad "
-			;;
-		a ) $b_format && cmtauth="%C(bold yellow)%ae " || cmtauth="%ae "
-			;;
-		r ) reverse="--reverse"
-			;;
-		w ) hashsiz="H"
-			;;
-		h ) usage 0
-			;;
-		* ) gitopt+=( "$arg" )
-		esac
+			case "$opt" in
+			s ) $gitold && { shift; continue; }
+				shift
+				authwid="%<($1,mtrunc)"
+				;;
+			c ) $b_format && cmtdate="%C(bold green)%cd " || cmtdate="%cd "
+				;;
+			d ) $b_format && autdate="%C(bold green)%ad " || autdate="%ad "
+				;;
+			a ) $b_format && cmtauth="%C(bold yellow)%ae " || cmtauth="%ae "
+				;;
+			r ) reverse="--reverse"
+				;;
+			w ) hashsiz="H"
+				;;
+			h ) usage 0
+				;;
+			* ) gitopt+=( "$arg" )
+			esac
 
-	elif [ -e "$arg" ]; then
-		path="$path $arg"
-	else
-		if is_validcmtexpr "$arg"; then
-			cmtexpr="$arg"
+		elif [ -e "$arg" ]; then
+			path="$path $arg"
 		else
-			echo $errstr
-			exit $stat
+			if is_validcmtexpr "$arg"; then
+				cmtexpr="$arg"
+			else
+				echo "$errstr"
+				exit $stat
+			fi
 		fi
-	fi
 
-	shift
-done
+		shift
+	done
 
-$gitold && hashwid=
-[ "$cmtauth" ] || authwid=""
+	$gitold && hashwid=
+	[ "$cmtauth" ] || authwid=""
 
-$b_format && \
-	fmtstr="$hashwid%C(bold green)%$hashsiz $cmtdate$autdate$authwid$cmtauth%C(reset)%s" \
-|| \
-	fmtstr="$hashwid%$hashsiz $cmtdate$autdate$authwid$cmtauth %s"
+	$b_format && \
+		fmtstr="$hashwid%C(bold green)%$hashsiz $cmtdate$autdate$authwid$cmtauth%C(reset)%s" \
+	|| \
+		fmtstr="$hashwid%$hashsiz $cmtdate$autdate$authwid$cmtauth %s"
 
-$b_usernum || {
-	number="1"
-	[ -n "$cmtexpr" ] && [[ "$cmtexpr" = *".."* ]] && number=
+	$b_usernum || {
+		number="1"
+		[ -n "$cmtexpr" ] && [[ "$cmtexpr" = *".."* ]] && number=
+	}
+	grep -qe '--since' <<< "${gitopt[@]}" && number=
+	grep -qe '--after' <<< "${gitopt[@]}" && number=
+	((number == 0)) && number=
+	[ -n "$number" ] && number="-$number"
+
+	git log --date=short --pretty=format:"$fmtstr" $reverse $number ${gitopt[@]} $cmtexpr -- $path
+
+	return $?
 }
-grep -qe '--since' <<< "${gitopt[@]}" && number=
-grep -qe '--after' <<< "${gitopt[@]}" && number=
-((number == 0)) && number=
-[ -n "$number" ] && number="-$number"
 
-git log --date=short --pretty=format:"$fmtstr" $reverse $number ${gitopt[@]} $cmtexpr -- $path
-
+main "$@"
 exit $?

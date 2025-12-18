@@ -2,6 +2,16 @@
 #
 # docscript
 #
+# @description Extract and display documentation from shell scripts
+#
+# Supports two documentation formats:
+#   1. Legacy format: #** to start, #* to end
+#   2. shdoc format: # @description, # @arg, # @exitcode, etc.
+#
+# @example
+#   docscript myscript.sh           # List all documented functions
+#   docscript -v myscript.sh        # Verbose output with full docs
+#   docscript -f funcname script.sh # Show docs for specific function
 
 declare MYDIR=
 declare MYLIB=
@@ -12,6 +22,7 @@ declare optcount=0
 declare b_verbose=false
 declare file=
 declare b_func=false
+declare fname=
 
 MYDIR="$(dirname "$(readlink -f "$0")")"
 MYLIB="$MYDIR"/lib
@@ -25,44 +36,54 @@ cat <<EOF
 
 $(basename "$0") [options] file
 
+Extract and display documentation from shell scripts.
+
+Supports two documentation formats:
+  1. Legacy: #** ... #* delimited blocks
+  2. shdoc:  # @description, # @arg, # @exitcode, etc.
+
 Arguments
 ---------
-   file : script having doc delimiters #** and #*
+   file : script with documentation comments
 
 Options
 -------
-  -v : verbose output instead of single line
-  -f : specific function or data block
+  -v : verbose output (show full documentation block)
+  -f func : show documentation for specific function only
+  -h : this help text
 \0
 EOF
 )
 
-# control_c: run if user hits control-c
+# @description Handle Ctrl-C interrupt
 #
-# Global
-#   CTLC_EXIT - bash environment variable
-#
+# @exitcode 130 Always exits with SIGINT code
 control_c() {
 	echo -e "\nCtrl-c detected\nCleaning up and exiting."
 	exit $CTLC_EXIT
 }
 
-# init
+# @description Initialize script environment
 #
-# GLOBALS
-#   background
+# @set background string Terminal background color setting
 #
+# @exitcode 0 Always succeeds
 init() {
 	local bgtemp
 
 	ui_setbg bgtemp
 	background=$bgtemp
+	return 0
 }
 
-# parseopts
+# @description Parse command line options
 #
-# Globals
+# @set optcount int Number of options parsed
+# @set b_verbose bool Whether to show verbose output
+# @set b_func bool Whether filtering by function name
+# @set fname string Function name to filter (if -f used)
 #
+# @exitcode 0 Always succeeds
 parseopts() {
 	local arg=
 	local opt=
@@ -92,14 +113,70 @@ parseopts() {
 	return 0
 }
 
+# @description Check if line starts an shdoc documentation block
+#
+# @arg $1 string Line to check
+#
+# @exitcode 0 Line starts shdoc block (# @description)
+# @exitcode 1 Line does not start shdoc block
+is_shdoc_start() {
+	local line="$1"
+	[[ "$line" =~ ^[[:space:]]*#[[:space:]]*@description ]]
+}
+
+# @description Check if line is part of an shdoc documentation block
+#
+# @arg $1 string Line to check
+#
+# @exitcode 0 Line is a comment (part of doc block)
+# @exitcode 1 Line is not a comment (end of doc block)
+is_shdoc_comment() {
+	local line="$1"
+	[[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "$line" ]]
+}
+
+# @description Extract function name from declaration line
+#
+# @arg $1 string Line containing function declaration
+#
+# @stdout Function name or "unknown"
+get_func_name() {
+	local line="$1"
+	local name
+
+	# Match: funcname() or function funcname
+	if [[ "$line" =~ ^[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*\(\) ]]; then
+		name="${BASH_REMATCH[1]}"
+	elif [[ "$line" =~ ^[[:space:]]*function[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*) ]]; then
+		name="${BASH_REMATCH[1]}"
+	else
+		name="unknown"
+	fi
+	echo "$name"
+}
+
+# @description Parse and display documentation from a script file
+#
+# Handles both legacy (#**/#*) and shdoc (# @description) formats.
+# In non-verbose mode, shows one-line summaries.
+# In verbose mode, shows full documentation blocks.
+#
+# @arg $1 string Path to script file
+#
+# @exitcode 0 Success
+# @exitcode 1 File not found or no arguments
 main() {
 	local b_doc=false
+	local b_shdoc=false
 	local line=
 	local -i fnamsiz
 	local -a lary=()
-	local -i lnum=0		# line numbers
+	local -i lnum=0
+	local -i doc_start_line=0
 	local bar
 	local dash
+	local shdoc_buffer=""
+	local description=""
 
 	init
 	parseopts "$@"
@@ -108,20 +185,73 @@ main() {
 	(($# > 0)) || { echo -e "$usagestr"; exit 1; }
 
 	bar="$(printf '=%.0s' {1..75})"
-
-	# Double -- tells printf to take the -% literally, instead of as
-	# another option.
 	dash="$(printf -- "-%.0s" {1..75})"
 
 	file="$1"
 
 	[ -f "$file" ] || { echo -e "$usagestr"; exit 1; }
 
-	while IFS= read -r line; do
+	while IFS= read -r line || [[ -n "$line" ]]; do
 		((++lnum))
 		read -ra lary <<< "$line"
 
+		# === SHDOC FORMAT DETECTION ===
+		if is_shdoc_start "$line"; then
+			b_shdoc=true
+			doc_start_line=$lnum
+			# Extract description text after @description
+			description="${line#*@description}"
+			description="${description#"${description%%[![:space:]]*}"}"  # trim leading space
+			shdoc_buffer="$line"
+			continue
+		fi
+
+		# === SHDOC FORMAT PROCESSING ===
+		if $b_shdoc; then
+			if is_shdoc_comment "$line"; then
+				# Accumulate doc lines
+				shdoc_buffer+=$'\n'"$line"
+			else
+				# End of shdoc block - this line should be the function
+				local func_name
+				func_name=$(get_func_name "$line")
+
+				# Apply function filter if specified
+				if $b_func; then
+					if [[ "$func_name" != *"$fname"* ]]; then
+						b_shdoc=false
+						shdoc_buffer=""
+						description=""
+						continue
+					fi
+				fi
+
+				# Display the documentation
+				$b_verbose && echo -e "\n${bar}"
+				echo -e "${STA}$doc_start_line: $MNU${func_name}$OFF $description"
+
+				if $b_verbose; then
+					echo "$dash"
+					# Print buffer without the first line (already showed description)
+					while IFS= read -r bufline; do
+						[[ "$bufline" =~ @description ]] && continue
+						# Remove leading # and space
+						bufline="${bufline#\#}"
+						bufline="${bufline# }"
+						echo "$bufline"
+					done <<< "$shdoc_buffer"
+				fi
+
+				b_shdoc=false
+				shdoc_buffer=""
+				description=""
+			fi
+			continue
+		fi
+
+		# === LEGACY FORMAT (#**/#*) ===
 		($b_doc || [ "${line:0:1}" == "#" ]) || continue
+
 		if [ "${lary[0]:0:3}" == "#**" ]; then
 
 			if $b_func; then
@@ -146,7 +276,7 @@ main() {
 		fi
 	done < "$file"
 
-	ui_exit ui_exit_ok
+	return 0
 }
 
 main "$@"
