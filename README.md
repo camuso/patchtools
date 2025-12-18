@@ -73,8 +73,10 @@ management, backporting, and review.
 |                      | with options for clean, prepare, sync,       |
 |                      | and restore.                                 |
 |                      |                                              |
-| `mygitlab-mrs`       | Lists GitLab merge requests authored by you, |
-|                      | filtered by state (merged, open, closed).    |
+| `mygitlab-mrs`       | Lists GitLab merge requests authored by you  |
+|                      | with combinable filters: state (-so/-sm/-sc),|
+|                      | project (-p), title regex (-r), date range   |
+|                      | (-da/-db), and count mode (-c).              |
 |                      |                                              |
 | `oneup`              | Extracts the upstream commit hash from a     |
 |                      | downstream (RHEL) commit's git log.          |
@@ -144,6 +146,9 @@ management, backporting, and review.
 |                  |                                             |
 | `oneup`          | Extract upstream hash from a downstream     |
 |                  | commit.                                     |
+|                  |                                             |
+| `mygitlab-mrs`   | Query your GitLab MRs with combinable       |
+|                  | filters for state, project, title, dates.   |
 
 ### Patch Comparison Tools
 
@@ -215,8 +220,6 @@ management, backporting, and review.
 | `patbatcmpmgr.conf`         | Config template for patbatcmpmgr.        |
 |                             |                                          |
 | `patchreview.conf`          | Config template for patchreview.         |
-|                             |                                          |
-| `tmux.cherp.conf`           | Tmux configuration for wcherp.           |
 
 ---
 
@@ -235,25 +238,6 @@ management, backporting, and review.
 | `patchreview.txt`          | Text version of patchreview manual.     |
 |                            |                                         |
 | `patchreview-config.txt`   | Text version of config guide.           |
-
----
-
-## Deprecated Scripts (`deprecated/` directory)
-
-These scripts are no longer actively maintained but are preserved
-for reference.
-
-| Script              | Description                                  |
-|---------------------|----------------------------------------------|
-| `gnice`             | Re-commits downstream commits inserting      |
-|                     | JIRA, CVE, and upstream status info.         |
-|                     |                                              |
-| `prep-usb-backport` | Creates USB subsystem-specific commit logs   |
-|                     | for backporting, with duplicate detection.   |
-|                     |                                              |
-| `wcherp`            | Tmux wrapper that spawns a split-screen      |
-|                     | session for cherp with a tail view of the    |
-|                     | backport commits file.                       |
 
 ---
 
@@ -289,5 +273,7 @@ mkbackportlog
 - Bash 4.0 or higher
 - Git
 - Standard Linux utilities (awk, sed, grep, etc.)
-- Optional: tmux (for wcherp), sshfs (for sshmount)
+- Optional: jq and curl (for mygitlab-mrs)
+- Optional: lab CLI tool (for mygitlab-mrs, auto-install offered)
+- Optional: sshfs (for sshmount)
 - Optional: vimdiff, emacs, or tkdiff (for patcmp)
