@@ -1,7 +1,14 @@
 #!/bin/bash
 #
-# oneup
+# @description Extract the upstream commit hash from a downstream commit
 #
+# Parses the commit message of a downstream (RHEL) commit to find the
+# referenced upstream commit. Looks for "commit <hash>" or "cherry-picked
+# from commit <hash>" patterns.
+#
+# @example
+#   oneup abc123def    # Get upstream commit for downstream abc123def
+#   oneup HEAD~5       # Get upstream commit for 5 commits ago
 
 [ -n "$MYDIR" ] || {
 	declare MYDIR=
@@ -16,7 +23,7 @@ cat <<EOF
 
 $(basename "$0") dncmt
 
-Extracts the upstream commit from the git log of the  given downstream
+Extracts the upstream commit from the git log of the given downstream
 commit.
 
 Arguments
@@ -27,83 +34,95 @@ Arguments
 EOF
 )"
 
+# @description Display usage information
+#
+# @stdout Usage text
 usage() {
 	echo -e "$usagestr"
 }
 
-# control_c: run if user hits control-c
+# @description Handle Ctrl-C interrupt
 #
-# Global
-#   CTLC_EXIT - bash environment variable
-#
+# @exitcode 130 SIGINT exit code
 control_c() {
 	echo -e "\nCtrl-c detected\nCleaning up and exiting."
 	exit $CTLC_EXIT
 }
 
-# exitme
+# @description Exit with code and optional message
 #
-# Arguments
-#   $1 - exit code
-#   $2 - optional message
+# @arg $1 int Exit code
+# @arg $2 string Optional error message
 #
+# @exitcode As specified by $1
 exitme() {
 	local -i code="$1"
 	local msg="$2"
 
 	((code == 0)) && exit "$code"
 	echo -e "$msg"
-	# usage
 	exit "$code"
 }
 
-# check_arg
+# @description Check if argument is valid (not a switch)
 #
-# Globals:
-#   argv - array containing command line arguments
+# @arg $1 string Argument to check
 #
+# @set argv array Appends valid argument
+#
+# @exitcode 0 Valid argument (added to argv)
+# @exitcode 1 Invalid (starts with hyphen)
 check_arg() {
-        local arg="$1"
+	local arg="$1"
 
-        # If 1st char is a hyphen, then invalid switch
-        [ "${arg:0:1}" == "-" ] && return 1
+	# If 1st char is a hyphen, then invalid switch
+	[ "${arg:0:1}" == "-" ] && return 1
 
-        # Otherwise, add the arg to the argary
-        argv+=("$arg")
-        return 0
+	# Otherwise, add the arg to the argary
+	argv+=("$arg")
+	return 0
 }
 
-# parseopts
+# @description Parse command line options
 #
-# Globals
-#   argv
-#   argc
+# @set argv array Command line arguments
 #
+# @exitcode 0 Success
 parseopts() {
 	while (($# > 0)); do
-	    case "$1" in
-		-h | --help )
-		     echo -e "$usagestr"
-		     exit 0
-		     ;;
-		* )  argv+=("$1")
-		     ;;
-	    esac
-	    shift
+		case "$1" in
+			-h | --help )
+				echo -e "$usagestr"
+				exit 0
+				;;
+			* )
+				argv+=("$1")
+				;;
+		esac
+		shift
 	done
+	return 0
 }
 
+# @description Main entry point - extract upstream commit from downstream
+#
+# @arg $@ string Command line arguments (expects downstream commit)
+#
+# @stdout The upstream commit hash
+#
+# @exitcode 0 Success - upstream commit found and printed
+# @exitcode 1 No upstream commit found in the downstream commit log
 main() {
 	local dnlog
 	local upcmt
 
-        # Trap for control-c
-        trap control_c SIGINT
+	# Trap for control-c
+	trap control_c SIGINT
 
 	parseopts "$@"
 	dncmt="${argv[0]}"
 
-	# Get the downstream log less the downstream commit
+	# Get the downstream log less the downstream commit header
 	dnlog="$(git log -1 "$dncmt" | tail -n +2)"
 
 	# Strip all leading spaces
@@ -113,13 +132,15 @@ main() {
 	upcmt="$(echo "$dnlog" | grep -E -m1 '^commit')"
 
 	# If it didn't start with commit, see if it started with cherry-picked
-	[ -n "$upcmt" ] || upcmt="$(echo "$log" | grep -E -m1 'cherry-picked from')"
+	[ -n "$upcmt" ] || upcmt="$(echo "$dnlog" | grep -E -m1 'cherry-picked from')"
 
 	# If we can't find a corresponding upstream commit, exit now.
 	[ -n "$upcmt" ] || exitme 1 "Could not find an upstream commit for $dncmt"
 
 	# Get just the commit hash and print it.
 	upcmt="$(awk '{print $NF}' <<< "$upcmt")"
+	# Remove trailing parenthesis if present (from cherry-picked format)
+	upcmt="${upcmt%)}"
 	echo "$upcmt"
 
 	exitme 0

@@ -1,6 +1,12 @@
 #!/bin/bash
 #
-# gitfirst
+# @description Find the git commit that first created a file
+#
+# Uses git log with --diff-filter=A to find the commit that added the file.
+#
+# @example
+#   gitfirst drivers/usb/host/xhci.c
+#   gitfirst include/linux/usb.h
 
 declare usagestr=$(
 cat <<EOF
@@ -11,21 +17,32 @@ Description:
 	Find the git commit that created the file.
 
 Arguments:
-	File - the file you want the first commit from
+	file - the file you want to find the first commit for
 \0
 EOF
 )
 
+# @description Display usage information and exit
+#
+# @exitcode 1 Always exits with error
 usage() {
-	echo -en $usagestr
+	echo -en "$usagestr"
 	exit 1
 }
 
+# @description Find the commit that first added a file
+#
+# @arg $1 string Path to the file
+#
+# @stdout Git log output for the commit that added the file
+#
+# @exitcode 0 Success
+# @exitcode non-zero File not found or git error
 main() {
+	[[ -z "$1" ]] && usage
 	git log --diff-filter=A -- "$1"
+	return $?
 }
 
-main $@
-
-exit 0
-
+main "$@"
+exit $?
