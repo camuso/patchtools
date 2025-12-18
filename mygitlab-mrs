@@ -1,6 +1,15 @@
 #!/bin/bash
 #
-# mygitlab-mrs
+# @description List GitLab merge requests authored by you with flexible filters
+#
+# Query your GitLab MRs with combinable filters for state, project name,
+# title regex, and date ranges. Requires jq and lab CLI tool.
+#
+# @example
+#   mygitlab-mrs                     # List all MRs
+#   mygitlab-mrs -sm                 # List only merged MRs
+#   mygitlab-mrs -so -p stream-9     # Open MRs in stream-9 projects
+#   mygitlab-mrs -sm -da "3 months ago" -c  # Count merged in last 3 months
 
 # Script-level variables
 declare config_file="$HOME/.config/lab/lab.toml"
@@ -69,18 +78,19 @@ Examples:
 EOF
 )"
 
-#** usage: print usage information
-#*
+# @description Print usage information
+#
+# @stdout Usage text
 usage() {
 	echo -e "$usagestr"
 }
 
-#** exitme: exit with code and optional message
-#*
-# Arguments
-#   $1 - exit code
-#   $2 - optional message
-#*
+# @description Exit with code and optional message
+#
+# @arg $1 int Exit code
+# @arg $2 string Optional error message
+#
+# @exitcode As specified by $1
 exitme() {
 	local -i code="$1"
 	local msg="$2"
@@ -91,31 +101,37 @@ exitme() {
 	exit "$code"
 }
 
-#** control_c: control-c trap
-#*
+# @description Handle Ctrl-C interrupt
+#
+# @exitcode 1 Always exits with error
 control_c() {
 	echo -e "\nCtrl-c detected\nCleaning up and exiting."
 	exitme 1
 }
 
-#** check_jq: check if jq is installed, offer to install if not
-#*
+# @description Check if jq is installed, offer to install if not
+#
+# @exitcode 0 jq is available
+# @exitcode 1 jq not available and user declined install
 check_jq() {
 	command -v jq &>/dev/null && return 0
 
 	echo "jq is required but not installed."
 	read -rp "Would you like to install jq now? (y/n): " response
 	if [[ "$response" =~ ^[Yy] ]]; then
-	    echo "Installing jq..."
-	    sudo dnf install -y jq || exitme 1 "Failed to install jq"
-	    echo "jq installed successfully."
+		echo "Installing jq..."
+		sudo dnf install -y jq || exitme 1 "Failed to install jq"
+		echo "jq installed successfully."
 	else
-	    exitme 1 "jq is required to run this script."
+		exitme 1 "jq is required to run this script."
 	fi
+	return 0
 }
 
-#** check_lab: check if lab is installed, offer to install if not
-#*
+# @description Check if lab CLI is installed, offer to install if not
+#
+# @exitcode 0 lab is available
+# @exitcode 1 lab not available and user declined install
 check_lab() {
 	local repo_file="/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:bmeneguele:rhkernel-devtools.repo"
 
@@ -124,65 +140,74 @@ check_lab() {
 	echo "lab is required but not installed."
 
 	if [[ ! -f "$repo_file" ]]; then
-	    echo -e "\nThe rhkernel-devtools COPR repo is not configured."
-	    echo "To install lab, you need to add the repo first:"
-	    echo ""
-	    echo "  sudo dnf copr enable bmeneguele/rhkernel-devtools"
-	    echo ""
-	    echo "Then run this script again."
-	    exitme 1 "Missing required repo for lab installation."
+		echo -e "\nThe rhkernel-devtools COPR repo is not configured."
+		echo "To install lab, you need to add the repo first:"
+		echo ""
+		echo "  sudo dnf copr enable bmeneguele/rhkernel-devtools"
+		echo ""
+		echo "Then run this script again."
+		exitme 1 "Missing required repo for lab installation."
 	fi
 
 	read -rp "Would you like to install lab now? (y/n): " response
 	if [[ "$response" =~ ^[Yy] ]]; then
-	    echo "Installing lab..."
-	    sudo dnf install -y lab || exitme 1 "Failed to install lab"
-	    echo "lab installed successfully."
+		echo "Installing lab..."
+		sudo dnf install -y lab || exitme 1 "Failed to install lab"
+		echo "lab installed successfully."
 	else
-	    exitme 1 "lab is required to run this script."
+		exitme 1 "lab is required to run this script."
 	fi
+	return 0
 }
 
-#** check_labconfig: check if lab.toml exists
-#*
+# @description Check if lab.toml configuration file exists
+#
+# @exitcode 0 Config file exists
+# @exitcode 1 Config file not found
 check_labconfig() {
 	if [[ ! -f "$config_file" ]]; then
-	    echo "lab configuration file not found at: $config_file"
-	    echo ""
-	    echo "Please run 'lab' once to configure it with your GitLab token."
-	    exitme 1 "Missing lab configuration."
+		echo "lab configuration file not found at: $config_file"
+		echo ""
+		echo "Please run 'lab' once to configure it with your GitLab token."
+		exitme 1 "Missing lab configuration."
 	fi
+	return 0
 }
 
-#** get_token: extract token from lab.toml (robust)
-#*
+# @description Extract API token from lab.toml configuration
+#
+# @set token string GitLab API token
+#
+# @exitcode 0 Token extracted successfully
+# @exitcode 1 Could not extract token
 get_token() {
 	token=$(
-	    awk -F'=' '
-		/^[[:space:]]*(token|api_token)[[:space:]]*=/ {
-		    val=$2
-		    gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
-		    gsub(/#.*/, "", val)
-		    gsub(/^"[[:space:]]*|[[:space:]]*"$/, "", val)
-		    gsub(/^'\''[[:space:]]*|[[:space:]]*'\''$/, "", val)
-		    if (val != "") { print val; exit }
-		}
-	    ' "$config_file"
+		awk -F'=' '
+			/^[[:space:]]*(token|api_token)[[:space:]]*=/ {
+				val=$2
+				gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+				gsub(/#.*/, "", val)
+				gsub(/^"[[:space:]]*|[[:space:]]*"$/, "", val)
+				gsub(/^'\''[[:space:]]*|[[:space:]]*'\''$/, "", val)
+				if (val != "") { print val; exit }
+			}
+		' "$config_file"
 	)
 
 	if [[ -z "$token" ]]; then
-	    exitme 1 "Error: Could not extract token from $config_file"
+		exitme 1 "Error: Could not extract token from $config_file"
 	fi
+	return 0
 }
 
-#** convert_date: convert a date expression to ISO 8601 format for GitLab API
-#*
-# Arguments:
-#   $1 - date expression (e.g., "2025-12-17", "Dec-17-2025", "2 weeks ago")
+# @description Convert a date expression to ISO 8601 format for GitLab API
 #
-# Output:
-#   ISO 8601 formatted date string (YYYY-MM-DDTHH:MM:SSZ)
-#*
+# @arg $1 string Date expression (e.g., "2025-12-17", "2 weeks ago")
+#
+# @stdout ISO 8601 formatted date string (YYYY-MM-DDTHH:MM:SSZ)
+#
+# @exitcode 0 Date converted successfully
+# @exitcode 1 Invalid date expression
 convert_date() {
 	local date_expr="$1"
 	local iso_date
@@ -192,20 +217,27 @@ convert_date() {
 		exitme 1 "Error: Invalid date expression '$date_expr'"
 	fi
 	echo "$iso_date"
+	return 0
 }
 
-#** list_mrs: list merge requests with filters
-#*
-# Globals used:
-#   b_state_open   - include open MRs
-#   b_state_merged - include merged MRs
-#   b_state_closed - include closed MRs
-#   project_filter - project name filter (partial match)
-#   title_regex    - regex filter for title only
-#   date_before    - filter MRs created before this date
-#   date_after     - filter MRs created after this date
-#   b_count_only   - if 1, only output the count
-#*
+# @description List merge requests with configured filters
+#
+# Queries GitLab API and applies filters for state, project, title, and dates.
+# Handles pagination automatically.
+#
+# @set b_state_open int Include open MRs flag
+# @set b_state_merged int Include merged MRs flag
+# @set b_state_closed int Include closed MRs flag
+# @set project_filter string Project name filter
+# @set title_regex string Title regex filter
+# @set date_before string Filter MRs before this date
+# @set date_after string Filter MRs after this date
+# @set b_count_only int Output count only flag
+#
+# @stdout JSON objects for each MR, or count if -c specified
+#
+# @exitcode 0 Success
+# @exitcode 1 API error
 list_mrs() {
 	local -i page=1
 	local -a all_results=()
@@ -247,7 +279,7 @@ list_mrs() {
 			else
 				echo "Unexpected API response format" >&2
 			fi
-			exit 1
+			return 1
 		fi
 
 		local -i count
@@ -321,10 +353,25 @@ list_mrs() {
 			echo "$result"
 		done
 	fi
+
+	return 0
 }
 
-#** parse_args: parse command line arguments
-#*
+# @description Parse command line arguments
+#
+# @arg $@ string Command line arguments
+#
+# @set b_state_open int Open state filter
+# @set b_state_merged int Merged state filter
+# @set b_state_closed int Closed state filter
+# @set project_filter string Project filter
+# @set title_regex string Title regex filter
+# @set date_after string After date filter
+# @set date_before string Before date filter
+# @set b_count_only int Count only flag
+#
+# @exitcode 0 Success
+# @exitcode 1 Invalid argument
 parse_args() {
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
@@ -378,10 +425,15 @@ parse_args() {
 		esac
 		shift
 	done
+	return 0
 }
 
-#** main: entry point
-#*
+# @description Main entry point
+#
+# @arg $@ string Command line arguments
+#
+# @exitcode 0 Success
+# @exitcode 1 Error (missing deps, API error, etc.)
 main() {
 	trap control_c SIGINT
 
@@ -394,7 +446,8 @@ main() {
 
 	get_token
 	list_mrs
+
+	return $?
 }
 
 main "$@"
-
