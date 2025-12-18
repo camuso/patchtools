@@ -1,17 +1,18 @@
 #!/bin/bash
 #
-# docscript
-#
-# @description Extract and display documentation from shell scripts
+# docscript - Extract and display documentation from shell scripts
 #
 # Supports two documentation formats:
 #   1. Legacy format: #** to start, #* to end
 #   2. shdoc format: # @description, # @arg, # @exitcode, etc.
 #
-# @example
-#   docscript myscript.sh           # List all documented functions
-#   docscript -v myscript.sh        # Verbose output with full docs
-#   docscript -f funcname script.sh # Show docs for specific function
+# Script-level documentation uses: # scriptname - description
+#
+# Usage:
+#   docscript myscript.sh           # List documented functions (concise)
+#   docscript -s myscript.sh        # Include script description header
+#   docscript -v myscript.sh        # Verbose (auto-includes script desc)
+#   docscript -f funcname script.sh # Show specific function only
 
 declare MYDIR=
 declare MYLIB=
@@ -20,6 +21,7 @@ declare background=
 declare usagestr=
 declare optcount=0
 declare b_verbose=false
+declare b_script=false
 declare file=
 declare b_func=false
 declare fname=
@@ -42,15 +44,28 @@ Supports two documentation formats:
   1. Legacy: #** ... #* delimited blocks
   2. shdoc:  # @description, # @arg, # @exitcode, etc.
 
+Script-level documentation uses the format:
+  # scriptname - Brief description
+
 Arguments
 ---------
    file : script with documentation comments
 
 Options
 -------
-  -v : verbose output (show full documentation block)
+  -s      : show script description header (concise mode only)
+  -v      : verbose output with full documentation blocks
+            (automatically includes script description)
   -f func : show documentation for specific function only
-  -h : this help text
+            (does not show script description)
+  -h      : this help text
+
+Examples
+--------
+  $(basename "$0") myscript.sh           # List functions (concise)
+  $(basename "$0") -s myscript.sh        # Include script description
+  $(basename "$0") -v myscript.sh        # Full docs (includes script desc)
+  $(basename "$0") -f parse myscript.sh  # Show only 'parse' function
 \0
 EOF
 )
@@ -80,6 +95,7 @@ init() {
 #
 # @set optcount int Number of options parsed
 # @set b_verbose bool Whether to show verbose output
+# @set b_script bool Whether to show script description
 # @set b_func bool Whether filtering by function name
 # @set fname string Function name to filter (if -f used)
 #
@@ -96,6 +112,8 @@ parseopts() {
 		((optcount++))
 
 		case "$opt" in
+		s ) b_script=true
+		    ;;
 		v ) b_verbose=true
 		    ;;
 		f ) fname="$1"
@@ -155,6 +173,68 @@ get_func_name() {
 	echo "$name"
 }
 
+# @description Display script header documentation
+#
+# Extracts and displays the script-level comments from the file header.
+# Looks for the pattern "# scriptname - description" and subsequent comments.
+#
+# @arg $1 string Path to script file
+#
+# @stdout Script name, description, and usage information
+# @exitcode 0 Always succeeds
+show_script_description() {
+	local file="$1"
+	local line
+	local -i lnum=0
+	local in_header=false
+	local script_name=""
+	local script_desc=""
+	local bar
+	local dash
+
+	bar="$(printf '=%.0s' {1..75})"
+	dash="$(printf -- "-%.0s" {1..75})"
+
+	echo -e "\n${bar}"
+
+	while IFS= read -r line || [[ -n "$line" ]]; do
+		((++lnum))
+
+		# Skip shebang
+		[[ "$line" =~ ^#! ]] && continue
+
+		# Skip empty comment lines at start
+		[[ "$line" == "#" ]] && continue
+
+		# Look for "# scriptname - description" pattern
+		if [[ "$line" =~ ^#[[:space:]]+([^[:space:]]+)[[:space:]]+-[[:space:]]+(.+)$ ]]; then
+			script_name="${BASH_REMATCH[1]}"
+			script_desc="${BASH_REMATCH[2]}"
+			echo -e "${STA}Script: $MNU${script_name}$OFF - $script_desc"
+			echo "$dash"
+			in_header=true
+			continue
+		fi
+
+		# If we're in the header, print comment lines
+		if $in_header; then
+			if [[ "$line" =~ ^#[[:space:]]?(.*)$ ]]; then
+				echo "${BASH_REMATCH[1]}"
+			elif [[ -z "$line" ]] || [[ ! "$line" =~ ^# ]]; then
+				# End of header comments
+				break
+			fi
+		fi
+
+		# Stop if we hit non-comment code
+		[[ ! "$line" =~ ^# ]] && [[ -n "$line" ]] && break
+
+	done < "$file"
+
+	echo -e "${bar}\n"
+	return 0
+}
+
 # @description Parse and display documentation from a script file
 #
 # Handles both legacy (#**/#*) and shdoc (# @description) formats.
@@ -190,6 +270,15 @@ main() {
 	file="$1"
 
 	[ -f "$file" ] || { echo -e "$usagestr"; exit 1; }
+
+	# Show script description:
+	#   - Always in verbose mode (unless -f is used)
+	#   - In concise mode only if -s is specified
+	if ! $b_func; then
+		if $b_verbose || $b_script; then
+			show_script_description "$file"
+		fi
+	fi
 
 	while IFS= read -r line || [[ -n "$line" ]]; do
 		((++lnum))
