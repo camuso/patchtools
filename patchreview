@@ -1,25 +1,34 @@
 #!/bin/bash
 #
-# patchreview
+# patchreview - Interactive patch review tool
 #
-# This script assumes that you have already extracted your patches into
-# the directory named as "indir" below. Only files named "*.patch" will
-# be considered.
+# A comprehensive interactive tool for reviewing kernel patches by
+# comparing downstream (RHEL) patches against their upstream counterparts.
+# Supports both email-based patch workflows and GitLab Merge Request workflows.
 #
-# To create a patch set from email ...
-# In mutt, tag the thread you want to extract with esc-t. Untag the
-# prologue, as it's not a patch. Then extract the thread into text
-# files using ;-esc-C (uppercase C). When prompted for the directory,
-# type the name of the mailbox directory or uparrow to the previous
-# save.
+# Features:
+#   - Compare downstream patches with upstream commits
+#   - Seek missing Fixes: tags in patch series
+#   - Interactive menu system for configuration and operations
+#   - GitLab Merge Request integration for direct MR review
+#   - Batch and interactive patch comparison modes
+#   - Multiple diff editor support (vimdiff, meld, tkdiff)
 #
-# This script can also be used to compare any two patch sets.
+# This script assumes patches are extracted into the configured "indir".
+# Only files named "*.patch" will be considered.
 #
-# Calls on the following external scripts.
+# To create a patch set from email:
+#   In mutt, tag the thread with esc-t. Untag the prologue (not a patch).
+#   Extract with ;-esc-C (uppercase C) to the mailbox directory.
 #
-# ./patcmp
-# ./patbatcmp
-# ./patbatcmpmgr
+# Calls on external scripts: patcmp, patbatcmp, patbatcmpmgr
+#
+# Usage:
+#   patchreview                    # Interactive mode
+#   patchreview mr 12345           # Review a specific merge request
+#   patchreview format             # Format upstream patches
+#   patchreview seek               # Seek missing fixes in patches
+#   patchreview compare            # Compare patches
 #
 
 # Global background color declared here to provide color for all
@@ -78,25 +87,28 @@ source "$MYLIB"/config-manager.source
 # Functions
 #########################################
 
+# @description Initialize default boolean values for program flow control
+# @set b_rename_infiles bool Set to true (rename input files by default)
+# @set b_fmt_upstream bool Set to true (format upstream patches by default)
+# @exitcode 0 Always succeeds
 init_booleans() {
-	# Only these two booleans are inited to true at the
-	# beginning of every invocation of the script.
-	#
 	for bool in \
 	b_rename_infiles \
 	b_fmt_upstream
 	do
 		set_cfg_item $bool true
 	done
+	return 0
 }
 
-# get_booleans
-#
-# Read the values of the program flow control booleans from the
-# config file.
-#
+# @description Read program flow control booleans from config file
+# @set b_rename_infiles bool Whether to rename input files
+# @set b_fmt_upstream bool Whether to format upstream patches
+# @set b_verbose bool Whether verbose output is enabled
+# @set b_mrcomments bool Whether to show MR comments first
+# @set b_seekfixes bool Whether to automatically seek missing fixes
+# @exitcode 0 Always succeeds
 get_booleans() {
-	# echo "patchreview::get_booleans()"
 	local bool
 	for bool in \
 	b_rename_infiles \
@@ -108,15 +120,17 @@ get_booleans() {
 		eval $bool="$(get_cfg_item $bool)"
 		ui_digit2bool $bool
 	done
+	return 0
 }
 
-# set_booleans
-#
-# Write the current values of the program flow booleans into the
-# config file.
-#
+# @description Write current program flow boolean values to config file
+# @set b_rename_infiles bool Saved to config
+# @set b_fmt_upstream bool Saved to config
+# @set b_verbose bool Saved to config
+# @set b_mrcomments bool Saved to config
+# @set b_seekfixes bool Saved to config
+# @exitcode 0 Always succeeds
 set_booleans() {
-	# echo "patchreview::set_booleans()"
 	local bool
 
 	for bool in \
@@ -132,25 +146,41 @@ set_booleans() {
 	return 0
 }
 
+# @description Prompt user and delete contents of a directory
+# @arg $1 string Directory path to clean
+# @stdout Confirmation prompt and deletion output
+# @exitcode 0 Always succeeds (user may decline)
 clean_dir() {
 	local delquery="Are you sure you want to delete the contents of:"
 	local response=false
 
 	getyn "$delquery\n\t$1\n" response
 	$response && find "$1" -mindepth 1 -exec rm -rvf '{}' \;
+	return 0
 }
 
+# @description Remove all files (not subdirectories) from indir
+# @set patchcount int Reset to 0
+# @stdout Deletion output
+# @exitcode 0 Always succeeds
 clean_indir() {
-	# remove everything in the indir, except any subdirs
 	find "$indir" -maxdepth 1 -not -type d -exec rm -vf '{}' \;
 	patchcount=0
+	return 0
 }
 
+# @description Remove all files (not subdirectories) from outdir
+# @stdout Deletion output
+# @exitcode 0 Always succeeds
 clean_outdir() {
 	find "$outdir" -maxdepth 1 -not -type d -exec rm -vf '{}' \;
 	rm -vf "$outdir"/"$mismatch_file"
+	return 0
 }
 
+# @description Interactive menu to clean indir, outdir, or both
+# @stdout Menu display and operation feedback
+# @exitcode 0 Operation completed or user quit
 clean_directories() {
 	local answer
 	local cleanstr
@@ -168,7 +198,7 @@ cat <<EOF
 EOF
 )
 	echo -e "$cleanstr"
-	loop_range_q 1 3 answer || return
+	loop_range_q 1 3 answer || return 0
 
 	case $answer in
 		1 ) clean_indir
@@ -180,17 +210,14 @@ EOF
 		    ;;
 		* ) echo "Not a valid selection for Clean Directories"
 	esac
+	return 0
 }
 
-# reset_to_lasttag - reset the current branch to its most recent tag
-#
-# Also checks that the saved lasttag is the same as the lasttag of the
-# current branch. If they are not, the reset is not executed and the user
-# is warned, because the results would be a merge of two branches.
-#
-# Globals:
-# 	lasttag
-#
+# @description Reset the current branch to its most recent tag
+# @set lasttag string The tag used for reset
+# @set b_allapplied bool Set to false after reset
+# @stdout Warning if branch mismatch, reset confirmation
+# @exitcode 0 Reset successful or declined due to branch mismatch
 reset_to_lasttag() {
 	local newlasttag
 	local errstr
@@ -212,25 +239,23 @@ We won't reset the head.$OFF
 \0
 EOF
 )
-	[ "$newlasttag" =  "$lasttag" ] || { echo -e "$errstr"; return; }
+	[ "$newlasttag" =  "$lasttag" ] || { echo -e "$errstr"; return 0; }
 
 	echo -e "$BLD\0Resetting git head to$OFF $lasttag."
 	git reset --hard "$lasttag"
 	b_allapplied=false
+	return 0
 }
 
-# nuke - delete files in indir and outdir, except logs, and reset to lasttag
-#
-#        Also calls the init sequence.
-#
-# Globals:
-# 	indir
-# 	outdir
-# 	applymode
-#
+# @description Delete files in indir/outdir, reset to lasttag, reinit defaults
+# @set indir string Input directory (cleaned)
+# @set outdir string Output directory (cleaned)
+# @set applymode int Reset to applymode_norm
+# @stdout Confirmation prompt and operation feedback
+# @exitcode 0 Operation completed or user declined
 nuke() {
 	loop_yn_ro "${MNU}Are you sure you want to delete everything in \n\
-$STA$indir$MNU and \n$STA$outdir$MNU ? \n(y/n) : $OFF" || return
+$STA$indir$MNU and \n$STA$outdir$MNU ? \n(y/n) : $OFF" || return 0
 	clean_indir
 	clean_outdir
 
@@ -244,19 +269,15 @@ $STA$indir$MNU and \n$STA$outdir$MNU ? \n(y/n) : $OFF" || return
 	# Set the apply mode to its default value
 	applymode=$applymode_norm
 	set_cfg_item applymode $applymode
+	return 0
 }
 
-# show_config_menu - display the configuration options and their current state
-#
-# Globals:
-# 	indir
-# 	indirstr
-# 	infilecount
-# 	outdir
-# 	outdirstr
-# 	patstr
-# 	editor
-#
+# @description Display configuration menu with current settings
+# @set indir string Input directory path
+# @set outdir string Output directory path
+# @set editor string Current diff editor
+# @stdout Formatted configuration menu
+# @exitcode 0 Always succeeds
 show_config_menu() {
 	local config_menu
 	local remotes="$remote_dir : $remote_repo/$remote_branch"
@@ -283,20 +304,16 @@ $MNU
 EOF
 )
 	echo -e "$config_menu"
+	return 0
 }
 
-# config_parser - config the options selected from the config menu
-#
-# Globals
-# 	opmode
-# 	opmode_mr
-# 	opmode_states
-# 	b_mrflag
-# 	indir
-# 	indirstr
-# 	outdir
-# 	outdirstr
-#
+# @description Parse and execute configuration menu selections
+# @set opmode int Current operating mode
+# @set b_mrflag bool Whether in merge request mode
+# @set indir string Input directory path
+# @set outdir string Output directory path
+# @stdout Menu display and operation feedback
+# @exitcode 0 User quit the menu
 config_parser() {
 	local opt
 
@@ -338,25 +355,19 @@ config_parser() {
 			;;
 		h )     ptpage -b "$background" "$config_man"
 			;;
-		q ) 	return
+		q ) 	return 0
 			;;
 		esac
 	done
 }
 
-# show_extops - display the extended operations menu
-#
-# Presents the Discrete Operations
-#
-# Globals
-# 	b_mrflag
-# 	indir
-# 	outdir
-# 	current_head_trunc
-# 	indirstr
-# 	outdirstr
-# 	lasttag
-#
+# @description Display extended/discrete operations menu
+# @set b_mrflag bool Whether in merge request mode
+# @set indir string Input directory path
+# @set outdir string Output directory path
+# @set lasttag string Most recent git tag
+# @stdout Formatted discrete operations menu
+# @exitcode 0 Always succeeds
 show_extops() {
 	local opt
 	local extops
@@ -382,18 +393,16 @@ $OFF
 EOF
 )
 	echo -e "$extops"
+	return 0
 }
 
-# show_mr_menu - display the Merge Request opmode of the Main menu
-#
-# Gobals
-# 	lasttag
-# 	remote_repo
-# 	remote_branch
-# 	mergelist_filter
-# 	menumode
-# 	menumode_ext
-#
+# @description Display the Merge Request mode main menu
+# @set lasttag string Most recent git tag
+# @set remote_repo string Remote repository name
+# @set remote_branch string Remote branch name
+# @set menumode int Current menu mode
+# @stdout Formatted MR mode menu
+# @exitcode 0 Always succeeds
 show_mr_menu() {
 	local opt
 	local remotes="$remote_dir : $remote_repo/$remote_branch"
@@ -430,16 +439,15 @@ EOF
 )
 	echo -e "$mr_menu"
 	[ "$menumode" -eq "$menumode_ext" ] && show_extops
+	return 0
 }
 
-# show_email_menu - display the email opmode of the main menu
-#
-# Globals:
-# 	lasttag
-#	current_head_trunc
-#	remote_repo
-# 	remote_branch
-#
+# @description Display the email mode main menu
+# @set lasttag string Most recent git tag
+# @set remote_repo string Remote repository name
+# @set remote_branch string Remote branch name
+# @stdout Formatted email mode menu
+# @exitcode 0 Always succeeds
 show_email_menu() {
 	local opt
 	local remotes="$remote_dir : $remote_repo/$remote_branch"
@@ -476,37 +484,30 @@ EOF
 )
 	echo -e "$email_menu"
 	[ "$menumode" -eq $menumode_ext ]  && show_extops
+	return 0
 }
 
+# @description Wrapper to call select_merge_request
+# @exitcode rc_run MR selected successfully
+# @exitcode rc_pass Selection cancelled or failed
 call_selmr() {
 	select_merge_request && return $rc_run || return $rc_pass
 }
 
+# @description Wrapper to call get_merge_request with -u flag
+# @exitcode rc_run MR retrieved successfully
+# @exitcode rc_pass Retrieval cancelled or failed
 call_getmr() {
 	get_merge_request -u && return $rc_run || return $rc_pass
 }
 
-# case_qanret - look for return values from call to query_acknack
-#
-# This function allows query_acknack to act as an adjunct menu for
-# the main patchreview menu. It guarantees that calls to query_acknack
-# will return to menu_parser to execute calls to run patchreviews from
-# the query_acknack menu. This is necessary, because a patchreview will
-# call query_acknack after comparing patches. Allowing query_acknack to
-# call another patchreview directly would start an unintended recursion,
-# because, in effect, query_acknack will be calling itself at the end
-# of the chain of patchreview functions.
-#
-# Globals:
-#   menuinput   - a main menu selection
-#   mrqan_news  - display the current list of MRs
-#   mrqan_newg  - get a new specific MR to review
-#   rc_continue - present the main patchreview menu
-#   rc_run      - run the patchreview
-#
-# Arguments:
-#   $1 - return value from MR ack/nak menu
-#
+# @description Process return values from query_acknack for menu navigation
+#   Allows query_acknack to act as an adjunct menu, returning to menu_parser
+#   for patchreview execution, avoiding unintended recursion.
+# @arg $1 int Return value from MR ack/nak menu
+# @set menuinput string Main menu selection character
+# @exitcode rc_run Run the patchreview
+# @exitcode rc_continue Present the main patchreview menu
 case_qanret() {
 	local stat=
 	menuinput=
@@ -519,6 +520,11 @@ case_qanret() {
 	return $stat
 }
 
+# @description Parse and execute main menu selections
+# @set menuinput string Current menu selection (global)
+# @exitcode rc_run Execute batch run
+# @exitcode rc_pass Selection processed, continue menu
+# @exitcode rc_continue Continue menu loop
 menu_parser() {
 	local stat
 
@@ -623,41 +629,41 @@ menu_parser() {
 	return $rc_continue
 }
 
+# @description Initialize file path variables for patch tracking
+# @set bp_commits string Path to backport commits file
+# @set us_commits string Path to upstream commits file
+# @set usvbp_commits string Path to upstream vs backport commits file
+# @set mmfile string Path to mismatch file
+# @set missing_fixes string Path to missing fixes file
+# @exitcode 0 Always succeeds
 init_files() {
 	bp_commits="$outdir/$bp_commits_name"
 	us_commits="$outdir/$us_commits_name"
 	usvbp_commits="$outdir/$usvbp_commits_name"
 	mmfile="$outdir/$mismatch_file"
 	missing_fixes="$outdir/missing_fixes"
+	return 0
 }
 
-# init_loopvars - init the global variables used in menus
-#
-# This needs to be called for every pass through the config and
-# main menus.
-#
-# Globals:
-# 	All clearly visible on every line.
-#
+# @description Initialize global variables used in menus
+#   Called for every pass through the config and main menus.
+# @set b_mrflag bool Set true if in MR mode
+# @exitcode 0 Always succeeds
 init_loopvars() {
 	cfg_read_configfile
 	((opmode == opmode_mr)) && b_mrflag=true
 	init_files
 	init_mr
+	return 0
 }
 
-# menu_loop - loop containing the call to the menu_parser
-#
-# The main function of this loop is to init all the variables that are
-# presented in the primary and configuration menus, and to call the
-# menu_parser function in a loop.
-#
-# Globals
-# 	menuinput
-# 	b_mrflag
-# 	rc_run
-# 	indir
-#
+# @description Main menu loop with menu display and parsing
+#   Initializes menu variables and calls menu_parser in a loop until
+#   user requests a batch run or quit.
+# @set menuinput string Current menu selection
+# @set b_mrflag bool Whether in MR mode
+# @exitcode 0 Normal exit
+# @exitcode rc_run User requested batch run
 menu_loop() {
 
 	get_booleans
@@ -688,18 +694,14 @@ menu_loop() {
 	return $stat
 }
 
-# get_labuser() - get the gitlab username for $USER
-#
-# Unfortunately, the gitlab username is not always the same as the $USER
-# on the system. This function extracts the gitlab username from the
-# ~/.config/lab/lab.toml file.
-#
-# Globals
-# 	labuser
-#
+# @description Get GitLab username from lab.toml config
+#   GitLab username may differ from system $USER, so this extracts
+#   the username from ~/.config/lab/lab.toml.
+# @set labuser string GitLab username
+# @stdout Error message if config not found
+# @exitcode 0 Username extracted successfully
+# @exitcode 1 Config file missing or empty
 get_labuser() {
-	# Global: labuser
-	#
 	local usrline
 	local usrmsg
 
@@ -730,15 +732,14 @@ EOF
 	return 0
 }
 
-###########################################
-# Parameter Initialization
-###########################################
-#
-# GLobals
-# 	MYDATA
-# 	last_tag_file
-# 	branchlist
-#
+# @description Initialize all script parameters and configuration
+# @set configfile string Path to patchreview.conf
+# @set branchlist string Path to branchlist file
+# @set last_tag_file string Path to lasttag file
+# @set indir string Input directory path
+# @set outdir string Output directory path
+# @exitcode 0 Initialization successful
+# @exitcode 1 Failed to get lab user
 init_parms() {
 	local confline
 	local configfile=
@@ -791,28 +792,17 @@ init_parms() {
 	if [ -z "$remote_repo" ] || [ -z "$remote_branch" ]; then set_remote_seek; fi
 
 	init_mr
+	return 0
 }
 
-##############################################
-# Main Program Loop
-##############################################
-#
-# main_loop - this is the loop for the top layer of the script
-#
-# When menu_loop returns, the patchreview is executed using the variables
-# and environment selected by the user in the menu_loop.
-#
-# Globals:
-# 	menuinput
-# 	b_mrflag
-# 	b_rename_infiles
-# 	b_fmt_upstream
-# 	b_seekfixes
-# 	applymode
-# 	applymode_off
-# 	cmpmode
-# 	cmpmode_off
-#
+# @description Main program loop - top layer of the script
+#   When menu_loop returns, executes patchreview with user-selected
+#   variables and environment. Loops until user quits.
+# @set menuinput string Current menu selection
+# @set b_mrflag bool Whether in MR mode
+# @set applymode int Patch apply mode
+# @set cmpmode int Comparison mode
+# @exitcode 0 Never returns normally (loops until exit)
 main_loop() {
 	local stat=0
 
@@ -848,6 +838,11 @@ main_loop() {
 	done
 }
 
+# @description Prompt user to enter a merge request number
+# @set current_mr string The entered MR number
+# @stdout User prompt
+# @exitcode 0 MR number entered
+# @exitcode ui_err_missing_arg User quit
 cmd_getmr() {
 	while :; do
 		getuser "Enter a merge request number or $qstr$INF to quit: " \
@@ -860,6 +855,10 @@ cmd_getmr() {
 	done
 }
 
+# @description Process MR command from command line
+# @arg $@ string MR number and optional subcommands
+# @set current_mr string The MR number to process
+# @exitcode 0 MR processed successfully
 cmd_mr() {
 	local cmdline=
 	local stat
@@ -886,10 +885,11 @@ cmd_mr() {
 		query_acknack
 		exit_me 0
 	fi
+	return 0
 }
 
-# cmd_check_fixes - execute the -S command line option
-#
+# @description Execute the seek/check fixes command line option
+# @exitcode 0 Always succeeds
 cmd_check_fixes() {
 	local stat=0
 
@@ -899,6 +899,9 @@ cmd_check_fixes() {
 	return 0
 }
 
+# @description Display verbose mode toggle status
+# @stdout Current and next verbose state
+# @exitcode 0 Always succeeds
 cmd_show_verbose() {
 
 	if $b_verbose; then
@@ -910,8 +913,12 @@ cmd_show_verbose() {
 	fi
 
 	echo -e "set verbose displays $next$INF : currently $curr"
+	return 0
 }
 
+# @description Display current script configuration status
+# @stdout Formatted status of all configuration parameters
+# @exitcode 0 Always succeeds
 cmd_show_status() {
 	local statscreen
 
@@ -930,10 +937,13 @@ $OFF
 EOF
 )
 	echo -e "$statscreen"
+	return 0
 }
 
-#** check_lab: check if lab is installed, offer to install if not
-#*
+# @description Check if lab CLI is installed, offer to install if not
+# @stdout Installation prompts and status messages
+# @exitcode 0 lab is installed or was installed successfully
+# @exitcode 1 lab not installed and user declined or repo not configured
 check_lab() {
 	local repo_file="/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:bmeneguele:rhkernel-devtools.repo"
 	local response
@@ -962,10 +972,13 @@ Then run this script again.$OFF"
 		echo -e "${WRN}lab is required to run this script.$OFF"
 		exit 1
 	fi
+	return 0
 }
 
-#** check_labconfig: check if lab.toml exists and is configured
-#*
+# @description Check if lab.toml config file exists
+# @stdout Error message with setup instructions if config missing
+# @exitcode 0 Config file exists
+# @exitcode 1 Config file missing (exits script)
 check_labconfig() {
 	local config_file="$HOME/.config/lab/lab.toml"
 	local labmsg
@@ -994,16 +1007,23 @@ EOF
 	exit 1
 }
 
+# @description Check environment prerequisites before running
+# @exitcode 0 Environment is ready
+# @exitcode 1 Missing dependencies or invalid repo (exits script)
 check_env() {
 	check_lab
 	check_labconfig
 	git_checkrepo || { git_invrepomsg && exit 1; }
 	init_parms
 	init_files
+	return 0
 }
 
-# parse_cmdline - command line interface
-#
+# @description Parse and execute command line arguments
+# @arg $@ string Command line arguments
+# @stdout Help text, status, or operation output
+# @exitcode 0 Command executed successfully
+# @exitcode 1 Invalid argument
 parse_cmdline() {
 	local argc=$#
 	local cmdlineops
@@ -1111,9 +1131,10 @@ EOF
 	exit_me 0
 }
 
-#############################
-# main() entry point
-#############################
+# @description Main entry point for patchreview
+# @arg $@ string Command line arguments (optional)
+# @exitcode 0 Success
+# @exitcode 1 Error
 main() {
 	local argc=$#
 
@@ -1122,7 +1143,6 @@ main() {
 		git_get_lasttag lasttag "$last_tag_file"
 		main_loop
 	else
-
 		check_env
 		[ "$1" == "man" ] && {
 			ptpage -b $background "$main_man"
@@ -1131,11 +1151,9 @@ main() {
 		parse_cmdline "$@"
 	fi
 
-	exit 0
+	return 0
 }
 
-# Call main.
-# Exit when done.
-#
+# Call main and exit
 main "$@"
 exit_me 0
