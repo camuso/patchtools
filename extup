@@ -1,8 +1,19 @@
 #!/bin/bash
+#
+# @description Display downstream commits alongside their upstream counterparts
+#
+# Shows the current branch commit followed by the corresponding upstream
+# commit and dates. The script assumes that the first commit hash it
+# encounters in the commit log will be the upstream commit.
+#
+# If there is no upstream commit found, a series of dashes is printed
+# in its place, and the current branch commit date is printed instead.
+#
+# @example
+#   extup HEAD~10.. drivers/usb/     # Last 10 commits in drivers/usb
+#   extup -5 -r drivers/char/ipmi/   # 5 commits, oldest first
+#   extup -b HEAD~5..                # Show only upstream commits
 
-#
-# Text Attributes
-#
 [ "$MYDIR" ] || {
 	declare MYDIR=
 	MYDIR="$(dirname "$(readlink -f "$0")")"
@@ -29,7 +40,7 @@ declare show_b=true
 declare notupstream="-------------"
 declare cmthash=
 declare nomerges=
-declare dates="-c -d"	# These will be cleared if the user enters -m option
+declare dates="-c -d"		# These will be cleared if the user enters -m option
 declare usagestr=
 declare path=
 declare numregex='^[0-9]+$'
@@ -70,19 +81,23 @@ Options must have a leading hyphen
 EOF
 )
 
+# @description Display usage and exit
+#
+# @exitcode 0 Always succeeds
 exitme() {
 	echo -e "$usagestr"
 	exit 0
 }
 
-# loop_range()
+# @description Prompt user for a number within a range
 #
-# Loop until user gives a number in the range defined by the args
+# Loop until user gives a number in the defined range.
 #
-# $1 - minimum
-# $2 - maximum
-# $3 - the value to be returned
+# @arg $1 int Minimum value
+# @arg $2 int Maximum value
+# @arg $3 string Variable name to receive the result
 #
+# @exitcode 0 Valid number received
 loop_range() {
 	local -i min=$1
 	local -i max=$2
@@ -92,7 +107,6 @@ loop_range() {
 "$OFF\0Please enter a number between $BLD$min$OFF and $BLD$max$OFF: "
 
 	[ "$max" -lt 10 ] && cmd=promptgetchar || cmd=getuser
-	# echo "cmd: $cmd"
 
 	while true; do
 		$cmd "$pstr" number
@@ -107,6 +121,13 @@ loop_range() {
 	done
 }
 
+# @description Present list of commits for user to choose from
+#
+# @arg $1 string Newline-separated list of commits
+#
+# @stdout The selected commit
+#
+# @exitcode 0 Success
 choose_commit() {
 	local list="$1"
 	local line=
@@ -126,14 +147,18 @@ choose_commit() {
 
 	((--index))
 	echo "${ary[$index]}"
+	return 0
 }
 
-# is_validcmtexpr
+# @description Validate a git commit expression
 #
-# Break the commit expression into separate strings, dividing on a
-# double dot elipsis, and cycle through the resulting array to
-# check each of the commits.
+# Breaks the commit expression on double-dot (..) and validates
+# each component using git rev-parse.
 #
+# @arg $1 string Commit expression to validate
+#
+# @exitcode 0 Valid commit expression
+# @exitcode 1 Invalid commit expression
 is_validcmtexpr() {
 	local tmp=$1
 	local -a cary=()
@@ -148,126 +173,157 @@ is_validcmtexpr() {
 	return 0
 }
 
-#** extract_upcmt: extract upstream commit from downstream hash
+# @description Extract upstream commit from downstream hash
 #
 # Echoes the extracted upstream hash to the caller. If there is no
 # upstream commit in the downstream hash passed as argument, then it
 # returns an empty string.
 #
-# Globals
-#   none
+# @arg $1 string Downstream hash (defaults to HEAD)
 #
-# Arguments
-#   1 - dnhash: downstream hash
+# @stdout Short upstream commit hash or empty string
 #
-#*
+# @exitcode 0 Success (may still output empty string if not found)
 extract_upcmt() {
 	local dnhash="${1:-"HEAD"}"	# default is HEAD
 
 	git log -1 --pretty=%B "$dnhash" \
 		| awk '/^commit[[:space:]]+[0-9a-f]{40}/ { print $2; exit }' \
 		| xargs git rev-parse --short 2> /dev/null
+	return 0
 }
 
+# @description Parse command line arguments
+#
+# @set count int Number of commits to show
+# @set rev string Reverse flag
+# @set show_b bool Whether to show downstream commits
+# @set nomerges string No-merges flag
+# @set dates string Date display flags
+# @set path string Paths to filter
+# @set cmtexpr string Commit expression
+#
+# @exitcode 0 Success
 parseargs() {
 	local arg=
 	local opt=
 
 	while (($# > 0)); do
-	    arg="$1"
+		arg="$1"
 
-	    if [ "${arg:0:1}" == '-' ]; then
-		opt="${arg:1}"
+		if [ "${arg:0:1}" == '-' ]; then
+			opt="${arg:1}"
 
-		if [[ $opt =~ $numregex ]]; then
-			count=$arg;	# include the '-'
-			shift
-			continue
+			if [[ $opt =~ $numregex ]]; then
+				count=$arg	# include the '-'
+				shift
+				continue
+			fi
+
+			case "$opt" in
+				u )
+					shift
+					updir="$1"
+					;;
+				r )
+					rev="--reverse"
+					;;
+				b )
+					show_b=false	# don't show downstream commit
+					;;
+				n )
+					nomerges="--no-merges"
+					;;
+				m )
+					dates=		# don't show dates
+					;;
+				h )
+					exitme
+					;;
+			esac
+
+		elif [ -e "$arg" ]; then
+			path="$path $arg"
+		elif is_validcmtexpr "$arg"; then
+			cmtexpr="$arg"
 		fi
 
-		case "$opt" in
-			u ) 	shift
-				updir="$1"
-				;;
-			r ) 	rev="--reverse"
-				;;
-			b ) 	show_b=false	# don't show downstream commit
-				;;
-			n ) 	nomerges="--no-merges"
-				;;
-			m ) 	dates=		# don't show dates
-				;;
-			h ) 	exitme
-		esac
-
-	    elif [ -e "$arg" ]; then
-			path="$path $arg"
-	    elif is_validcmtexpr "$arg"; then
-			cmtexpr="$arg"
-	    fi
-
-	    shift
-
+		shift
 	done
+	return 0
 }
 
-(($# >= 1)) || exitme
-
-parseargs "$@"
-
-# If the user didn't provide an upstream dir with the  -u option,
-# default to current directory.
-[ -z "$updir" ] && updir="./"
-
-# Create an array of hashes from the current (rhel) branch using the
-# options entered by the user.
+# @description Main execution - display downstream/upstream commit pairs
 #
-blist=($(git log $nomerges $count --oneline $rev --pretty=format:%h "$cmtexpr" -- $path))
+# Processes command line arguments and iterates through commits,
+# displaying each downstream commit alongside its upstream counterpart.
+#
+# @exitcode 0 Success
+# @exitcode 1 No arguments provided
+main() {
+	local log
+	local astr
+	local tmp
+	local uc
+	local as
 
-for ((i=0; i < ${#blist[@]}; ++i)); do
+	(($# >= 1)) || exitme
 
-	# skip over the downstream (RHEL) commit header
-	log="$(git log -1  --pretty=%B "${blist[$i]}")"
+	parseargs "$@"
 
-	# extract the first commit line we encounter
-	cmthash="$(awk '/^commit[[:space:]]+[0-9a-f]{40}/ { print $2; exit }' <<< "$log")"
+	# If the user didn't provide an upstream dir with the -u option,
+	# default to current directory.
+	[ -z "$updir" ] && updir="./"
 
-	# if we didn't find one, then see if it's in cherry-picked format.
-	[ -z "$cmthash" ] && \
-		cmthash="$(awk '/^\(cherry-picked/ { print $2; exit }' <<< "$log")"
+	# Create an array of hashes from the current (rhel) branch using the
+	# options entered by the user.
+	blist=($(git log $nomerges $count --oneline $rev --pretty=format:%h "$cmtexpr" -- $path))
 
-	# extract the commit hash from the line
-	alist[$i]="$(git rev-parse --short "$cmthash" 2> /dev/null)"
-	stat=$?
+	for ((i=0; i < ${#blist[@]}; ++i)); do
 
-	# if the commit has a valid format, then ...
-	if [ $stat -eq 0 ]; then
+		# skip over the downstream (RHEL) commit header
+		log="$(git log -1 --pretty=%B "${blist[$i]}")"
 
-		# pushd "$updir" > /dev/null 2>&1
+		# extract the first commit line we encounter
+		cmthash="$(awk '/^commit[[:space:]]+[0-9a-f]{40}/ { print $2; exit }' <<< "$log")"
 
-		# get the pretty commit line with commit date for the hash
-		# extracted above.
-		astr=$(gitnice $dates -1 "${alist[$i]}" 2> /dev/null)
+		# if we didn't find one, then see if it's in cherry-picked format.
+		[ -z "$cmthash" ] && \
+			cmthash="$(awk '/^\(cherry-picked/ { print $2; exit }' <<< "$log")"
+
+		# extract the commit hash from the line
+		alist[$i]="$(git rev-parse --short "$cmthash" 2> /dev/null)"
 		stat=$?
 
-		# popd > /dev/null 2>&1
+		# if the commit has a valid format, then ...
+		if [ $stat -eq 0 ]; then
 
-		if [ $stat -ne 0 ]; then
-			tmp="$(gitnice $dates -1 "${blist[$i]}" | cut -d' ' -f2-)"
-			echo -e " ##\n ## Commit ${alist[$i]:0:9} identified in"\
-			        "${blist[$i]} cannot be found in any branch."
+			# get the pretty commit line with commit date for the hash
+			# extracted above.
+			astr=$(gitnice $dates -1 "${alist[$i]}" 2> /dev/null)
+			stat=$?
+
+			if [ $stat -ne 0 ]; then
+				tmp="$(gitnice $dates -1 "${blist[$i]}" | cut -d' ' -f2-)"
+				echo -e " ##\n ## Commit ${alist[$i]:0:9} identified in"\
+					"${blist[$i]} cannot be found in any branch."
+				astr="$notupstream $tmp"
+			fi
+		else
+			tmp="$(gitnice $dates -1 "${blist[$i]}" | cut -d" " -f2-)"
 			astr="$notupstream $tmp"
 		fi
-	else
-		tmp="$(gitnice $dates -1 "${blist[$i]}" | cut -d" " -f2-)"
-		astr="$notupstream $tmp"
-	fi
 
-	if $show_b; then
-		uc=$(echo "$astr" | cut -d' ' -f1)	# upstream cmt hash
-		as=$(echo "$astr" | cut -d' ' -f2-)	# upstream cmt date & desc
-		printf "%-12.12s %-12.12s %s\n" "${blist[$i]}" "$uc" "$as"
-	else
-		echo "$astr"
-	fi
-done
+		if $show_b; then
+			uc=$(echo "$astr" | cut -d' ' -f1)	# upstream cmt hash
+			as=$(echo "$astr" | cut -d' ' -f2-)	# upstream cmt date & desc
+			printf "%-12.12s %-12.12s %s\n" "${blist[$i]}" "$uc" "$as"
+		else
+			echo "$astr"
+		fi
+	done
+
+	return 0
+}
+
+main "$@"
