@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# @description Display downstream commits alongside their upstream counterparts
+# extup - Display downstream commits alongside their upstream counterparts
 #
 # Shows the current branch commit followed by the corresponding upstream
 # commit and dates. The script assumes that the first commit hash it
@@ -9,7 +9,7 @@
 # If there is no upstream commit found, a series of dashes is printed
 # in its place, and the current branch commit date is printed instead.
 #
-# @example
+# Usage:
 #   extup HEAD~10.. drivers/usb/     # Last 10 commits in drivers/usb
 #   extup -5 -r drivers/char/ipmi/   # 5 commits, oldest first
 #   extup -b HEAD~5..                # Show only upstream commits
