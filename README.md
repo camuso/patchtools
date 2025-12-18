@@ -16,8 +16,10 @@ management, backporting, and review.
 |                      | commits that may be missing.                 |
 |                      |                                              |
 | `docscript`          | Extracts and displays documentation from     |
-|                      | scripts that use `#**` and `#*` as doc       |
-|                      | delimiters.                                  |
+|                      | scripts. Supports legacy `#**`/`#*` format   |
+|                      | and shdoc format (`@description`, `@arg`,    |
+|                      | `@exitcode`). Use `-s` for script headers,   |
+|                      | `-v` for verbose output, `-f` for functions. |
 |                      |                                              |
 | `extup`              | Displays downstream commits alongside their  |
 |                      | corresponding upstream commits with dates.   |
@@ -175,7 +177,8 @@ management, backporting, and review.
 |--------------|-------------------------------------------------|
 | `basher`     | Generate bash script templates.                 |
 |              |                                                 |
-| `docscript`  | Extract documentation from scripts.             |
+| `docscript`  | Extract documentation from scripts (legacy      |
+|              | and shdoc formats, with script description).    |
 |              |                                                 |
 | `funcprof`   | Find function definitions and call sites.       |
 |              |                                                 |
@@ -277,3 +280,49 @@ mkbackportlog
 - Optional: lab CLI tool (for mygitlab-mrs, auto-install offered)
 - Optional: sshfs (for sshmount)
 - Optional: vimdiff, emacs, or tkdiff (for patcmp)
+
+---
+
+## Documentation Convention
+
+Scripts in this repository use a standardized documentation format:
+
+### Script-Level Documentation
+
+```bash
+#!/bin/bash
+#
+# scriptname - Brief description of the script
+#
+# Longer description and usage information...
+#
+# Usage:
+#   scriptname [options] arguments
+```
+
+### Function-Level Documentation (shdoc format)
+
+```bash
+# @description Brief description of what the function does
+# @arg $1 string Description of first argument
+# @arg $2 int Description of second argument
+# @set varname type Description of global variable modified
+# @stdout Description of output
+# @exitcode 0 Success
+# @exitcode 1 Error condition
+funcname() {
+    # function body
+    return 0
+}
+```
+
+### Viewing Documentation
+
+Use `docscript` to view documentation:
+
+```bash
+docscript scriptname           # List functions (concise)
+docscript -s scriptname        # Include script description
+docscript -v scriptname        # Full documentation (verbose)
+docscript -f funcname script   # Show specific function
+```
