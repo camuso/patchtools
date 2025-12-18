@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-# @description Enhanced git log --oneline with flexible formatting options
+# gitnice - Enhanced git log --oneline with flexible formatting options
 #
 # Displays commits in --oneline format with options for dates, author,
 # hash width, and reverse order. Options and arguments can be entered
 # in any order.
 #
-# @example
+# Usage:
 #   gitnice                    # Most recent commit
 #   gitnice -d -5              # Last 5 commits with author dates
 #   gitnice -d -c -a HEAD~10.. # Last 10 with dates and author

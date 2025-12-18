@@ -1,11 +1,11 @@
 #!/bin/bash
 #
-# @description List GitLab merge requests authored by you with flexible filters
+# mygitlab-mrs - List GitLab merge requests authored by you
 #
 # Query your GitLab MRs with combinable filters for state, project name,
 # title regex, and date ranges. Requires jq and lab CLI tool.
 #
-# @example
+# Usage:
 #   mygitlab-mrs                     # List all MRs
 #   mygitlab-mrs -sm                 # List only merged MRs
 #   mygitlab-mrs -so -p stream-9     # Open MRs in stream-9 projects
