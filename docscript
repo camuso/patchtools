@@ -89,23 +89,30 @@ Examples
 EOF
 )
 
+# control_c
 # @description Handle Ctrl-C interrupt
 #
+# Returns:
 # @exitcode 130 Always exits with SIGINT code
+#
 control_c() {
 	echo -e "\nCtrl-c detected\nCleaning up and exiting."
 	exit $CTLC_EXIT
 }
 
+# parseopts
 # @description Parse command line options
 #
+# Globals:
 # @set optcount int Number of options parsed
 # @set b_verbose bool Whether to show verbose output
 # @set b_script bool Whether to show script description
 # @set b_func bool Whether filtering by function name
 # @set fname string Function name to filter (if -f used)
 #
+# Returns:
 # @exitcode 0 Always succeeds
+#
 parseopts() {
 	local arg=
 	local opt=
@@ -137,37 +144,50 @@ parseopts() {
 	return 0
 }
 
+# is_shdoc_start
 # @description Check if line starts an shdoc documentation block
 #
+# Arguments:
 # @arg $1 string Line to check
 #
+# Returns:
 # @exitcode 0 Line starts shdoc block (# @description)
 # @exitcode 1 Line does not start shdoc block
+#
 is_shdoc_start() {
 	local line="$1"
 	[[ "$line" =~ ^[[:space:]]*#[[:space:]]*@description ]]
 }
 
+# is_shdoc_comment
 # @description Check if line is part of an shdoc documentation block
 #
+# Arguments:
 # @arg $1 string Line to check
 #
+# Returns:
 # @exitcode 0 Line is a comment (part of doc block)
 # @exitcode 1 Line is not a comment (end of doc block)
+#
 is_shdoc_comment() {
 	local line="$1"
 	[[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "$line" ]]
 }
 
+# format_shdoc
 # @description Format shdoc buffer into human-readable output
+#   Converts @arg, @set, @exitcode, @stdout annotations into
+#   grouped, formatted sections.
 #
-# Converts @arg, @set, @exitcode, @stdout annotations into
-# grouped, formatted sections.
-#
+# Arguments:
 # @arg $1 string The accumulated shdoc buffer
 #
+# Effects:
 # @stdout Formatted documentation
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 format_shdoc() {
 	local buffer="$1"
 	local -a args=()
@@ -259,11 +279,15 @@ format_shdoc() {
 	return 0
 }
 
+# get_func_name
 # @description Extract function name from declaration line
 #
+# Arguments:
 # @arg $1 string Line containing function declaration
 #
+# Effects:
 # @stdout Function name or "unknown"
+#
 get_func_name() {
 	local line="$1"
 	local name
@@ -279,15 +303,20 @@ get_func_name() {
 	echo "$name"
 }
 
+# show_script_description
 # @description Display script header documentation
+#   Extracts and displays the script-level comments from the file header.
+#   Looks for the pattern "# scriptname - description" and subsequent comments.
 #
-# Extracts and displays the script-level comments from the file header.
-# Looks for the pattern "# scriptname - description" and subsequent comments.
-#
+# Arguments:
 # @arg $1 string Path to script file
 #
+# Effects:
 # @stdout Script name, description, and usage information
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 show_script_description() {
 	local file="$1"
 	local line
@@ -341,16 +370,19 @@ show_script_description() {
 	return 0
 }
 
+# main
 # @description Parse and display documentation from a script file
+#   Handles both legacy (#**/#*) and shdoc (# @description) formats.
+#   In non-verbose mode, shows one-line summaries.
+#   In verbose mode, shows full documentation blocks.
 #
-# Handles both legacy (#**/#*) and shdoc (# @description) formats.
-# In non-verbose mode, shows one-line summaries.
-# In verbose mode, shows full documentation blocks.
-#
+# Arguments:
 # @arg $1 string Path to script file
 #
+# Returns:
 # @exitcode 0 Success
 # @exitcode 1 File not found or no arguments
+#
 main() {
 	local b_doc=false
 	local b_shdoc=false

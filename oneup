@@ -46,27 +46,37 @@ Arguments
 EOF
 )"
 
+# usage
 # @description Display usage information
 #
+# Effects:
 # @stdout Usage text
+#
 usage() {
 	echo -e "$usagestr"
 }
 
+# control_c
 # @description Handle Ctrl-C interrupt
 #
+# Returns:
 # @exitcode 130 SIGINT exit code
+#
 control_c() {
 	echo -e "\nCtrl-c detected\nCleaning up and exiting."
 	exit $CTLC_EXIT
 }
 
+# exitme
 # @description Exit with code and optional message
 #
+# Arguments:
 # @arg $1 int Exit code
 # @arg $2 string Optional error message
 #
+# Returns:
 # @exitcode As specified by $1
+#
 exitme() {
 	local -i code="$1"
 	local msg="$2"
@@ -76,14 +86,19 @@ exitme() {
 	exit "$code"
 }
 
+# check_arg
 # @description Check if argument is valid (not a switch)
 #
+# Arguments:
 # @arg $1 string Argument to check
 #
+# Globals:
 # @set argv array Appends valid argument
 #
+# Returns:
 # @exitcode 0 Valid argument (added to argv)
 # @exitcode 1 Invalid (starts with hyphen)
+#
 check_arg() {
 	local arg="$1"
 
@@ -95,11 +110,15 @@ check_arg() {
 	return 0
 }
 
+# parseopts
 # @description Parse command line options
 #
+# Globals:
 # @set argv array Command line arguments
 #
+# Returns:
 # @exitcode 0 Success
+#
 parseopts() {
 	while (($# > 0)); do
 		case "$1" in
@@ -116,14 +135,19 @@ parseopts() {
 	return 0
 }
 
+# main
 # @description Main entry point - extract upstream commit from downstream
 #
+# Arguments:
 # @arg $@ string Command line arguments (expects downstream commit)
 #
+# Effects:
 # @stdout The upstream commit hash
 #
+# Returns:
 # @exitcode 0 Success - upstream commit found and printed
 # @exitcode 1 No upstream commit found in the downstream commit log
+#
 main() {
 	local dnlog
 	local upcmt

@@ -110,28 +110,36 @@ $(basename "$0") [options] [commitexpr] [path]
 EOF
 )
 
+# usage
 # @description Display usage information and exit
 #
+# Arguments:
 # @arg $1 int Exit code
 #
+# Returns:
 # @exitcode As specified by $1
+#
 usage() {
 	echo -e "$usagestr"
 	exit "$1"
 }
 
+# is_validcmtexpr
 # @description Validate a git commit expression
+#   Breaks the commit expression on double-dot (..) and validates
+#   each component using git rev-parse.
 #
-# Breaks the commit expression on double-dot (..) and validates
-# each component using git rev-parse.
-#
+# Arguments:
 # @arg $1 string Commit expression to validate
 #
+# Globals:
 # @set errstr string Error message if validation fails
 # @set stat int Exit status from git rev-parse
 #
+# Returns:
 # @exitcode 0 Valid commit expression
 # @exitcode non-zero Invalid commit expression
+#
 is_validcmtexpr() {
 	local tmp=$1
 	local -a cary=()
@@ -148,11 +156,12 @@ is_validcmtexpr() {
 	return 0
 }
 
+# main
 # @description Main argument processing loop
+#   Parses all command-line arguments, handling options, commit expressions,
+#   and file paths. Options and arguments can be in any order.
 #
-# Parses all command-line arguments, handling options, commit expressions,
-# and file paths. Options and arguments can be in any order.
-#
+# Globals:
 # @set number string Number of commits to show
 # @set cmtexpr string Git commit expression
 # @set path string Space-separated list of paths
@@ -163,8 +172,10 @@ is_validcmtexpr() {
 # @set reverse string --reverse flag if enabled
 # @set hashsiz string Hash size specifier (h or H)
 #
+# Returns:
 # @exitcode 0 Success
 # @exitcode non-zero Invalid commit expression
+#
 main() {
 	while (($# > 0)); do
 		arg="$1"

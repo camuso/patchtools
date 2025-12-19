@@ -76,11 +76,19 @@ exitmsgary=(
 "You did not specify an upstream repo directory"
 )
 
+# exitme
 # @description Exit with exit code and message
+#
+# Arguments:
 # @arg $1 int Exit code
 # @arg $2 string Optional string argument for message
+#
+# Globals:
 # @set exitmsgary array Exit message array (read)
+#
+# Returns:
 # @exitcode * Returns the provided exit code
+#
 exitme() {
 	local -i exitval=$1
 	local strarg=""
@@ -105,8 +113,12 @@ exitme() {
 	exit "$exitval"
 }
 
+# control_c
 # @description Handler for user interrupt (Ctrl-C)
+#
+# Returns:
 # @exitcode 130 Standard Ctrl-C exit code
+#
 control_c()
 {
 	echo -en "
@@ -265,12 +277,18 @@ EOF
 	return 0
 }
 
+# get_pathopt
 # @description Validate and return a pathname
+#
+# Arguments:
 # @arg $1 string Optional -r flag for realpath
 # @arg $2 string Path to verify
 # @arg $3 string-ref Variable to receive validated path
+#
+# Returns:
 # @exitcode 0 Path valid
 # @exitcode * Exits if path invalid
+#
 get_pathopt() {
 	local b_real=false
 	[[ "$1" == "-r" ]] && b_real=true && shift
@@ -289,10 +307,16 @@ get_pathopt() {
 	return 0
 }
 
+# get_varopt
 # @description Replace commas with spaces in variable list
+#
+# Arguments:
 # @arg $1 string Variables separated by commas
 # @arg $2 string-ref Variable to receive space-separated string
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 get_varopt() {
 	local var="$1"
 	local -n varname="$2"
@@ -301,9 +325,15 @@ get_varopt() {
 	return 0
 }
 
+# test_help
 # @description Check if argument requests help
+#
+# Arguments:
 # @arg $1 string String to check for help request
+#
+# Returns:
 # @exitcode 0 Help requested (exits after showing usage)
+#
 test_help() {
 	local opt="$1"
 
@@ -313,12 +343,20 @@ test_help() {
 	return 0
 }
 
+# is_validcmtexpr
 # @description Validate an upstream commit expression
 #   Breaks expression on double-dot and validates each commit.
+#
+# Arguments:
 # @arg $1 string Commit expression to validate
+#
+# Globals:
 # @set updir string Upstream repo directory (read)
+#
+# Returns:
 # @exitcode 0 Valid expression
 # @exitcode * Exits if invalid
+#
 is_validcmtexpr() {
 	local tmp="$1"
 	local -a cary=()
@@ -339,10 +377,18 @@ is_validcmtexpr() {
 	return 0
 }
 
+# get_khashsize
 # @description Print the number of characters in kernel hash
+#
+# Globals:
 # @set updir string Upstream kernel directory (read)
+#
+# Effects:
 # @stdout Hash size as integer
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 get_khashsize() {
 	local cmt
 
@@ -352,12 +398,18 @@ get_khashsize() {
 	ui_cd -
 }
 
+# getcmt
 # @description Validate commit expression from command line
+#
+# Arguments:
 # @arg $1 string Commit expression
 # @arg $2 string Switch name for error message
 # @arg $3 string Variable to receive validated expression
+#
+# Returns:
 # @exitcode 0 Valid commit
 # @exitcode * Exits if invalid
+#
 getcmt() {
 	local tmp="$1"
 	local op="$2"
@@ -373,13 +425,21 @@ getcmt() {
 	return 0
 }
 
+# parseops
 # @description Parse input options for non-interactive command line
+#
+# Arguments:
 # @arg $@ All command line arguments
+#
+# Globals:
 # @set outdir string Output directory
 # @set updir string Upstream directory
 # @set path string Paths to search
 # @set configtable array Config variables
+#
+# Returns:
 # @exitcode 0 Options parsed successfully
+#
 parseops() {
 	local arg=
 	local opt=
@@ -428,14 +488,22 @@ parseops() {
 	return 0
 }
 
+# compare_strings
 # @description Create backport.log by comparing upstream/downstream commits
 #   Marks already-backported commits with leading #
+#
+# Globals:
 # @set bplog string Backport log filename
 # @set uplog string Upstream log filename
 # @set dnlog string Downstream log filename
 # @set outdir string Output directory
+#
+# Effects:
 # @stdout Progress output
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 compare_strings() {
 	local uppath="$outdir/$uplog"
 	local dnpath="$outdir/$dnlog"
@@ -484,11 +552,17 @@ compare_strings() {
 	return 0
 }
 
+# init_env
 # @description Initialize sticky variables and environment
+#
+# Globals:
 # @set configfile string Config file path
 # @set configtable array Config variables
 # @set MYDATA string Data directory path
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 init_env() {
 	local bgtemp
 
@@ -505,10 +579,18 @@ init_env() {
 	return 0
 }
 
+# check_log
 # @description Notify user if logfile already exists
+#
+# Arguments:
 # @arg $1 string Logfile path to check
+#
+# Effects:
 # @stdout Warning if file exists
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 check_log() {
 	log="$1"
 
@@ -521,19 +603,33 @@ check_log() {
 	return 0
 }
 
+# get_currentbranch
 # @description Echo the current git branch
+#
+# Effects:
 # @stdout Current branch name
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 get_currentbranch() {
 	git branch | grep -E '^\*' | cut -d' ' -f2
 }
 
+# seek_str
 # @description Search for string in commits from upstream.log
+#
+# Globals:
 # @set updir string Upstream directory (read)
 # @set outdir string Output directory (read)
 # @set bplog string Backport log filename (read)
+#
+# Effects:
 # @stdout Matching commits
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 seek_str() {
 	local prepend=
 	local outfile=
@@ -558,13 +654,21 @@ seek_str() {
 	return 0
 }
 
+# select_remote
 # @description Choose from available repo/branches in current directory
+#
+# Globals:
 # @set updir string Upstream directory (read)
 # @set repobr string Selected repo/branch (written)
 # @set configtable array Config variables (written)
+#
+# Effects:
 # @stdout Branch selection menu
+#
+# Returns:
 # @exitcode 0 Branch selected
 # @exitcode 1 No remote upstream repo found
+#
 select_remote() {
 	local brstr=
 	local brancharray=()
@@ -603,11 +707,19 @@ select_remote() {
 	return 0
 }
 
+# select_localbr
 # @description Choose from available local branches
+#
+# Globals:
 # @set currentbranch string Selected branch (written)
 # @set configtable array Config variables (written)
+#
+# Effects:
 # @stdout Branch selection menu
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 select_localbr() {
 	local -a branches=()
 
@@ -628,13 +740,21 @@ select_localbr() {
 	return 0
 }
 
+# limit_scope
 # @description Limit backport log to commits before upscope
 #   Comments out commits beyond scope with '#+ ' prefix.
+#
+# Globals:
 # @set outdir string Output directory (read)
 # @set bplog string Backport log filename (read)
 # @set upscope string Limiting upstream commit (read)
+#
+# Effects:
 # @stdout Modified backport log
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 limit_scope() {
 	local delim=
 	local line
@@ -667,10 +787,18 @@ limit_scope() {
 	return 0
 }
 
+# show_paths
 # @description Display current user-supplied paths
+#
+# Globals:
 # @set configtable array Config with path (read)
+#
+# Effects:
 # @stdout Formatted path list
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 show_paths() {
 	local -a pthary=()
 	local -i pad=32
@@ -686,12 +814,20 @@ show_paths() {
 	printf "$padstr%s\n" ${pthary[@]:1}
 }
 
+# test_reqparms
 # @description Test if all required parameters are present
+#
+# Globals:
 # @set configtable array Config variables (read)
 # @set exitmsgary array Exit messages (read)
+#
+# Effects:
 # @stdout Warning for missing parameters
+#
+# Returns:
 # @exitcode 0 All required parameters present
 # @exitcode 1 Some parameters missing
+#
 test_reqparms() {
 	local -i stat=0
 	[ -n "${configtable[updir]}"  ] || { stat=1; echo -e "$WRN${exitmsgary[exit_noupdir]}"; }
@@ -703,9 +839,15 @@ test_reqparms() {
 	return $stat
 }
 
+# clear_parms
 # @description Clear all config parameters
+#
+# Globals:
 # @set configtable array Config variables (cleared)
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 clear_parms() {
 	local key
 
@@ -715,21 +857,37 @@ clear_parms() {
 	done
 }
 
+# show_upstreamdir
 # @description Display the upstream directory
+#
+# Globals:
 # @set configtable array Config with updir (read)
 # @set b_localus bool Upstream in PWD flag (read)
+#
+# Effects:
 # @stdout Upstream directory path
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 show_upstreamdir() {
 	$b_localus && echo -n -e "${INF}default is PWD: "
 	echo -e -n $STA${configtable[updir]}$OFF
 	return 0
 }
 
+# delete_paths
 # @description Delete search paths from the list interactively
+#
+# Arguments:
 # @arg $1 string Variable name holding path string (by reference)
+#
+# Effects:
 # @stdout Path selection menu
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 delete_paths() {
 	local -n dp_path="$1"
 	local -a pathary=()
@@ -769,10 +927,18 @@ delete_paths() {
 	return 0
 }
 
+# show_menu
 # @description Display the interactive user menu
+#
+# Globals:
 # @set configtable array Config variables (read)
+#
+# Effects:
 # @stdout Menu display
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 show_menu() {
 	local mbl_menu
 	local addpath=
@@ -808,10 +974,16 @@ EOF
 	return 0
 }
 
+# menu_parser
 # @description Parse menu input and execute action
+#
+# Arguments:
 # @arg $1 string Menu selection character
+#
+# Returns:
 # @exitcode 0 Continue menu loop
 # @exitcode 1 Run requested (break menu loop)
+#
 menu_parser() {
 	local mp_in="$1"
 
@@ -865,8 +1037,12 @@ menu_parser() {
 	return 0
 }
 
+# menu_loop
 # @description Main menu loop for interactive mode
+#
+# Returns:
 # @exitcode 0 User selected run
+#
 menu_loop() {
 	local menuin
 
@@ -882,7 +1058,10 @@ menu_loop() {
 	return 0
 }
 
+# run
 # @description Execute with current parameters to create backport logs
+#
+# Globals:
 # @set outdir string Output directory (read)
 # @set updir string Upstream directory (read)
 # @set uplog string Upstream log filename
@@ -892,8 +1071,13 @@ menu_loop() {
 # @set path string Paths to search (read)
 # @set upcmt string Upstream commit (read/written)
 # @set upscope string Scope limit commit (read)
+#
+# Effects:
 # @stdout Progress and log output
+#
+# Returns:
 # @exitcode 0 Success
+#
 run() {
 	# If the user did not input an upstream commit, then extract the
 	# upstream commit from the submitted RHEL commit, which is the most
@@ -998,9 +1182,15 @@ run() {
 	return 0
 }
 
+# extract_upbase
 # @description Extract upstream base kernel version from downstream tags
+#
+# Globals:
 # @set upbase string Upstream base version (e.g., v6.6)
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 extract_upbase() {
 	local ktag=
 
@@ -1016,9 +1206,15 @@ extract_upbase() {
 	return 0
 }
 
+# main
 # @description Main entry point
+#
+# Arguments:
 # @arg $@ Command line arguments
+#
+# Returns:
 # @exitcode 0 Success
+#
 main() {
 	local mainbranch
 	local currentbranch
