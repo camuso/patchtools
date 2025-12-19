@@ -353,8 +353,12 @@ list_mrs() {
 			(( b_state_closed )) && state_conditions+=('.state == "closed"')
 
 			# Join conditions with " or "
-			local state_expr
-			state_expr=$(IFS=' or '; echo "${state_conditions[*]}")
+			local state_expr=""
+			local first=true
+			for cond in "${state_conditions[@]}"; do
+				$first && state_expr="$cond" || state_expr="$state_expr or $cond"
+				first=false
+			done
 			jq_filter+=" | select($state_expr)"
 		fi
 
