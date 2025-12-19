@@ -17,6 +17,18 @@
 # This script assumes patches are extracted into the configured "indir".
 # Only files named "*.patch" will be considered.
 #
+# This file uses shdoc-style annotations. See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname <scriptname>' to view function documentation.
+#
 # To create a patch set from email:
 #   In mutt, tag the thread with esc-t. Untag the prologue (not a patch).
 #   Extract with ;-esc-C (uppercase C) to the mailbox directory.

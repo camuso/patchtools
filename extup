@@ -9,6 +9,18 @@
 # If there is no upstream commit found, a series of dashes is printed
 # in its place, and the current branch commit date is printed instead.
 #
+# This file uses shdoc-style annotations. See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname <scriptname>' to view function documentation.
+#
 # Usage:
 #   extup HEAD~10.. drivers/usb/     # Last 10 commits in drivers/usb
 #   extup -5 -r drivers/char/ipmi/   # 5 commits, oldest first
