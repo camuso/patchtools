@@ -223,13 +223,24 @@ ui_popterm() {
 	fi
 }
 
+# @description Query user for terminal background color preference
+#   If not running in an interactive terminal (no TTY), defaults to dark.
+# @set terminal_background int tb_lite or tb_dark
+# @exitcode 0 Always succeeds
 ui_get_screenbackground() {
+	# If not running in an interactive terminal, default to dark
+	if [[ ! -t 0 ]]; then
+		terminal_background=$tb_dark
+		return 0
+	fi
+
 	echo
 	echo "Is your terminal background best described as:"
 	echo "1. light"
 	echo "2. dark"
 
 	loop_range 1 2 terminal_background
+	return 0
 }
 
 ui_set_colors() {
