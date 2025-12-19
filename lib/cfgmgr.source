@@ -2,6 +2,19 @@
 #
 # lib/cfgmgr.source
 #
+# This file uses shdoc-style documentation annotations.
+# See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname lib/cfgmgr.source' to view function documentation.
+#
 
 declare cfgmgr_loaded=true
 
@@ -76,13 +89,17 @@ this source to another source, instead of using the source operator.
 }
 COMMENT
 
-#** is_inarray: returns 0 if exact matching string is in array
+# is_inarray
+# @description Check if exact matching string is in array
 #
-# $1 - array name passed by reference, no leading $
-# $2 - string being sought, passed by value
+# Arguments:
+# @arg $1 array Array name passed by reference
+# @arg $2 string String being sought
 #
-# Returns 0 if match is found, 1 if not
-#*
+# Returns:
+# @exitcode 0 If match is found
+# @exitcode 1 If not found
+#
 is_inarray () {
     local -n ar=$1
     local fld="$2"
@@ -96,10 +113,15 @@ is_inarray () {
     return 1
 }
 
-# cfg_init_cfgfile: init the config file with contents of cfgtbl
+# cfg_init_cfgfile
+# @description Initialize config file from cfgtbl (PRIVATE)
 #
-# PRIVATE: Not to be called externally
-# ************************************
+# Globals:
+# @set cfgtbl array Config table (read)
+# @set cfgfile string Config file path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 cfg_init_cfgfile() {
 	for key in ${!cfgtbl[@]}; do
@@ -107,16 +129,18 @@ cfg_init_cfgfile() {
 	done
 }
 
-# cfg_set_cfgfile: if the cfgfile doesn't exist, then create it
+# cfg_set_cfgfile
+# @description Set config file path (PRIVATE)
 #
-# PRIVATE: Not to be called externally
-# ************************************
+# Arguments:
+# @arg $1 string Optional config file path
 #
-# If $1 is empty, then create a configfile in the MYDATA directory
-# using the basename of the script with '.confg' extension.
+# Globals:
+# @set cfgfile string Config file path (write)
+# @set MYDATA string Data directory path (read)
 #
-# Globals
-#   cfgfile: file containing the contents of the cfgtbl
+# Returns:
+# @exitcode 0 Always succeeds
 #
 cfg_set_cfgfile() {
 	cfgfile="$1"
@@ -126,30 +150,16 @@ cfg_set_cfgfile() {
 	}
 }
 
-# cfg_diff_cfgfile: diff the contents of the cfgfile with those in the cfgtbl
+# cfg_diff_cfgfile
+# @description Diff and reconcile cfgfile with cfgtbl (PRIVATE)
 #
-# PRIVATE: Not to be called externally
-# ************************************
+# Globals:
+# @set cfgfile string Config file path (read)
+# @set cfgtbl array Config table (read)
 #
-# We want to do this without disturbing the existing contents of the cfgfile.
-#
-# If the cfgtbl has fewer entries than the cfgfile, remove the deprecated
-# entries from the cfgfile.
-#
-# If the cfgtbl has more entries than the cfgfile, then add the new entries
-# to the cfgfile.
-#
-# If the cfgtbl has different entries than the cfgfile, then reconcile the
-# differences.
-#
-# Globals
-#    cfgfile; passed by user
-#    cfgtbl : passed as a reference to the user's config table in the
-#             calling function
-#
-# Returns
-#    0 - no differences found
-#    1 - there were diffs
+# Returns:
+# @exitcode 0 If no differences found
+# @exitcode 1 If differences were reconciled
 #
 cfg_diff_cfgfile() {
 	local -a fkeys=()
@@ -226,11 +236,17 @@ cfg_diff_cfgfile() {
 	return $stat
 }
 
-# cfg_dump_cfgtbl: dump the contents of the cfgtbl to the screen
+# cfg_dump_cfgtbl
+# @description Dump config table contents to screen
 #
 # Arguments:
-# $1 - reference to user's cfgtbl associative array
-#      no leading $ when calling
+# @arg $1 array Reference to config table associative array
+#
+# Effects:
+# @stdout Prints all key-value pairs
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 cfg_dump_cfgtbl() {
 	local -n cfgtbl="$1"
@@ -241,17 +257,17 @@ cfg_dump_cfgtbl() {
 	done
 }
 
-# cfg_read_cfgfile: read the contents of the config file into user's table
+# cfg_read_cfgfile
+# @description Read config file into user's config table
 #
-# Globals
-#    cfgfile; either passed by user or created by cfg_check_cfgfile above.
+# Arguments:
+# @arg $1 array Reference to config table associative array
 #
-# Arguments
-#    $1 - cfgtbl : REQUIRED reference to the user's config table
-#                  When used in calls initiated by cfg_start, the cfgtbl
-#                  was inited in cfg_start and is inherited from that func.
-#                  However, it goes OUT OF SCOPE at the end of that func,
-#                  so it must be provided by external calls to this func.
+# Globals:
+# @set cfgfile string Config file path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 cfg_read_cfgfile() {
 	(($# == 1)) && local -n cfgtbl="$1"
@@ -265,13 +281,17 @@ cfg_read_cfgfile() {
 	done < "$cfgfile"
 }
 
-# cfg_write_cfgfile: write the contents of the cfgtbl into cfgfile
-#
-# Globals
-#    cfgfile; passed by user in call to cfg_start
+# cfg_write_cfgfile
+# @description Write config table contents to config file
 #
 # Arguments:
-#    $1 - cfgtbl : user's cfgtbl passed by reference
+# @arg $1 array Reference to config table associative array
+#
+# Globals:
+# @set cfgfile string Config file path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 cfg_write_cfgfile() {
 	local -n cfgtbl="$1"
@@ -287,16 +307,18 @@ cfg_write_cfgfile() {
 	done
 }
 
-# cfg_start: start the cfgmgr
+# cfg_start
+# @description Start the config manager
 #
-# Globals
-#    cfgfile; passed by user
+# Arguments:
+# @arg $1 array Config table passed by reference
+# @arg $2 string Config file path
 #
-# Arguments
-#    $1 - cfgtbl, passed by reference, so no leading $
-#         This is the associative array declared in caller's script
-#    $2 - cfgfile - the file that will retain the caller's conf vars
-#         between invocations of the caller's script.
+# Globals:
+# @set cfgfile string Config file path (write)
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 cfg_start() {
 	local -n cfgtbl="$1"

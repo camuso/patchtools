@@ -5,6 +5,19 @@
 # This source file provides routines common to both patchreview and
 # patchdevelop scripts.
 #
+# This file uses shdoc-style documentation annotations.
+# See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname lib/patch-mrutilities.source' to view function documentation.
+#
 [ -n "$MYDIR" ] || {
 	declare MYDIR
 	MYDIR="$(dirname "$(readlink -f "$0")")"
@@ -29,6 +42,18 @@
 	MYDATA="$PWD"/.data
 }
 
+# pr_mrdir_err
+# @description Display directory creation error and exit
+#
+# Arguments:
+# @arg $1 string Directory path that could not be created
+#
+# Effects:
+# @stdout Prints error message
+#
+# Returns:
+# @exitcode 1 Always exits with error
+#
 pr_mrdir_err() {
 	local dir="$1"
 	local errstr="\
@@ -80,16 +105,20 @@ declare -a mr_errs=(
 "${WRN}No patches found for Merge Request$OFF"
 )
 
-#** init_mr - initialize the environment for this
+# init_mr
+# @description Initialize the merge request environment
 #
-# Globals
-#   MYDATA
-#   mergelist_file
-#   mrcomments
-#   origin
-#   mrhistory_file
-#   outdir - defined in patchreview before calling this init
-#*
+# Globals:
+# @set MYDATA string Data directory path (read)
+# @set mergelist_file string Merge list file path (write)
+# @set mrcomments string MR comments file path (write)
+# @set origin string Git origin remote name (write)
+# @set mrhistoryfile string MR history file path (read)
+# @set outdir string Output directory path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 init_mr() {
 
 	# Get the origin of this repo to use in 'lab mr' calls
@@ -103,10 +132,17 @@ init_mr() {
 	[ -s "$mrhistoryfile" ] || touch "$mrhistoryfile"
 }
 
-# show_init - display the init menu option
+# show_init
+# @description Display the init menu option
 #
 # Globals:
-# 	current_mr
+# @set current_mr string Current merge request number (read)
+#
+# Effects:
+# @stdout Prints init menu option
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 show_init() {
 	echo -n "Init to defaults"
@@ -116,20 +152,34 @@ show_init() {
 	echo
 }
 
-# show_mrcomments - display ON or OFF depening on mrcomments state
+# show_mrcomments
+# @description Display ON or OFF depending on mrcomments state
 #
-# Globals
-#     b_mrcomments
+# Globals:
+# @set b_mrcomments bool MR comments enabled flag (read)
+#
+# Effects:
+# @stdout Prints ON or OFF
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 show_mrcomments() {
 	$b_mrcomments && echo "ON" || echo "OFF"
 }
 
 
-# show_mrfilter - show the merge list filter
+# show_mrfilter
+# @description Display the current merge list filter string
 #
-# Globals
-# 	mergelist_filter
+# Globals:
+# @set mergelist_filter string Current filter string (read/write)
+#
+# Effects:
+# @stdout Prints filter string if set
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 show_mrfilter() {
 	cfg_get_item "mergelist_filter" mergelist_filter
@@ -137,10 +187,19 @@ show_mrfilter() {
 		echo -en "${INF}String:$OFF $STA$mergelist_filter$OFF"
 }
 
-# grep_mrlist() - grep or filter the mr list
+# grep_mrlist
+# @description Filter the MR list using grep pattern
 #
 # Globals:
-# 	mergelist_filter
+# @set b_mrflag bool MR mode flag (read)
+# @set mergelist_filter string Filter pattern (read/write)
+#
+# Effects:
+# @stdout Prompts for grep pattern
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 If filter cleared
 #
 grep_mrlist() {
 	$b_mrflag || return
@@ -158,23 +217,25 @@ EOF
 	return $?
 }
 
-# change_opmode - change the operating mode of the script
+# change_opmode
+# @description Cycle through operating modes (MR/Development)
 #
-# Certain global variables need to be flipped for Merge Request
-# and Email operation modes.
+# Globals:
+# @set opmode int Current operation mode (read/write)
+# @set opmode_mr int MR mode constant (read)
+# @set opmode_dev int Development mode constant (read)
+# @set opmode_states int Number of mode states (read)
+# @set cmpmode int Comparison mode (write)
+# @set cmpmode_batch int Batch mode constant (read)
+# @set applymode int Apply mode (write)
+# @set applymode_off int Off mode constant (read)
+# @set applymode_norm int Normal mode constant (read)
+# @set b_mrflag bool MR flag (write)
+# @set b_rename_files bool Rename files flag (write)
+# @set b_fmt_upstream bool Format upstream flag (write)
 #
-# Globals
-# 	opmode
-# 	opmode_mr
-# 	opmode_dev
-# 	opmode_states
-# 	cmpmode
-# 	cmpmode_batch
-# 	applymode
-# 	applymode_off
-# 	applymode_norm
-# 	b_rename_files
-# 	b_fmt_upstream
+# Returns:
+# @exitcode 0 Always succeeds
 #
 change_opmode() {
 	ui_cycle_state opmode $opmode_states
@@ -196,13 +257,19 @@ change_opmode() {
 	esac
 }
 
-# show_opmode - display whether we're in Merge Request or Email Mode
+# show_opmode
+# @description Display current operation mode description
 #
 # Globals:
-# 	opmode
-# 	opmode_mr
-# 	opmode_dev
-# 	prj_opmode
+# @set opmode int Current operation mode (read)
+# @set opmode_mr int MR mode constant (read)
+# @set opmode_dev int Development mode constant (read)
+#
+# Effects:
+# @stdout Prints mode description
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 show_opmode() {
 	case $opmode in
@@ -211,14 +278,23 @@ show_opmode() {
 	esac
 }
 
-# show_mrstatus- display the current mr and its status
+# show_mrstatus
+# @description Display current MR and its review status
 #
 # Globals:
-# 	current_mr
-# 	b_acked
-# 	b_nacked
-# 	b_unapp
-# 	b_reviewed
+# @set current_mr string Current merge request number (read)
+# @set b_acked bool Approved flag (read)
+# @set b_nacked bool Blocked flag (read)
+# @set b_unapp bool Unapproved flag (read)
+# @set b_reviewed bool Reviewed flag (read)
+# @set missing_fixes string Missing fixes file path (read)
+#
+# Effects:
+# @stdout Prints MR status
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 If no valid MR number
 #
 show_mrstatus() {
 	local ackstr
@@ -251,27 +327,20 @@ show_mrstatus() {
 	}
 }
 
-# update_history - maintain a history of MR actions
+# update_history
+# @description Record MR action in history file
 #
-# Updates the contents of mrhistoryfile. The contents for each are maintained
-# as follows.
-#
-# MR ID   Date    Action
-# -----   ------  ------
-#                 Commented
-#                 Approved
-#                 Unapproved
-#                 Blocked/Discussion
-#
-# The complete history of Action for any given MR is retained.
+# Arguments:
+# @arg $1 string MR number
+# @arg $2 string Action taken (Approved, Blocked, etc.)
+# @arg $3 int Patch count
 #
 # Globals:
-# 	mrhistoryfile
+# @set mrhistoryfile string History file path (read)
+# @set ui_b_debug bool Debug flag (read)
 #
-# Arguments
-# 	$1 - MR number
-# 	$2 - Action
-# 	$3 - Patch count
+# Returns:
+# @exitcode 0 Always succeeds
 #
 update_history() {
 	local mrid="$1"
@@ -327,6 +396,18 @@ update_history() {
 	fi
 }
 
+# clean_history
+# @description Clear the MR review history file
+#
+# Globals:
+# @set mrhistoryfile string History file path (read)
+#
+# Effects:
+# @stdout Prompts for confirmation
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 clean_history() {
 	local prompt
 
@@ -335,6 +416,21 @@ clean_history() {
 	loop_yn "$prompt" && :> "$mrhistoryfile"
 }
 
+# view_mrhistory
+# @description View history for a specific MR
+#
+# Arguments:
+# @arg $1 string Optional MR ID to view
+#
+# Globals:
+# @set mrhistoryfile string History file path (read)
+#
+# Effects:
+# @stdout Displays MR history
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 view_mrhistory() {
 	local mrid="$1"
 	local linenumber
@@ -372,8 +468,20 @@ EOF
 }
 
 # display_review_history_menu
+# @description Display the review history menu options
 #
-# Globals
+# Arguments:
+# @arg $1 string Nameref for user's menu choice
+#
+# Globals:
+# @set mrhistoryfile string History file path (read)
+# @set current_mr string Current MR number (read)
+#
+# Effects:
+# @stdout Displays menu and prompts for choice
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 display_review_history_menu() {
 	local revhist_response
@@ -398,6 +506,19 @@ EOF
 	eval "$1"="$revhist_response"
 }
 
+# query_review_history
+# @description Interactive menu for viewing MR review history
+#
+# Globals:
+# @set mrhistoryfile string History file path (read)
+# @set current_mr string Current MR number (read)
+#
+# Effects:
+# @stdout Displays history menu and content
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 query_review_history() {
 	local choice
 
@@ -418,15 +539,26 @@ query_review_history() {
 	done
 }
 
-# display_acknack_menu - ask the user how they want to respond to the MR results
+# display_acknack_menu
+# @description Display MR approval/rejection menu
 #
-# Globals
-# 	b_mrflag
-# 	current_mr
-# 	b_reviewed
-# 	b_acked
-# 	b_nacked
-# 	b_unapp
+# Arguments:
+# @arg $1 string Nameref for user's menu choice
+#
+# Globals:
+# @set b_mrflag bool MR mode flag (read)
+# @set current_mr string Current MR number (read)
+# @set b_reviewed bool Reviewed flag (read)
+# @set b_acked bool Approved flag (read)
+# @set b_nacked bool Blocked flag (read)
+# @set b_unapp bool Unapproved flag (read)
+#
+# Effects:
+# @stdout Displays menu and prompts for choice
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 If not in MR mode
 #
 display_acknack_menu() {
 	$b_mrflag || return 1
@@ -475,6 +607,19 @@ EOF
 	eval "$1"="$_dak_response"
 }
 
+# get_acknack
+# @description Load approval status from config file
+#
+# Globals:
+# @set current_mr string Current MR number (write)
+# @set b_acked bool Approved flag (write)
+# @set b_nacked bool Blocked flag (write)
+# @set b_unapp bool Unapproved flag (write)
+# @set b_reviewed bool Reviewed flag (write)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 get_acknack() {
 	cfg_get_item "current_mr" current_mr
 	cfg_get_item "b_acked"    b_acked
@@ -483,6 +628,18 @@ get_acknack() {
 	cfg_get_item "b_reviewed" b_reviewed
 }
 
+# set_acknack
+# @description Save approval status to config file
+#
+# Globals:
+# @set b_acked bool Approved flag (read)
+# @set b_nacked bool Blocked flag (read)
+# @set b_unapp bool Unapproved flag (read)
+# @set b_reviewed bool Reviewed flag (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 set_acknack() {
 	cfg_set_item "b_acked"    "$b_acked"
 	cfg_set_item "b_nacked"   "$b_nacked"
@@ -490,15 +647,26 @@ set_acknack() {
 	cfg_set_item "b_reviewed" "$b_reviewed"
 }
 
+# confirm_acknack
+# @description Confirm and execute MR approval/rejection action
+#
+# Arguments:
+# @arg $1 string Action description string
+# @arg $2 string Lab command flags
+#
+# Globals:
+# @set b_acked bool Approved flag (read/write)
+# @set b_nacked bool Blocked flag (read/write)
+# @set b_unapp bool Unapproved flag (read/write)
+# @set b_reviewed bool Reviewed flag (read/write)
+# @set current_mr string Current MR number (read)
+# @set origin string Git origin remote (read)
+#
+# Returns:
+# @exitcode 0 If action confirmed and executed
+# @exitcode 1 If user declined
+#
 confirm_acknack() {
-	# Globals
-	# 	b_acked
-	# 	b_nacked
-	# 	b_unapp
-	# 	b_reviewed
-	# 	current_mr
-	# 	origin
-	#
 	local actstr="$1"	# ack/nack string
 	local labflags="$2"	# "with comments" string
 	local querystring=
@@ -524,21 +692,23 @@ confirm_acknack() {
 	fi
 }
 
-# query_acknack - query for action on the current_mr
+# query_acknack
+# @description Interactive menu for MR approval/rejection actions
 #
-# Called by patchreview menu_parser, main_loop, or cmd_mr. The menu
-# presented by this call is also used as an ancillary menu to the
-# patchreview main menu presented by show_mr_menu. This is done by
-# returning to the case_qanret function in patchreview which then
-# determines the action to take. This prevents an unintended recursion.
+# Globals:
+# @set b_acked bool Approved flag (read/write)
+# @set b_nacked bool Blocked flag (read/write)
+# @set b_unapp bool Unapproved flag (read/write)
+# @set b_reviewed bool Reviewed flag (read/write)
+# @set current_mr string Current MR number (read)
+# @set origin string Git origin remote (read)
+# @set patchcount int Patch count (read)
 #
-# Globals
-# 	b_acked
-# 	b_nacked
-# 	b_unapp
-# 	b_reviewed
-# 	current_mr
-# 	origin
+# Returns:
+# @exitcode 0 On quit
+# @exitcode mrqan_newg On request for new MR
+# @exitcode mrqan_news On request for MR list
+# @exitcode mrqan_run On refresh request
 #
 query_acknack() {
 	local choice
@@ -617,13 +787,18 @@ query_acknack() {
 	return 0
 }
 
-# call_lab_mr_list - worker function to create the mr list
+# call_lab_mr_list
+# @description Create MR list using lab command
 #
-# Globals
-# 	origin
+# Arguments:
+# @arg $1 string Output file for the list
+# @arg $2 string Specifier for lab mr list command
 #
-# Inputs:
-# 	$1 - outfile that will contain the list
+# Globals:
+# @set origin string Git origin remote (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 call_lab_mr_list() {
 	local outfile="$1"
@@ -634,10 +809,14 @@ call_lab_mr_list() {
 	$labcmd | $srtcmd > "$outfile"
 }
 
-# refresh_mergelist - refresh the file containing the list of merge requests
+# refresh_mergelist
+# @description Refresh the merge requests list file
 #
 # Globals:
-# 	$mergelist_file
+# @set mergelist_file string Merge list file path (read)
+#
+# Returns:
+# @exitcode * Returns status from select_merge_request
 #
 refresh_mergelist() {
 	local stat
@@ -647,10 +826,17 @@ refresh_mergelist() {
 	return $stat
 }
 
-# show_comments - display the view comments menu option
+# show_comments
+# @description Display the view comments menu option text
 #
-# Globals
-# 	current_mr
+# Globals:
+# @set current_mr string Current MR number (read)
+#
+# Effects:
+# @stdout Prints menu option text
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 show_comments() {
 	if is_validnumber "$current_mr"; then
@@ -660,10 +846,18 @@ show_comments() {
 	fi
 }
 
-# get_mrlist_specifier - which mr list specifier does the user want
+# get_mrlist_specifier
+# @description Prompt user to select MR list filter criteria
 #
-# Outputs
-#     $1 - specifier string is returned in $1
+# Arguments:
+# @arg $1 string Nameref to receive specifier string
+#
+# Effects:
+# @stdout Displays menu and prompts for selection
+#
+# Returns:
+# @exitcode 0 On selection made
+# @exitcode 1 On quit
 #
 get_mrlist_specifier() {
 	local -n gmr_spec="$1"
@@ -724,10 +918,21 @@ EOF
 	return 0
 }
 
-# show_mrlist - display the list of MRs obtained by call_lab_mr_list
+# show_mrlist
+# @description Display the list of MRs from mergelist file
 #
-#  Globals
-#	mergelist_file
+# Arguments:
+# @arg $1 array Nameref to array that receives MR numbers
+#
+# Globals:
+# @set mergelist_file string Merge list file path (read)
+# @set mergelist_filter string Filter string (read)
+#
+# Effects:
+# @stdout Prints formatted MR list
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 show_mrlist() {
 	local -n mrarray=$1	# pass array by reference
@@ -745,17 +950,19 @@ show_mrlist() {
 	done < "$mergelist_file"
 }
 
-# select_merge_request - select a MR from a list
+# select_merge_request
+# @description Present MR list and allow user to select one
 #
-#  Presents a list of Merge Requests for the user to select one.
-#  The selected merge request is checked-out into its own branch
-#  for review.
+# Globals:
+# @set mergelist_file string Merge list file path (read)
+# @set current_mr string Current MR number (read/write)
 #
-# Globals
-# 	mergelist_file
-# 	current_mr
+# Effects:
+# @stdout Displays MR list and prompts for selection
 #
-# Inputs: none
+# Returns:
+# @exitcode 0 On successful selection
+# @exitcode 1 On user cancellation
 #
 select_merge_request() {
 	local mrs=()
@@ -793,11 +1000,18 @@ select_merge_request() {
 	return 0
 }
 
-# redo_mr - if user submits the same mr number, query for a redo
+# redo_mr
+# @description Query user to redo the current MR
 #
+# Globals:
+# @set current_mr string Current MR number (read)
 #
-#  GLOBALS
-#    current_mr
+# Effects:
+# @stdout Prompts for confirmation
+#
+# Returns:
+# @exitcode 0 If user confirms redo
+# @exitcode 1 If user declines
 #
 redo_mr() {
 	if loop_yn "${INF}Do you want to redo MR$STA $current_mr${INF}?$MNU y/n$INF: $OFF"
@@ -809,17 +1023,20 @@ redo_mr() {
 }
 
 # update_current_mr
+# @description Update current MR and reset associated flags
 #
-#  If the provided mr is a valid number, update the global mr and
-#  save it with cfg_set_item. With a new MR, all associasted
-#  booleans will also be reinitialized.
+# Arguments:
+# @arg $1 string New MR number
 #
-#  GLOBALS
-#    current_mr:
-#    b_reviewed
-#    b_acked
-#    b_nacked
-#    b_redo
+# Globals:
+# @set current_mr string Current MR number (read/write)
+# @set b_reviewed bool Reviewed flag (write)
+# @set b_acked bool Approved flag (write)
+# @set b_nacked bool Blocked flag (write)
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 If invalid number or user declines redo
 #
 update_current_mr() {
 	local cmr="$1"
@@ -839,6 +1056,19 @@ update_current_mr() {
 	return 1
 }
 
+# get_new_mr
+# @description Prompt user to enter a new MR number
+#
+# Globals:
+# @set current_mr string Current MR number (write via update_current_mr)
+#
+# Effects:
+# @stdout Prompts for MR number
+#
+# Returns:
+# @exitcode 0 On successful input
+# @exitcode 1 On quit or invalid input
+#
 get_new_mr() {
 	local querystr
 	local response
@@ -852,12 +1082,15 @@ get_new_mr() {
 }
 
 # is_valid_mrcomments
+# @description Check if mrcomments file is valid for current MR
 #
-# See if the comments file is valid and is for the current_mr
+# Globals:
+# @set mrcomments string MR comments file path (read)
+# @set current_mr string Current MR number (read)
 #
-# GLOBALS
-#   mrcomments
-#   current_mr
+# Returns:
+# @exitcode 0 If valid and matches current MR
+# @exitcode 1 If invalid or mismatched
 #
 is_valid_mrcomments() {
 	local line
@@ -872,16 +1105,23 @@ is_valid_mrcomments() {
 	return 1
 }
 
-# get_merge_request - check-out a specific MR
+# get_merge_request
+# @description Get and optionally checkout a specific MR
 #
-# The entered MR will be checked-out into its own branch for review.
-#
-# Inputs:
-#	$1 - if it exists, then don't get the patches
+# Arguments:
+# @arg -c flag View comments only
+# @arg -u flag Get new MR number from user
 #
 # Globals:
-# 	us_commits
-# 	current_mr
+# @set us_commits string Upstream commits file path (read)
+# @set current_mr string Current MR number (read)
+# @set mrcomments string MR comments file path (read)
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 On user cancellation
+# @exitcode mr_inv On invalid MR
+# @exitcode mr_nop On no patches found
 #
 get_merge_request() {
 	$ui_b_debug && echo -e "${STA}get_merge_request$OFF"
@@ -923,16 +1163,21 @@ get_merge_request() {
 	return 0
 }
 
-#** get_mrcommits_labmr - use prarit's lab utitlity to get the MR commits
+# get_mrcommits_labmr
+# @description Get MR commits using lab utility
 #
-# Arguments
-# 	$1 - the MR
+# Arguments:
+# @arg $1 string MR number
 #
-# Globals
-#      origin - the baseline commit of the main branch
-#      patchcount - gets number of patches in the patch series
-#      bp_commits - file that will contain the backported commits
-#*
+# Globals:
+# @set origin string Git origin remote (read)
+# @set patchcount int Patch count (write)
+# @set bp_commits string Backported commits file path (write)
+# @set mrcomments string MR comments file path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 get_mrcommits_labmr() {
 # ui_b_debug=true
 $ui_b_debug && echo "get_mr_commits_labmr"
@@ -985,6 +1230,22 @@ $ui_b_debug && set -x
 $ui_b_debug && set +x
 }
 
+# update_mrcomments_log
+# @description Update MR comments log with full MR details
+#
+# Globals:
+# @set outdir string Output directory path (read)
+# @set origin string Git origin remote (read)
+# @set current_mr string Current MR number (read)
+# @set mrcomments string MR comments file path (read)
+#
+# Effects:
+# @stdout Displays progress message
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode mr_inv On failure
+#
 update_mrcomments_log() {
 	# Ensure outdir exists before writing to mrcomments
 	[ -d "$outdir" ] || mkdir -p "$outdir"
@@ -995,6 +1256,22 @@ update_mrcomments_log() {
 	return 0
 }
 
+# make_mrcomments_log
+# @description Create MR comments log with comments only
+#
+# Globals:
+# @set outdir string Output directory path (read)
+# @set origin string Git origin remote (read)
+# @set current_mr string Current MR number (read)
+# @set mrcomments string MR comments file path (read)
+#
+# Effects:
+# @stdout Displays progress message
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode mr_inv On failure
+#
 make_mrcomments_log() {
 	# Ensure outdir exists before writing to mrcomments
 	[ -d "$outdir" ] || mkdir -p "$outdir"
@@ -1006,6 +1283,17 @@ make_mrcomments_log() {
 	return 0
 }
 
+# is_already_approved
+# @description Check if current user already approved the MR
+#
+# Globals:
+# @set mrcomments string MR comments file path (read)
+# @set labuser string Lab username (read)
+#
+# Returns:
+# @exitcode 0 If already approved
+# @exitcode 1 If not approved
+#
 is_already_approved() {
 	# If the mrcomments file doesn't exist, user can't be already approved
 	[ -f "$mrcomments" ] || return 1
@@ -1017,33 +1305,53 @@ is_already_approved() {
 	return 1
 }
 
+# print_already_approved
+# @description Print message that user already approved the MR
+#
+# Arguments:
+# @arg $1 string MR number
+#
+# Globals:
+# @set current_mr string Current MR number (read)
+#
+# Effects:
+# @stdout Prints approval message
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 print_already_approved() {
 	local mr="$1"
 echo -e "$INF   You have already ${STA}Approved$INF MR $STA$current_mr$OFF."
 }
 
-# get_merge_request_patches - extract the patches from a merge request
+# get_merge_request_patches
+# @description Extract patches from a merge request
 #
-# Inputs:
-# 	$1 - MR ID number
-#
-# Returns
-#	0 - after extracting patches from the MR
-#	1 - if user does not want to get the patches
+# Arguments:
+# @arg $1 string MR ID number
 #
 # Globals:
-#       labuser - gitlab username extracted from ~/.config/lab/lab.toml
-#	origin
-#	b_mrflag
-# 	b_rename_infiles
-#	b_fmt_upstream
-#	b_already_acked
-#	current_mr
-# 	valpatchlist
-#	bp_commits
-#	indir
-#	missing_fixes
-#	mrcomments
+# @set labuser string GitLab username (read)
+# @set origin string Git origin remote (read)
+# @set b_mrflag bool MR mode flag (write)
+# @set b_rename_infiles bool Rename files flag (write)
+# @set b_fmt_upstream bool Format upstream flag (write)
+# @set b_already_acked bool Already approved flag (write)
+# @set current_mr string Current MR number (read)
+# @set valpatchlist string Validated patch list (write)
+# @set bp_commits string Backported commits file path (read)
+# @set indir string Input directory path (read)
+# @set missing_fixes string Missing fixes file path (write)
+# @set mrcomments string MR comments file path (read)
+# @set patchcount int Patch count (write)
+# @set applymode int Apply mode (write)
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode mr_inv On invalid MR
+# @exitcode mr_nop On no patches found
+# @exitcode mr_norev On user skip review
 #
 get_merge_request_patches() {
 	$ui_b_debug && echo -e "${STA}get_merge_request_patches$OFF"

@@ -2,6 +2,19 @@
 #
 # keypress-support.source
 #
+# This file uses shdoc-style documentation annotations.
+# See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname lib/keypress-support.source' to view function documentation.
+#
 
 declare keysupport_loaded=true
 
@@ -37,21 +50,23 @@ Meanwhile, the script will run without the extended functionality.
 EOF
 )
 
-#** set_keycmd: sets the command for acquiring single characters
+# ui_testkeypress
+# @description Detect and configure special character handling
 #
-# NOTE: THIS IS NOT INTENDED TO BE CALLED EXTERNALLY FROM THIS SOURCE FILE
+# Globals:
+# @set ui_b_keypress bool True if keypress utility is ready (write)
+# @set promptgetkey_cmd string Command for prompted key input (write)
+# @set getkey_cmd string Command for key input (write)
+# @set keypress_exe string Path to keypress executable (read)
+# @set keypress_src string Path to keypress source (read)
 #
-# Sets the ui_b_keypress state true/false as determined by calling function
-# ui_testkeypress and sets up the promptgetkey_cmd and getkey_cmd aliases
-# accordingly. In C, these would be function pointers.
-#*
-#** ui_testkeypress: Detect Special Char handling
+# Effects:
+# @stdout May display info messages about keypress availability
 #
-# GLOBALS
-#     ui_b_keypress: set if keypress is compiled and ready.
+# Returns:
+# @exitcode 0 If keypress is available
+# @exitcode 1 If keypress is not available
 #
-#     If keypress executable is not in the directory
-#*
 ui_testkeypress() {
 	local b_ready
 

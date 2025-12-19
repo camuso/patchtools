@@ -5,6 +5,19 @@
 # This source file provides routines common to both patchreview and
 # patchdevelop scripts.
 #
+# This file uses shdoc-style documentation annotations.
+# See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname lib/patch-common.source' to view function documentation.
+#
 
 [ -n "$MYDIR" ] || {
 	declare MYDIR
@@ -152,6 +165,20 @@ declare rc_continue=0	# Continue for another pass
 declare rc_run=1	# Run
 declare rc_pass=2	# don't run
 
+# exit_me
+# @description Clean up and exit the script
+#
+# Arguments:
+# @arg $1 int Exit code to return
+#
+# Globals:
+# @set prologue_file string Prologue file path (read)
+# @set last_tag_file string Last tag file path (read)
+# @set branchlist string Branch list file path (read)
+#
+# Returns:
+# @exitcode * Returns the provided exit code
+#
 exit_me() {
 	echo -e "$OFF"
 
@@ -164,7 +191,18 @@ exit_me() {
 	exit "$1"
 }
 
-# exit_msg - uses exit messages from lib/ui.source
+# exit_msg
+# @description Exit with formatted message from ui.source error messages
+#
+# Arguments:
+# @arg $1 int Message index into ui_err_msg array
+# @arg $2 string Optional artifact string to include in message
+#
+# Globals:
+# @set ui_err_msg array Error message array (read)
+#
+# Returns:
+# @exitcode * Returns the message index as exit code
 #
 exit_msg() {
 	local -i msgindex="$1"
@@ -178,33 +216,108 @@ exit_msg() {
 
 }
 
-# run if user hits control-c
+# control_c
+# @description Handle Ctrl-C interrupt signal
+#
+# Effects:
+# @stdout Prints cleanup message
+#
+# Returns:
+# @exitcode CTLC_EXIT Exits with CTLC_EXIT code
 #
 control_c() {
 	echo -en "\nCtrl-c detected\nCleaning up and exiting.\n"
 	exit_me $CTLC_EXIT
 }
 
-################  SANITY TEST DEBUGER  ###########################
+# test_sanity
+# @description Debug helper to display SANITY message and wait for keypress
+#
+# Effects:
+# @stdout Prints SANITY message
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 test_sanity() { echo -e "${CAU}SANITY$OFF"; ui_press_any; }
-###################################################################
 
+# set_cfg_item
+# @description Write a key-value pair to the config file
+#
+# Arguments:
+# @arg $1 string Config key name
+# @arg $2 string Value to set
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 set_cfg_item() {
 	cfg_write_key "$1" "$2"
 }
 
+# get_cfg_item
+# @description Read a value from the config file by key
+#
+# Arguments:
+# @arg $1 string Config key name
+#
+# Effects:
+# @stdout Prints the value associated with the key
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 get_cfg_item() {
 	cfg_read_key "$1"
 }
 
+# show_version
+# @description Display the current version number
+#
+# Globals:
+# @set version string Version string (read)
+#
+# Effects:
+# @stdout Prints formatted version string
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 show_version() {
        echo -e "${INF}Version: $STA$version$OFF"
 }
 
+# show_seekfixes
+# @description Display the current seek fixes state
+#
+# Globals:
+# @set b_seekfixes bool Seek fixes flag (read)
+#
+# Effects:
+# @stdout Prints ON or OFF
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 show_seekfixes() {
 	$b_seekfixes && echo "ON" || echo "OFF"
 }
 
+# show_missing_fixes
+# @description Display menu option for missing fixes if any exist
+#
+# Arguments:
+# @arg $1 string Indentation string for menu display
+#
+# Globals:
+# @set missing_fixes string Path to missing fixes file (read)
+#
+# Effects:
+# @stdout Prints menu option if missing fixes exist
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 show_missing_fixes() {
 	local indent="$1"
 
@@ -214,6 +327,19 @@ show_missing_fixes() {
 	fi
 }
 
+# show_screenbg
+# @description Display the current screen background setting
+#
+# Globals:
+# @set background int Current background setting (read)
+# @set tb_dark int Dark background constant (read)
+#
+# Effects:
+# @stdout Prints DARK or LIGHT
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 show_screenbg() {
 	echo -en "${MNU}Currently $STA"
 	if ((background == tb_dark)); then
@@ -223,6 +349,18 @@ show_screenbg() {
 	fi
 }
 
+# print_missing_fixes
+# @description Display the contents of the missing fixes file
+#
+# Globals:
+# @set missing_fixes string Path to missing fixes file (read)
+#
+# Effects:
+# @stdout Prints missing fixes if file is not empty
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 print_missing_fixes() {
 	if [ -s "$missing_fixes" ]; then
 		echo -e "$INF"
@@ -232,15 +370,33 @@ print_missing_fixes() {
 	fi
 }
 
+# pc_cd
+# @description Change directory with error handling
+#
+# Arguments:
+# @arg $1 string Directory path to change to
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode ui_err_invdir On invalid directory
+#
 pc_cd() {
 	local dir="$1"
 	cd "$dir" > /dev/null 2>&1 || exit_msg "$ui_err_invdir" "$dir"
 }
 
-# set_working_repo - set the repo directory to work in
+# set_working_repo
+# @description Set the repository directory to work in
 #
-# Globals
-# 	repolist - list of repo directories
+# Globals:
+# @set repolist string Path to file containing list of repo directories (read)
+# @set MYDATA string Data directory path (write)
+# @set missing_fixes string Missing fixes file path (write)
+# @set lasttag string Last tag string (write)
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 On failure or user cancellation
 #
 set_working_repo() {
 	local dndx
@@ -301,10 +457,19 @@ EOF
 	return 0
 }
 
-# set_remotedir - name the directory where the upstream remotes are
+# set_remotedir
+# @description Set the directory containing upstream remotes
 #
-# GLOBALS
-# 	remote_dir
+# Globals:
+# @set remote_dir string Remote directory path (read/write)
+# @set remote_repo string Remote repository name (write)
+# @set remote_branch string Remote branch name (write)
+#
+# Effects:
+# @stdout Prompts user for directory input
+#
+# Returns:
+# @exitcode 0 On success
 #
 set_remotedir() {
 	local stat
@@ -356,14 +521,19 @@ set_remotedir() {
 	set_cfg_item "remote_dir" "$remote_dir"
 }
 
-# set_remote_seek() - set the remote origin and branch to seek
+# set_remote_seek
+# @description Set the remote origin and branch for seeking missing fixes
 #
-# Sets up the remote origin/branch global fields to use when seeking
-# missing fixes.
+# Globals:
+# @set remote_repo string Remote repository name (read/write)
+# @set remote_branch string Remote branch name (read/write)
+# @set remote_dir string Remote directory path (read)
 #
-# GLOBALS:
-# 	remote_repo
-# 	remote_branch
+# Effects:
+# @stdout Prompts user for remote repo/branch selection
+#
+# Returns:
+# @exitcode 0 On success
 #
 set_remote_seek() {
 	local remotes=
@@ -395,11 +565,16 @@ EOF
 	fi
 }
 
-# check_upstream - check the upstream dir and remote branches
+# check_upstream
+# @description Verify upstream directory and remote branch exist
 #
-# 	remote_repo
-# 	remote_branch
-# 	remote_dir
+# Globals:
+# @set remote_repo string Remote repository name (read)
+# @set remote_branch string Remote branch name (read)
+# @set remote_dir string Remote directory path (read)
+#
+# Returns:
+# @exitcode 0 On success
 #
 check_upstream() {
 
@@ -415,15 +590,22 @@ check_upstream() {
 	cd - > /dev/null || exit_msg "$ui_err_invdir" "cd -"
 }
 
-# seek_missing_fixes() - search remote/branch for missing commits
+# seek_missing_fixes
+# @description Search remote branch for missing commits
 #
-# GLOBALS
-# 	us_commits
-# 	remote_repo
-# 	remote_branch
-# 	remote_dir
-# 	missing_fixes	# file
-# 	b_verbose
+# Globals:
+# @set us_commits string Upstream commits file path (read)
+# @set remote_repo string Remote repository name (read)
+# @set remote_branch string Remote branch name (read)
+# @set remote_dir string Remote directory path (read)
+# @set missing_fixes string Missing fixes file path (read/write)
+# @set b_verbose bool Verbose output flag (read)
+#
+# Effects:
+# @stdout Prints warning if missing fixes found
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 seek_missing_fixes() {
 	[ -d "$remote_dir" ]    || set_remotedir
@@ -446,21 +628,18 @@ seek_missing_fixes() {
 	return 0
 }
 
-# test_editor() - tests for the existence of the chosen editor
+# test_editor
+# @description Test if the chosen editor is installed
 #
-# If the editor was not installed, the user is given a choice to exit now
-# to install it or to select another editor. The function returns a 1 in
-# this case to signal the caller that the editor is not installed and the
-# user wants to see the choices available again.
+# Arguments:
+# @arg $1 string Name of the editor to test
 #
-# If the editor was installed, then it is set in the project file and the
-# caller is signaled with a return of zero that the editor has been
-# successfully chosen.
+# Effects:
+# @stdout Prompts user if editor not found
 #
-# $1 - the string name of the editor
-#
-# returns 0 if editor was found
-# returns 1 if editor was not found
+# Returns:
+# @exitcode 0 If editor was found and set
+# @exitcode 1 If editor was not found
 #
 test_editor() {
 	local _editor_="$1"
@@ -483,6 +662,18 @@ test_editor() {
 	return 0
 }
 
+# set_editor
+# @description Select and configure the diff editor
+#
+# Globals:
+# @set editor string Selected editor name (write)
+#
+# Effects:
+# @stdout Displays editor menu and selection prompts
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 set_editor() {
 	local choice
 	echo -e "${INF}Select one of these currently supported diff editors.$OFF"
@@ -503,6 +694,19 @@ set_editor() {
 	echo -e "${INF}Editor is $STA$editor$OFF\n"
 }
 
+# set_colors
+# @description Configure terminal color scheme for light or dark background
+#
+# Globals:
+# @set background int Background setting (write)
+# @set terminal_background int Terminal background from ui.source (read)
+#
+# Effects:
+# @stdout Displays color selection prompts
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 set_colors() {
 	while :; do
 		ui_use_colors
@@ -523,14 +727,20 @@ set_colors() {
 	done
 }
 
-# get_currentfuzz - get the current patch validation fuzz level
+# get_currentfuzz
+# @description Get formatted string showing current fuzz level
 #
-# Returns a string with the level number preceded by an asterisk for
-# the current fuzz level, or just a string with the level number if
-# not the current level.
+# Arguments:
+# @arg $1 int Fuzz level to format
 #
-# GLOBALS
-#     patchvalfuzz - current patch validation fuzz level
+# Globals:
+# @set patchvalfuzz int Current patch validation fuzz level (read)
+#
+# Effects:
+# @stdout Prints asterisk-prefixed string if current, plain otherwise
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 get_currentfuzz() {
 	local fuzz="$1"
@@ -544,10 +754,17 @@ get_currentfuzz() {
 	fi
 }
 
-# set_patchvalfuzz - set the fuzz level for patch validation
+# set_patchvalfuzz
+# @description Set the fuzz level for patch validation
 #
-# GLOBALS
-#     patchvalfuzz - current patch validation fuzz level
+# Globals:
+# @set patchvalfuzz int Current patch validation fuzz level (read/write)
+#
+# Effects:
+# @stdout Displays fuzz level menu and selection prompt
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 set_patchvalfuzz() {
 	local fuzz_msg
@@ -582,10 +799,17 @@ EOF
 	set_cfg_item patchvalfuzz "$patchvalfuzz"
 }
 
-# show_patchvalfuzz - show the current patch validation fuzz level
+# show_patchvalfuzz
+# @description Display the current patch validation fuzz level description
 #
-# GOBALS
-#    patchvalfuzz - current patch validation fuzz level
+# Globals:
+# @set patchvalfuzz int Current patch validation fuzz level (read)
+#
+# Effects:
+# @stdout Prints fuzz level description string
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 show_patchvalfuzz() {
 	case "$patchvalfuzz" in
@@ -600,13 +824,19 @@ show_patchvalfuzz() {
 	esac
 }
 
-# set_dir - set a directory variable and save it in the config file
+# set_dir
+# @description Set a directory variable and save it in the config file
 #
-# Arguments
-#   $1 - string to be used in the prompt describing the directory
-#   $2 - the config file key for the directory variable name
-#   $3 - the current value of the directory variable. Will be updated
-#        if the user changes the directory name.
+# Arguments:
+# @arg $1 string Description string for the prompt
+# @arg $2 string Config file key for the directory
+# @arg $3 string Current directory value (nameref, will be updated)
+#
+# Effects:
+# @stdout Prompts user for directory input
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 set_dir() {
 	local dirstr="$1"
@@ -650,16 +880,15 @@ EOF
 }
 
 # exec_boolean
+# @description Execute a command and update a boolean config value
 #
-# Execute a command string and pass the boolean that was
-# used to determine whether the command should be executed.
-# The boolean will be given the value passed by the caller.
+# Arguments:
+# @arg $1 string Boolean config key name
+# @arg $2 bool New value for the boolean
+# @arg $3 string Command line to execute
 #
-# $1 - The boolean
-# $2 - The boolean's new value
-# $3 - The command line as a strng.
-#
-# Returns the status of the executed command string.
+# Returns:
+# @exitcode * Returns the status of the executed command
 #
 exec_boolean() {
 	local argc=$#
@@ -685,10 +914,17 @@ exec_boolean() {
 }
 
 # replace_patch
+# @description Replace a patch with a corrected commit ID
 #
-# GLOBALS
-#	outdir
-#	us_commits
+# Globals:
+# @set outdir string Output directory path (read)
+# @set us_commits string Upstream commits file path (read)
+#
+# Effects:
+# @stdout Prompts user for patch number and commit ID
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 replace_patch() {
 	local patnum
@@ -706,12 +942,18 @@ replace_patch() {
 }
 
 # create_commit_msg
+# @description Extract commit message from a patch file
 #
-# $1 - pathname of patch
-# $2 - outdir
+# Arguments:
+# @arg $1 string Pathname of the patch file
+# @arg $2 string Output directory (unused, uses global outdir)
 #
-# GLOBALS
-#	commit_msg_file
+# Globals:
+# @set commit_msg_file string Name of commit message file (read)
+# @set outdir string Output directory path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 create_commit_msg() {
 	local diffstr="diff "
@@ -737,11 +979,23 @@ create_commit_msg() {
 	done < "$1"
 }
 
-# process_patcherr - decide what to do upon patch apply error
+# process_patcherr
+# @description Handle patch apply error and prompt for resolution
 #
-# Globals
-# 	patchcount
-# 	applyfailmode*
+# Arguments:
+# @arg $1 string Name of the failed patch
+# @arg $2 string Git HEAD reference before patching
+#
+# Globals:
+# @set patchcount int Running count of applied patches (read/write)
+# @set applymode int Current apply mode (read)
+# @set applyfailmode int Current failure mode setting (read)
+#
+# Effects:
+# @stdout Displays error message and resolution options
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 process_patcherr() {
 	local failedpatch="$1"
@@ -785,14 +1039,17 @@ process_patcherr() {
 	esac
 }
 
-# use_patch - use the patch app instead of git am
+# use_patch
+# @description Apply patches using patch command instead of git am
 #
-# Arguments
-#	$1 - the string containing the list of patches
+# Arguments:
+# @arg $1 string Space-separated list of patch files
 #
 # Globals:
-#	patchcount - running tally of applied patches
-#	startpat   - patch to start applying from
+# @set patchcount int Running tally of applied patches (read/write)
+#
+# Returns:
+# @exitcode * Returns status of last patch operation
 #
 use_patch() {
 	local patchlist="$1"
@@ -818,12 +1075,22 @@ use_patch() {
 	return $stat
 }
 
-# get_failedpatch - returns the filename of the failed patch
+# get_failedpatch
+# @description Get the filename of the failed patch
 #
-# Globals
-# 	patchcount - running tally of applied patches
-# 	applymode
-# 	applymode_patch
+# Arguments:
+# @arg $1 string List of patches that were being applied
+#
+# Globals:
+# @set patchcount int Running tally of applied patches (read)
+# @set applymode int Current apply mode (read)
+# @set applymode_patch int Patch mode constant (read)
+#
+# Effects:
+# @stdout Prints the filename of the failed patch
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 get_failedpatch() {
 	local patchlist="$1"
@@ -841,12 +1108,16 @@ get_failedpatch() {
 	fi
 }
 
-# map_us2bp - map upstream to backported commits
+# map_us2bp
+# @description Create mapping of upstream to backported commits
 #
-# GLOBALS
-#	bp_commits    - log of backported commits
-#	us_commits    - log of upstream commits
-#	usvbp_commits - map of upstream to backported commits
+# Globals:
+# @set bp_commits string Log file of backported commits (read)
+# @set us_commits string Log file of upstream commits (read)
+# @set usvbp_commits string Output map file (write)
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 map_us2bp() {
 	local usline=
@@ -874,16 +1145,22 @@ map_us2bp() {
 }
 
 # apply_patches
+# @description Apply patches from indir using configured apply mode
 #
-# GLOBALS
-#	indir         - input directory, contains the patches
-#	patchcount    - running count of applied patches
-#	patchtotal    - total number of patches to apply INITED HERE
-#	bp_commits    - log of backported commits
-#	applymode*    - git am, git am -3, or patch --fuzz=3 -p1
-#	applyfailmode - exit, goto main-menu, or continue
-#	startpat      - patch from which to start the apply
-#	valpatchlist  - created by call to lib/patch-utils::create_patchlist
+# Globals:
+# @set indir string Input directory containing patches (read)
+# @set patchcount int Running count of applied patches (read/write)
+# @set patchtotal int Total patches to apply (write)
+# @set bp_commits string Backported commits log file (read/write)
+# @set applymode int Apply mode setting (read)
+# @set applyfailmode int Failure mode setting (read)
+# @set startpat int Starting patch number (read)
+# @set valpatchlist string Validated patch list (read/write)
+# @set b_allapplied bool All patches applied flag (write)
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 On failure
 #
 apply_patches() {
 	# echo -e "\n$BLD\0patch-common::apply_patches()$OFF"
@@ -920,6 +1197,20 @@ apply_patches() {
 	return $stat
 }
 
+# show_discrete_ops
+# @description Display the discrete operations menu option
+#
+# Globals:
+# @set menumode int Current menu mode (read)
+# @set menumode_ext int Extended menu mode constant (read)
+# @set menumode_min int Minimal menu mode constant (read)
+#
+# Effects:
+# @stdout Prints menu option to show/hide discrete operations
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 show_discrete_ops() {
 	echo -en "$MNU x$OFF  "
 	case "$menumode" in
@@ -929,10 +1220,34 @@ show_discrete_ops() {
 	echo -e "$MNU${UND}Discrete Operations$OFF Menu"
 }
 
+# show_colors
+# @description Display whether colors are enabled
+#
+# Globals:
+# @set b_color bool Color enabled flag (read)
+#
+# Effects:
+# @stdout Prints ON or OFF
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 show_colors() {
 	if $b_color; then echo -e "ON"; else echo -e "OFF"; fi
 }
 
+# show_verbose
+# @description Display the current verbose setting
+#
+# Globals:
+# @set b_verbose bool Verbose flag (read)
+#
+# Effects:
+# @stdout Prints verbose ON or OFF
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 show_verbose() {
 	if $b_verbose; then
 		echo -e "${MNU}verbose is$STA ON$OFF"
@@ -941,18 +1256,62 @@ show_verbose() {
 	fi
 }
 
+# show_patches
+# @description Display the patches directory and file count
+#
+# Globals:
+# @set indirstr string Input directory description (read)
+# @set indir string Input directory path (read)
+# @set infilecount int Number of files in input directory (read)
+# @set patstr string Patch string prefix (read)
+#
+# Effects:
+# @stdout Prints formatted directory and file count
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 show_patches() {
 	echo -en "$MNU d$OFF  $indirstr directory"
 	printf "%*c" $((15 - ${#indirstr})) " "
 	echo -e  ":$STA $indir$OFF has $STA$infilecount$OFF ${patstr}files."
 }
 
+# show_workdir
+# @description Display the work directory path
+#
+# Globals:
+# @set outdirstr string Output directory description (read)
+# @set outdir string Output directory path (read)
+#
+# Effects:
+# @stdout Prints formatted work directory path
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 show_workdir() {
 	echo -en "$MNU w$OFF  $outdirstr directory"
 	printf "%*c" $((15 - ${#outdirstr})) " "
 	echo -e ":$STA $outdir"
 }
 
+# show_cmpmode
+# @description Display the current comparison mode
+#
+# Globals:
+# @set cmpmode int Current comparison mode (read)
+# @set cmpmode_off int Off mode constant (read)
+# @set cmpmode_batch int Batch mode constant (read)
+# @set cmpmode_inter int Interactive mode constant (read)
+# @set cmpmode_setup int Setup mode constant (read)
+#
+# Effects:
+# @stdout Prints comparison mode description
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 show_cmpmode() {
 
 	case "$cmpmode" in
@@ -964,6 +1323,22 @@ show_cmpmode() {
 	esac
 }
 
+# show_applymode
+# @description Display the current apply mode
+#
+# Globals:
+# @set applymode int Current apply mode (read)
+# @set applymode_off int Off mode constant (read)
+# @set applymode_norm int Normal mode constant (read)
+# @set applymode_3way int 3-way mode constant (read)
+# @set applymode_patch int Patch mode constant (read)
+#
+# Effects:
+# @stdout Prints apply mode description
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 show_applymode() {
 
 	case "$applymode" in
@@ -975,6 +1350,21 @@ show_applymode() {
 	esac
 }
 
+# show_applyfailmode
+# @description Display the current apply failure mode
+#
+# Globals:
+# @set applyfailmode int Current failure mode (read)
+# @set applyfailmode_exit int Exit mode constant (read)
+# @set applyfailmode_cont int Continue mode constant (read)
+# @set applyfailmode_menu int Menu mode constant (read)
+#
+# Effects:
+# @stdout Prints failure mode description
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 show_applyfailmode() {
 
 	case "$applyfailmode" in
@@ -985,6 +1375,18 @@ show_applyfailmode() {
 	esac
 }
 
+# show_view_logs
+# @description Display menu option to view log files if any exist
+#
+# Globals:
+# @set outdir string Output directory path (read)
+#
+# Effects:
+# @stdout Prints menu option if log files exist
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 show_view_logs() {
 	local logs
 
@@ -993,6 +1395,18 @@ show_view_logs() {
 	[  "$logs" ] && echo -e "\n$MNU V$OFF  View the log files"
 }
 
+# view_logs
+# @description Display and allow selection of log files to view
+#
+# Globals:
+# @set outdir string Output directory path (read)
+#
+# Effects:
+# @stdout Displays log file menu and selected log content
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 view_logs() {
 	local logs
 	local logfile
@@ -1017,15 +1431,19 @@ view_logs() {
 	less "${logs[$((choice - 1))]}"
 }
 
-# get_filecount() - count the files in the indir
-#
-# This is a bit ugly. If there are .patch files in the indir, then count
-# the number of patch files, else count all the files.
+# get_filecount
+# @description Count files in the input directory
 #
 # Globals:
-# 	infilecount
-# 	patstr      - used by show_settings
-# 	b_selpat
+# @set indir string Input directory path (read)
+# @set infilecount int Number of files counted (write)
+# @set patstr string Patch string for display (write)
+# @set b_selpat bool Whether patches are selectable (write)
+# @set b_allapplied bool All patches applied flag (read)
+# @set b_rename_infiles bool Rename input files flag (write)
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 get_filecount() {
 	local fc
@@ -1044,12 +1462,21 @@ get_filecount() {
 	fi
 }
 
-# show_nextpatch() - determine whether user can select next patch
-#                    and display accordingly
+# show_nextpatch
+# @description Display starting patch option if applicable
 #
 # Globals:
-# 	infilecount
-# 	b_allapplied
+# @set infilecount int Number of input files (read)
+# @set b_allapplied bool All patches applied flag (read)
+# @set b_selpat bool Patches selectable flag (write)
+# @set startpat int Starting patch number (read)
+# @set patstr string Patch string prefix (read)
+#
+# Effects:
+# @stdout Prints starting patch option or applied status
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 show_nextpatch() {
 	local shownext=
@@ -1070,12 +1497,19 @@ EOF
 	[ "$patstr" ] && echo -e "$shownext"
 }
 
-# show_apply_patches() - show the option to apply the patches
-#
-# Only appears if there are patches remaining to be applied
+# show_apply_patches
+# @description Display the apply patches menu option with status
 #
 # Globals:
-#	b_allapplied
+# @set applymode int Current apply mode (read)
+# @set applymode_off int Off mode constant (read)
+# @set b_allapplied bool All patches applied flag (read)
+#
+# Effects:
+# @stdout Prints apply patches option with current status
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 show_apply_patches() {
 	echo -en "\n$MNU A$OFF  Apply patches"
@@ -1092,12 +1526,19 @@ show_apply_patches() {
 	fi
 }
 
-# select_patch() - select a patch to start the apply process
+# select_patch
+# @description Select a patch to start the apply process
 #
 # Globals:
-# 	patstr
-# 	infilecount
-# 	startpat
+# @set patstr string Patch string prefix (read)
+# @set infilecount int Number of input files (read)
+# @set startpat int Starting patch number (read/write)
+#
+# Effects:
+# @stdout Prompts for patch selection
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 select_patch() {
 
@@ -1111,17 +1552,23 @@ select_patch() {
 	return
 }
 
-# show_branch_mismatch - prints discrepency between distro and kernel
+# show_branch_mismatch
+# @description Display branch/distro mismatch and prompt to switch
 #
-# If user options to switch branches, the global lasttag is refreshed.
+# Arguments:
+# @arg $1 string Current distro name
+# @arg $2 string Nameref for user's y/n response
 #
 # Globals:
-# 	lasttag
-# 	last_tag_file
-# 	branchlist
+# @set lasttag string Last tag string (read/write)
+# @set last_tag_file string Last tag file path (read)
+# @set branchlist string Branch list file path (read)
 #
-# $1 - current distro
-# $2 - user's y or n response to query to switch branches
+# Effects:
+# @stdout Displays mismatch warning and switch prompt
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 show_branch_mismatch() {
 	local _distro_="$1"
@@ -1132,13 +1579,23 @@ show_branch_mismatch() {
 	$_yn_ && git_get_lasttag lasttag "$last_tag_file"
 }
 
-# check_patchvbranch - see if the patch names match the branch
+# check_patchvbranch
+# @description Verify patch names match the current kernel branch
 #
-# Globals
-# 	rhel*str, pegas*str - strings that represent the corresponding kernels
-# 	indir - directory containing the RHEL patches
-#	krnstrlen - length of the string that defines which kernel
-# 	lasttag
+# Globals:
+# @set indir string Input directory containing patches (read)
+# @set lasttag string Last tag string (read)
+# @set el6 string EL6 identifier (read)
+# @set el7 string EL7 identifier (read)
+# @set el8 string EL8 identifier (read)
+# @set el9 string EL9 identifier (read)
+#
+# Effects:
+# @stdout Displays mismatch warnings if any
+#
+# Returns:
+# @exitcode 0 On success or user continues
+# @exitcode 1 On no patches or user cancellation
 #
 check_patchvbranch() {
 	local pat
@@ -1258,14 +1715,20 @@ check_patchvbranch() {
 	return 0
 }
 
-# get_current_head_trunc() - returns the current head truncated
+# get_current_head_trunc
+# @description Get current git HEAD truncated to fit terminal width
 #
-#  Truncation is the difference between the global tcols, which is the number
-#  of columns of the current terminal declared in ui.source, and the number
-#  passed in $1
+# Arguments:
+# @arg $1 int Number of columns already used
 #
-#  $1 - number of columns already used (offset columns to where the current
-#       head will be displayed on the terminal)
+# Globals:
+# @set tcols int Terminal columns from ui.source (read)
+#
+# Effects:
+# @stdout Prints truncated HEAD commit string
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 get_current_head_trunc() {
 	local used=$1
@@ -1278,7 +1741,14 @@ get_current_head_trunc() {
 	echo "$current_head_trunc"
 }
 
-# create_branch - creates a branch at the current head
+# create_branch
+# @description Create a new branch at the current HEAD
+#
+# Effects:
+# @stdout Prompts for branch and tag names
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 create_branch() {
 	local bname=
@@ -1306,19 +1776,21 @@ EOF
 }
 
 # format_upstream_patches
-#
-# Create a list of commits and use that to format the patches.
+# @description Create upstream patches from commit list in input directory
 #
 # Globals:
-# 	indir
-# 	outdir
-# 	us_commits
-# 	b_fmt_upstream
-# 	remote_dir
+# @set indir string Input directory containing patches (read)
+# @set outdir string Output directory for formatted patches (read)
+# @set us_commits string Upstream commits file path (read/write)
+# @set b_fmt_upstream bool Format upstream flag (read)
+# @set remote_dir string Remote directory path (read)
+# @set b_verbose bool Verbose output flag (read)
+# @set patchvalfuzz int Patch validation fuzz level (read)
+# @set missing_fixes string Missing fixes file path (write)
 #
-# Returns
-# 	0 - all good
-# 	1 - no patch files to review
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 On failure or no patches to review
 #
 format_upstream_patches() {
 	$ui_b_debug && echo -e "${STA}format_upstream_patches$OFF"
@@ -1388,11 +1860,20 @@ format_upstream_patches() {
 	return 0
 }
 
-# check_already_applied - see if the commits have already been applied
+# check_already_applied
+# @description Check if commits have already been applied
 #
-# GLOBALS
-# 	us_commits
-# 	usvbp_commits
+# Globals:
+# @set us_commits string Upstream commits file path (read)
+# @set usvbp_commits string Upstream vs backported commits map (read)
+# @set bp_commits string Backported commits file path (read)
+#
+# Effects:
+# @stdout Displays already-applied commits if any
+#
+# Returns:
+# @exitcode 0 If some commits already applied
+# @exitcode 1 If no commits file or none applied
 #
 check_already_applied() {
 	local usline
@@ -1465,16 +1946,17 @@ EOF
 }
 
 # exec_apply_patches
-#
-# Do all the front-end housekeeping and apply the patches in the indir.
+# @description Apply patches with front-end housekeeping
 #
 # Globals:
-# 	patchcount
-# 	applymode
-# 	applyfailmode
-# 	applyfailmode_menu
+# @set patchcount int Patch count (write)
+# @set applymode int Apply mode (read/write)
+# @set applyfailmode int Failure mode (read)
+# @set applyfailmode_menu int Menu mode constant (read)
 #
-# returns nonzero if patches fail to apply
+# Returns:
+# @exitcode 0 On success
+# @exitcode * Non-zero if patches fail to apply
 #
 exec_apply_patches(){
 	local stat
@@ -1495,6 +1977,22 @@ exec_apply_patches(){
 	return 0
 }
 
+# examine_patches
+# @description Examine patches using patcmp with mismatch file
+#
+# Globals:
+# @set terminal_background int Terminal background setting (read)
+# @set mmfile string Mismatch file path (read)
+# @set us_commits string Upstream commits file path (read)
+# @set b_verbose bool Verbose flag (read)
+# @set remote_dir string Remote directory path (read)
+# @set indir string Input directory path (read)
+# @set outdir string Output directory path (read)
+# @set editor string Editor name (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 examine_patches() {
 	local tb=$terminal_background
 	local quiet=
@@ -1507,20 +2005,26 @@ examine_patches() {
 		"$indir" "$outdir" "$editor" "$us_commits"
 }
 
-# exec_patcmp - execute the comparison of the patches
+# exec_patcmp
+# @description Execute patch comparison using patbatcmpmgr
 #
-#  $1 - Contains "-X" to execute in patbatcmpmgr in batch mode.
-#       If this parameter is not passed, then patbatcmpmgr operates in
-#       setup mode.
+# Arguments:
+# @arg $1 string Optional "-X" for batch mode execution
 #
 # Globals:
-# 	indir
-# 	outdir
-# 	mmfile
-# 	us_commits
-# 	editor
-# 	patchtotal
-# 	terminal_background
+# @set indir string Input directory path (read)
+# @set outdir string Output directory path (read)
+# @set mmfile string Mismatch file path (read)
+# @set us_commits string Upstream commits file path (read)
+# @set editor string Editor name (read)
+# @set patchtotal int Total patch count (write)
+# @set terminal_background int Terminal background setting (read)
+# @set valpatchlist string Validated patch list (read/write)
+# @set b_verbose bool Verbose flag (read)
+# @set b_reviewed bool Reviewed flag (read)
+#
+# Returns:
+# @exitcode * Returns status from patcmp
 #
 exec_patcmp() {
 	$ui_b_debug && echo -e "${STA}patch-common::exec_patcmp$OFF"
@@ -1566,11 +2070,20 @@ exec_patcmp() {
 	return $?
 }
 
-# compare_patches - compare the downstream with the upstream
+# compare_patches
+# @description Compare downstream patches with upstream using configured mode
 #
-# Globals
-#	cmpmode*
-#	terminal_background
+# Globals:
+# @set cmpmode int Comparison mode (read/write)
+# @set cmpmode_batch int Batch mode constant (read)
+# @set cmpmode_setup int Setup mode constant (read)
+# @set cmpmode_inter int Interactive mode constant (read)
+# @set cmpmode_off int Off mode constant (read)
+# @set terminal_background int Terminal background setting (read)
+# @set b_verbose bool Verbose flag (read)
+#
+# Returns:
+# @exitcode * Returns status from comparison
 #
 compare_patches() {
 	local tb=$terminal_background
@@ -1592,7 +2105,25 @@ compare_patches() {
 	return $stat
 }
 
-# init_menu - initialize the menu loop with default global values
+# init_menu
+# @description Initialize menu loop with default global values
+#
+# Globals:
+# @set applymode int Apply mode (write)
+# @set patchcount int Patch count (write)
+# @set startpat int Starting patch (write)
+# @set b_fmt_upstream bool Format upstream flag (write)
+# @set b_allapplied bool All applied flag (write)
+# @set b_mrflag bool Merge request flag (write)
+# @set opmode int Operation mode (read)
+# @set opmode_mr int MR mode constant (read)
+# @set usvbp_commits string Upstream vs backported commits file (read)
+# @set current_mr string Current merge request (write)
+# @set indir string Input directory (read)
+# @set outdir string Output directory (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 init_menu() {
 	init_booleans
@@ -1613,13 +2144,18 @@ init_menu() {
 }
 
 # check_patch_count
+# @description Verify patch file count matches series denominator
 #
-# Check to see that the number of .patch files matches the denominator of
-# the series.
+# Globals:
+# @set rensetcnt int Number of patches claimed in series (read)
+# @set renpatcnt int Actual number of patch files (read)
 #
-# Globals
-# 	rensetcnt
-# 	renpatcnt
+# Effects:
+# @stdout Displays mismatch warning if counts differ
+#
+# Returns:
+# @exitcode 0 If counts match or user continues
+# @exitcode 1 If user cancels
 #
 check_patch_count() {
 	local b_cont
@@ -1643,16 +2179,20 @@ EOF
 	fi
 }
 
-# renpatfiles - renames the files in a given directory
+# renpatfiles
+# @description Rename email patch files to sequential numbered format
 #
 # Globals:
-# 	indir     - directory containing the emailed patches
-# 	renpatcnt - the number of patch files counted by the routine
-# 	rensetcnt - the number of patch files purported to be in the set
-# 	            as determined by the denominator of the set, if it
-# 	            exists.
+# @set indir string Directory containing patches (read)
+# @set renpatcnt int Number of patches renamed (write)
+# @set rensetcnt int Number of patches in series (write)
 #
-# Returns ui_err_nofiles or return value of call to check_patch_count
+# Effects:
+# @stdout Displays rename progress
+#
+# Returns:
+# @exitcode ui_err_nofiles If no files to rename
+# @exitcode * Returns value from check_patch_count
 #
 renpatfiles() {
 
@@ -1831,14 +2371,18 @@ renpatfiles() {
     return $?
 }
 
-# find_filebynumber - echo a filename with a leading %04d
+# find_filebynumber
+# @description Find a file by its leading zero-padded number
 #
-# This is only useful for finding a filename that begins with a
-# number padded with zeroes to four digits. It's useful when trying
-# to find a patch in a directory when you have only the patch number.
+# Arguments:
+# @arg $1 string File number (may be in n/total format)
+# @arg $2 string Directory to search
 #
-# $1 - file number
-# $2 - directory to search
+# Effects:
+# @stdout Prints the matching filename
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 find_filebynumber() {
 	local num="$1"

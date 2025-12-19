@@ -4,6 +4,19 @@
 #
 # The configfile must be declared and defined globally and externally.
 #
+# This file uses shdoc-style documentation annotations.
+# See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname lib/config-manager.source' to view function documentation.
+#
 
 [ -n "$MYDIR" ] || {
 	declare MYDIR
@@ -29,6 +42,15 @@ declare cfg_file=
 declare cfg_template=
 declare cfg_b_ready=false
 
+# cfg_manager_help
+# @description Display help text for config manager usage
+#
+# Effects:
+# @stdout Prints help documentation
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 cfg_manager_help() {
 	local helpmsg=
 
@@ -76,6 +98,19 @@ cfg_err_msg=(
 	"Invalid template file"
 )
 
+# cfg_show_err
+# @description Display a config manager error message
+#
+# Arguments:
+# @arg $1 int Error code index
+# @arg $2 string Value to display with error
+#
+# Effects:
+# @stdout Prints formatted error message
+#
+# Returns:
+# @exitcode * Returns the error code
+#
 cfg_show_err() {
 	local err=$1
 	local val="$2"
@@ -84,20 +119,74 @@ cfg_show_err() {
 	return "$err"
 }
 
+# cfg_set_configfile
+# @description Set the config file path
+#
+# Arguments:
+# @arg $1 string Path to config file
+#
+# Globals:
+# @set cfg_file string Config file path (write)
+# @set cfg_template string Template file path (read)
+# @set cfg_b_ready bool Ready state flag (write)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 cfg_set_configfile() {
 	cfg_file="$1"
 	[ -f "$cfg_template" ] && cfg_b_ready=true
 }
 
+# cfg_get_configfile
+# @description Get the current config file path
+#
+# Arguments:
+# @arg $1 string Variable name to receive path
+#
+# Globals:
+# @set cfg_file string Config file path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 cfg_get_configfile() {
 	eval "$1"="$cfg_file"
 }
 
+# cfg_set_template
+# @description Set the config template file path
+#
+# Arguments:
+# @arg $1 string Path to template file
+#
+# Globals:
+# @set cfg_template string Template file path (write)
+# @set cfg_file string Config file path (read)
+# @set cfg_b_ready bool Ready state flag (write)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 cfg_set_template() {
 	cfg_template="$1"
 	[ -f "$cfg_file" ] && cfg_b_ready=true
 }
 
+# cfg_test_ready
+# @description Test if config manager is ready for operations
+#
+# Globals:
+# @set cfg_b_ready bool Ready state flag (read)
+# @set cfg_err_notready int Not ready error code (read)
+#
+# Effects:
+# @stdout Prints error if not ready
+#
+# Returns:
+# @exitcode 0 If ready
+# @exitcode cfg_err_notready If not ready
+#
 cfg_test_ready() {
 	$cfg_b_ready || {
 		echo -e "\n$WRN${cfg_err_msg[$cfg_err_notready]}$OFF"
@@ -105,6 +194,23 @@ cfg_test_ready() {
 	}
 }
 
+# cfg_read_key
+# @description Read a value from config file by key
+#
+# Arguments:
+# @arg $1 string Key to look up
+#
+# Globals:
+# @set cfg_file string Config file path (read)
+#
+# Effects:
+# @stdout Prints the value if found
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode cfg_err_notready If not ready
+# @exitcode cfg_err_nokey If key not found
+#
 cfg_read_key() {
 	local key="$1"
 	local keyline=
@@ -124,6 +230,16 @@ cfg_read_key() {
 	echo "$value"
 }
 
+# cfg_get_item
+# @description Read a config value into a variable by reference
+#
+# Arguments:
+# @arg $1 string Key to look up
+# @arg $2 string Nameref variable to receive value
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 cfg_get_item() {
 	local key="$1"
 	local -n cfg_item="$2"
@@ -131,6 +247,21 @@ cfg_get_item() {
 	cfg_item=$(cfg_read_key "$key")
 }
 
+# cfg_write_key
+# @description Write a value to config file by key
+#
+# Arguments:
+# @arg $1 string Key to update
+# @arg $2 string Value to write
+#
+# Globals:
+# @set cfg_file string Config file path (read)
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode cfg_err_notready If not ready
+# @exitcode cfg_err_nokey If key not found
+#
 cfg_write_key() {
 	local key="$1"
 	local value="$2"
@@ -149,6 +280,16 @@ cfg_write_key() {
 	ui_replaceline_raw "$linenumber" "$keyline" "$cfg_file"
 }
 
+# cfg_set_item
+# @description Set a config item value (alias for cfg_write_key)
+#
+# Arguments:
+# @arg $1 string Key to update
+# @arg $2 string Value to write
+#
+# Returns:
+# @exitcode * Returns status from cfg_write_key
+#
 cfg_set_item() {
 	local key="$1"
 	local item="$2"
@@ -156,14 +297,15 @@ cfg_set_item() {
 	cfg_write_key "$key" "$item"
 }
 
-# cfg_read_configfile - read out the values from the config file
+# cfg_read_configfile
+# @description Read all values from config file into variables
 #
-# Read each key in the config file and set the corresponding var
-# in the calling script to the value stored in the config file.
+# Globals:
+# @set cfg_file string Config file path (read)
 #
-# GLOBALS
-#    cfg_file
-#    cfg_template
+# Returns:
+# @exitcode 0 On success
+# @exitcode cfg_err_notready If not ready
 #
 cfg_read_configfile() {
 	local item
@@ -179,6 +321,18 @@ cfg_read_configfile() {
 	exec {fd_cfgfile}<&-
 }
 
+# cfg_dump_vars
+# @description Dump all config variables and their values
+#
+# Globals:
+# @set cfg_file string Config file path (read)
+#
+# Effects:
+# @stdout Prints all key-value pairs
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 cfg_dump_vars() {
 	local item
 	local value
@@ -192,10 +346,14 @@ cfg_dump_vars() {
 }
 
 
-# Updates the cfg_file with updated values from the calling app.
+# cfg_update_configfile
+# @description Write current variable values to config file
 #
-# GLOBALS:
-#    cfg_file
+# Globals:
+# @set cfg_file string Config file path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 cfg_update_configfile() {
 	local item
@@ -219,7 +377,16 @@ cfg_update_configfile() {
 	rm -f "$tmpfile"
 }
 
-# Updates the cfg_file with any changes in the cfg_template
+# cfg_refresh_configfile
+# @description Sync config file with template changes
+#
+# Globals:
+# @set cfg_file string Config file path (read)
+# @set cfg_template string Template file path (read)
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode cfg_err_notready If not ready
 #
 cfg_refresh_configfile() {
 	local key=
@@ -244,15 +411,17 @@ cfg_refresh_configfile() {
 	rm -f "$tmpfile"
 }
 
-# cfg_compare_configfiles - compare the template with the current config file
+# cfg_compare_configfiles
+# @description Compare config file with template
 #
-# Returns 0 if the config file has the same elements in the same order as
-#           the current config file being compared.
-# Returns 1 if they're different.
+# Globals:
+# @set cfg_file string Config file path (read)
+# @set cfg_template string Template file path (read)
 #
-# GLOBALS
-#    cfg_file
-#    cfg_template
+# Returns:
+# @exitcode 0 If files have same elements in same order
+# @exitcode 1 If files differ
+# @exitcode cfg_err_notready If not ready
 #
 cfg_compare_configfiles() {
 	local key1=
@@ -280,22 +449,55 @@ cfg_compare_configfiles() {
 	return $stat
 }
 
+# cfg_init
+# @description Initialize config manager and load values
+#
+# Globals:
+# @set cfg_file string Config file path (read)
+# @set cfg_template string Template file path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 cfg_init() {
 	cfg_compare_configfiles || cfg_refresh_configfile
 	cfg_read_configfile
 }
 
-# cfg_init_ready - init for rw access only
+# cfg_init_ready
+# @description Quick init for r/w access without full compare
 #
-# This function inits the config manager for a config file that
-# is ready for r/w access without a full init to compare with the
-# template and read every key.
+# Arguments:
+# @arg $1 string Config file path
+#
+# Globals:
+# @set cfg_file string Config file path (write)
+# @set cfg_b_ready bool Ready state flag (write)
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 cfg_init_ready() {
 	cfg_file="$(realpath "$1")"
 	cfg_b_ready=true
 }
 
+# cfg_start
+# @description Start config manager with template and config file
+#
+# Arguments:
+# @arg $1 string Template file path
+# @arg $2 string Config file path
+#
+# Globals:
+# @set cfg_template string Template file path (write)
+# @set cfg_file string Config file path (write)
+# @set cfg_b_ready bool Ready state flag (write)
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 On error
+#
 cfg_start() {
 	cfg_template="$(realpath "$1")"
 	cfg_file="$(realpath "$2")"
