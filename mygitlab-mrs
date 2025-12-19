@@ -90,19 +90,26 @@ Examples:
 EOF
 )"
 
+# usage
 # @description Print usage information
 #
+# Effects:
 # @stdout Usage text
+#
 usage() {
 	echo -e "$usagestr"
 }
 
+# exitme
 # @description Exit with code and optional message
 #
+# Arguments:
 # @arg $1 int Exit code
 # @arg $2 string Optional error message
 #
+# Returns:
 # @exitcode As specified by $1
+#
 exitme() {
 	local -i code="$1"
 	local msg="$2"
@@ -113,18 +120,24 @@ exitme() {
 	exit "$code"
 }
 
+# control_c
 # @description Handle Ctrl-C interrupt
 #
+# Returns:
 # @exitcode 1 Always exits with error
+#
 control_c() {
 	echo -e "\nCtrl-c detected\nCleaning up and exiting."
 	exitme 1
 }
 
+# check_jq
 # @description Check if jq is installed, offer to install if not
 #
+# Returns:
 # @exitcode 0 jq is available
 # @exitcode 1 jq not available and user declined install
+#
 check_jq() {
 	command -v jq &>/dev/null && return 0
 
@@ -140,10 +153,13 @@ check_jq() {
 	return 0
 }
 
+# check_lab
 # @description Check if lab CLI is installed, offer to install if not
 #
+# Returns:
 # @exitcode 0 lab is available
 # @exitcode 1 lab not available and user declined install
+#
 check_lab() {
 	local repo_file="/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:bmeneguele:rhkernel-devtools.repo"
 
@@ -172,10 +188,13 @@ check_lab() {
 	return 0
 }
 
+# check_labconfig
 # @description Check if lab.toml configuration file exists
 #
+# Returns:
 # @exitcode 0 Config file exists
 # @exitcode 1 Config file not found
+#
 check_labconfig() {
 	if [[ ! -f "$config_file" ]]; then
 		echo "lab configuration file not found at: $config_file"
@@ -186,12 +205,16 @@ check_labconfig() {
 	return 0
 }
 
+# get_token
 # @description Extract API token from lab.toml configuration
 #
+# Globals:
 # @set token string GitLab API token
 #
+# Returns:
 # @exitcode 0 Token extracted successfully
 # @exitcode 1 Could not extract token
+#
 get_token() {
 	token=$(
 		awk -F'=' '
@@ -212,14 +235,19 @@ get_token() {
 	return 0
 }
 
+# convert_date
 # @description Convert a date expression to ISO 8601 format for GitLab API
 #
+# Arguments:
 # @arg $1 string Date expression (e.g., "2025-12-17", "2 weeks ago")
 #
+# Effects:
 # @stdout ISO 8601 formatted date string (YYYY-MM-DDTHH:MM:SSZ)
 #
+# Returns:
 # @exitcode 0 Date converted successfully
 # @exitcode 1 Invalid date expression
+#
 convert_date() {
 	local date_expr="$1"
 	local iso_date
@@ -232,11 +260,12 @@ convert_date() {
 	return 0
 }
 
+# list_mrs
 # @description List merge requests with configured filters
+#   Queries GitLab API and applies filters for state, project, title, and dates.
+#   Handles pagination automatically.
 #
-# Queries GitLab API and applies filters for state, project, title, and dates.
-# Handles pagination automatically.
-#
+# Globals:
 # @set b_state_open int Include open MRs flag
 # @set b_state_merged int Include merged MRs flag
 # @set b_state_closed int Include closed MRs flag
@@ -246,10 +275,13 @@ convert_date() {
 # @set date_after string Filter MRs after this date
 # @set b_count_only int Output count only flag
 #
+# Effects:
 # @stdout JSON objects for each MR, or count if -c specified
 #
+# Returns:
 # @exitcode 0 Success
 # @exitcode 1 API error
+#
 list_mrs() {
 	local -i page=1
 	local -a all_results=()
@@ -369,10 +401,13 @@ list_mrs() {
 	return 0
 }
 
+# parse_args
 # @description Parse command line arguments
 #
+# Arguments:
 # @arg $@ string Command line arguments
 #
+# Globals:
 # @set b_state_open int Open state filter
 # @set b_state_merged int Merged state filter
 # @set b_state_closed int Closed state filter
@@ -382,8 +417,10 @@ list_mrs() {
 # @set date_before string Before date filter
 # @set b_count_only int Count only flag
 #
+# Returns:
 # @exitcode 0 Success
 # @exitcode 1 Invalid argument
+#
 parse_args() {
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
@@ -440,12 +477,16 @@ parse_args() {
 	return 0
 }
 
+# main
 # @description Main entry point
 #
+# Arguments:
 # @arg $@ string Command line arguments
 #
+# Returns:
 # @exitcode 0 Success
 # @exitcode 1 Error (missing deps, API error, etc.)
+#
 main() {
 	trap control_c SIGINT
 

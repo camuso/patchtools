@@ -93,23 +93,29 @@ Options must have a leading hyphen
 EOF
 )
 
+# exitme
 # @description Display usage and exit
 #
+# Returns:
 # @exitcode 0 Always succeeds
+#
 exitme() {
 	echo -e "$usagestr"
 	exit 0
 }
 
+# loop_range
 # @description Prompt user for a number within a range
+#   Loop until user gives a number in the defined range.
 #
-# Loop until user gives a number in the defined range.
-#
+# Arguments:
 # @arg $1 int Minimum value
 # @arg $2 int Maximum value
 # @arg $3 string Variable name to receive the result
 #
+# Returns:
 # @exitcode 0 Valid number received
+#
 loop_range() {
 	local -i min=$1
 	local -i max=$2
@@ -133,13 +139,18 @@ loop_range() {
 	done
 }
 
+# choose_commit
 # @description Present list of commits for user to choose from
 #
+# Arguments:
 # @arg $1 string Newline-separated list of commits
 #
+# Effects:
 # @stdout The selected commit
 #
+# Returns:
 # @exitcode 0 Success
+#
 choose_commit() {
 	local list="$1"
 	local line=
@@ -162,15 +173,18 @@ choose_commit() {
 	return 0
 }
 
+# is_validcmtexpr
 # @description Validate a git commit expression
+#   Breaks the commit expression on double-dot (..) and validates
+#   each component using git rev-parse.
 #
-# Breaks the commit expression on double-dot (..) and validates
-# each component using git rev-parse.
-#
+# Arguments:
 # @arg $1 string Commit expression to validate
 #
+# Returns:
 # @exitcode 0 Valid commit expression
 # @exitcode 1 Invalid commit expression
+#
 is_validcmtexpr() {
 	local tmp=$1
 	local -a cary=()
@@ -185,17 +199,21 @@ is_validcmtexpr() {
 	return 0
 }
 
+# extract_upcmt
 # @description Extract upstream commit from downstream hash
+#   Echoes the extracted upstream hash to the caller. If there is no
+#   upstream commit in the downstream hash passed as argument, then it
+#   returns an empty string.
 #
-# Echoes the extracted upstream hash to the caller. If there is no
-# upstream commit in the downstream hash passed as argument, then it
-# returns an empty string.
-#
+# Arguments:
 # @arg $1 string Downstream hash (defaults to HEAD)
 #
+# Effects:
 # @stdout Short upstream commit hash or empty string
 #
+# Returns:
 # @exitcode 0 Success (may still output empty string if not found)
+#
 extract_upcmt() {
 	local dnhash="${1:-"HEAD"}"	# default is HEAD
 
@@ -205,8 +223,10 @@ extract_upcmt() {
 	return 0
 }
 
+# parseargs
 # @description Parse command line arguments
 #
+# Globals:
 # @set count int Number of commits to show
 # @set rev string Reverse flag
 # @set show_b bool Whether to show downstream commits
@@ -215,7 +235,9 @@ extract_upcmt() {
 # @set path string Paths to filter
 # @set cmtexpr string Commit expression
 #
+# Returns:
 # @exitcode 0 Success
+#
 parseargs() {
 	local arg=
 	local opt=
@@ -265,12 +287,14 @@ parseargs() {
 	return 0
 }
 
+# main
 # @description Main execution - display downstream/upstream commit pairs
+#   Processes command line arguments and iterates through commits,
+#   displaying each downstream commit alongside its upstream counterpart.
 #
-# Processes command line arguments and iterates through commits,
-# displaying each downstream commit alongside its upstream counterpart.
-#
+# Returns:
 # @exitcode 0 Success
+#
 # @exitcode 1 No arguments provided
 main() {
 	local log

@@ -99,10 +99,16 @@ source "$MYLIB"/config-manager.source
 # Functions
 #########################################
 
+# init_booleans
 # @description Initialize default boolean values for program flow control
+#
+# Globals:
 # @set b_rename_infiles bool Set to true (rename input files by default)
 # @set b_fmt_upstream bool Set to true (format upstream patches by default)
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 init_booleans() {
 	for bool in \
 	b_rename_infiles \
@@ -113,13 +119,19 @@ init_booleans() {
 	return 0
 }
 
+# get_booleans
 # @description Read program flow control booleans from config file
+#
+# Globals:
 # @set b_rename_infiles bool Whether to rename input files
 # @set b_fmt_upstream bool Whether to format upstream patches
 # @set b_verbose bool Whether verbose output is enabled
 # @set b_mrcomments bool Whether to show MR comments first
 # @set b_seekfixes bool Whether to automatically seek missing fixes
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 get_booleans() {
 	local bool
 	for bool in \
@@ -135,13 +147,19 @@ get_booleans() {
 	return 0
 }
 
+# set_booleans
 # @description Write current program flow boolean values to config file
+#
+# Globals:
 # @set b_rename_infiles bool Saved to config
 # @set b_fmt_upstream bool Saved to config
 # @set b_verbose bool Saved to config
 # @set b_mrcomments bool Saved to config
 # @set b_seekfixes bool Saved to config
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 set_booleans() {
 	local bool
 
@@ -158,10 +176,18 @@ set_booleans() {
 	return 0
 }
 
+# clean_dir
 # @description Prompt user and delete contents of a directory
+#
+# Arguments:
 # @arg $1 string Directory path to clean
+#
+# Effects:
 # @stdout Confirmation prompt and deletion output
+#
+# Returns:
 # @exitcode 0 Always succeeds (user may decline)
+#
 clean_dir() {
 	local delquery="Are you sure you want to delete the contents of:"
 	local response=false
@@ -171,28 +197,48 @@ clean_dir() {
 	return 0
 }
 
+# clean_indir
 # @description Remove all files (not subdirectories) from indir
+#
+# Globals:
 # @set patchcount int Reset to 0
+#
+# Effects:
 # @stdout Deletion output
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 clean_indir() {
 	find "$indir" -maxdepth 1 -not -type d -exec rm -vf '{}' \;
 	patchcount=0
 	return 0
 }
 
+# clean_outdir
 # @description Remove all files (not subdirectories) from outdir
+#
+# Effects:
 # @stdout Deletion output
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 clean_outdir() {
 	find "$outdir" -maxdepth 1 -not -type d -exec rm -vf '{}' \;
 	rm -vf "$outdir"/"$mismatch_file"
 	return 0
 }
 
+# clean_directories
 # @description Interactive menu to clean indir, outdir, or both
+#
+# Effects:
 # @stdout Menu display and operation feedback
+#
+# Returns:
 # @exitcode 0 Operation completed or user quit
+#
 clean_directories() {
 	local answer
 	local cleanstr
@@ -225,11 +271,19 @@ EOF
 	return 0
 }
 
+# reset_to_lasttag
 # @description Reset the current branch to its most recent tag
+#
+# Globals:
 # @set lasttag string The tag used for reset
 # @set b_allapplied bool Set to false after reset
+#
+# Effects:
 # @stdout Warning if branch mismatch, reset confirmation
+#
+# Returns:
 # @exitcode 0 Reset successful or declined due to branch mismatch
+#
 reset_to_lasttag() {
 	local newlasttag
 	local errstr
@@ -259,12 +313,20 @@ EOF
 	return 0
 }
 
+# nuke
 # @description Delete files in indir/outdir, reset to lasttag, reinit defaults
+#
+# Globals:
 # @set indir string Input directory (cleaned)
 # @set outdir string Output directory (cleaned)
 # @set applymode int Reset to applymode_norm
+#
+# Effects:
 # @stdout Confirmation prompt and operation feedback
+#
+# Returns:
 # @exitcode 0 Operation completed or user declined
+#
 nuke() {
 	loop_yn_ro "${MNU}Are you sure you want to delete everything in \n\
 $STA$indir$MNU and \n$STA$outdir$MNU ? \n(y/n) : $OFF" || return 0
@@ -284,12 +346,20 @@ $STA$indir$MNU and \n$STA$outdir$MNU ? \n(y/n) : $OFF" || return 0
 	return 0
 }
 
+# show_config_menu
 # @description Display configuration menu with current settings
+#
+# Globals:
 # @set indir string Input directory path
 # @set outdir string Output directory path
 # @set editor string Current diff editor
+#
+# Effects:
 # @stdout Formatted configuration menu
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 show_config_menu() {
 	local config_menu
 	local remotes="$remote_dir : $remote_repo/$remote_branch"
@@ -319,13 +389,21 @@ EOF
 	return 0
 }
 
+# config_parser
 # @description Parse and execute configuration menu selections
+#
+# Globals:
 # @set opmode int Current operating mode
 # @set b_mrflag bool Whether in merge request mode
 # @set indir string Input directory path
 # @set outdir string Output directory path
+#
+# Effects:
 # @stdout Menu display and operation feedback
+#
+# Returns:
 # @exitcode 0 User quit the menu
+#
 config_parser() {
 	local opt
 
@@ -373,13 +451,21 @@ config_parser() {
 	done
 }
 
+# show_extops
 # @description Display extended/discrete operations menu
+#
+# Globals:
 # @set b_mrflag bool Whether in merge request mode
 # @set indir string Input directory path
 # @set outdir string Output directory path
 # @set lasttag string Most recent git tag
+#
+# Effects:
 # @stdout Formatted discrete operations menu
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 show_extops() {
 	local opt
 	local extops
@@ -408,13 +494,21 @@ EOF
 	return 0
 }
 
+# show_mr_menu
 # @description Display the Merge Request mode main menu
+#
+# Globals:
 # @set lasttag string Most recent git tag
 # @set remote_repo string Remote repository name
 # @set remote_branch string Remote branch name
 # @set menumode int Current menu mode
+#
+# Effects:
 # @stdout Formatted MR mode menu
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 show_mr_menu() {
 	local opt
 	local remotes="$remote_dir : $remote_repo/$remote_branch"
@@ -454,12 +548,20 @@ EOF
 	return 0
 }
 
+# show_email_menu
 # @description Display the email mode main menu
+#
+# Globals:
 # @set lasttag string Most recent git tag
 # @set remote_repo string Remote repository name
 # @set remote_branch string Remote branch name
+#
+# Effects:
 # @stdout Formatted email mode menu
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 show_email_menu() {
 	local opt
 	local remotes="$remote_dir : $remote_repo/$remote_branch"
@@ -499,27 +601,43 @@ EOF
 	return 0
 }
 
+# call_selmr
 # @description Wrapper to call select_merge_request
+#
+# Returns:
 # @exitcode rc_run MR selected successfully
 # @exitcode rc_pass Selection cancelled or failed
+#
 call_selmr() {
 	select_merge_request && return $rc_run || return $rc_pass
 }
 
+# call_getmr
 # @description Wrapper to call get_merge_request with -u flag
+#
+# Returns:
 # @exitcode rc_run MR retrieved successfully
 # @exitcode rc_pass Retrieval cancelled or failed
+#
 call_getmr() {
 	get_merge_request -u && return $rc_run || return $rc_pass
 }
 
+# case_qanret
 # @description Process return values from query_acknack for menu navigation
 #   Allows query_acknack to act as an adjunct menu, returning to menu_parser
 #   for patchreview execution, avoiding unintended recursion.
+#
+# Arguments:
 # @arg $1 int Return value from MR ack/nak menu
+#
+# Globals:
 # @set menuinput string Main menu selection character
+#
+# Returns:
 # @exitcode rc_run Run the patchreview
 # @exitcode rc_continue Present the main patchreview menu
+#
 case_qanret() {
 	local stat=
 	menuinput=
@@ -532,11 +650,17 @@ case_qanret() {
 	return $stat
 }
 
+# menu_parser
 # @description Parse and execute main menu selections
+#
+# Globals:
 # @set menuinput string Current menu selection (global)
+#
+# Returns:
 # @exitcode rc_run Execute batch run
 # @exitcode rc_pass Selection processed, continue menu
 # @exitcode rc_continue Continue menu loop
+#
 menu_parser() {
 	local stat
 
@@ -641,13 +765,19 @@ menu_parser() {
 	return $rc_continue
 }
 
+# init_files
 # @description Initialize file path variables for patch tracking
+#
+# Globals:
 # @set bp_commits string Path to backport commits file
 # @set us_commits string Path to upstream commits file
 # @set usvbp_commits string Path to upstream vs backport commits file
 # @set mmfile string Path to mismatch file
 # @set missing_fixes string Path to missing fixes file
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 init_files() {
 	bp_commits="$outdir/$bp_commits_name"
 	us_commits="$outdir/$us_commits_name"
@@ -657,10 +787,16 @@ init_files() {
 	return 0
 }
 
+# init_loopvars
 # @description Initialize global variables used in menus
 #   Called for every pass through the config and main menus.
+#
+# Globals:
 # @set b_mrflag bool Set true if in MR mode
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 init_loopvars() {
 	cfg_read_configfile
 	((opmode == opmode_mr)) && b_mrflag=true
@@ -669,13 +805,19 @@ init_loopvars() {
 	return 0
 }
 
+# menu_loop
 # @description Main menu loop with menu display and parsing
 #   Initializes menu variables and calls menu_parser in a loop until
 #   user requests a batch run or quit.
+#
+# Globals:
 # @set menuinput string Current menu selection
 # @set b_mrflag bool Whether in MR mode
+#
+# Returns:
 # @exitcode 0 Normal exit
 # @exitcode rc_run User requested batch run
+#
 menu_loop() {
 
 	get_booleans
@@ -706,13 +848,21 @@ menu_loop() {
 	return $stat
 }
 
+# get_labuser
 # @description Get GitLab username from lab.toml config
 #   GitLab username may differ from system $USER, so this extracts
 #   the username from ~/.config/lab/lab.toml.
+#
+# Globals:
 # @set labuser string GitLab username
+#
+# Effects:
 # @stdout Error message if config not found
+#
+# Returns:
 # @exitcode 0 Username extracted successfully
 # @exitcode 1 Config file missing or empty
+#
 get_labuser() {
 	local usrline
 	local usrmsg
@@ -744,14 +894,20 @@ EOF
 	return 0
 }
 
+# init_parms
 # @description Initialize all script parameters and configuration
+#
+# Globals:
 # @set configfile string Path to patchreview.conf
 # @set branchlist string Path to branchlist file
 # @set last_tag_file string Path to lasttag file
 # @set indir string Input directory path
 # @set outdir string Output directory path
+#
+# Returns:
 # @exitcode 0 Initialization successful
 # @exitcode 1 Failed to get lab user
+#
 init_parms() {
 	local confline
 	local configfile=
@@ -807,14 +963,20 @@ init_parms() {
 	return 0
 }
 
+# main_loop
 # @description Main program loop - top layer of the script
 #   When menu_loop returns, executes patchreview with user-selected
 #   variables and environment. Loops until user quits.
+#
+# Globals:
 # @set menuinput string Current menu selection
 # @set b_mrflag bool Whether in MR mode
 # @set applymode int Patch apply mode
 # @set cmpmode int Comparison mode
+#
+# Returns:
 # @exitcode 0 Never returns normally (loops until exit)
+#
 main_loop() {
 	local stat=0
 
@@ -850,11 +1012,19 @@ main_loop() {
 	done
 }
 
+# cmd_getmr
 # @description Prompt user to enter a merge request number
+#
+# Globals:
 # @set current_mr string The entered MR number
+#
+# Effects:
 # @stdout User prompt
+#
+# Returns:
 # @exitcode 0 MR number entered
 # @exitcode ui_err_missing_arg User quit
+#
 cmd_getmr() {
 	while :; do
 		getuser "Enter a merge request number or $qstr$INF to quit: " \
@@ -867,10 +1037,18 @@ cmd_getmr() {
 	done
 }
 
+# cmd_mr
 # @description Process MR command from command line
+#
+# Arguments:
 # @arg $@ string MR number and optional subcommands
+#
+# Globals:
 # @set current_mr string The MR number to process
+#
+# Returns:
 # @exitcode 0 MR processed successfully
+#
 cmd_mr() {
 	local cmdline=
 	local stat
@@ -900,8 +1078,12 @@ cmd_mr() {
 	return 0
 }
 
+# cmd_check_fixes
 # @description Execute the seek/check fixes command line option
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 cmd_check_fixes() {
 	local stat=0
 
@@ -911,9 +1093,15 @@ cmd_check_fixes() {
 	return 0
 }
 
+# cmd_show_verbose
 # @description Display verbose mode toggle status
+#
+# Effects:
 # @stdout Current and next verbose state
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 cmd_show_verbose() {
 
 	if $b_verbose; then
@@ -928,9 +1116,15 @@ cmd_show_verbose() {
 	return 0
 }
 
+# cmd_show_status
 # @description Display current script configuration status
+#
+# Effects:
 # @stdout Formatted status of all configuration parameters
+#
+# Returns:
 # @exitcode 0 Always succeeds
+#
 cmd_show_status() {
 	local statscreen
 
@@ -952,10 +1146,16 @@ EOF
 	return 0
 }
 
+# check_lab
 # @description Check if lab CLI is installed, offer to install if not
+#
+# Effects:
 # @stdout Installation prompts and status messages
+#
+# Returns:
 # @exitcode 0 lab is installed or was installed successfully
 # @exitcode 1 lab not installed and user declined or repo not configured
+#
 check_lab() {
 	local repo_file="/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:bmeneguele:rhkernel-devtools.repo"
 	local response
@@ -987,10 +1187,16 @@ Then run this script again.$OFF"
 	return 0
 }
 
+# check_labconfig
 # @description Check if lab.toml config file exists
+#
+# Effects:
 # @stdout Error message with setup instructions if config missing
+#
+# Returns:
 # @exitcode 0 Config file exists
 # @exitcode 1 Config file missing (exits script)
+#
 check_labconfig() {
 	local config_file="$HOME/.config/lab/lab.toml"
 	local labmsg
@@ -1019,9 +1225,13 @@ EOF
 	exit 1
 }
 
+# check_env
 # @description Check environment prerequisites before running
+#
+# Returns:
 # @exitcode 0 Environment is ready
 # @exitcode 1 Missing dependencies or invalid repo (exits script)
+#
 check_env() {
 	check_lab
 	check_labconfig
@@ -1031,11 +1241,19 @@ check_env() {
 	return 0
 }
 
+# parse_cmdline
 # @description Parse and execute command line arguments
+#
+# Arguments:
 # @arg $@ string Command line arguments
+#
+# Effects:
 # @stdout Help text, status, or operation output
+#
+# Returns:
 # @exitcode 0 Command executed successfully
 # @exitcode 1 Invalid argument
+#
 parse_cmdline() {
 	local argc=$#
 	local cmdlineops
@@ -1143,10 +1361,16 @@ EOF
 	exit_me 0
 }
 
+# main
 # @description Main entry point for patchreview
+#
+# Arguments:
 # @arg $@ string Command line arguments (optional)
+#
+# Returns:
 # @exitcode 0 Success
 # @exitcode 1 Error
+#
 main() {
 	local argc=$#
 

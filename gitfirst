@@ -34,22 +34,30 @@ Arguments:
 EOF
 )
 
+# usage
 # @description Display usage information and exit
 #
+# Returns:
 # @exitcode 1 Always exits with error
+#
 usage() {
 	echo -en "$usagestr"
 	exit 1
 }
 
+# main
 # @description Find the commit that first added a file
 #
+# Arguments:
 # @arg $1 string Path to the file
 #
+# Effects:
 # @stdout Git log output for the commit that added the file
 #
+# Returns:
 # @exitcode 0 Success
 # @exitcode non-zero File not found or git error
+#
 main() {
 	[[ -z "$1" ]] && usage
 	git log --diff-filter=A -- "$1"
