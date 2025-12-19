@@ -2,7 +2,21 @@
 #
 # gort - Gort is an Omnimodal Revision Tool
 #
-# Provide some automation for backporting.
+# Comprehensive interactive tool for automating the backporting of
+# upstream kernel commits to downstream (RHEL) kernels. Features
+# session management, conflict resolution, and batch operations.
+#
+# Usage:
+#   gort                    # Interactive mode
+#   gort help               # Show help
+#   gort new                # Start a new session
+#   gort run                # Run all remaining commits
+#   gort next               # Run next commit only
+#   gort status             # Show current session status
+#   gort commit             # Commit after conflict resolution
+#   gort continue           # Continue after external commit
+#   gort reset              # Reset to earlier commit
+#   gort history            # Show history of applied patches
 #
 
 #######################################
@@ -60,7 +74,7 @@ declare b_log=false
 #########################################
 # Config Variables
 #########################################
-#** These variables will be initialized by the call to cfg_start
+# These variables will be initialized by the call to cfg_start
 declare configfile=
 declare upcmtstartline=		# Line in backportfile to start backport
 declare dnorighead=		# original downstream head at session start
@@ -82,7 +96,6 @@ declare updir=			# directory of upstream repo
 declare patfil= 		# conflicted commit formatted into a patch
 declare gitbranch=		# branch at start of session
 declare timestamp=		# timestamp at start of session
-#*
 
 #########################################
 # Global Variables
@@ -116,36 +129,41 @@ declare ignore_str="#+"
 declare str_herald=
 declare str_conflicts=
 
+# @description Initialize global display strings
+# @set str_herald string The herald/banner string
+# @set str_conflicts string Conflict message prefix
+# @exitcode 0 Always succeeds
 init_global_strings() {
 $b_log && ui_log "init_global_strings"
 str_herald="\n$MNU${UND}patchtools v$version$OFF - \
 ${CAU}G${INF}ort is an ${CAU}O${INF}mnimodal$CAU R${INF}evision$CAU T${INF}ool$OFF"
 str_conflicts="Conflicts:\n"
+return 0
 }
 
 #########################################
 # Functions
 #########################################
 
+# @description Debug helper to print sanity check message
+# @arg $1 string Message to display
 test_sanity() { echo -en "${CAU}SANITY$INF : $1$OFF "; ui_press_any; }
 
-#** print_herald: print the script's herald defined above
-#
-#     ARGUMENTS:  Implicit global, str_herald
-#       RETURNS:  None
-#*
+# @description Print the script's herald/banner
+# @set str_herald string Global herald string (read)
+# @stdout Herald banner with version info
+# @exitcode 0 Always succeeds
 print_herald() {
 	$b_log && ui_log "print_herald"
 	echo -e "$str_herald"
 	echo -e "${CAU}                   Klaatu barada nikto$OFF"
+	return 0
 }
 
-#** exit_gort: exit in an orderly manner
-#
-#     ARGUMENTS:  1 - exit code
-#                 2 - optional exit message
-#       RETURNS:  None
-#*
+# @description Exit gort in an orderly manner
+# @arg $1 int Exit code
+# @arg $2 string Optional exit message
+# @exitcode * Returns the provided exit code
 exit_gort() {
 	$b_log && ui_log "exit_gort 1:$1  2:$2"
 	# echo -e "$UND\0exit_gort $1$OFF"
@@ -155,44 +173,28 @@ exit_gort() {
 	exit "$1"
 }
 
-#** gu_pushd - cd safely to new directory, exit if there is a problem.
-#
-# Globals
-#   none
-#
-# Arguments
-#   1 - directory to cd into
-#*
+# @description Push directory onto stack safely, exit on failure
+# @arg $1 string Directory to cd into
+# @exitcode 0 Success
+# @exitcode 1 Directory invalid (exits script)
 gu_pushd() {
 	pushd "$1" > /dev/null 2>&1 ||
 		exit_gort 1 "${CAU}${1} is not a valid directory!$OFF"
 }
 
-#** gu_popd - cd safely out of directory, exit if there is a problem.
-#
-# Globals
-#   none
-#
-# Arguments
-#   none
-#*
+# @description Pop directory from stack safely, exit on failure
+# @exitcode 0 Success
+# @exitcode 1 Stack empty (exits script)
 gu_popd() {
 	popd > /dev/null 2>&1 ||
 		exit_gort 1 "${CAU}Directory stack empty!$OFF"
 }
 
-#** normalize_githash - use git rev-parse --short
-#
-# Globals:
-#   none
-#
-# Arguments
-#   1 - the hash to normalize
-#
-# Returns
-#   0 - all good
-#   1 - not a valid hash
-#*
+# @description Normalize git hash using git rev-parse --short
+# @arg $1 string The hash to normalize
+# @stdout Shortened normalized hash
+# @exitcode 0 Valid hash normalized
+# @exitcode 1 Not a valid hash
 normalize_githash() {
 	local inhash="$1"
 
@@ -200,23 +202,19 @@ normalize_githash() {
 	return 0
 }
 
-#** get_gitbranch: prints the name of the current git branch
-#
-#     ARGUMENTS:  None
-#       RETURNS:  None
-#*
+# @description Print the name of the current git branch
+# @stdout Current branch name
+# @exitcode 0 Always succeeds
 get_gitbranch() {
 	git branch | grep '\*' | cut -d' ' -f2
 }
 
-#** select_gitbranch: list the available branches for the user to choose one
-#
-#     ARGUMENTS:  None
-#       GLOBALS:  workdir
-#                 gitbranch
-#       RETURNS:  0 if new branch selected, 1 if user did not make a selection
-#                 or if the selected branch could not be checked out.
-#*
+# @description List available git branches for user selection
+# @set workdir string Work directory path (read)
+# @set gitbranch string Selected branch name (written)
+# @stdout Branch list with selection prompt
+# @exitcode 0 New branch selected and checked out
+# @exitcode 1 User cancelled or checkout failed
 select_gitbranch() {
 	ui_log "select_gitbranch"
 	local index=1
@@ -262,35 +260,25 @@ select_gitbranch() {
 	$b_cmdline && exit_gort $exit_good || return 0
 }
 
-#** init_newhead: common init procedure for new head
-#
-# Set the dnorighead HEAD to current HEAD.
-# Set the upcmtstartline to 1
-# Clear all the done markers in the backport commits file, if it exists.
-#
-# Globals:
-#   dnorighead
-#   upcmtstartline
-#
-# Arguments;
-#   none
-#*
+# @description Initialize newhead after git resets
+#   Sets dnorighead to current HEAD, upcmtstartline to 1,
+#   and clears all done markers in the backport commits file.
+# @set dnorighead string Current HEAD hash
+# @set upcmtstartline int Reset to 1
+# @exitcode 0 Always succeeds
 init_newhead() {
 	dnorighead="$(git rev-parse --short HEAD)"
 	set_cfg_item dnorighead "$dnorighead"
 	upcmtstartline=1
 	clear_alldone
+	return 0
 }
 
-#** enter_newhead: ask user to enter new starting head
-#
-# Globals:
-#   dnorighead
-#   upcmtstartline
-#
-# Arguments:
-#   none
-#*
+# @description Prompt user to enter new starting head commit
+# @set dnorighead string Updated HEAD hash
+# @set upcmtstartline int Reset to 1
+# @stdout Prompts and current head info
+# @exitcode 0 Always succeeds
 enter_newhead() {
 	local newhead=
 	local fmthead=
@@ -315,14 +303,12 @@ for your new head.$OFF"
 
 	git reset --hard "$fmthead"
 	init_newhead
+	return 0
 }
 
-
-#** git_set_subjectprefix: Set the subject prefix in .git/config
-#
-#     ARGUMENTS:  none
-#       RETURNS:  none
-#*
+# @description Set the subject prefix in .git/config
+# @stdout Prompt for new prefix
+# @exitcode 0 Always succeeds
 git_set_subjectprefix() {
 	ui_log "git_set_subjectprefix"
 	local newpfx
@@ -333,16 +319,15 @@ git_set_subjectprefix() {
 	getuser "${MNU}New subject prefix: $OFF" newpfx
 	[ "$newpfx" ] || return
 	git config format.subjectprefix "$newpfx"
+	return 0
 }
 
-#** input_dir - set a directory variable and save it in the config file
-#
-# Arguments
-#   $1 - string to be used in the prompt describing the directory
-#   $2 - the config file key for the directory variable name
-#   $3 - the current value of the directory variable. Will be updated
-#        if the user changes the directory name.
-#*
+# @description Set a directory variable and save to config file
+# @arg $1 string Description string for prompt
+# @arg $2 string Config file key for the directory
+# @arg $3 string Variable name holding current directory value
+# @stdout Directory prompts and confirmation
+# @exitcode 0 Always succeeds
 input_dir() {
 	ui_log "input_dir"
 	local dirstr="$1"
@@ -361,20 +346,13 @@ input_dir() {
 	set_cfg_item "$dircfgkey" "$dir"
 	echo -e "$INF$dirstr directory is $STA$dir$OFF\n"
 	eval "$3"="$dir"
+	return 0
 }
 
-#** is_valid_gitdir - check that the directory is a valid git directory
-#
-# Globals
-#   none
-#
-# Arguments
-#   1 - directory to test
-#
-# Returns
-#   0 - if valid git directory
-#   1 - if not
-#*
+# @description Check that directory is a valid git repository
+# @arg $1 string Directory to test
+# @exitcode 0 Valid git directory
+# @exitcode 1 Not a valid git directory
 is_valid_gitdir() {
 	$b_log && ui_log "is_valid_gitdir"
 	local gdir="$1"
@@ -388,12 +366,11 @@ is_valid_gitdir() {
 		|| return 1
 }
 
-#** input_backportfile: user enters file containing commits to backport
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  backportfile - file containing the commits to be backported
-#       RETURNS:  status of call to ui_getfilespec()
-#*
+# @description Prompt user for file containing commits to backport
+# @set backportfile string Path to backport commits file
+# @stdout File selection prompts
+# @exitcode 0 File selected successfully
+# @exitcode 1 User cancelled or invalid file
 input_backportfile() {
 	$b_log && ui_log "input_backportfile"
 	local sts
@@ -445,12 +422,11 @@ EOF
 	return $sts
 }
 
-#** pr_nohash_msg: message for hash not among commits in backport file
-#
-#     ARGUMENTS:  $1 - hash
-#       GLOBALS:  backportfile - file of upstream commits to backport
-#       RETURNS:  none
-#*
+# @description Print message when hash not found in backport file
+# @arg $1 string Hash that was not found
+# @set backportfile string Path to backport file (read)
+# @stdout Error message about missing hash
+# @exitcode 0 Always succeeds
 pr_nohash_msg () {
 	$b_log && ui_log "pr_nohash_msg"
 	local hash="$1"
@@ -465,16 +441,15 @@ $INF
 EOF
 )
 	echo -e "$nohash_msg"
+	return 0
 }
 
-#** lookup_hash: Find the given hash in the backport commits file
-#
-#     ARGUMENTS:  $1 - hash
-#                 $2 - will return the number of the line in the commits file
-#                      that has the hash.
-#       GLOBALS:  backportfile - file of upstream commits to backport
-#       RETURNS:  nonzero if lookup fails
-#*
+# @description Find given hash in the backport commits file
+# @arg $1 string Hash to find
+# @arg $2 string Variable name to receive line number
+# @set backportfile string Path to backport file (read)
+# @exitcode 0 Hash found, line number returned in $2
+# @exitcode 1 Hash not found or file missing
 lookup_hash() {
 	$b_log && ui_log "lookup_hash"
 	local hash=$1
@@ -503,17 +478,11 @@ lookup_hash() {
 	return 0
 }
 
-#** set_next_backport: Select the starting commit from the backportfile
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  backportfile   - file of upstream commits to backport
-#                 bpfstartline   - one time backport file startline
-#                 tlines         - number of lines in the terminal window
-#                 tcols          - number of columns in the terminal window
-#                 qstr           - string with a boldfaced 'q'
-#                 ignore_str     - string of comment chars in commits log
-#       RETURNS:  none
-#*
+# @description Select starting commit from backportfile interactively
+# @set backportfile string Path to backport file (read)
+# @set bpfstartline int Selected line number (written)
+# @stdout Commit list and selection prompt
+# @exitcode 0 Always succeeds
 set_next_backport() {
 	$b_log && ui_log "set_next_backport"
 
@@ -553,20 +522,15 @@ set_next_backport() {
 	bpfstartline=${linary[$((selected - 1))]}
 
 	$b_cmdline && exit_gort $exit_good
+	return 0
 }
 
-#** validate_last_upstream_hash: assure commit hash is valid
-#
-#   Validates whether the hash stored in the project file is valid for this
-#   instance of gort
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  backportfile - the file containing the hashes of the commits
-#                                to be backported.
-#                 b_lasthashvalid - boolean indicating last hash was valid
-#                 updir - directory of upstream repo
-#       RETURNS:  nonzero if the last stored hash is not valid
-#*
+# @description Validate that stored upstream hash is valid for this session
+# @set backportfile string Path to backport file (read)
+# @set b_lasthashvalid bool Set true if hash is valid
+# @set lastuphash string Most recent upstream hash (read)
+# @exitcode 0 Hash is valid
+# @exitcode 1 Hash is not valid
 validate_last_upstream_hash() {
 	$b_log && ui_log "validate_last_upstream_hash"
 	local sts=0
@@ -603,20 +567,12 @@ validate_last_upstream_hash() {
 	return 0
 }
 
-#** get_lastuplog: gitnice of most recent, successfully applied upstream commit
-#
-#  Also inits the lastuphash, if there was one.
-#
-# Globals:
-#   lastuplog
-#   lastuphash
-#   backportfile
-#
-# Returns
-#   0 - if there was an upstream hash applied
-#   1 - if there was no upstream hash applied yet or if there's no backport
-#       file
-#*
+# @description Get log of most recent successfully applied upstream commit
+# @set lastuplog string Log line of last applied commit
+# @set lastuphash string Hash of last applied commit
+# @set backportfile string Path to backport file (read)
+# @exitcode 0 Upstream hash was applied
+# @exitcode 1 No upstream hash applied yet or no backport file
 get_lastuplog() {
 	$b_log && ui_log "get_lastuplog"
 	local ch="+"
@@ -640,46 +596,36 @@ get_lastuplog() {
 	return "$sts"
 }
 
-#** get_finaluphash: find the last commit in the backport commits file
-#
-# Globals
-#   backportfile
-#   finaluphash
-#*
+# @description Get the final upstream hash from backport commits file
+# @set backportfile string Path to backport file (read)
+# @set finaluphash string Last hash in file (written)
+# @exitcode 0 Always succeeds
 get_finaluphash() {
 	local -a lary=()
 
 	mapfile -t lary < <(grep -v "^[${ignore_str}]" "$backportfile" | grep -v '^$')
 	finaluphash="$(cut -d' ' -f1 <<< "${lary[-1]}")"
+	return 0
 }
 
-#** git_verify - verifies whether the given hash is a commit
-#
-# Arguments
-#   1 - the hash to verify
-#*
+# @description Verify whether given hash is a valid commit
+# @arg $1 string Hash to verify
+# @exitcode 0 Valid commit
+# @exitcode 1 Invalid commit
 git_verify() {
 	local cmthash="$1"
 	git rev-parse --verify "${cmthash}^{commit}" >/dev/null 2>&1
 	return $?
 }
 
-#** git_upcmd - execute a git command in the upstream context
-#
-# The upstream context is hard-coded as either changing into
-# the actual upstream directory or using a mirror repo of the
-# upstream directory.
-#
-# Currently using: Mirror Repo
-#
-# Globals
-#   updir   - upstream directory
-#   workdir - directory to receive git formatted patches
-#
-# Arguments
-#   1 - cmd    - the git command to execute
-#   2 - uphash - the upstream hash for the git command
-#*
+# @description Execute a git command in the upstream context
+# @arg $1 string Git command (show|log|nice|parse|format|verify)
+# @arg $2 string Upstream hash for the command
+# @set updir string Upstream directory (read)
+# @set workdir string Work directory for patches (read)
+# @stdout Command output
+# @exitcode 0 Success
+# @exitcode 1 Verify failed
 git_upcmd() {
 	$b_log && ui_log "git_upcmd cmd:$1 uphash:$2"
 
@@ -704,29 +650,15 @@ git_upcmd() {
 	return 0
 }
 
-#** get_next_backport: gets the next commit in the backport commits file
-#
-#
-#  Ignores lines with leading *, indicating the commit is to be skipped, and
-#  leading +, indicating the commit has already been applied to the downstream
-#  branch.
-#
-#     ARGUMENTS:
-#       none
-#     GLOBALS:
-#         backportfile    - file with upstream commits to be backported
-#         upcmtstartline  - startline in the backport commits file
-#         bpfstartline    - when out-of-sequence commit was selected
-#         currentuphash   - the current upstream hash being backported
-#         currentupcommit - the git log --oneline of currentuphash
-#         ignore_str      - string of leading chars to ignore in backport file
-#         menupad         - pad of space characters for menu presentation
-#     OUTPUTS:
-#         echoes the hash of next upstream commit to backport
-#     RETURNS:
-#         1 if there are no more upstream commits to backport
-#         0 otherwise
-#*
+# @description Get the next commit from the backport commits file
+#   Ignores lines with leading # (comment) or + (already applied).
+# @set backportfile string Path to backport file (read)
+# @set upcmtstartline int Current line in backport file
+# @set bpfstartline int One-time override start line
+# @set currentuphash string Current upstream hash (written)
+# @set currentupcommit string Log of current commit (written)
+# @exitcode 0 Next commit found
+# @exitcode 1 No more commits to backport
 get_next_backport() {
 	$b_log && ui_log "get_next_backport upcmtstartline:$upcmtstartline"
 
@@ -838,20 +770,12 @@ get_next_backport() {
 	return $sts
 }
 
-#** get_current_backport: gets the current commit to backport
-#
-#  Gets the current commit in the commits file indicated by the current
-#  upcmtstartline.
-#
-#  Because get_next_backport always pre-increments the upcmtstartline, this
-#  routine will decrement the upcmtstartline before calling get_next_backport.
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  upcmtstartline
-#                 b_cmdline
-#       OUTPUTS:  echoes the hash of next upstream commit in the commits file
-#       RETURNS:  status of call to get_next_backport
-#*
+# @description Get the current commit to backport at upcmtstartline
+#   Decrements upcmtstartline before calling get_next_backport.
+# @set upcmtstartline int Current line number (decremented)
+# @set b_cmdline bool Command line mode (read)
+# @exitcode 0 Commit found
+# @exitcode 1 No commit found
 get_current_backport() {
 	$b_log && ui_log "get_current_backport upcmtstartline:$upcmtstartline"
 	# local myname="get_current_backport:"
@@ -863,19 +787,12 @@ get_current_backport() {
 	return $?
 }
 
-#** show_next_backport: show the next upstream commit to backport
-#
-#     ARGUMENTS:  None
-#       GLOBALS:  backportfile - file containing the list of backport commits
-#                 currentupcommit - current upstream oneline commit log
-#                 currentuphash - current upstream short hash
-#                 b_conflict - outstanding conflict
-#                 b_cmdline - command line mode
-#                 b_statflag - user asking for status
-#                 menupad - the space char pad for the main menu
-#                 tcols -  calculated in lib/ui.source
-#       RETURNS:  none
-#*
+# @description Display the next upstream commit to backport
+# @set currentupcommit string Current commit log line (read)
+# @set currentuphash string Current commit hash (read)
+# @set b_conflict bool Conflict status (read)
+# @stdout Next commit information
+# @exitcode 0 Always succeeds
 show_next_backport() {
 	$b_log && ui_log "show_next_backport currentupcommit:$currentupcommit currentuphash:$currentuphash"
 
@@ -905,12 +822,11 @@ EOF
 	return 0
 }
 
-#** show_select_next_backport: let user select next commit to backport
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  backportfile
-#       RETURNS:  0
-#*
+# @description Show menu option for selecting next commit
+# @set backportfile string Path to backport file (read)
+# @stdout Menu option text
+# @exitcode 0 Success
+# @exitcode 1 No backport file
 show_select_next_backport() {
 	# echo -e "${UND}show_select_next_backport$OFF"
 
@@ -927,18 +843,14 @@ EOF
 	return 0
 }
 
-#** get_lastbackport: get the last successfully applied upstream commit
-#
-# Globals:
-#   dnorighead
-#
-# Returns:
-#   0 extracted upstream hash is not dnorighead and is an actual hash
-#   1 current head is the same as the dnorighead
-#   2 extracted upstream hash field is not a hash
-#   3 dnorighead is null
-#   4 dnorighead is invalid
-#*
+# @description Get the last successfully applied upstream commit
+# @set dnorighead string Original downstream head (read)
+# @stdout Upstream hash of last backported commit
+# @exitcode 0 Hash extracted successfully
+# @exitcode 1 Current head same as dnorighead
+# @exitcode 2 Extracted field is not a hash
+# @exitcode 3 dnorighead is null
+# @exitcode 4 dnorighead is invalid
 get_lastbackport() {
 	$b_log && ui_log "get_lastbackport"
 	local bp
@@ -952,15 +864,11 @@ get_lastbackport() {
 	[[ $hhash =~ ^[0-9a-fA-F]+$ ]] && return 0 || return 2
 }
 
-#** show_most_recent_backport: show the last upstream commit backported
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  lastuplog
-#                 tcols
-#                 menupad
-#                 b_lasthashvalid
-#       RETURNS:  none
-#*
+# @description Display the most recently backported upstream commit
+# @set lastuplog string Log of last upstream commit (read)
+# @set tcols int Terminal columns (read)
+# @stdout Last backported commit info
+# @exitcode 0 Always succeeds
 show_most_recent_backport() {
 	$b_log && ui_log "show_most_recent_backport"
 	# echo -e "\n${UND}show_most_recent_backport$OFF"
@@ -981,19 +889,10 @@ show_most_recent_backport() {
 	((upcmtstartline > $(wc -l < "$backportfile"))) && echo -e "$eofstr"
 }
 
-#** extract_upcmt: extract upstream commit from downstream hash
-#
-# Echoes the extracted upstream hash to the caller. If there is no
-# upstream commit in the downstream hash passed as argument, then it
-# returns an empty string.
-#
-# Globals
-#   none
-#
-# Arguments
-#   1 - dnhash: downstream hash
-#
-#*
+# @description Extract upstream commit hash from downstream commit message
+# @arg $1 string Downstream hash (default: HEAD)
+# @stdout Upstream hash or empty if not found
+# @exitcode 0 Always succeeds
 extract_upcmt() {
 	local dnhash="${1:-"HEAD"}"	# default is HEAD
 
@@ -1002,13 +901,11 @@ extract_upcmt() {
 		| xargs git rev-parse --short 2> /dev/null
 }
 
-#** show_upstream_commits_file: print the filename of the upstream commmits file
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  backportfile
-#                 b_cmdline
-#       RETURNS:  none
-#*
+# @description Display the upstream commits file path and status
+# @set backportfile string Path to backport file (read)
+# @set b_cmdline bool Command line mode (read)
+# @stdout File path and commit counts
+# @exitcode 0 Always succeeds
 show_upstream_commits_file() {
 	$b_log && ui_log "show_upstream_commits_file"
 	# echo -e "${UND}show_upstream_commits_file$OFF"
@@ -1099,14 +996,11 @@ $padstr Upstream Backports File says it should be: $STA$lastdnup$OFF"
 	return 0
 }
 
-#** show_history: history of applied patches in downstream branch
-
-#     ARGUMENTS:  none
-#       GLOBALS:  tcols - number of columns in the current terminal
-#                 menupad - number of to the dynamic menu items
-#                 dnorighead
-#       RETURNS:  none
-#*
+# @description Display history of applied patches in downstream branch
+# @set tcols int Terminal columns (read)
+# @set dnorighead string Original downstream head (read)
+# @stdout Commit history table
+# @exitcode 0 Always succeeds
 show_history() {
 	local tmpfile=$(mktemp)
 	local -i count
@@ -1133,14 +1027,11 @@ There are $STA$count$OFF commits since Head at Session Start: $STA$dnorighead$OF
 	return 0
 }
 
-#** show_status: prints the current status to the screen
-#
-#     ARGUMENTS: none
-#
-#       GLOBALS:  tcols - number of columns in the current terminal
-#                 menupad - number of to the dynamic menu items
-#       RETURNS:  none
-#*
+# @description Print current session status to screen
+# @set tcols int Terminal columns (read)
+# @set menupad int Menu padding (read)
+# @stdout Status information
+# @exitcode 0 Always succeeds
 show_status() {
 	$b_log && ui_log "show_status"
 
@@ -1177,15 +1068,11 @@ EOF
 	$b_cmdline && exit 0 || { ui_press_any; return; }
 }
 
-#** get_patchdir: get the directory to receive the patches
-#
-# Globals
-#   patchdir
-#
-# Returns:
-#   0 if new patchdir
-#   1 if user quit without entering a new patchdir
-#*
+# @description Get directory path for patch files
+# @set patchdir string Patch directory (written)
+# @stdout Prompt for directory
+# @exitcode 0 New patchdir entered
+# @exitcode 1 User quit without entering
 get_patchdir() {
 	$b_log && ui_log "get_patchdir"
 	local pdir=
@@ -1201,13 +1088,11 @@ get_patchdir() {
 	return 0
 }
 
-#** create_patches: create a patch series from the backported commits
-#
-# Globals:
-#  patchdir - directory for the patch series files
-#  dnorighead - head when New session was started
-#
-#*
+# @description Create patch series from backported commits
+# @set patchdir string Patch directory (read)
+# @set dnorighead string Original head (read)
+# @stdout Progress and prompts
+# @exitcode 0 Patches created or user cancelled
 create_patches() {
 	$b_log && ui_log "create_patches"
 	local dirstr="
@@ -1242,29 +1127,20 @@ EOF
 	return
 }
 
-#** show_tbackground
-#
-#  Globals:
-#    tbackground
-#    tb_light
-#    tb_dark
-#*
+# @description Display current terminal background setting
+# @set tbackground int Background setting (read)
+# @stdout "Dark" or "Light"
+# @exitcode 0 Always succeeds
 show_tbackground() {
 	$b_log && ui_log "show_tbackground"
 	((tbackground == tb_dark)) && echo -n "Dark" ||
 		                      echo -n "Light"
 }
 
-#** show_backport_mode: display the current backport mode
-#
-#  Globals:
-#    backport_mode
-#    bm_cherry
-#    bm_apply
-#    bm_apply3
-#    bm_patch
-#    bm_patch_merge
-#*
+# @description Display the current backport mode setting
+# @set backport_mode int Current mode (read)
+# @stdout Mode name (patchpal, cherry-pick, apply, etc.)
+# @exitcode 0 Always succeeds
 show_backport_mode() {
 	$b_log && ui_log "show_backport_mode"
 	case "$backport_mode" in
@@ -1282,15 +1158,12 @@ show_backport_mode() {
 	esac
 }
 
-#** show_options: display the options menu
-#
-#  Globals:
-#    str_upstream
-#    str_brew
-#    str_test
-#    str_jira
-#    str_cve
-#*
+# @description Display the options menu
+# @set str_upstream string Upstream version info (read)
+# @set str_jira string JIRA link (read)
+# @set str_cve string CVE info (read)
+# @stdout Options menu
+# @exitcode 0 Always succeeds
 show_options() {
 	$b_log && ui_log "show_options"
 	local options
@@ -1313,14 +1186,14 @@ $MNU
 EOF
 )
 	echo -e "$options"
+	return 0
 }
 
-#** input_oneopt: get one of the string options
-#
-# Arguments:
-#   $1 - prompt string
-#   $2 - option name by reference, so no leading $
-#*
+# @description Get one of the string options from user
+# @arg $1 string Prompt string
+# @arg $2 string Option variable name (by reference)
+# @exitcode 0 Value entered
+# @exitcode 1 User quit
 input_oneopt() {
 	$b_log && ui_log "input_oneopt"
 	local prompt="$1"
@@ -1340,17 +1213,12 @@ input_oneopt() {
 	return 0
 }
 
-#** get_options: parse the user's option entry
-#
-#  Globals:
-#    str_upstream
-#    str_brew
-#    str_test
-#    str_jira
-#    str_cve
-#
-#  Returns 1 when user types 'q', else returns 0
-#*
+# @description Parse user's option entry from options menu
+# @set str_upstream string Upstream version (modified)
+# @set str_brew string Brew info (modified)
+# @set str_jira string JIRA link (modified)
+# @exitcode 0 Option processed
+# @exitcode 1 User typed 'q' to quit
 get_options() {
 	$b_log && ui_log "get_options"
 	local opt=
@@ -1385,11 +1253,8 @@ get_options() {
 	return 0
 }
 
-#** options_looop: get the options until user types 'q'
-#
-#  Nothing complicated here. Basically an infinite loop with an
-#  exit condition.
-#*
+# @description Loop getting options until user types 'q'
+# @exitcode 0 User quit
 options_loop() {
 	$b_log && ui_log "options_loop"
 	while :; do
@@ -1397,12 +1262,12 @@ options_loop() {
 	done
 }
 
-#** show_altopt: displays the Alt-Shift options
-#
-#  Arguments:
-#    $1 - The option letter
-#    $2 - The string that goes with it.
-#*
+# @description Display Alt-Shift option if keypress mode active
+# @arg $1 string Option letter
+# @arg $2 string Description string
+# @stdout Option line or nothing if not in keypress mode
+# @exitcode 0 Displayed
+# @exitcode 1 Not in keypress mode
 show_altopt() {
 	$b_log && ui_log "show_altopt"
 	local opt="$1"
@@ -1412,15 +1277,12 @@ show_altopt() {
 	return 0
 }
 
-#** show_settings: display current settings and the main menu
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  tcols - number of columns in the current terminal
-#                 menupad - number of to the dynamic menu items
-#                 dncurrenthead - current downstream head
-#                 dnorighead - downstream head at new session start
-#       RETURNS:  none
-#*
+# @description Display current settings and main menu
+# @set tcols int Terminal columns (read)
+# @set dncurrenthead string Current downstream head (written)
+# @set dnorighead string Original downstream head (read)
+# @stdout Settings and menu
+# @exitcode 0 Always succeeds
 show_settings() {
 	$b_log && ui_log "show_settings"
 	# echo -e "$UND\0show_settings$OFF"
@@ -1473,17 +1335,12 @@ EOF
 # $MNU V $OFF vim $STA$backportfile$OFF in a popup window
 
 	echo -e "$settings"
+	return 0
 }
 
-#** menu_parser: parse the user input at the main menu
-#
-#     ARGUMENTS:  none, but lots of side effects
-#       GLOBALS:
-#         dncurrenthead
-#         ui_b_keypress - defined in lib/keypress_support.soource
-#       RETURNS:  rc_continue, used by menu_loop to determine whether to
-#       	  continue looping.
-#*
+# @description Parse user input at main menu
+# @set dncurrenthead string Current downstream head (written)
+# @exitcode rc_continue Continue menu loop
 menu_parser() {
 	# echo -e "$UND\0menu_parser$OFF"
 	$b_log && ui_log "menu_parser"
@@ -1552,14 +1409,11 @@ menu_parser() {
 	return $rc_continue
 }
 
-#** menu_loop: present the menu until user quits
-#
-#     ARGUMENTS:  none, but lots of side effects
-#       GLOBALS:  workdir
-#                 cmtmsgfile
-#                 backportfile
-#       RETURNS:  sts, which is the value returned by the call to menu_parser
-#*
+# @description Present main menu until user quits
+# @set workdir string Work directory (read)
+# @set cmtmsgfile string Commit message file (read)
+# @set backportfile string Backport file path (read)
+# @exitcode * Status from menu_parser
 menu_loop() {
 	$b_log && ui_log "menu_loop"
 	local sts=0
@@ -1574,12 +1428,10 @@ menu_loop() {
 	return $sts
 }
 
-#** edit_commit: Loop through process to edit commit message until done
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  cmtmsgfile
-#       RETURNS:  none
-#*
+# @description Loop through commit message editing until done
+# @set cmtmsgfile string Commit message file (read)
+# @stdout Commit log and prompts
+# @exitcode 0 Always succeeds
 edit_commit() {
 	$b_log && ui_log "edit_commit"
 	local yup
@@ -1598,23 +1450,15 @@ edit_commit() {
 	done
 }
 
-#** check_state - first thing before anything
-#
-# Globals
-#
-# Arguments
-#
-#*
+# @description Check state before any operations (placeholder)
+# @exitcode 0 Always succeeds
 check_state() {
 	$b_log && ui_log "check_state"
 }
 
-#** clean_status - abort everything and leave git status clean
-#
-# Globals
-#
-# Arguments
-#*
+# @description Abort operations and leave git status clean
+# @set backport_mode int Backport mode (read)
+# @exitcode 0 Always succeeds
 clean_status() {
 	$b_log && ui_log "clean_status"
 	((backport_mode == bm_cherry)) && git cherry-pick --abort > /dev/null 2>&1
@@ -1623,19 +1467,10 @@ clean_status() {
 	git clean -fd > /dev/null 2>&1
 }
 
-
-#** abort_gort: abort the current backport/apply and exit
-#
-#  This will clear conflicts flag and abort the pending backport
-#
-#     ARGUMENTS:  none
-#
-#       GLOBALS:  b_conflict
-#                 b_cmdline
-#                 upcmtstartline
-#
-#       RETURNS:  none
-#*
+# @description Abort current backport, clear conflicts, reset to last good commit
+# @set b_conflict bool Conflict flag (cleared)
+# @set upcmtstartline int Start line (reset to 1)
+# @exitcode 0 On return to menu
 abort_gort() {
 	$b_log && ui_log "abort_gort upcmtstartline:$upcmtstartline b_conflict:$b_conflict"
 	local cmt
@@ -1656,12 +1491,12 @@ abort_gort() {
 	$b_cmdline && exit_gort $exit_good || return
 }
 
-#** get_newhead: choose from the heads since dnorighead
-#
-# Globals:
-#   dnorighead    - result of 'git merge-base HEAD <origin-branch-name>'
-#   dncurrenthead - this will be modified if caller selects different head
-#*
+# @description Choose from heads since dnorighead
+# @set dnorighead string Original downstream head (read)
+# @set dncurrenthead string Modified if user selects different head
+# @stdout Commit list and selection
+# @exitcode 0 Selection made
+# @exitcode 1 User cancelled
 get_newhead() {
 	$b_log && ui_log "get_newhead dnorighead:$dnorighead dncurrenthead:$dncurrenthead"
 	local -a dncmtary=()
@@ -1706,25 +1541,11 @@ There are $STA$count$INF commits since Head at Session Start: $STA$dnorighead$IN
 	return 0
 }
 
-#** update_gort: update the Head at Session Start to Current downstream head
-#
-# If the git index has been updated with a git pull or creation of a new
-# branch, this will update the Head at Session Start to the current
-# downstream head, after resetting all the markers in the backportfile.
-# Basically, gort_reset, but without offering a choice, because there are
-# likely hundreds of commits since the last downstream pull.
-#
-# Globals:
-#   dnorighead
-#   dncurrenthead
-#   backportfile
-#
-# Arguments
-#   none
-#
-# Returns
-#   none
-#*
+# @description Update Head at Session Start to current downstream head
+#   Resets markers in backportfile after git pull or new branch creation.
+# @set dnorighead string Updated to dncurrenthead
+# @set dncurrenthead string Current downstream head (read)
+# @exitcode 0 On return to menu
 update_gort() {
 	$b_log && ui_log "update_gort dnorighead:$dnorighead dncurrenthead:$dncurrenthead"
 	clean_status
@@ -1740,22 +1561,13 @@ update_gort() {
 	$b_cmdline && exit_gort $exit_reset || return
 }
 
-#** reset_gort: reset the current downstream HEAD to an earlier commit
-#
-# If the current downstream HEAD is not at the original downstream HEAD, then
-# the user is presented with a list of downstream commits and corresponding
-# upstream commits. If the user chooses an earlier commit from the list, the
-# downstream commit will be reset to that point, and the upstreamcommitsfile
-# will be updated. It will appear as if those later commits have not yet been
-# made.
-# This is useful if things go over the edge, and you need to backtrack.
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  dnorighead
-#                 dncurrenthead
-#                 backportfile
-#       RETURNS:  none
-#*
+# @description Reset downstream HEAD to an earlier commit
+#   Presents list of commits since dnorighead for user to select.
+#   Useful for backtracking when things go wrong.
+# @set dnorighead string Original downstream head (read)
+# @set dncurrenthead string Current downstream head (modified)
+# @set backportfile string Backport file (markers updated)
+# @exitcode 0 On return to menu
 reset_gort() {
 	$b_log && ui_log "reset_gort dnorighead:$dnorighead dncurrenthead:$dncurrenthead"
 	local -a clrary=()
@@ -1797,14 +1609,11 @@ reset_gort() {
 	$b_cmdline && exit_gort $exit_reset || return
 }
 
-#** run_continue: continue backporting after resolving conflicts
-#
-#  Assumes that changes were made and committed externally to this script.
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  b_conflict
-#       RETURNS:  none
-#*
+# @description Continue backporting after resolving conflicts
+#   Assumes changes were made and committed externally.
+# @set b_conflict bool Conflict flag (cleared)
+# @stdout Status and prompts
+# @exitcode 0 Continuing to run
 run_continue() {
 	# echo -e "$UND\0run_continue$OFF"
 	$b_log && ui_log "run_continue"
@@ -1834,18 +1643,12 @@ EOF
 	run_me
 }
 
-#** run_commit: return from resolving conflicts, but let the script commit
-#
-#  Script will commit and create the commit log from the conflicthash.
-#
-#     ARGUMENTS:  $1 if == "ONE" run one and exit
-#       GLOBALS:  currentuphash
-#                 conflicthash
-#                 b_conflict
-#                 exit_nothing
-#                 exit_good
-#       RETURNS:  none
-#*
+# @description Return from conflict resolution, let script commit
+# @arg $1 string If "ONE", run one and exit
+# @set currentuphash string Current upstream hash (read)
+# @set conflicthash string Conflicting hash (read/cleared)
+# @set b_conflict bool Conflict flag (cleared)
+# @exitcode 0 Commit processed
 run_commit() {
 	$b_log && ui_log "run_commit arg1:$1 currentuphash:$currentuphash conflicthash:$conflicthash"
 
@@ -1875,13 +1678,10 @@ run_commit() {
 	menu_loop
 }
 
-#** run_single: just backport one commit
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  currentuphash
-#                 b_single
-#       RETURNS:  none
-#*
+# @description Backport just one commit and exit
+# @set currentuphash string Current upstream hash (read)
+# @set b_single bool Single mode flag (set true)
+# @exitcode * Exit code from backport
 run_single() {
 	$b_log && ui_log "run_single"
 	local sts
@@ -1895,16 +1695,12 @@ run_single() {
 	exit $sts
 }
 
-#** mark_out: mark the line with a leading #
-#
-# Globals
-#   backportfile
-#
-# Arguments
-#   1 - uphash
-#   2 - optional user supplied mark
-#
-#*
+# @description Mark line with leading # (comment out)
+# @arg $1 string Upstream hash
+# @arg $2 string Optional mark character (default: #)
+# @set backportfile string Backport file (read)
+# @exitcode 0 Success
+# @exitcode 1 File missing or sed failed
 mark_out() {
 	$b_log && ui_log "mark_out uphash: $1 mark:${2:-'+'}"
 	local uphash="$1"
@@ -1915,17 +1711,12 @@ mark_out() {
 	return 0
 }
 
-
-#** mark_done: mark the line with a leading +
-#
-#  Indicates the upstream hash in this line of the backport commits file has
-#  been backported.
-#
-#     ARGUMENTS:  $1 - uphash
-#    		  $2 - optional user supplied mark
-#       GLOBALS:  backportfile
-#       RETURNS:  0 on success, nonzero on fail
-#*
+# @description Mark line with leading + (done)
+# @arg $1 string Upstream hash
+# @arg $2 string Optional mark character (default: +)
+# @set backportfile string Backport file (read)
+# @exitcode 0 Success
+# @exitcode 1 File missing or sed failed
 mark_done() {
 	$b_log && ui_log "mark_done uphash: $1 mark:${2:-'+'}"
 	local uphash="$1"
@@ -1936,13 +1727,12 @@ mark_done() {
 	return 0
 }
 
-#** clear_done: clear "done" mark for line having given hash in backportfile
-#
-#     ARGUMENTS:  $1 - uphash
-#    		  $2 - optional user supplied mark
-#       GLOBALS:  backportfile
-#       RETURNS:  0 on success, nonzero on fail
-#*
+# @description Clear done mark for line with given hash
+# @arg $1 string Upstream hash
+# @arg $2 string Optional mark character (default: +)
+# @set backportfile string Backport file (read)
+# @exitcode 0 Success
+# @exitcode 1 File missing or sed failed
 clear_done() {
 	 #ui_log "clear_done uphash: $1 mark:${2:-'+'}"
 	local uphash="$1"
@@ -1953,15 +1743,11 @@ clear_done() {
 	return 0
 }
 
-#** clear_alldone: clear all the done marks in the backportfile
-#
-#          NAME:  clear_alldone
-#   DESCRIPTION:  Clear the "done" mark for the line in the backportfile
-#                 corresponding to the hash passed.
-#     ARGUMENTS:  $1 - optional user supplied mark
-#       GLOBALS:  backportfile
-#       RETURNS:  0 on success, nonzero on fail
-#*
+# @description Clear all done marks in the backportfile
+# @arg $1 string Optional mark character (default: +)
+# @set backportfile string Backport file (read)
+# @exitcode 0 Success
+# @exitcode 1 File missing or sed failed
 clear_alldone() {
 	$b_log && ui_log "clear_alldone mark:${1:-+}"
 	local mark="${1:-+}"	# the default leading char is +
@@ -1973,15 +1759,10 @@ clear_alldone() {
 	return 0
 }
 
-#** flag_conflict - print conflit message and status
-#
-# Globals
-#   gortlog
-#   b_conflict
-#
-# Arguments
-#   1 - uphash - the conflicted commit
-#*
+# @description Print conflict message and status
+# @arg $1 string Upstream hash that conflicted
+# @set b_conflict bool Conflict flag (read)
+# @stdout Conflict details and resolution instructions
 flag_conflict() {
 	$b_log && ui_log "flag_conflict uphash:$1"
 	local uphash="$1"
@@ -2053,18 +1834,13 @@ ${STA}gort continue$INF : if you have fixed the conflicts and made the commit ex
 	exit_gort $exit_conflict
 }
 
-#** backport: backport the upstream commit in uphash
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  backportfile
-#                 commit
-#                 tcols
-#                 currentuphash
-#                 lastuphash
-#                 b_conflict
-#                 b_single
-#       RETURNS:  non-zero if something went wrong
-#*
+# @description Backport the upstream commit in currentuphash
+# @set currentuphash string Current upstream hash (read)
+# @set lastuphash string Last applied hash (written)
+# @set b_conflict bool Conflict flag (may be set)
+# @stdout Progress messages
+# @exitcode 0 Success
+# @exitcode * Non-zero if something went wrong
 backport() {
 	$b_log && ui_log "backport"
 	# echo -e "$UND\0backport$OFF"
@@ -2163,22 +1939,13 @@ backport() {
 	return 0;
 }
 
-#** stage_commit: process the commit that was backported
-#
-#  Create the git log for the backported commit, including JIRA number, upstream
-#  and brew info, if any.
-#  Query the user to see if editing the commit is warranted, for conflicts, etc.
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  b_conflict
-#		  cmtmsgfile
-#		  str_jira
-#		  str_cve
-#		  str_upstream
-#		  str_conflicts
-#       RETURNS:  none
-#
-#*
+# @description Process and commit the backported commit
+#   Creates git log with JIRA, CVE, upstream info if available.
+# @set b_conflict bool Conflict flag (read)
+# @set cmtmsgfile string Commit message file (written)
+# @set str_jira string JIRA link (read)
+# @exitcode 0 Success
+# @exitcode 1 Commit message error
 stage_commit() {
 	$b_log && ui_log "stage_commit"
 	local summary
@@ -2268,22 +2035,12 @@ $OFF"
 	b_conflict=false
 }
 
-#** stage_patchpal: process the commit that was backported
-#
-#  Create the git log for the backported commit, including JIRA number, upstream
-#  and brew info, if any.
-#  Query the user to see if editing the commit is warranted, for conflicts, etc.
-#
-#     ARGUMENTS:
-#
-#       GLOBALS:  cmtmsgfile
-#		  str_jira
-#		  str_cve
-#		  str_upstream
-#		  str_conflicts
-#       RETURNS:  0 if all is well
-#                 1 for patchpal not done
-#*
+# @description Process and commit via patchpal mode
+#   Creates git log with JIRA, CVE, upstream info if available.
+# @set cmtmsgfile string Commit message file (written)
+# @set str_jira string JIRA link (read)
+# @exitcode 0 Success
+# @exitcode 1 Patchpal not done
 stage_patchpal() {
 	$b_log && ui_log "stage_patchpal"
 	local newlog=
@@ -2358,18 +2115,11 @@ $OFF"
 	return 0
 }
 
-#** is_backport_done
-#
-# Tests whether the upstream backport was done.
-#
-# Globals
-#   currentuphash - the upstream commit hash being backported
-#   dnorighead - the head at session start
-#
-# Returns
-#   0 - if upstream backport was completed
-#   1 - if not
-#*
+# @description Test if upstream backport was already completed
+# @set currentuphash string Upstream hash being backported (read)
+# @set dnorighead string Head at session start (read)
+# @exitcode 0 Backport was completed
+# @exitcode 1 Backport not done
 is_backport_done() {
 	local uphash="$currentuphash"
 
@@ -2386,19 +2136,11 @@ is_backport_done() {
 	[ -n "$(git log "$dnorighead".. --grep=$uphash)" ] && return 0 || return 1
 }
 
-#** is_upcmt_marked
-#
-# Look int the backports file to see if the current upstream hash has been
-# marked as done.
-#
-# Globals
-#   currentuphash
-#   backportfile
-#
-# Returns
-#   0 - if marked done, or if nothing to mark as done.
-#   1 - if not, will start the process of marking it done in the backportfile
-#*
+# @description Check if upstream commit is marked done in backportfile
+# @set currentuphash string Current upstream hash (read)
+# @set backportfile string Backport file path (read)
+# @exitcode 0 Marked done or nothing to mark
+# @exitcode 1 Not marked
 is_upcmt_marked() {
 
 	[ -n "$currentuphash" ] || return 0
@@ -2407,40 +2149,34 @@ is_upcmt_marked() {
 	return $?
 }
 
-#** set_cfg_item key value: writes the value to the key in the .conf file
-#
-# Arguments:
-#   $1 - key
-#   $2 - value
-#*
+# @description Write value to key in config file
+# @arg $1 string Key name
+# @arg $2 string Value to write
+# @exitcode 0 Always succeeds
 set_cfg_item() {
 	cfg_write_key "$1" "$2"
 }
 
-#** get_cfg_item key: echoes the value at the key offset in the .conf file
-#
-# Arguments:
-#   $1 - the key in the config file to read
-#
+# @description Read value from key in config file
+# @arg $1 string Key to read
+# @stdout Value at key
+# @exitcode 0 Always succeeds
 get_cfg_item() {
 	cfg_read_key "$1"
 }
 
-#** get_originhead: get the HEAD of the downstream origin
-#
-# Get the original head by getting the commit where the current
-# branch diverged from main
-#
-# Globals
-#   dnorighead
-#*
+# @description Get HEAD of downstream origin from config
+# @set dnorighead string Original downstream head (written)
+# @exitcode 0 Always succeeds
 get_originhead() {
 	$b_log && ui_log "get_originhead"
 	dnorighead="$(get_cfg_item dnorighead)"
 }
 
-#** get_x11devel - dnf install libX11-devel if possible
-#
+# @description Install libX11-devel if user has privileges
+# @stdout Installation messages
+# @exitcode 0 Installed successfully
+# @exitcode 1 No privileges or install failed
 get_x11devel() {
 
 	# No libX11-devel present, so we will have to install.
@@ -2462,17 +2198,11 @@ $CAU$USER$INF does not have privileges to install libx11-devel$OFF
 	return 0
 }
 
-#** is_xrunning - determine if x is running
-#
-# X needs to be running so that the application's windows can materialize
-# somewhere. If we don't have the homegrown binary that detects whether X
-# is running, then compile it on the fly.
-#
-# Globals
-#
-# Arguments
-#
-#*
+# @description Determine if X server is running
+#   Compiles test binary on-the-fly if needed.
+# @stdout X server availability message
+# @exitcode 0 X is available
+# @exitcode 1 No X server
 is_xrunning() {
 	local xtest_c="$MYDIR/x_test.c"
 	local xtest_bin="$MYDIR/x_test"
@@ -2512,12 +2242,10 @@ EOF
 	fi
 }
 
-#** check_X - simple X check to see if we have a display0
-#
-# Globals
-#
-# Arguments
-#*
+# @description Simple X check for DISPLAY environment
+# @stdout Error message if no display
+# @exitcode 0 DISPLAY is set
+# @exitcode 1 No DISPLAY
 check_X() {
 	[ -n "$DISPLAY" ] && return 0
 	echo -e "$CAU
@@ -2526,11 +2254,10 @@ You cannot use patchpal for backporting without an X DISPLAY.$OFF"
 	return 1
 }
 
-#** get_backport_mode: choose which of the availiable backport modes to use
-#
-# Globals
-#   backport_mode
-#*
+# @description Choose which backport mode to use
+# @set backport_mode int Selected mode (written)
+# @stdout Mode selection menu
+# @exitcode 0 Mode selected
 get_backport_mode() {
 while :; do
 	$b_log && ui_log "get_backport_mode"
@@ -2558,16 +2285,10 @@ done
 	set_cfg_item "backport_mode" "$backport_mode"
 }
 
-#** save_session: save session's config variables to the .conf file
-#
-#          NAME:  save_session
-#   DESCRIPTION:  Save session's project variables to the project file.
-#     ARGUMENTS:  $1 is not empty if this is an status call
-#       GLOBALS:  backportfile
-#                 upcmtstartline
-#                 All the sticky project variables
-#       RETURNS:  none
-#*
+# @description Save session config variables to .conf file
+# @set backportfile string Backport file path (read)
+# @set upcmtstartline int Start line (read)
+# @exitcode 0 Always succeeds
 save_session() {
 	# echo -e "$UND\0save_session$OFF"
 	$b_log && ui_log "save_session"
@@ -2581,21 +2302,12 @@ save_session() {
 	exec {fd}<&-
 }
 
-#** read_session: read the config variables out of the .conf file
-#
-#
-#  Read the variables stored in the .conf file Some project variables are
-#  updated elsewhere, and only need to be retrieved at init time and saved at
-#  exit time.
-#
-#     ARGUMENTS:  none
-#       GLOBALS:  workdir
-#                 backportfile
-#                 upurl
-#                 tbackground
-#       RETURNS:  1 if any of the important conf values are missing
-#                 0 otherwise
-#*
+# @description Read config variables from .conf file
+# @set workdir string Work directory (written)
+# @set backportfile string Backport file path (written)
+# @set tbackground int Terminal background (written)
+# @exitcode 0 Success
+# @exitcode 1 Important config values missing
 read_session() {
 	# echo -e "$UND\0read_session$OFF"
 	$b_log && ui_log "read_session"
@@ -2634,20 +2346,10 @@ read_session() {
 	return 0
 }
 
-#** check_gitbranch - are we running on the same git branch as last time?
-#
-# If we are running on the same branch as before, no problem. Just return
-# If we are not, try to checkout the last branch we were running on.
-# If we can't do that, give the user the option to exit or to select a
-# different branch. In either case, the backport file must not have any
-# "done" marks in it.
-#
-# Globals
-#   backportfile
-#
-# Arguments
-#
-#*
+# @description Check if running on same git branch as last time
+#   If not, try to checkout last branch or let user select.
+# @set backportfile string Backport file path (read)
+# @exitcode 0 On correct branch or switched successfully
 check_gitbranch() {
 	$b_log && ui_log "check_gitbranch backportfile:$backportfile"
 	local cbranch	# current branch
@@ -2673,23 +2375,11 @@ of available branches.$OFF"
 	select_gitbranch
 }
 
-#** check_repostate - is_repo_consistent?
-#
-# This function will clear all the "done" markers in the backport file if
-# the original branch is no longer valid.
-#
-# Returns
-#   0 - if last upstream commit in the backport file is the same as the
-#       the upstream commit in the commit log of the most recent downstream
-#       commit.
-#   1 - If not the same
-#
-# Globals
-#   backportfile
-#
-# Arguments
-#
-#*
+# @description Check repository consistency
+#   Verifies last backported commit matches downstream HEAD.
+# @set backportfile string Backport file path (read)
+# @exitcode 0 State is consistent
+# @exitcode 1 Inconsistent state detected
 check_repostate() {
 	$b_log && ui_log "check_repostate backportfile:$backportfile"
 	local uphash
@@ -2723,16 +2413,12 @@ See Upstream Backports file: $STA$backportfile$OFF"
 	return 1
 }
 
-#** init_run - these inits must be done before running from a backport file
-#
-# Globals
-#   updir - directory containing the upstream repo
-#   workdir - scratch directory for gort
-#   backportfile - list of upstream commits to be backported
-#   mirror - mirror of the upstream repo
-#   gortlog - file to capture patch activity in backport function
-#   cmtsmsgfile - a temp file to form commit messages
-#*
+# @description Initialize before running from backport file
+# @set updir string Upstream repo directory
+# @set workdir string Work directory
+# @set backportfile string Backport file path
+# @set gortlog string Log file path
+# @exitcode 0 Always succeeds
 init_run() {
 
 	# Let's make sure we have the work directory and the backport file
@@ -2757,20 +2443,12 @@ init_run() {
 	fi
 }
 
-#** init_common: common to all init calls
-#
-#     ARGUMENTS:  none
-#     GLOBALS:
-#         updir - directory containing the upstream repo
-#         workdir - scratch directory for gort
-#         upcmtstartline - start line in the backport file, saved in config
-#         backportfile - list of upstream commits to be backported
-#         b_new - indicates new session
-#         mirror - mirror of the upstream repo
-#         gortlog - file to capture patch activity in backport function
-#         cmtsmsgfile - a temp file to form commit messages
-#     RETURNS:  none
-#*
+# @description Common initialization for all init calls
+# @set updir string Upstream repo directory
+# @set workdir string Work directory
+# @set mirror string Mirror repo path
+# @set b_session_inited bool Session initialized flag
+# @exitcode 0 Always succeeds
 init_common() {
 	# echo -e "$UND\0init_common$OFF"
 	$b_log && ui_log "init_common backportfile:$backportfile upcmtstartline:$upcmtstartline"
@@ -2855,11 +2533,8 @@ Fetching the upstream mirror...
 	b_session_inited=true
 }
 
-#** init_cmdline_call: for command line invocations
-#
-#     ARGUMENTS:  none
-#       RETURNS:  none
-#*
+# @description Initialize for command line invocations
+# @exitcode 0 Always succeeds
 init_cmdline_call() {
 	# echo -e "$UND\0init_cmdline_call$OFF"
 	$b_log && ui_log "init_cmdline_call"
@@ -2872,12 +2547,9 @@ init_cmdline_call() {
 	init_common
 }
 
-#** init_newsession: initialize a new session from scratch
-#
-#       GLOBALS:  All session variables are affected
-#     ARGUMENTS:  none
-#       RETURNS:  none
-#*
+# @description Initialize a new session from scratch
+# @set All session variables affected
+# @exitcode 0 Always succeeds
 init_newsession() {
 	# echo -e "\n$UND\0init_newsession$OFF"
 	$b_log && ui_log "init_newsession"
@@ -2919,21 +2591,12 @@ init_newsession() {
 	$b_cmdline && exit_gort $exit_good
 }
 
-#** run_me: main program loop
-#
-#       GLOBALS:  backportfile
-#                 currentuphash
-#                 stophash
-#                 exit_good
-#                 updir
-#                 workdir
-#                 gortlog
-#                 b_cmdline
-#                 b_conflict
-#                 b_session_inited
-#     ARGUMENTS:  $1 - if .eq to 1, then just run the very next commit and stop.
-#       RETURNS:  None
-#*
+# @description Main program loop for backporting
+# @arg $1 int If 1, run only next commit and stop
+# @set backportfile string Backport file path (read)
+# @set currentuphash string Current upstream hash
+# @set stophash string Hash to stop before
+# @exitcode 0 On completion or menu return
 run_me() {
 	# echo -e "$UND\0run_me$OFF"
 	$b_log && ui_log "run_me"
@@ -2983,10 +2646,9 @@ keypress, so you can fix the conflicts.$OFF
 	if $b_cmdline; then exit_gort $exit_good; else menu_loop; fi
 }
 
-#** ctrl_c: handler for user interrupt
-#
-# run if user hits control-c
-#*
+# @description Handler for user interrupt (Ctrl-C)
+# @set currentuphash string Current hash (may mark done)
+# @exitcode CTLC_EXIT Signal exit code
 ctrl_c() {
 	$b_log && ui_log "ctrl_c"
 	set +x
@@ -3003,12 +2665,11 @@ ctrl_c() {
 	exit_gort $CTLC_EXIT         # defined in lib/ui.source
 }
 
-#** check_command: checks the command line command
-#
-# Arguments:
-#   $1 - command from command line
-#   $2 - receives the validated command from the command line
-#*
+# @description Validate and normalize command line command
+# @arg $1 string Command from command line
+# @arg $2 string Variable to receive validated command
+# @exitcode 0 Command was already properly formatted
+# @exitcode 1 Command was normalized
 check_command() {
 	$b_log && ui_log "check_command"
 	local cmd="$1"
@@ -3024,8 +2685,8 @@ check_command() {
 
 parse_command_line() {
 	#########################################
-	#** Commands and Options
-	#*########################################
+	# Commands and Options
+	#########################################
 
 	local infostr=
 	infostr="${INF}Type ${STA}\"$(basename "$0") help\"$INF for more info.$OFF"
