@@ -1,6 +1,14 @@
 #!/bin/bash
 #
-# commitcmp
+# mkbackportlog - Create a log of upstream commits to backport
+#
+# Searches upstream git history for commits touching specified paths
+# and creates a backport log file for use with gort. Identifies commits
+# already present in the downstream repository.
+#
+# Usage:
+#   mkbackportlog              # Interactive mode
+#   mkbackportlog -h           # Show help
 #
 
 [ "$MYDIR" ] || {
@@ -18,7 +26,7 @@
 [ "$configmanager_loaded" ] || source "$MYLIB"/cfgmgr.source
 [ "$ptversion_loaded" ]     || source "$MYLIB"/patchtools-version.source
 
-#** Exit Codes
+# Exit Codes
 declare -i exit_ok=0
 declare -i exit_invarg=1
 declare -i exit_invpath=2	# invalid path
@@ -34,11 +42,10 @@ declare -i exit_nopath=11	# user did not supply a path to search
 declare -i exit_norepobr=12	# user did not supply an upstream repo/branch
 declare -i exit_noupstream=13	# PWD does not have an upstream repo
 declare -i exit_noupdir=14	# No upstream directory specified
-#*
 
 declare -a exitmsgary=
 
-#** Exit messages
+# Exit messages
 exitmsgary=(
 ""
 "Invalid number of arguments."
@@ -56,18 +63,12 @@ exitmsgary=(
 " does not have an upstream repo."
 "You did not specify an upstream repo directory"
 )
-#*
 
-#** exitme - exit with exit code and messages
-#
-# Globals:
-#   b_interactive
-#   exitmsgary
-#   exit codes
-#
-# Arguments:
-#   1 - exit code
-#*
+# @description Exit with exit code and message
+# @arg $1 int Exit code
+# @arg $2 string Optional string argument for message
+# @set exitmsgary array Exit message array (read)
+# @exitcode * Returns the provided exit code
 exitme() {
 	local -i exitval=$1
 	local strarg=""
@@ -92,8 +93,8 @@ exitme() {
 	exit "$exitval"
 }
 
-#** control_c - run if user hits control-c
-#*
+# @description Handler for user interrupt (Ctrl-C)
+# @exitcode 130 Standard Ctrl-C exit code
 control_c()
 {
 	echo -en "
@@ -249,14 +250,15 @@ $OFF
 EOF
 )
 	echo -en "$usagestr" | more
+	return 0
 }
 
-#** get_pathopt - validate and return a pathname
-#
-# Arguments:
-#   $1 - path to be verified
-#   $2 - receives the realpath name of path
-#*
+# @description Validate and return a pathname
+# @arg $1 string Optional -r flag for realpath
+# @arg $2 string Path to verify
+# @arg $3 string Variable to receive path
+# @exitcode 0 Path valid
+# @exitcode * Exits if path invalid
 get_pathopt() {
 	local b_real=false
 	[[ "$1" == "-r" ]] && b_real=true && shift
@@ -272,46 +274,39 @@ get_pathopt() {
 	done
 
 	optname="${pary[@]}"
+	return 0
 }
 
-#** get_varopt - replace commas with spaces
-#
-# Arguments:
-#   $1 - variables separated by commas
-#   $2 - receives variables as space separated string
-#*
+# @description Replace commas with spaces in variable list
+# @arg $1 string Variables separated by commas
+# @arg $2 string Variable to receive space-separated string
+# @exitcode 0 Always succeeds
 get_varopt() {
 	local var="$1"
 	local -n varname="$2"
 
 	varname="${var//,/ }"
+	return 0
 }
 
-#** test_help - determines whether the string invokes help
-#
-# Arguments:
-#   $1 - string to be parsed for whether it is asking for help
-#*
+# @description Check if argument requests help
+# @arg $1 string String to check for help request
+# @exitcode 0 Help requested (exits after showing usage)
 test_help() {
 	local opt="$1"
 
 	shopt -s nocasematch
 	[[ $opt =~ (h|help) ]] && { usage; exitme $exit_ok; }
 	shopt -u nocasematch
+	return 0
 }
 
-#** is_validcmtexpr - validate an upstream commit expression
-#
-# Break the commit expression into separate strings, dividing on a
-# double dot elipsis, and cycle through the resulting array to
-# check each of the commits.
-#
-# Globals:
-#    updir - directory containing the upstream repo
-#
-# Arguments:
-#    $1 - commit expression
-#*
+# @description Validate an upstream commit expression
+#   Breaks expression on double-dot and validates each commit.
+# @arg $1 string Commit expression to validate
+# @set updir string Upstream repo directory (read)
+# @exitcode 0 Valid expression
+# @exitcode * Exits if invalid
 is_validcmtexpr() {
 	local tmp="$1"
 	local -a cary=()
@@ -332,12 +327,10 @@ is_validcmtexpr() {
 	return 0
 }
 
-#** get_khashsize - print the number of characters in the kernel hash
-#
-# Globals
-#   khashsize	- size of small hash in upstream kernel
-#   updir	- directory containing the upstream kernel
-#*
+# @description Print the number of characters in kernel hash
+# @set updir string Upstream kernel directory (read)
+# @stdout Hash size as integer
+# @exitcode 0 Always succeeds
 get_khashsize() {
 	local cmt
 
@@ -347,13 +340,12 @@ get_khashsize() {
 	ui_cd -
 }
 
-#** getcmt - validate a commit expression supplied at the cmd line
-#
-# ArgumentsL
-#   $1 - commit expression passed by user
-#   $2 - the switch name used to pass the commit expression
-#   $3 - receives the commit expression after validation
-#*
+# @description Validate commit expression from command line
+# @arg $1 string Commit expression
+# @arg $2 string Switch name for error message
+# @arg $3 string Variable to receive validated expression
+# @exitcode 0 Valid commit
+# @exitcode * Exits if invalid
 getcmt() {
 	local tmp="$1"
 	local op="$2"
@@ -369,26 +361,13 @@ getcmt() {
 	return 0
 }
 
-#** parseops - parse the input options for non-interactive command line
-#
-# Arguments: $@, the whole command line
-#
-# Globals:
-#   usagestr
-#   searchstr - optional string to search for upstream
-#   path    - path (subsystem, h files, etc) to be searched for commits
-#   outdir  - directory to receive the log files
-#   updir   - upstream kernel directory
-#   configtable[] - associative array of persistent config variables
-#   version - current version of patchtools
-#   path    - path (subsystem, h files, etc) to be searched for commits
-#   upcmt   - the upstream commit from which to start the search, may be
-#             extracted from dncmt or entered explicitly by user
-#   dncmt   - the downstream commit entered by user to determine upstream
-#             commit
-#   upscope - user option to limit upstream search by the given commit
-#             expression
-#*
+# @description Parse input options for non-interactive command line
+# @arg $@ All command line arguments
+# @set outdir string Output directory
+# @set updir string Upstream directory
+# @set path string Paths to search
+# @set configtable array Config variables
+# @exitcode 0 Options parsed successfully
 parseops() {
 	local arg=
 	local opt=
@@ -434,22 +413,17 @@ parseops() {
 
 	configtable[path]="${path##*( )}"
 	cfg_write
+	return 0
 }
 
-#** compare_strings() - create the backport.log
-#
-#    Compare the commits from the upstream and downstream commit logs
-#    to identify those that have already been backported.
-#    Output all commit lines to the log file, marking the ones that
-#    were already backported with a leading #
-#
-# GLOBALS
-#	bplog - output commits file
-#	uplog - upstream commits file
-#	dnlog - downstream commits file
-#	outdir - directory for all the commit log files
-#	upcmt - start from this upstream commit
-#*
+# @description Create backport.log by comparing upstream/downstream commits
+#   Marks already-backported commits with leading #
+# @set bplog string Backport log filename
+# @set uplog string Upstream log filename
+# @set dnlog string Downstream log filename
+# @set outdir string Output directory
+# @stdout Progress output
+# @exitcode 0 Always succeeds
 compare_strings() {
 	local uppath="$outdir/$uplog"
 	local dnpath="$outdir/$dnlog"
@@ -495,18 +469,14 @@ compare_strings() {
 		$b_match && echo "# $up" || echo "$up"
 		b_match=false
 	done
+	return 0
 }
 
-#** init_env - initialize the sticky variables and other env stuff
-#
-#  Arguments: none
-#
-#  Globals:
-#    configfile
-#    configtable
-#    backgrouond
-#    MYDATA
-#*
+# @description Initialize sticky variables and environment
+# @set configfile string Config file path
+# @set configtable array Config variables
+# @set MYDATA string Data directory path
+# @exitcode 0 Always succeeds
 init_env() {
 	local bgtemp
 
@@ -520,13 +490,13 @@ init_env() {
 	currentbranch=$(get_currentbranch)
 	configtable[currentbranch]="$currentbranch"
 	cfg_write
+	return 0
 }
 
-#** check_log - notify user if logfile already exists
-#
-# Arguments:
-#   $1 - the logfile to check
-#*
+# @description Notify user if logfile already exists
+# @arg $1 string Logfile path to check
+# @stdout Warning if file exists
+# @exitcode 0 Always succeeds
 check_log() {
 	log="$1"
 
@@ -536,21 +506,22 @@ check_log() {
 		echo -en "$WRN$log exists.$OFF "
 		echo -e "${INF}It will be overwritten if you continue.$OFF"
 	}
+	return 0
 }
 
-#** get_currentbranch - echo the current git branch
-#*
+# @description Echo the current git branch
+# @stdout Current branch name
+# @exitcode 0 Always succeeds
 get_currentbranch() {
 	git branch | grep -E '^\*' | cut -d' ' -f2
 }
 
-#** seek_str - look for a string in the commits in the upstream.log
-#
-# Globals:
-#   updir
-#   outdir
-#   bplog
-#*
+# @description Search for string in commits from upstream.log
+# @set updir string Upstream directory (read)
+# @set outdir string Output directory (read)
+# @set bplog string Backport log filename (read)
+# @stdout Matching commits
+# @exitcode 0 Always succeeds
 seek_str() {
 	local prepend=
 	local outfile=
@@ -572,19 +543,16 @@ seek_str() {
 		done < "$outdir/$bplog"
 	done
 	ui_cd -
+	return 0
 }
 
-#** select_remote - choose from available repo/branches in current dir
-#
-# Provides the upstream reference for searching for upstream commits.
-#
-# Arguments: none
-#
-# Globals:
-#   updir
-#   repobr
-#   configtable
-#*
+# @description Choose from available repo/branches in current directory
+# @set updir string Upstream directory (read)
+# @set repobr string Selected repo/branch (written)
+# @set configtable array Config variables (written)
+# @stdout Branch selection menu
+# @exitcode 0 Branch selected
+# @exitcode 1 No remote upstream repo found
 select_remote() {
 	local brstr=
 	local brancharray=()
@@ -623,17 +591,11 @@ select_remote() {
 	return 0
 }
 
-#** select_localbr - choose from available local branches in current dir
-#
-# Provides the upstream reference for searching for upstream commits.
-#
-# Arguments: none
-#
-# Globals:
-#   updir
-#   currentbranch
-#   configtable
-#*
+# @description Choose from available local branches
+# @set currentbranch string Selected branch (written)
+# @set configtable array Config variables (written)
+# @stdout Branch selection menu
+# @exitcode 0 Always succeeds
 select_localbr() {
 	local -a branches=()
 
@@ -651,21 +613,16 @@ select_localbr() {
 
 	git checkout "$currentbranch"
 	configtable[currentbranch]="$currentbranch"
+	return 0
 }
 
-#** limit_scope - backport log stops at  the supplied upstream commit
-#
-# This is done by commenting out hashes in the backport log that are
-# beyond the supplied scope commit. These comment delimiter will be a
-# leading '#+ ' on the lines of the commits that go beyond the scope.
-#
-# GLOBALS:
-#   outdir  - destination directory for files output by this script
-#   bplog   - the backport log file
-#   upscope - the upstream limiting commit
-#             this commit will also be excluded, if it's in the
-#             backport log.
-#*
+# @description Limit backport log to commits before upscope
+#   Comments out commits beyond scope with '#+ ' prefix.
+# @set outdir string Output directory (read)
+# @set bplog string Backport log filename (read)
+# @set upscope string Limiting upstream commit (read)
+# @stdout Modified backport log
+# @exitcode 0 Always succeeds
 limit_scope() {
 	local delim=
 	local line
@@ -695,13 +652,13 @@ limit_scope() {
 	echo -e "$INF"
 	printf "%s\n" "${linary[@]}" | tee -a "$outfil"
 	echo -e "$OFF"
+	return 0
 }
 
-#** show_paths - show the current user supplied paths
-#
-# Globals:
-#   path - the aggregate path provided by user
-#*
+# @description Display current user-supplied paths
+# @set configtable array Config with path (read)
+# @stdout Formatted path list
+# @exitcode 0 Always succeeds
 show_paths() {
 	local -a pthary=()
 	local -i pad=32
@@ -717,20 +674,12 @@ show_paths() {
 	printf "$padstr%s\n" ${pthary[@]:1}
 }
 
-#** test_reqparms() - see if all the required params have been entered
-#
-# Globals:
-#   configtable
-#   exitmsgary
-#   exit_nodncmt
-#   exit_nooutd
-#   exit_nopath
-#   exit_norepobr
-#
-# Returns:
-#   0 if all required parameters are present
-#   1 if there are any missing
-#*
+# @description Test if all required parameters are present
+# @set configtable array Config variables (read)
+# @set exitmsgary array Exit messages (read)
+# @stdout Warning for missing parameters
+# @exitcode 0 All required parameters present
+# @exitcode 1 Some parameters missing
 test_reqparms() {
 	local -i stat=0
 	[ -n "${configtable[updir]}"  ] || { stat=1; echo -e "$WRN${exitmsgary[exit_noupdir]}"; }
@@ -742,11 +691,9 @@ test_reqparms() {
 	return $stat
 }
 
-#** clear_parms - zero the parameters
-#
-# Globlals:
-#   configtable
-#*
+# @description Clear all config parameters
+# @set configtable array Config variables (cleared)
+# @exitcode 0 Always succeeds
 clear_parms() {
 	local key
 
@@ -756,22 +703,21 @@ clear_parms() {
 	done
 }
 
-#** show_upstreamdir - display the upstream directory
-#
-# Globals:
-#   configtable - in PWD/.data directory
-#   b_localus   - upstream is in PWD
-#*
+# @description Display the upstream directory
+# @set configtable array Config with updir (read)
+# @set b_localus bool Upstream in PWD flag (read)
+# @stdout Upstream directory path
+# @exitcode 0 Always succeeds
 show_upstreamdir() {
 	$b_localus && echo -n -e "${INF}default is PWD: "
 	echo -e -n $STA${configtable[updir]}$OFF
+	return 0
 }
 
-#** delete_paths - delete search paths from the list
-#
-# Arguments:
-#   1 - dp_path - search paths passed as a string
-#*
+# @description Delete search paths from the list interactively
+# @arg $1 string Variable name holding path string (by reference)
+# @stdout Path selection menu
+# @exitcode 0 Always succeeds
 delete_paths() {
 	local -n dp_path="$1"
 	local -a pathary=()
@@ -808,12 +754,13 @@ delete_paths() {
 		echo -e "${INF}There are no paths to delete.$OFF"
 	fi
 	dp_path="${pathary[@]}"
+	return 0
 }
 
-#** show_menu - display the user menu in ui mode
-#
-# Globals:
-#*
+# @description Display the interactive user menu
+# @set configtable array Config variables (read)
+# @stdout Menu display
+# @exitcode 0 Always succeeds
 show_menu() {
 	local mbl_menu
 	local addpath=
@@ -846,13 +793,13 @@ $MNU h$OFF - Help
 EOF
 )
 	echo -e "$mbl_menu"
+	return 0
 }
 
-#** menu_parser
-#
-# Arguments:
-#   1 - mp_in: menu parser input
-#*
+# @description Parse menu input and execute action
+# @arg $1 string Menu selection character
+# @exitcode 0 Continue menu loop
+# @exitcode 1 Run requested (break menu loop)
 menu_parser() {
 	local mp_in="$1"
 
@@ -906,10 +853,8 @@ menu_parser() {
 	return 0
 }
 
-#** menu_loop - main menu loop
-#
-# No args, no globals
-#*
+# @description Main menu loop for interactive mode
+# @exitcode 0 User selected run
 menu_loop() {
 	local menuin
 
@@ -922,26 +867,21 @@ menu_loop() {
 		menu_parser $menuin || break
 		cfg_write
 	done
+	return 0
 }
 
-#** run - execute with the given parameters
-#
-# Globals
-#   outdir  - directory to receive the log files
-#   updir   - upstream kernel directory
-#   uplog   - upstream commits since last downstream commit
-#   dnlog   - downstream commits already backported from upstream
-#   bplog   - commits to be backported
-#   repobr  - current repobranch
-#   path    - path (subsystem, h files, etc) to be searched for commits
-#   upcmt   - the upstream commit from which to start the search, may be
-#             extracted from dncmt or entered explicitly by user
-#   dncmt   - the downstream commit entered by user to determine upstream
-#             commit
-#   upscope - user option to limit upstream search by the given commit
-#             expression
-#   upbase  - the base upstream kernel of this downstream kernel
-#*
+# @description Execute with current parameters to create backport logs
+# @set outdir string Output directory (read)
+# @set updir string Upstream directory (read)
+# @set uplog string Upstream log filename
+# @set dnlog string Downstream log filename
+# @set bplog string Backport log filename
+# @set repobr string Repo/branch (read)
+# @set path string Paths to search (read)
+# @set upcmt string Upstream commit (read/written)
+# @set upscope string Scope limit commit (read)
+# @stdout Progress and log output
+# @exitcode 0 Success
 run() {
 	# If the user did not input an upstream commit, then extract the
 	# upstream commit from the submitted RHEL commit, which is the most
@@ -1043,13 +983,12 @@ run() {
 		limit_scope & mypid=$!
 		ui_waitonproc_tty $mypid .05 "Limiting scope to $MNU$upscope$OFF. Please wait."
 	fi
+	return 0
 }
 
-#** extract_upbase - extract the upstream base for this downstream kernel
-#
-# Globals:
-#   upbase - the upstream base kernel
-#*
+# @description Extract upstream base kernel version from downstream tags
+# @set upbase string Upstream base version (e.g., v6.6)
+# @exitcode 0 Always succeeds
 extract_upbase() {
 	local ktag=
 
@@ -1062,10 +1001,12 @@ extract_upbase() {
 	upbase="$(cut -d'-' -f2 <<< "$ktag")"
 	upbase="$(cut -d. -f1-2 <<< "$upbase")"
 	upbase="v${upbase}"
+	return 0
 }
 
-#** main
-#*
+# @description Main entry point
+# @arg $@ Command line arguments
+# @exitcode 0 Success
 main() {
 	local mainbranch
 	local currentbranch
