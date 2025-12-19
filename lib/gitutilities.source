@@ -1,8 +1,21 @@
 #!/bin/bash
 #
-# gitutilities.src
+# gitutilities.source
 #
 # NOTE: $MYLIB/ui.source must be included before this file.
+#
+# This file uses shdoc-style documentation annotations.
+# See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname lib/gitutilities.source' to view function documentation.
 #
 
 [ -n "$MYDIR" ] || {
@@ -20,7 +33,18 @@ declare gitutilities_loaded=true
 [ "$ui_loaded" ]         || source "$MYLIB"/ui.source
 [ "$patchutils_loaded" ] || source "$MYLIB"/patch-utils.source
 
-# return_msg - uses exit messages from lib/ui.source
+# gut_retmsg
+# @description Display formatted error message from ui.source
+#
+# Arguments:
+# @arg $1 int Message index into ui_err_msg array
+# @arg $2 string Optional artifact string
+#
+# Effects:
+# @stdout Prints formatted error message
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 gut_retmsg() {
 	local -i msgindex="$1"
@@ -32,8 +56,28 @@ gut_retmsg() {
 	echo -e "$msg"
 }
 
+# gut_exit
+# @description Display error message and exit
+#
+# Arguments:
+# @arg $1 int Exit code
+# @arg $2 string Optional artifact string
+#
+# Returns:
+# @exitcode * Exits with provided code
+#
 gut_exit() { gut_retmsg "$1" "$2"; exit "$1"; }
 
+# gut_chdir
+# @description Change directory with error handling
+#
+# Arguments:
+# @arg $1 string Directory path or "-" for previous
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode ui_err_invdir Exits on invalid directory
+#
 gut_chdir() {
 	local dir="$1"
 	local dirstr
@@ -44,12 +88,15 @@ gut_chdir() {
 }
 
 # git_commit2patchset
-# 	creates a patchset from contiguous commits starting with the most
-#	recent.
+# @description Create patchset from contiguous commits
 #
-# $1 - number of commits to format
-# $2 - destination directory for the patch set.
-# $3 - optional commit to start from (most recent of the set)
+# Arguments:
+# @arg $1 int Number of commits to format
+# @arg $2 string Destination directory for patches
+# @arg $3 string Optional commit to start from
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 git_commit2patchset() {
 	local patchcount=$1
@@ -61,13 +108,15 @@ git_commit2patchset() {
 }
 
 # git_commit2patch
-# 	creates one patch from a given commit in a series, using the
-# 	number in the series of the commit in the patch as a part of
-# 	its name.
+# @description Create one patch from a specific commit
 #
-# $1 - number of the commit in the series
-# $2 - commit hash
-# $3 - destination directory
+# Arguments:
+# @arg $1 int Number of the commit in series
+# @arg $2 string Commit hash
+# @arg $3 string Destination directory
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 git_commit2patch() {
 	local index=$1
@@ -92,20 +141,22 @@ git_commit2patch() {
 }
 
 # git_file2patchset
-# 	creates a patchset from a file containing a list of discontiguous
-#	commits.
+# @description Create patchset from file containing commit list
 #
-# The commits list must be organized so that the most recent commit is the
-# last line in the file and the oldest commit is at the top of the file.
-# git_comments2commitsfile() and git_mailhead2commitsfile() can be used to
-# generate such a file.
+# Arguments:
+# @arg $1 string Path to file containing commit list
+# @arg $2 string Destination directory for patches
+# @arg $3 bool Optional verbose flag (default: true)
 #
-# Generated patches will be suitable for applying with "git am" or for
-# comparing to other patches.
+# Globals:
+# @set ui_b_debug bool Debug flag (read)
 #
-# $1 - path of file containing the list of commits.
-# $2 - destination directory for the patch set.
-# $3 - optional verbose true or false
+# Effects:
+# @stdout Displays progress
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 If commits file is empty
 #
 git_file2patchset() {
 	$ui_b_debug && echo -e "${STA}git_file2patchset$OFF"
@@ -187,7 +238,14 @@ git_file2patchset() {
 	return 0
 }
 
-# git_setsubjectprefix - set the subject prefix in .git/config
+# git_setsubjectprefix
+# @description Set the subject prefix in .git/config
+#
+# Effects:
+# @stdout Prompts for new prefix
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 git_setsubjectprefix() {
 	local newpfx
@@ -201,9 +259,17 @@ git_setsubjectprefix() {
 	git config format.subjectprefix "$newpfx"
 }
 
-# git_getsubjectprefix - determine the subject prefix stored in .git/config
+# git_getsubjectprefix
+# @description Get and optionally change the subject prefix
 #
-# $1 - query, ask user if he wants to change the prefix
+# Arguments:
+# @arg $1 string Optional "query" to prompt for change
+#
+# Effects:
+# @stdout Displays current prefix, prompts if query
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 git_getsubjectprefix() {
 	local newpfx=
@@ -227,13 +293,18 @@ git_getsubjectprefix() {
 	done
 }
 
-# git_excisecommit - excise the commit hash from the line
+# git_excisecommit
+# @description Extract commit hash from a line
 #
-# If there appears to be more than one hash on the line, just take the
-# first one.
+# Arguments:
+# @arg $1 string Line to extract from
+# @arg $2 string Hash size (40 or 7,40)
 #
-# $1 - the line to be grep'd
-# $2 - the size of the hash (40 or 7,40)
+# Effects:
+# @stdout Prints the extracted commit hash
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 git_excisecommit() {
 	local line="$1"
@@ -242,16 +313,17 @@ git_excisecommit() {
 	grep -E -o "\b[0-9a-f]{$hashsize}\b" <<< "$line"| head -1
 }
 
-# extract_subject - get the subject from the subject line of the patch
+# extract_subject
+# @description Extract subject line from a patch file
 #
-# The subject line is expected to have the following format.
+# Arguments:
+# @arg $1 string Patch file path
 #
-# Subject: [yada-yada] some explicatory text
+# Effects:
+# @stdout Prints the subject string
 #
-# Even without the square brackets in the subject line, this function will
-# return the correct subject string.
-#
-# $1 - file containing the subject line
+# Returns:
+# @exitcode 0 Always succeeds
 #
 extract_subject() {
 	local file="$1"
@@ -276,23 +348,19 @@ extract_subject() {
 	echo "$subject$subext"
 }
 
-# validate_commit - check the hash for a repo and congruent subject
+# validate_commit
+# @description Validate commit hash matches subject line
 #
-# GLOBALS
-# 	valfuzz - commit validation fuzz level
+# Arguments:
+# @arg -f int Optional fuzz level 0-3
+# @arg -u string Optional upstream directory
+# @arg $1 string Commit hash from submitted patch
+# @arg $2 string Subject line from submitted patch
 #
-# ARGUMENTS
-# $1 - commit hash from the submitted patch
-# $2 - subject line from the submitted patch
-#
-# OPTIONS
-#  -f - fuzz level, 0..3
-#  -u - upstream directory
-#
-# RETURNS
-# 	0   - if match is determined
-# 	1   - if not sufficiently matched
-#	128 - if invalid commit (from 'git log')
+# Returns:
+# @exitcode 0 If match is determined
+# @exitcode 1 If not sufficiently matched
+# @exitcode 128 If invalid commit
 #
 validate_commit() {
 	local    commit
@@ -415,20 +483,20 @@ validate_commit() {
 }
 
 # git_comment2commitsfile
-#	Create a file containing a list of commits from taken from the "commit"
-#	line in each patch in a directory. The patches in the directory are
-#	backported patches with upstream commits identified in the backported
-#	patch commit log.
+# @description Extract upstream commits from patch comment lines
 #
-# NOTE: The only files that will be parsed are those that have ".patch" at the
-#	end of their names.
+# Arguments:
+# @arg -i string REQUIRED source directory with patches
+# @arg -o string REQUIRED output commits file path
+# @arg -h int OPTIONAL hash size (default 40)
+# @arg -f int OPTIONAL fuzz level (default 1)
+# @arg -r string OPTIONAL remote directory
+# @arg -q flag OPTIONAL quiet mode
 #
-# Argumnent Options:
-# -i - srcdir REQUIRED directory containing the backported patches
-# -o - commitsfile REQUIRED path to file that will get the upstream commits
-# -h - hashsize OPTIONAL default is 40
-# -f - valfuzz OPTIONAL default is 1
-# -q - b_quiet OPTIONAL default is false
+# Returns:
+# @exitcode 0 On success
+# @exitcode ui_err_invdir On invalid directory
+# @exitcode ui_err_invfile On invalid file
 #
 git_comment2commitsfile() {
 	# echo -e "${MNU}git_comment2commitsfile$OFF"
@@ -599,15 +667,14 @@ git_comment2commitsfile() {
 }
 
 # git_mailhead2commitsfile
-#	Create a file containing a list of commits from taken from the "From"
-#	line in each git-formatted patch in a directory. The patches were
-#	extracted from a mail client, like mutt.
+# @description Extract commits from From lines in mail patches
 #
-# NOTE: The only files that will be parsed are those that have ".patch" at the
-#	end of their names.
+# Arguments:
+# @arg $1 string Source directory with patches
+# @arg $2 string Output commits file path
 #
-# $1 - directory where the git-formatted patches were extracted
-# $2 - filename, including path, of the commits file.
+# Returns:
+# @exitcode 0 Always succeeds
 #
 git_mailhead2commitsfile() {
 	local srcdir="$1"
@@ -618,33 +685,30 @@ git_mailhead2commitsfile() {
 }
 
 # git_checkrepo
-# 	Determines whether the current directory is a valid git repo
+# @description Verify current directory is a valid git repo
 #
-# returns 0 valid repo, else returns 1
-#
-# usage:
-# 	$(git_checkrepo) || echo "$PWD is not a valid git repo" || exit 1
+# Returns:
+# @exitcode 0 If valid repo
+# @exitcode ui_err_norepo Exits if not a repo
 #
 git_checkrepo() {
 	[ -d .git ] || gut_exit "$ui_err_norepo" "$PWD"
 	return 0
 }
 
-# git_get_lasttag <tagstr> [path]
+# git_get_lasttag
+# @description Get the most recent tag in current branch
 #
-# Obtains the most recent tag in the current branch and stores it in
-# /dev/shm/lasttag, or the optional path submitted in $2 by the caller.
+# Arguments:
+# @arg $1 string Nameref to receive the tag string
+# @arg $2 string Path to store lasttag file
 #
-# Returns the tag in $1.
+# Effects:
+# @stdout Displays progress message
 #
-# Deletes the previously recorded last tagin /dev/shm/lasttag or the
-# optional path submitted by caller.
-#
-# This operation can take some time, so the git command is spawned
-# and we perform a wait for the tag file to appear.
-#
-# $1 - receives the last tag string
-# $2 - path to store lasttag file
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 If path not provided
 #
 git_get_lasttag() {
 
@@ -670,21 +734,32 @@ git_get_lasttag() {
 }
 
 # git_getcurrentbranch
+# @description Get the current git branch name
 #
-# echoes the current branch in the git tree after checking that it's a
-# valid repo
+# Effects:
+# @stdout Prints current branch name
 #
-# usage:
-# 	local current_branch=$(git_getcurrentbranch)
+# Returns:
+# @exitcode 0 Always succeeds
 #
 git_getcurrentbranch() {
  	git_checkrepo
 	git branch | grep -E '^\*' | cut -d' ' -f2
 }
 
-# git_setbranch outdir
+# git_setbranch
+# @description Display branch menu and switch to selected branch
 #
-# $1 if it exists sets the outpath. Default is /dev/shm/branchlist
+# Arguments:
+# @arg $1 string Optional output path (default /dev/shm/branchlist)
+#
+# Effects:
+# @stdout Displays branch menu and prompts for selection
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 On user cancellation
+# @exitcode * On checkout failure
 #
 git_setbranch() {
 	local -i argc=$#
@@ -716,20 +791,18 @@ git_setbranch() {
 	return 0
 }
 
-# find_fixes - grep for all the commits since the one passed as $1 where
-#              $1 is named as a fix.
+# find_fixes
+# @description Find commits that fix the given commit
 #
-# See : https://www.kernel.org/doc/html/v4.17/process/submitting-patches.html
+# Arguments:
+# @arg $1 string Commit ID to find fixes for
+# @arg $2 string Output file path
+# @arg $3 string Remote repo directory
+# @arg $4 string Remote branch to search
 #
-#       "If your patch fixes a bug in a specific commit, e.g. you found an
-#        issue using git bisect, please use the ‘Fixes:’ tag with the first
-#        12 characters of the SHA-1 ID, and the one line summary. For example:
-#        Fixes: e21d2170f366 ("video: remove unnecessary platform_set_drvdata()")
-#
-# $1 - a line expected to contain only a valid commit.
-# $2 - file to receive the output
-# $3 - directory of the remote repo
-# $4 - the remote branch to parse
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 On invalid commit
 #
 find_fixes () {
 	local commit_id="$1"
@@ -769,10 +842,15 @@ find_fixes () {
 	gut_chdir -
 }
 
-# extract_commitlog - extract the commit log from a patch
+# extract_commitlog
+# @description Extract commit log portion from a patch file
 #
-# $1 - patchfile
-# $2 - destination file
+# Arguments:
+# @arg $1 string Patch file path
+# @arg $2 string Destination file path
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 extract_commitlog() {
 	local patchfile="$1"
@@ -786,21 +864,27 @@ extract_commitlog() {
 	done < "$patchfile"
 }
 
-# parse_missingfix - parse the missing fix
+# parse_missingfix
+# @description Determine if a fix is truly missing or accounted for
 #
-# Determine whether the fix has already been included in RHEL, or was
-# intentionally omitted, or is truly missing. Send output to the screen
-# and to the missing_commits file.
+# Arguments:
+# @arg $1 string Commit date to start search
+# @arg $2 string Fix line to parse
+# @arg $3 string Commit number in series
+# @arg $4 string File with RHEL commits being reviewed
+# @arg $5 string Output file for missing fixes
+# @arg $6 string MR commit log file
 #
-# $1 - commit date to start search
-# $2 - line to parse
-# $3 - enumeration of the commit id in the series
-# $4 - file containing the list of RHEL commits being reviewed
-# $5 - file that will contain any missing fixes
-# $6 - file containing Merge Request commit log for the specific patch
-# $7 - verbose flag
+# Globals:
+# @set mrcomments string MR comments file path (read)
 #
-# Returns 1 if a fix is really missing, 0 otherwise.
+# Effects:
+# @stdout Displays fix status
+#
+# Returns:
+# @exitcode 0 If fix is accounted for
+# @exitcode 1 If fix is intentionally omitted
+# @exitcode 2 If fix is truly missing
 #
 parse_missingfix() {
 	local cmtdate="$1"
@@ -862,6 +946,16 @@ parse_missingfix() {
 	return 0
 }
 
+# is_validcmthash
+# @description Validate a commit hash format
+#
+# Arguments:
+# @arg $1 string Hash to validate
+#
+# Returns:
+# @exitcode 0 If valid 40-char hex hash
+# @exitcode 1 If invalid
+#
 is_validcmthash() {
 	local hash="$1"
 
@@ -871,30 +965,25 @@ is_validcmthash() {
 	return 1
 }
 
-# check_fixes - look for missing fixes
+# check_fixes
+# @description Search for missing fixes in upstream
 #
-# Walk through the file of upstream commits looking for any that may have
-# been missed. If the upstream commits have already been applied, then the
-# backported commits will be reported as false positives, so precaution is
-# taken to see if the "missing" commits are in the current branch.
+# Arguments:
+# @arg $1 string Path to upstream commits file
+# @arg $2 string Remote directory path
+# @arg $3 string Remote repo/branch string
+# @arg $4 string Output file for missing fixes
+# @arg $5 bool Optional verbose flag (default true)
 #
-# GLOBALS
-#   indir - directory containing the MR patches
+# Globals:
+# @set indir string Input directory with patches (read)
 #
-# $1 - path to the file containing the upstream commits. Each commit is
-#      expected to be the first field in each line of the file.
+# Effects:
+# @stdout Displays progress and findings
 #
-# $2 - remote directory containing the remote_repo/remote_branch
-#
-# $3 - the remote_repo/remote_branch in which to seek missing fixes
-#
-# $4 - file to contain the list of missing fixes
-#
-# $5 - optional verbose boolean true or false. Default is true.
-#
-# Returns
-# 	0 - all is well
-# 	1 - something went wrong
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 On failure or missing fixes found
 #
 check_fixes() {
 	local commitsfile="$1"
@@ -974,6 +1063,15 @@ check_fixes() {
 	return $stat
 }
 
+# show_remotes
+# @description Display all remotes and their URLs
+#
+# Effects:
+# @stdout Prints remote names and URLs
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 show_remotes() {
 	local line
 	local -a toks=()
@@ -991,8 +1089,16 @@ show_remotes() {
 	done <<< "${gitcfgarray[@]}"
 }
 
+# create_remote_array
+# @description Populate array with remote names from .git/config
+#
+# Arguments:
+# @arg $1 array Nameref to array to populate
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 create_remote_array() {
-	# echo "create_remote_array"
 	local line
 	local -a toks=()
 	local -n cra_remarray="$1"
@@ -1006,8 +1112,20 @@ create_remote_array() {
 	done <<< "${gitcfgarray[@]}"
 }
 
+# select_remrepo
+# @description Select a remote repository from available remotes
+#
+# Arguments:
+# @arg $1 string Nameref to receive selected remote name
+#
+# Effects:
+# @stdout Displays selection menu if multiple remotes
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 If no remotes found
+#
 select_remrepo() {
-	# echo "select_remrepo"
 	local -n srr_cur="$1"
 	local remotearray=()
 	local num_of_remotes
@@ -1030,8 +1148,22 @@ select_remrepo() {
 	return $stat
 }
 
+# show_remote_url
+# @description Display URL for a remote repository
+#
+# Arguments:
+# @arg $1 string Remote repository name
+#
+# Globals:
+# @set remote_dir string Remote directory path (read)
+#
+# Effects:
+# @stdout Prints the remote URL
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 show_remote_url() {
-	# global remote_dir
 	local reponame="$1"
 	local url
 	[ -z "$reponame" ] && return || pc_cd "$remote_dir"
@@ -1040,6 +1172,22 @@ show_remote_url() {
 	[ -z "$reponame" ] || pc_cd "-"
 }
 
+# select_rembranch
+# @description Select a branch from a remote repository
+#
+# Arguments:
+# @arg $1 string Remote repository name
+# @arg $2 string Nameref to receive selected branch name
+#
+# Globals:
+# @set remote_repo string Remote repo name (read)
+#
+# Effects:
+# @stdout Displays selection menu if multiple branches
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
 select_rembranch() {
 	local repo="$1"
 	local -n gusr_cur="$2"

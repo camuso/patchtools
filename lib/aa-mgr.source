@@ -2,6 +2,19 @@
 #
 # lib/aa-mgr.source
 #
+# This file uses shdoc-style documentation annotations.
+# See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname lib/aa-mgr.source' to view function documentation.
+#
 
 declare aamgr_loaded=true
 
@@ -71,13 +84,17 @@ declare aafile=
 	exit 0
 }
 
-#** is_inarray: returns 0 if exact matching string is in array
+# is_inarray
+# @description Check if exact matching string is in array
 #
-# $1 - array name passed by reference, no leading $
-# $2 - string being sought, passed by value
+# Arguments:
+# @arg $1 array Array name passed by reference
+# @arg $2 string String being sought
 #
-# Returns 0 if match is found, 1 if not
-#*
+# Returns:
+# @exitcode 0 If match is found
+# @exitcode 1 If not found
+#
 is_inarray () {
     local -n ar=$1
     local fld="$2"
@@ -91,10 +108,15 @@ is_inarray () {
     return 1
 }
 
-# aa_init_aafile: init the config file with contents of aatbl
+# aa_init_aafile
+# @description Initialize aafile from aatbl (PRIVATE)
 #
-# PRIVATE: Not to be called externally
-# ************************************
+# Arguments:
+# @arg $1 array Associative array table
+# @arg $2 string Output file path
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 aa_init_aafile() {
 	aatbl="$1"
@@ -105,16 +127,17 @@ aa_init_aafile() {
 	done
 }
 
-# aa_set_aafile: if the aafile doesn't exist, then create it
+# aa_test_aafile
+# @description Test and create aafile if needed (PRIVATE)
 #
-# PRIVATE: Not to be called externally
-# ************************************
+# Arguments:
+# @arg $1 string File path
 #
-# If $1 is empty, then create a configfile in the MYDATA directory
-# using the basename of the script with '.confg' extension.
+# Globals:
+# @set aafile string AA file path (write)
 #
-# Globals
-#   aafile: file containing the contents of the aatbl
+# Returns:
+# @exitcode 0 Always succeeds
 #
 aa_test_aafile() {
 	aafile="$1"
@@ -122,30 +145,16 @@ aa_test_aafile() {
 	[ -f "$aafile" ] || touch "$aafile"
 }
 
-# aa_diff_aafile: diff the contents of the aafile with those in the aatbl
+# aa_diff_aafile
+# @description Diff and reconcile aafile with aatbl (PRIVATE)
 #
-# PRIVATE: Not to be called externally
-# ************************************
+# Arguments:
+# @arg $1 array Associative array table
+# @arg $2 string AA file path
 #
-# We want to do this without disturbing the existing contents of the aafile.
-#
-# If the aatbl has fewer entries than the aafile, remove the deprecated
-# entries from the aafile.
-#
-# If the aatbl has more entries than the aafile, then add the new entries
-# to the aafile.
-#
-# If the aatbl has different entries than the aafile, then reconcile the
-# differences.
-#
-# Arguments
-#    $1 - aatbl : passed as a reference to the user's config table in the
-#             calling function
-#    $2 - aafile; passed by user
-#
-# Returns
-#    0 - no differences found
-#    1 - there were diffs
+# Returns:
+# @exitcode 0 If no differences found
+# @exitcode 1 If differences were reconciled
 #
 aa_diff_aafile() {
 	aatbl="$1"
@@ -224,11 +233,17 @@ aa_diff_aafile() {
 	return $stat
 }
 
-# aa_dump_aatbl: dump the contents of the aatbl to the screen
+# aa_dump_aatbl
+# @description Dump associative array contents to screen
 #
 # Arguments:
-# $1 - reference to user's aatbl associative array
-#      no leading $ when calling
+# @arg $1 array Reference to associative array
+#
+# Effects:
+# @stdout Prints all key-value pairs
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 aa_dump_aatbl() {
 	aatbl="$1"
@@ -239,16 +254,15 @@ aa_dump_aatbl() {
 	done
 }
 
-# aa_read_aafile: read the contents of the config file into user's table
+# aa_read_aafile
+# @description Read aafile contents into associative array
 #
-# Globals
-#    aafile; either passed by user or created by aa_check_aafile above.
+# Arguments:
+# @arg $1 array Reference to associative array
+# @arg $2 string AA file path
 #
-# Arguments
-#    $1 - aatbl : reference to the user's associative array
-#                  When used in calls initiated by aa_start, the aatbl
-#                  was inited in aatbl and is inherited from that func.
-#    $2 - aafile: file for storing the conents of the associative array.
+# Returns:
+# @exitcode 0 Always succeeds
 #
 aa_read_aafile() {
 	aatbl="$1"
@@ -262,11 +276,15 @@ aa_read_aafile() {
 	done < "$aafile"
 }
 
-# aa_write_aafile: write the contents of the aatbl into aafile
+# aa_write_aafile
+# @description Write associative array contents to file
 #
 # Arguments:
-#    $1 - aatbl : user's aatbl passed by reference
-#    $2 - aafile: storage for user's associative array
+# @arg $1 array Reference to associative array
+# @arg $2 string AA file path
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 aa_write_aafile() {
 	aatbl="$1"
@@ -280,10 +298,15 @@ aa_write_aafile() {
 	done
 }
 
-# aa_start: start the aamgr
+# aa_start
+# @description Start the associative array manager
 #
-# Globals
-#    aafile; passed by user
+# Arguments:
+# @arg $1 array Associative array passed by reference
+# @arg $2 string AA file path
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 aa_start() {
 	local -n aatbl="$1"

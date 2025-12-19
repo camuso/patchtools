@@ -4,6 +4,19 @@
 #
 # This source file provides utility routines for patch management,
 # manipulation, and review scripts.
+#
+# This file uses shdoc-style documentation annotations.
+# See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname lib/patch-utils.source' to view function documentation.
 
 [ -n "$MYDIR" ] || {
 	declare MYDIR
@@ -22,11 +35,18 @@ declare patchutils_loaded=true
 #
 [ "$ui_loaded" ] || source "$MYLIB"/ui.source
 
-# is_prologue() {
+# is_prologue
+# @description Check if a patch file is a series prologue (0/n)
 #
-# ARGUMENTS
-# 	$1 - patch file to check
-#	returns 0 if prologue, 1 if not
+# Arguments:
+# @arg $1 string Patch file path to check
+#
+# Globals:
+# @set ui_b_debug bool Debug flag (read)
+#
+# Returns:
+# @exitcode 0 If file is a prologue
+# @exitcode 1 If not a prologue
 #
 is_prologue() {
 	$ui_b_debug && echo -e "${STA}patch-utils::is_prologue$OFF"
@@ -58,14 +78,19 @@ is_prologue() {
 	return 1
 }
 
-# create_patchlist() - create the patchlist starting at startpat
+# create_patchlist
+# @description Create validated patch list starting at specified patch
 #
-# ARGUMENTS
-#	$1 - string containing list of patches
-#	$2 - return string containing validated patches
-#	$3 - optional starting patch
+# Arguments:
+# @arg $1 string Space-separated list of patch files
+# @arg $2 string Nameref to receive validated patch list
+# @arg $3 int Optional starting patch number
 #
-# GLOBALS
+# Globals:
+# @set ui_b_debug bool Debug flag (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
 #
 create_patchlist() {
 	$ui_b_debug && echo -e "${STA}patch-utils::create_patchlist$OFF"
