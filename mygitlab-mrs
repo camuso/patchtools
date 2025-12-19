@@ -5,6 +5,18 @@
 # Query your GitLab MRs with combinable filters for state, project name,
 # title regex, and date ranges. Requires jq and lab CLI tool.
 #
+# This file uses shdoc-style annotations. See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname <scriptname>' to view function documentation.
+#
 # Usage:
 #   mygitlab-mrs                     # List all MRs
 #   mygitlab-mrs -sm                 # List only merged MRs

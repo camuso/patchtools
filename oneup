@@ -6,6 +6,18 @@
 # referenced upstream commit. Looks for "commit <hash>" or "cherry-picked
 # from commit <hash>" patterns.
 #
+# This file uses shdoc-style annotations. See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname <scriptname>' to view function documentation.
+#
 # Usage:
 #   oneup abc123def    # Get upstream commit for downstream abc123def
 #   oneup HEAD~5       # Get upstream commit for 5 commits ago
