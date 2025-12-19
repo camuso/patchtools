@@ -1,6 +1,19 @@
 #!/bin/bash
 #
-# ui.source
+# ui.source - User interface library for bash scripts
+#
+# This file uses shdoc-style documentation annotations.
+# See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname lib/ui.source' to view function documentation.
 #
 
 ##############################
@@ -10,38 +23,22 @@
 declare ui_loaded=true
 declare ui_b_debug=false
 
-#** Text Attributes
+# Text Attributes
 #
 # $BLD - bold
 # $UND - underline
 # $OFF - turn all attributes and colors off
-#*
 unset BLD && declare BLD="\e[1m"
 unset UND && declare UND="\e[4m"
 unset OFF && declare OFF="\e[m"
 #
-#** Color Attributes
+# Color Attributes
 #
 # Plain colors
-# $BLK
-# $RED
-# $GRN
-# $YEL
-# $BLU
-# $MGT
-# $CYN
-# $WHT
+# $BLK, $RED, $GRN, $YEL, $BLU, $MGT, $CYN, $WHT
 #
 # Bold or bright colors
-# $BBLK
-# $BRED
-# $BGRN
-# $BYEL
-# $BBLU
-# $BMGT
-# $BCYN
-# $BWHT
-#*
+# $BBLK, $BRED, $BGRN, $BYEL, $BBLU, $BMGT, $BCYN, $BWHT
 unset BLK && declare BLK="\e[0;90m"
 unset RED && declare RED="\e[0;91m"
 unset GRN && declare GRN="\e[0;92m"
@@ -92,8 +89,7 @@ declare punctset="#$%&'()*+,-./:;<=>?@[\\]^\`{|}~!\""
 declare qstr="${MNU}'q'$OFF"
 declare msgretry="${INF}Retry or type $qstr$INF to quit: $OFF"
 
-#** Exit codes and messages
-#
+# Exit codes and messages
 declare -i ui_exit_ok=0
 declare -i ui_err_invargc=1
 declare -i ui_err_invfile=2
@@ -129,11 +125,8 @@ declare -a ui_err_msg=(
 "Argument missing."
 ""
 )
-#*
 
-#*
-
-# Contlol-C exit code
+# Control-C exit code
 # see http://www.tldp.org/LDP/abs/html/exitcodes.html
 #
 # If it hasn't been defined in the environment, then define it here.
@@ -142,14 +135,12 @@ declare -p CTLC_EXIT > /dev/null 2>&1 || declare -i CTLC_EXIT=130
 
 declare ui_tempfile="/dev/shm/ui_temp_file"
 
-#** FUNCTIONS
-#*
+# FUNCTIONS
 
-#** ui_exit: exit with exit code and corresponding message
-#
-# $1 - exit code
-# $2 - optional artifact to precede error messag string
-#*
+# @description Exit with exit code and corresponding message
+# @arg $1 int Exit code index into ui_err_msg array
+# @arg $2 string Optional artifact to precede error message
+# @exitcode * Exits with the provided exit code
 ui_exit() {
 	local -i msgindex="$1"
 	local artifact="$2"
@@ -161,16 +152,12 @@ ui_exit() {
 	exit "$msgindex"
 }
 
-#** ui_print_climsg - print the command line interface message
-#
-# Globals
-#   ui_err_msg - array of exit messages
-#   ui_err*    - integer indexes into the array
-#
-# Arguments:
-#   $1 - ui_err* index into the error messages
-#   $2 - optional string to preceede error message
-#*
+# @description Print command line interface error message
+# @arg $1 int ui_err* index into the error messages
+# @arg $2 string Optional string to precede error message
+# @set ui_err_msg array Array of exit messages
+# @stdout Formatted error message
+# @exitcode 0 Always succeeds
 ui_print_climsg() {
 	local -i msgindex="$1"
 	local str="$2"
@@ -179,12 +166,13 @@ ui_print_climsg() {
 	msg="$CAU${ui_err_msg[msgindex]}$OFF"
 	[ -n "$str" ] && msg="$msg$INF : $str"
 	echo -e "$msg"
+	return 0
 }
 
-#** ui_testbash: test for bash 4.0+
-#*
-#   bash version must be 4 or higher to use this script
-#
+# @description Test for bash 4.0 or higher
+#   Exits with error if bash version is less than 4.0
+# @exitcode 0 Bash version is 4.0+
+# @exitcode * Exits via ui_exit if version too low
 ui_testbash() {
 	local verstr
 	local warnstr
@@ -198,22 +186,15 @@ You must be using GNU bash 4.0 or higher.$OFF
 EOF
 )
 	verstr=$(bash --version | grep -m1 -o '[0-9].*')
-	((${verstr:0:1} >= 4)) && return
+	((${verstr:0:1} >= 4)) && return 0
 	echo -e "$warnstr"
 	ui_exit $ui_err_bashver
 }
 
-# ui_popterm
-#  pop up a default user terminal an optionally execute a command in it.
-#
-# Arguments:
-#  $1 - optional command to execute in the popup terminal
-#
-# Usage:
-#  Optional command must be quoted with single or double quotes
-#
-#  ui_popterm 'less ~/bin/lib/ui.source'
-#
+# @description Pop up a default user terminal, optionally executing a command
+# @arg $1 string Optional command to execute in the popup terminal (must be quoted)
+# @example ui_popterm 'less ~/bin/lib/ui.source'
+# @exitcode 0 Always succeeds
 ui_popterm() {
 	cmd="$1"
 	if [ -n "$cmd" ]; then
@@ -221,6 +202,7 @@ ui_popterm() {
 	else
 		x-terminal-emulator
 	fi
+	return 0
 }
 
 # @description Query user for terminal background color preference
@@ -243,6 +225,18 @@ ui_get_screenbackground() {
 	return 0
 }
 
+# @description Set color variables based on terminal background
+#   Sets INF, MNU, STA, WRN, CAU, URL colors appropriate for light or dark background
+# @set terminal_background int Must be set before calling
+# @set b_color bool Whether colors are enabled
+# @set INF string Info color
+# @set MNU string Menu/heading color
+# @set STA string Status/value color
+# @set WRN string Warning color
+# @set CAU string Caution color
+# @set URL string URL/link color
+# @exitcode 0 Colors set successfully
+# @exitcode 1 Colors disabled (b_color=false)
 ui_set_colors() {
 	$b_color || {
 		b_color=false
@@ -309,13 +303,13 @@ ui_isdarkbg() {
 	fi
 }
 
-#** ui_setbg: Automatically sets colors for xterm, queries for others
-#
-# Globals:
-#   b_color              : whether we are in color mode, true or false
-#   terminal_background  : tb_light or tb_dark
-#   TERM                 : env global
-#*
+# @description Automatically set colors for xterm, query for others
+#   For xterm terminals, auto-detects background color.
+#   For other terminals, queries user for preference.
+# @arg $1 int-ref Variable to receive background setting (tb_lite or tb_dark)
+# @set b_color bool Set to true
+# @set terminal_background int tb_lite or tb_dark
+# @exitcode 0 Always succeeds
 ui_setbg() {
 	local -n uibg="$1"
 
@@ -336,79 +330,83 @@ ui_setbg() {
 		ui_use_colors
 		uibg="$terminal_background"
 	fi
+	return 0
 }
 
+# @description Query user for color preference and set colors
+# @set b_color bool Whether colors are enabled
+# @exitcode 0 Colors enabled and set
+# @exitcode 1 Colors disabled by user
 ui_query_colors() {
-	[ -z $b_color ] &&loop_yn "Do you want color text? y/n : " b_color
-	$b_color || return
+	[ -z $b_color ] && loop_yn "Do you want color text? y/n : " b_color
+	$b_color || return 1
 	ui_get_screenbackground
 	ui_set_colors
+	return 0
 }
 
+# @description Enable colors and query for background preference
+# @set b_color bool Set to true
+# @exitcode 0 Always succeeds
 ui_use_colors() {
 	b_color=true
 	ui_get_screenbackground
 	ui_set_colors
+	return 0
 }
 
+# @description Set colors with specified background preference
+# @arg $1 int Background setting (tb_lite or tb_dark)
+# @set terminal_background int Set to provided value
+# @set b_color bool Set to true
+# @exitcode 0 Always succeeds
 ui_do_colors() {
 	terminal_background="$1"
 	b_color=true
 	ui_set_colors
+	return 0
 }
 
-#** ui_putnchar: repeat print a char "n" times as directed
-#
-# $1 - the character to repeat print
-# $2 - the number of times to repeat it.
-#*
-# Example:
-#
-#    24_A=$(ui_putnchar "A" 24)  # creates a string with 24 "A" chars in it.
-#
+# @description Repeat print a character n times
+# @arg $1 string The character to repeat
+# @arg $2 int The number of times to repeat it
+# @stdout The repeated character string
+# @example 24_A=$(ui_putnchar "A" 24)  # creates "AAAAAAAAAAAAAAAAAAAAAAAA"
+# @exitcode 0 Always succeeds
 ui_putnchar() {
 	local ch="$1"
 	local -i num="$2"
 	local -i i
 
-	((num <= 0)) && return
+	((num <= 0)) && return 0
 	eval printf -- "${ch}%.0s" {1..$num}
+	return 0
 }
 
-#** ui_rptchr: put a chr repeatedly n times
-#
-# $1 - char to repeat
-# $2 - number of times to repeat it
-#
-# Example:
-# 	pad=$(ui_rptchr "-" 5)
-# 	echo "$pad"
-#
-# 	prints "-----" to the teminal
-#*
+# @description Put a character repeatedly n times
+# @arg $1 string Character to repeat
+# @arg $2 int Number of times to repeat
+# @stdout The repeated character string
+# @example pad=$(ui_rptchr "-" 5)  # prints "-----"
+# @exitcode 0 Always succeeds
 ui_rptchr() {
 	local chr="$1"
 	local -i num=$2
 	local tstr=
 
-	((num <= 0)) && return
+	((num <= 0)) && return 0
 	tstr="$(printf "%*c" $num "$chr")"
 	echo "${tstr// /"$chr"}"
+	return 0
 }
 
-#** ui_padfield - pad a string with a given character to fill a field
-#
-#  The pad will be placed BEFORE the string in the returned string
-#
-#  $1 - str
-#  $2 - pad character
-#  $3 - field width
-#
-#  Example:
-#  	paddedstr=$(ui_padfield "foo" "." 6
-#  	echo $paddedstr
-#  	...foo
-#*
+# @description Pad a string with a character to fill a field (pad before)
+# @arg $1 string The string to pad
+# @arg $2 string The pad character
+# @arg $3 int The field width
+# @stdout Padded string with padding before the content
+# @example paddedstr=$(ui_padfield "foo" "." 6)  # returns "...foo"
+# @exitcode 0 Always succeeds
 ui_padfield() {
 	local str="$1"
 	local padch="$2"
@@ -416,26 +414,20 @@ ui_padfield() {
 	local -i padn
 	local padstr
 
-	((${#str} >= fldw)) && echo -n "$str" && return
+	((${#str} >= fldw)) && echo -n "$str" && return 0
 	padn=$((fldw - ${#str}))
 	padstr=$(ui_putnchar "$padch" "$padn")
 	echo -n "$padstr$str"
-	return
+	return 0
 }
 
-#** ui_padfield_aft - pad a string with a given character to fill a field
-#
-#  The pad will be placed AFTER the string in the returned string
-#
-#  $1 - str
-#  $2 - pad character
-#  $3 - field width
-#
-#  Example:
-#  	paddedstr=$(ui_padfield "foo" "." 6
-#  	echo $paddedstr
-#  	foo...
-#*
+# @description Pad a string with a character to fill a field (pad after)
+# @arg $1 string The string to pad
+# @arg $2 string The pad character
+# @arg $3 int The field width
+# @stdout Padded string with padding after the content
+# @example paddedstr=$(ui_padfield_aft "foo" "." 6)  # returns "foo..."
+# @exitcode 0 Always succeeds
 ui_padfield_aft() {
 	local str="$1"
 	local padch="$2"
@@ -443,22 +435,17 @@ ui_padfield_aft() {
 	local -i padn
 	local padstr
 
-	((${#str} >= fldw)) && echo -n "$str" && return
+	((${#str} >= fldw)) && echo -n "$str" && return 0
 	padn=$((fldw - ${#str}))
 	padstr=$(ui_putnchar "$padch" "$padn")
 	echo -n "$str$padstr"
-	return
+	return 0
 }
 
-#** ui_clrline: clear the current line
-#
-# $1 - if not empty, moves the cursor up one line.
-#*
-# GLOBALS
-# 	CL1 - puts cursor at column 1
-# 	CCR - clears the line and issues a carriage return
-# 	UP1 - moves the cursor up one line
-#
+# @description Clear the current terminal line
+# @set CL1 string Cursor to column 1 escape sequence
+# @set CCR string Clear line and carriage return escape sequence
+# @exitcode 0 Always succeeds
 ui_clearline() {
 	# Erase the line and put the cursor back in the first column of the
 	# line. Leave the TTY calls as discrete echos for the sake of
@@ -468,17 +455,15 @@ ui_clearline() {
 	echo -en "$CCR"
 	echo -en "$CL1"
 	echo -en "$CCR"
+	return 0
 }
 
-#** ui_nclrline: clear the current line and move cursor up by 'n'
-#
-# $1 - number of lines to move the cursor up
-#*
-# GLOBALS
-# 	CL1 - puts cursor at column 1
-# 	CCR - clears the line and issues a carriage return
-# 	UP1 - moves the cursor up one line
-#
+# @description Clear the current line and move cursor up by n lines
+# @arg $1 int Number of lines to move cursor up
+# @set CL1 string Cursor to column 1 escape sequence
+# @set CCR string Clear line and carriage return escape sequence
+# @set UP1 string Move cursor up one line escape sequence
+# @exitcode 0 Always succeeds
 ui_nclearline() {
 	local up="$1"
 	local -i i
@@ -493,19 +478,14 @@ ui_nclearline() {
 	done
 	echo -en "$CL1"
 	echo -en "$CCR"
+	return 0
 }
 
-#** ui_waitonproc: prints dots while waiting for pid
-#
-# $1 - PID of process we are waiting for.
-# $2 - optional time arg can be given as decimal fractions of a second
-#
-# Prints a dot to the screen every second until the passed PID
-# completes.
-#
-# If user provides a second arg, then that will be used to time
-# the output of the dots.
-#*
+# @description Print dots while waiting for a process to complete
+# @arg $1 int PID of process to wait for
+# @arg $2 string Optional time interval (default: 1 second, supports decimals)
+# @stdout Dots printed at specified intervals
+# @exitcode * Exit status of the waited process
 ui_waitonproc () {
     local -i pid="$1"
     local time="${2:-1}"
@@ -520,21 +500,14 @@ ui_waitonproc () {
     return $stat
 }
 
-#** ui_waitonproc_tty: prints dots and erases line while waiting for pid
-#
-# $1 - PID of process we are waiting for.
-# $2 - time argument can be given as decimal fractions of a second
-# $3 - optional text
-#
-# Prints a dot to the screen according to the time argument. When the dots
-# reach the rightmost column of the screen, the line is erased and the dots
-# start again from the leftmost column.
-#
-# An optional text message is written first before the dots.
-#*
-# GLOBALS
-#   tcols - number of columns in the terminal
-#
+# @description Print dots with line wrap while waiting for a process
+#   Dots wrap at screen edge, line is cleared when process completes.
+# @arg $1 int PID of process to wait for
+# @arg $2 string Time interval (supports decimal fractions)
+# @arg $3 string Optional text message to display first
+# @set tcols int Number of terminal columns (used for wrapping)
+# @stdout Dots and optional text message
+# @exitcode * Exit status of the waited process
 ui_waitonproc_tty () {
     local -i pid="$1"
     local tmo="$2"
@@ -565,15 +538,12 @@ ui_waitonproc_tty () {
 # User Input Routines
 #######################
 
-#** getyn(): gets user 'y' or 'n' response to prompt
-#
-# $1 - prompt string
-# $2 - optional arg to receive true or false value
-#*
-# Takes $1 for a prompt string and adds color emphasis, if color is enabled.
-# Places true or false into $2, which is an optional argument.
-# User is prompted for (y/n) answer at the end of the prompt string.
-#
+# @description Get user 'y' or 'n' response to a prompt
+#   Prompts user with colored text (if enabled) and waits for y/n input.
+# @arg $1 string Prompt string to display
+# @arg $2 bool-ref Optional variable to receive true/false value
+# @exitcode 0 User answered 'y'
+# @exitcode 1 User answered 'n'
 getyn() {
 	local promptstring="$1"
 	local -i argc=$#
@@ -601,16 +571,12 @@ getyn() {
 	done
 }
 
-# doyn() $1 $2 [$3] [$4]
-#
-# $1 -	Calls getyn() with $1 for a prompt string.
-# $2 -	A string containing the command that will be executed if the user
-#	responded "y"
-# $3 -	Optional. A string containing the command that will be executed if
-#	the user responded "n"
-# $4 - 	Optional. Will contain the value of the user's response. If there is
-#	no action for $3 to do, then a null string "" must be passed for $3.
-#
+# @description Execute commands based on y/n user response
+# @arg $1 string Prompt string for getyn()
+# @arg $2 string Command to execute if user responds 'y'
+# @arg $3 string Optional command to execute if user responds 'n'
+# @arg $4 bool-ref Optional variable to receive user response
+# @exitcode 0 Always succeeds
 doyn() {
 	local promptstring="$1"
 	local y_command="$2"
@@ -634,17 +600,11 @@ doyn() {
 	((argc == 4)) && uip_response="$response"
 }
 
-#** getuser: reads user input
-#
-# Read multi char input terminated by RETURN/ENTER.
-# Lines ending in a backslash will be continued, as from
-# the command line.
-# Command strings will be expanded, e.g. $(find ..).
-# Input is returned in the reference variable.
-#
-# $1 - prompt string
-# $2 - reference variable to receive user input
-#*
+# @description Read multi-character user input with backslash continuation
+#   Lines ending in backslash are continued. Command strings are expanded.
+# @arg $1 string Prompt string to display
+# @arg $2 string-ref Variable to receive user input
+# @exitcode 0 Always succeeds
 getuser() {
     local promptstring="$1"
     local -n uigu_var="$2"
@@ -663,16 +623,13 @@ getuser() {
 
     # Add the last line without the backslash
     uigu_var+="$(eval "echo $input_line" | sed 's/\\$//')"
+    return 0
 }
 
-#** getuser: reads user input
-#
-# Read multi char input terminated by RETURN/ENTER.
-# Does not support backslash continuation lines.
-#
-# $1 - prompt string
-# $2 - reference variable to receive user input
-#*
+# @description Read multi-character user input (no backslash continuation)
+# @arg $1 string Prompt string to display
+# @arg $2 string-ref Variable to receive user input
+# @exitcode 0 Always succeeds
 getuser_noslash() {
 	local promptstring="$1"
 	local -n uigu_var="$2"
@@ -680,22 +637,14 @@ getuser_noslash() {
 	echo -ne "$INF$promptstring$OFF"
 	read -e -r uigu_var
 	eval "uigu_var=\"$uigu_var\""
+	return 0
 }
 
-#** getkey: get modifier key combinations (hot keys)
-#
-# Uses external compiled tool, keypress.
-# If it does not exist, it will be compiled on the fly.
-# It's a small enough source to build without being
-# noticed.
-# See keypress.c
-#
-# GLOBALS: none
-#
-# $1 - reference var receives the char
-#
-# RETURNS: 0 if no mod keys, 1 if Alt-key is pressed
-#*
+# @description Get modifier key combinations (hot keys)
+#   Uses external compiled tool 'keypress' (see keypress.c)
+# @arg $1 string-ref Variable to receive the character
+# @exitcode 0 Normal key pressed
+# @exitcode 1 Alt-key combination pressed
 getkey() {
 	local -n gkp_char="$1"
 	local foo
@@ -708,42 +657,32 @@ getkey() {
 	return $sts
 }
 
-#** promptgetkey(): print a prompt and call getkey
-#
-# Returns the character in the reference variable
-# User does not need to press RETURN/ENTER
-#
-# $1 - prompt, may include escape chars
-# $2 - reference variable to receive the char
-#
-# Returns: 0 if normal key, 1 if Alt-key
-#*
+# @description Print a prompt and get a key press
+#   User does not need to press RETURN/ENTER
+# @arg $1 string Prompt string (may include escape chars)
+# @arg $2 string-ref Variable to receive the character
+# @exitcode 0 Normal key pressed
+# @exitcode 1 Alt-key combination pressed
 promptgetkey() {
 	echo -en "$1"
 	getkey "$2"
 	return $?
 }
 
-#** getch(): reads one char user input without echoing the char
-#
-# Returns character in the reference variable.
-# User does not need to press RETURN/ENTER
-#
-# $1 - reference variable to receive the char
-#*
+# @description Read one character without echoing
+#   User does not need to press RETURN/ENTER
+# @arg $1 string-ref Variable to receive the character
+# @exitcode 0 Always succeeds
 getch() {
 	local -n uichar="$1"
 	read -r -n1 uichar
 	return 0
 }
 
-#** getchar(): reads one char and echoes it to the screen
-#
-# Returns the char in the reference veriable.
-# User does not need to press RETURN/ENTER
-#
-# $1 - reference variable to receive the char
-#*
+# @description Read one character and echo it to screen
+#   User does not need to press RETURN/ENTER
+# @arg $1 string-ref Variable to receive the character
+# @exitcode 0 Always succeeds
 getchar() {
 	local -n uigc_char="$1"
 	read -r -n1 uigc_char
@@ -751,35 +690,22 @@ getchar() {
 	return 0
 }
 
-#** promptgetchar(): print a prompt and get a char with echo
-#
-# Returns the character in the reference variable
-# User does not need to press RETURN/ENTER
-#
-# $1 - prompt, may include escape chars
-# $2 - reference variable to receive the char
-#*
-# Prints a prompt passed in $1 and returns the char in $2
-#
+# @description Print a prompt and get a character (with echo)
+#   User does not need to press RETURN/ENTER
+# @arg $1 string Prompt string (may include escape chars)
+# @arg $2 string-ref Variable to receive the character
+# @exitcode 0 Always succeeds
 promptgetchar() {
 	echo -en "$1"
 	getchar "$2"
 	return 0
 }
 
-#** loop_yn(): loop until we get y or n from user
-#
-# $1 - prompt string
-# $2 - optional boolean value to be returned in reference variable
-#
-# Print the prompt and loop until user gives either a y or n answer.
-# If a reference variable is provided, it will receive the corresponding
-# true or false value.
-#
-# Returns
-#  0 for yes
-#  1 for no
-#*
+# @description Loop until user enters 'y' or 'n'
+# @arg $1 string Prompt string to display
+# @arg $2 bool-ref Optional variable to receive true/false value
+# @exitcode 0 User answered 'y'
+# @exitcode 1 User answered 'n'
 loop_yn() {
 	if [ -n "$2" ]; then local -n uilyn_retval="$2"; else local uilyn_retval; fi
 	local ans
@@ -793,16 +719,10 @@ loop_yn() {
 	done
 }
 
-#** loop_yn_ro() - return-only version
-#
-# Loop until user gives either a y or n answer.
-#
-# $1 - prompt string
-#
-# RETURNS
-#  0 for yes
-#  1 for no
-#*
+# @description Loop until user enters 'y' or 'n' (return-only version)
+# @arg $1 string Prompt string to display
+# @exitcode 0 User answered 'y'
+# @exitcode 1 User answered 'n'
 loop_yn_ro() {
 	local ans
 	while true; do
@@ -814,14 +734,11 @@ loop_yn_ro() {
 	done
 }
 
-#** loop_range(): loop until user enters number within range
-#
-# $1 - minimum
-# $2 - maximum
-# $3 - reference value to receive the user's choice
-#*
-# Loop until user gives a number in the range defined by the args
-#
+# @description Loop until user enters a number within specified range
+# @arg $1 int Minimum value
+# @arg $2 int Maximum value
+# @arg $3 int-ref Variable to receive user's choice
+# @exitcode 0 Valid number entered
 loop_range() {
 	local min=$1
 	local max=$2
@@ -846,15 +763,12 @@ loop_range() {
 	done
 }
 
-#** loop_range_q()
-#
-# $1 - minimum
-# $2 - maximum
-# $3 - reference value to receive the user's choice
-#
-# Loop until user gives a number in the range defined by the args or
-# enters 'q' to quit and return to the caller with the 'q'
-#*
+# @description Loop until user enters a number within range or 'q' to quit
+# @arg $1 int Minimum value
+# @arg $2 int Maximum value
+# @arg $3 int-ref Variable to receive user's choice
+# @exitcode 0 Valid number entered
+# @exitcode 1 User pressed 'q' to quit
 loop_range_q() {
 	local min="$1"
 	local max="$2"
@@ -882,17 +796,14 @@ loop_range_q() {
 	done
 }
 
-#** select_from_array: select an item from an enumerated list
-#
-# $1 - array name, passed without the leading '$'
-# $2 - prompt string
-# $3 - reference variable that receives the user's selected number
-# $4 - Optional second line of prompt
-#
-# An enumerated list of the contents of the array is presented for
-# the user to choose one of the numbered items.
-#*
-#
+# @description Select an item from an enumerated array list
+#   Displays numbered list and prompts user to select one.
+# @arg $1 string Array name (without leading '$')
+# @arg $2 string Prompt string describing what to select
+# @arg $3 int-ref Variable to receive selected number
+# @arg $4 string Optional second line of prompt
+# @exitcode 0 Valid selection made
+# @exitcode 1 User pressed 'q' to quit
 select_from_array() {
 	local contents="$1[@]"
 	local promptstr="$2"
@@ -940,15 +851,11 @@ select_from_array() {
 	return 0
 }
 
-#** is_array_member: determines if $2 is a member of $1
-#
-# $1 - array name passed without leading $
-# $2 - the item to find in the array
-#
-# Returns
-# 0 - if the item was found
-# 1 - if the item was not found.
-#*
+# @description Determine if an item is a member of an array
+# @arg $1 string Array name (without leading '$')
+# @arg $2 string The item to find
+# @exitcode 0 Item found in array
+# @exitcode 1 Item not found
 is_array_member() {
 	local -n uiiam_array="$1"
 	local member="$2"
@@ -966,9 +873,10 @@ is_array_member() {
 	return 1
 }
 
-#** is_validnumber: returns 0 if $1 is a valid decimal integer
-#*
-#
+# @description Check if argument is a valid decimal integer
+# @arg $1 string Value to check
+# @exitcode 0 Valid decimal integer
+# @exitcode 1 Not a valid integer
 is_validnumber() {
 	local ui_num="$1"
 
@@ -980,11 +888,11 @@ is_validnumber() {
 # Directory Routines
 #############################
 
-#** ui_getfilespec: get a pathname to a file and loop until we get
-#                   a legitimate file name
-# $1 - prompt
-# $2 - reference variable to receive returned filespec
-#*
+# @description Get a pathname to a file, looping until valid
+# @arg $1 string Prompt to display
+# @arg $2 string-ref Variable to receive the filespec
+# @exitcode 0 Valid file obtained
+# @exitcode 1 User pressed 'q' to quit
 ui_getfilespec() {
 	local prompt="$1"
 	local filespec
@@ -1003,17 +911,13 @@ ui_getfilespec() {
 	return $retval
 }
 
-#** ui_chkdir: determine whether the string in $1 is file or dir or neither
-#
-# $1 - a string supposedly naming a directory
-#
-# returns
-#	0 if the string exists as a valid directory
-#	1 if the string was empty
-#	2 if string exists as a file
-#	3 if the string is neither a file nor a directory
-#	4 if the string is "q" for "quit trying"
-#*
+# @description Check if a string is a file, directory, or neither
+# @arg $1 string Path to check
+# @exitcode 0 Valid directory
+# @exitcode 1 Empty string
+# @exitcode 2 Exists as a file
+# @exitcode 3 Neither file nor directory
+# @exitcode 4 String is 'q' (quit)
 ui_chkdir() {
 	[ "$1" = "q" ] && return 4
 	[ "$1" ]       || return 1
@@ -1022,12 +926,11 @@ ui_chkdir() {
 	return 0
 }
 
-# ui_verifydir() - determines whether the name is a valid directory
-#
-# $1 - the name of the directory to verify
-#
-# Returns 0 if the directory is valid, else returns 1
-#
+# @description Verify that a path is a valid directory
+# @arg $1 string Directory path to verify
+# @stdout Error message if invalid
+# @exitcode 0 Valid directory
+# @exitcode 1 Invalid directory
 ui_verifydir() {
 	local dir="$1"
 	local stat
@@ -1047,22 +950,14 @@ ui_verifydir() {
 	return 0
 }
 
-#** ui_getnewdir: promt user for new directory
-#
-# $1 - prompt
-# $2 - will contain the new directory name
-#
-# Prompts the user for a name to create a new directory and passes
-# it back to the caller in the "name" argument.
-# If the name already exists as a file, prompts for a new name.
-# If the name already exists as a directory, asks if user wants to
-# use that directory, warning that all its contents may be altered.
-#
-# Returns:
-# 	0 - valid existing directory
-# 	3 - newly created directory
-# 	4 - user quitting
-#*
+# @description Prompt user for a new directory name
+#   Validates input and creates directory if needed.
+#   If directory exists, asks user to confirm using it.
+# @arg $1 string Prompt to display
+# @arg $2 string-ref Variable to receive directory name
+# @exitcode 0 Valid existing directory
+# @exitcode 3 Newly created directory
+# @exitcode 4 User quitting
 ui_getnewdir() {
 	local prompt="$1"
 	local newdir
@@ -1104,11 +999,11 @@ ui_getnewdir() {
 	done
 }
 
-#** ui_testdir - test for existence of directory and poll user for action
-#
-# Arguments:
-#   $1 - name of the directory to test
-#*
+# @description Test for directory existence and poll user for action
+# @arg $1 string Directory name to test
+# @arg $2 string-ref Variable to receive directory name
+# @exitcode 0 Directory created or doesn't exist
+# @exitcode 2 Directory exists
 ui_testdir() {
 	local tstdir="$1"
 	local stat
@@ -1139,13 +1034,9 @@ ui_testdir() {
 	done
 }
 
-#** ui_remove_spaces - remove spaces from filenames in the current directory
-#
-# The intention is that the calling function has already issued cd to the
-# directory in which ui_remove_spaces will execute.
-#
-# No globals, no arguments.
-#*
+# @description Remove spaces from filenames in current directory
+#   Replaces spaces with underscores. Call after cd to target directory.
+# @exitcode 0 Always succeeds
 ui_remove_spaces() {
     local sp=" "
     while IFS= read -r -d '' file
@@ -1155,12 +1046,11 @@ ui_remove_spaces() {
     done < <(find . -maxdepth 1 -type f -print0)
 }
 
-#** ui_cd - cd with return test and error message exit on fault
-#
-# This is necessary, because you must test the return value of
-# every cd. A failed cd could have dire consequences when
-# subsequent directory and file commands are executed,
-#*
+# @description Change directory with error handling
+#   Exits with error message if cd fails to prevent subsequent errors.
+# @arg $1 string Directory to change to (or "-" for previous)
+# @exitcode 0 Successfully changed directory
+# @exitcode * Exits via ui_exit on failure
 ui_cd() {
 	local dir="$1"
 	local dirstr
@@ -1174,26 +1064,23 @@ ui_cd() {
 # Miscellaneous
 ##########################
 
-# ui_catoneline
-# cat the nth line of a file.
-# $1 - the file
-# $2 - one-based number of the line
-#
+# @description Output the nth line of a file
+# @arg $1 string File path
+# @arg $2 int Line number (1-based)
+# @stdout The specified line
+# @exitcode 0 Always succeeds
 ui_catoneline() {
 	head -"$2" "$1" | tail -1
 }
 
-#** ui_replaceline: replace a numbered line in a file
-#
-# Replaces one line in a file, using only the line number instead of
-# pattern matching.
-#
-# $1 - Line number
-# $2 - Text to write over the existing text in the line
-# $3 - File
-#
-# Returns 1 if the line number exceeds the number of lines in the file.
-#*
+# @description Replace a numbered line in a file
+#   Uses line number instead of pattern matching.
+# @arg $1 int Line number to replace
+# @arg $2 string New text for the line
+# @arg $3 string File path
+# @exitcode 0 Line replaced successfully
+# @exitcode 1 Line number exceeds file length
+# @exitcode * Invalid argument count
 ui_replaceline() {
 	local -i line
 	local new_content
@@ -1212,20 +1099,12 @@ ui_replaceline() {
 	return 0
 }
 
-#** ui_replaceline_raw: replaces a numbered line in a file without checking
-#
-# Replaces one line in a file, using only the line number instead of
-# pattern matching.
-#
-# NOTE:
-#  This "raw" version does not check arguments for integrity, so you
-#  must be sure that you have valid arguments, or enjoy indeterminate
-#  results.
-#
-# $1 - Line number
-# $2 - Text to write over the existing text in the line
-# $3 - File
-#*
+# @description Replace a numbered line in a file (no validation)
+#   Raw version - does not validate arguments. Use with caution.
+# @arg $1 int Line number to replace
+# @arg $2 string New text for the line
+# @arg $3 string File path
+# @exitcode 0 Always succeeds
 ui_replaceline_raw() {
 	local -i line
 	local new_content
@@ -1238,6 +1117,11 @@ ui_replaceline_raw() {
 	return 0
 }
 
+# @description Validate line number and file arguments
+# @arg $1 int Line number to validate
+# @arg $2 string File path to validate
+# @exitcode 0 Arguments are valid
+# @exitcode * Various ui_err_* codes on failure
 check_lineargs() {
 	local -i number="$1"
 	local file="$2"
@@ -1254,19 +1138,12 @@ check_lineargs() {
 	return 0
 }
 
-#** ui_readline: reads a numbered line in a file
-#
-# $1 - line number
-# $2 - file to read
-#
-# Returns nonzero on inconsistent input.
-# 	ui_err_invargc
-#	ui_err_notdigit
-#	ui_err_notfile
-#	ui_err_invlinec
-#
-# call: line=$(ui_readline line file)
-#*
+# @description Read a numbered line from a file
+# @arg $1 int Line number to read
+# @arg $2 string File path
+# @stdout The specified line
+# @exitcode 0 Success
+# @exitcode * Various ui_err_* codes on invalid input
 ui_readline() {
 	local -i line
 
@@ -1280,17 +1157,12 @@ ui_readline() {
 	return 0
 }
 
-#** ui_readline_raw: reads a numbered line in a file without checking
-#
-# Reads one line in a file given the line number.
-# $1 - line number
-# $2 - file to read
-#
-# Always returns 0, so you'd better know what you're doing
-# when you use this. There are no input consistency checks.
-#
-# call: line=$(ui_readline line file)
-#*
+# @description Read a numbered line from a file (no validation)
+#   Raw version - no input consistency checks.
+# @arg $1 int Line number to read
+# @arg $2 string File path
+# @stdout The specified line
+# @exitcode 0 Always succeeds
 ui_readline_raw() {
 	local -i line
 
@@ -1302,15 +1174,13 @@ ui_readline_raw() {
 	return 0
 }
 
-#** ui_insertline: insert a line into a file at the given line number.
-#
-# If the line number is greater than the number of lines in the file,
-# the line is appended to the end of the file.
-#
-# $1 - line number
-# $2 - text to insert
-# $3 - file
-#*
+# @description Insert a line into a file at the given line number
+#   If line number exceeds file length, line is appended.
+# @arg $1 int Line number for insertion
+# @arg $2 string Text to insert
+# @arg $3 string File path
+# @exitcode 0 Success
+# @exitcode * Various ui_err_* codes on invalid input
 ui_insertline() {
 	local -i lc
 	local -i line
@@ -1337,11 +1207,11 @@ ui_insertline() {
 	fi
 }
 
-#** ui_deleteline: delete a line in the file at the given line number
-#
-# $1 - line number
-# $2 - file
-#*
+# @description Delete a line from a file at the given line number
+# @arg $1 int Line number to delete
+# @arg $2 string File path
+# @exitcode 0 Success
+# @exitcode * Various ui_err_* codes on invalid input
 ui_deleteline() {
 	local -i line
 
@@ -1355,21 +1225,19 @@ ui_deleteline() {
 	mv -f "$ui_tempfile" "$2"
 }
 
-#** ui_toggle: toggle a boolean value
-#
-# $1 - value is toggled by reference
-#*
+# @description Toggle a boolean value
+# @arg $1 bool-ref Variable name to toggle (true <-> false)
+# @exitcode 0 Always succeeds
 ui_toggle() {
 	local boolean=${!1}
 	if $boolean; then eval "$1"=false; else eval "$1"=true; fi
 }
 
-#** ui_cycle_state_ofs - cycle through the states of a variable starting at
-#
-# $1 - variable value changed by reference
-# $2 - number of states
-# $3 - minimum state value
-#*
+# @description Cycle through states of a variable with offset
+# @arg $1 int-ref Variable to cycle
+# @arg $2 int Number of states
+# @arg $3 int Minimum state value (offset)
+# @exitcode 0 Always succeeds
 ui_cycle_state_ofs() {
 	local -n uics_var=$1
 	local states=$2
@@ -1380,11 +1248,10 @@ ui_cycle_state_ofs() {
 	((uics_var >= maxstat)) && uics_var=$minstat
 }
 
-#** ui_cycle_state - cycle through the states of a variable
-#
-# $1 - variable value changed by reference
-# $2 - number of states
-#*
+# @description Cycle through states of a variable (0 to n-1)
+# @arg $1 int-ref Variable to cycle
+# @arg $2 int Number of states
+# @exitcode 0 Always succeeds
 ui_cycle_state() {
 	local -n uics_var=$1
 	local states=$2
@@ -1393,39 +1260,29 @@ ui_cycle_state() {
 	((uics_var >= states)) && uics_var=0
 }
 
-#** ui_digit2bool - convert 0 and 1 to true and false
-#
-# $1 - reference to convert to boolean, must be 0 or 1
-#*
+# @description Convert 0/1 to false/true
+# @arg $1 bool-ref Variable containing 0 or 1 to convert
+# @exitcode 0 Always succeeds
 ui_digit2bool() {
 	local boolean=${!1}
 	if $boolean; then eval "$1"=true; else eval "$1"=false; fi
 }
 
-#** ui_strindex string-1 string-2
-#
-# $1 - string to search
-# $2 - string to find
-#
-# Echo zero-based index of the first instance of string-2 in string-1
-# Echoes -1 if string-2 is not found in string-1
-#*
+# @description Find index of substring in string
+# @arg $1 string String to search
+# @arg $2 string Substring to find
+# @stdout Zero-based index, or -1 if not found
+# @exitcode 0 Always succeeds
 ui_strindex() {
 	local x="${1%%$2*}"
 	[[ $x = "$1" ]] && echo -1 || echo ${#x}
 }
 
-# ui_getlastch char string
-#
-# Return zero based index of the last incidence of the given char in
-# the given string.
-#
-# Returns the position of the last $1 in the string, or zero if none
-# is found.
-#
-# $1 - character of which we're looking for the last instance
-# $2 - the string to search for that character
-#
+# @description Find position of last occurrence of character in string
+# @arg $1 string Character to find
+# @arg $2 string String to search
+# @stdout Zero-based position, or 0 if not found
+# @exitcode 0 Always succeeds
 ui_getlastch() {
 	ch="$1"
 	str="$2"
@@ -1433,30 +1290,13 @@ ui_getlastch() {
 	echo "$str" | awk -F"$ch" '{print length($0)-length($NF)}'
 }
 
-#** ui_inarray(): looks for an integer in an integer array
-#
-# $1 value
-# $2 array, must be passed by reference, without leading '$'
-# $3 optional return value will contain the zero-based index of where the
-#    value parameter was found. Will be left unmolested if not found.
-#
-# Returns 0 if found, 1  if not.
-# Optionally returns the index of the item in the array by reference.
-#
-# Examples:
-#
-#   declare -a array=(3 8 12 7 16 9 3)
-#
-#   # The following will echo "found"
-#   #
-#   inarray 12 array[@]
-#   [ $? -eq 0 ] && echo "found" || echo "not found"
-#
-#   # The following will echo '2', because 12 is at index 2
-#   #
-#   ui_inarray 12 array[@] index
-#   echo $index
-#*
+# @description Look for an integer in an integer array
+# @arg $1 int Value to find
+# @arg $2 string Array reference (without '$', e.g., 'array[@]')
+# @arg $3 int-ref Optional variable to receive found index
+# @exitcode 0 Value found
+# @exitcode 1 Value not found
+# @example ui_inarray 12 array[@] index
 ui_inarray() {
 	local -i index="$1"
 	local -a ary=("${!2}")
@@ -1480,32 +1320,14 @@ ui_inarray() {
 	return 1
 }
 
-#** ui_nextinarray: seeks next highest int in an int array, given an int
-#
-# $1 input value
-# $2 array, must be passed by reference, without leading '$'
-# $3 return value will contain the index of the next integer in the array
-#    that has a higher value than the input.
-#    If the input is greater than the largest number in the array, then
-#    the index of the largest number will be returned.
-#
-# Returns 0 if found, 1  if the input integer is higher than any in the array.
-# Returns the index of the number in the array that is closest in value but
-# higher than the input value.
-#
-# The array must consist of numbers in ascending order.
-#
-# Examples:
-#
-#   declare -a array=(2 4 6 8 10)
-#
-#   # The following will return 2 in "next", which is the index
-#   # of the number 6 in the array.
-#   #
-#   ui_nextinarray 5 array[@] next
-#   echo $next
-#   2
-#*
+# @description Find next highest integer in a sorted array
+#   Array must be in ascending order.
+# @arg $1 int Input value
+# @arg $2 string Array reference (without '$', e.g., 'array[@]')
+# @arg $3 int-ref Variable to receive index of next higher value
+# @exitcode 0 Found next higher value
+# @exitcode 1 Input is higher than all array values
+# @example ui_nextinarray 5 array[@] next
 ui_nextinarray() {
 	local -i index="$1"
 	local -a ary=("${!2}")
@@ -1525,14 +1347,12 @@ ui_nextinarray() {
 	return 1
 }
 
-#** ui_aryindex: find the index of exact matching string in array
-#
-# $1 - array name passed by reference, no leading $
-# $2 - string being sought, passed by value
-# $3 - index of string in array, passed by reference, no leading $
-#
-# Returns 0 if match is found, 1 if not
-#*
+# @description Find index of exact matching string in array
+# @arg $1 array-ref Array name (without '$')
+# @arg $2 string String to find
+# @arg $3 int-ref Variable to receive index
+# @exitcode 0 Match found
+# @exitcode 1 No match found
 ui_aryindex () {
     local -n ar=$1
     local fld="$2"
@@ -1546,59 +1366,38 @@ ui_aryindex () {
     ((ix < ${#ar[@]})) && return 0 || return 1
 }
 
-# ui_isdigit - determines if $1 is a digit
-#
-# returns 0 if digit, 1 if not
-#
-# example:
-#
-# $(isdigit $foo) && echo yup || echo nope
-#
+# @description Check if argument is a decimal digit
+# @arg $1 string Value to check
+# @exitcode 0 Is a decimal digit
+# @exitcode 1 Not a decimal digit
 ui_isdigit() {
 	[[ $1 =~ ^-?[0-9]+$ ]] && return 0 || return 1
 }
 
-# ui_isxdigit - determines if $1 is a hexacecimal digit
-#
-# returns 0 if hex digit, 1 if not
-#
-# example:
-#
-# $(isxdigit $foo) && echo yup || echo nope
-#
+# @description Check if argument is a hexadecimal digit
+# @arg $1 string Value to check
+# @exitcode 0 Is a hex digit
+# @exitcode 1 Not a hex digit
 ui_isxdigit() {
 	[[ $1 =~ ^-?[0-9a-fA-F]+$ ]] && return 0 || return 1
 }
 
-#** ui_strtok: tokenizes a string and returns an array
-#
-# $1 - the string to tokenize
-# $2 - the string of delimiters
-# $3 - returns the tokenized string as an array
-#
-# examples:
-#
-# ui_strtok kernel-pegas-4.11.0-2.el7.x86_64 ".-" array
-#
-# ${array[@]} will contain all the tokens separated by delimiters "."
-# and "-", and the delimiters will be replaced by spaces.
-#*
+# @description Tokenize a string into an array using delimiters
+# @arg $1 string String to tokenize
+# @arg $2 string Delimiter characters
+# @arg $3 array-ref Variable to receive token array
+# @example ui_strtok "kernel-pegas-4.11.0" ".-" array
+# @exitcode 0 Always succeeds
 ui_strtok() {
 	IFS="$2" read -r -a "$3" <<< "$1"
 }
 
-#===  FUNCTION  ================================================================
-#**        NAME:  ui_trunc_string
-#   DESCRIPTION:  truncates the given string according to the number of columns
-#                 in the terminal less the "pad" parameter. If the pad parameter
-#                 wasn't passed or is zero, then the string will be truncated to
-#                 the number of columns in the terminal.
-#    PARAMETERS:  $1 - string to truncate
-#                 $2 - padding characters to subtract from terminal columns
-#       GLOBALS:  tcols - set at script load time by tcols=$(tput cols)
-#       RETURNS:  none
-#*
-#===============================================================================
+# @description Truncate string to fit terminal width minus padding
+# @arg $1 string String to truncate
+# @arg $2 int Optional padding to subtract from terminal width
+# @set tcols int Terminal column count
+# @stdout Truncated string
+# @exitcode 0 Always succeeds
 ui_trunc_string() {
 	local str="$1"
 	local pad=$2
@@ -1610,11 +1409,10 @@ ui_trunc_string() {
 	echo "${str:0:$strlen}"
 }
 
-#** ui_call: call a function and save its status
-#
-# $1 - contains the function or command to execute
-# $2 - will receive the status, passed by reference, so no leading $
-#*
+# @description Call a function and save its exit status
+# @arg $1 string Function or command to execute
+# @arg $2 int-ref Variable to receive exit status
+# @exitcode * Returns the status of the called function
 ui_call() {
 	local uic_cmd="$1"
 	local -n uic_stat=$2
@@ -1628,26 +1426,27 @@ ui_call() {
 # Debug Routines
 ##################
 
-#** ui_press_any: prompt user to  press any key to continue
-#*
+# @description Prompt user to press any key to continue
+# @exitcode 0 Always succeeds
 ui_press_any() {
 	echo -en "${MNU}Press any key to continue ...$OFF "
 	read -r -n1
+	return 0
 }
 
-#** ui_press_any_ctlc: prompt to press any key to continue or ctl-c to exit
-#*
+# @description Prompt to press any key or ctrl-c to exit
+# @exitcode 0 User pressed a key
 ui_press_any_ctlc() {
 	echo -en "
 ${MNU}Press any key to continue or$CAU ctrl-c$MNU to exit ...$OFF "
 	read -r -n1
 	echo
+	return 0
 }
 
-#** ui_callwstat: call a function, print its status and pause with press_any
-#
-# $1 - contains the function or command to execute
-#*
+# @description Call a function, print its status, and pause
+# @arg $1 string Function or command to execute
+# @exitcode * Returns the status of the called function
 ui_callwstat() {
 	local uicws_cmd="$1"
 	local uicws_stat
@@ -1663,19 +1462,14 @@ ui_callwstat() {
 
 declare b_ulog_inited=false
 
-#** ui_log() - log activity to a log file.
-#
-# Assumes the existence of $MYDATA and $MYNAME, declared in and
-# created by the sourcing script before sourcing this file.
-# If set -x, then will just return without logging, to prevent
-# cluttering the set -x output.
-#
-# Globals
-#   b_ulog_inited - assures that the log file is inited just once
-#
-# Arguments
-#   1 - string to be sent to the log
-#*
+# @description Log activity to a log file
+#   Requires $MYDATA and $MYNAME to be set by sourcing script.
+#   Skips logging if set -x is active.
+# @arg $1 string Message to log
+# @set b_ulog_inited bool Ensures log file init happens once
+# @set MYDATA string Data directory path
+# @set MYNAME string Script name
+# @exitcode 0 Always succeeds
 ui_log() {
 	# If set -x, then just return.
 	[[ $- == *x* ]] && return
@@ -1694,14 +1488,11 @@ ui_log() {
 	echo -e "$(date '+%M:%S'): $str" >> "$logfile"
 }
 
-#** ui_trunclog - truncate the log file
-#
-# Globals
-#
-# Arguments
-#   1- optional truncate to this number of lines.
-#      Default is 100
-#*
+# @description Truncate the log file to specified number of lines
+# @arg $1 int Optional line count (default: 100)
+# @set MYDATA string Data directory path
+# @set MYNAME string Script name
+# @exitcode 0 Always succeeds
 ui_trunclog() {
 	[ -d "$MYDATA" ] || return
 	[ -n "$MYNAME" ] || return
@@ -1716,14 +1507,11 @@ ui_trunclog() {
 	mv -f "$tmpfil" "$logfile" > /dev/null 2>&1
 }
 
-#** enum - automatically create incremented enums with boundary enums
-#
-# Globals
-#
-# Arguments
-# 	1 - prefix for the enums
-# 	The rest of the args are handled as a list of items to be enumed
-#*
+# @description Create auto-incremented enum variables with boundary markers
+#   Creates prefix_first, prefix_item1, prefix_item2, ..., prefix_boundary
+# @arg $1 string Prefix for enum variable names
+# @arg $@ string List of enum item names
+# @exitcode 0 Always succeeds
 enum() {
 	local prefix="$1"
 	local indx=1
