@@ -17,7 +17,6 @@
 declare MYDIR=
 declare MYLIB=
 declare MYDATA=
-declare background=
 declare usagestr=
 declare optcount=0
 declare b_verbose=false
@@ -32,6 +31,14 @@ MYDATA=$(realpath ./.data)
 [ -d "$MYDATA" ] || mkdir -p "$MYDATA"
 
 source "$MYLIB"/ui.source
+
+# Universal colors that work on both dark and light backgrounds
+# These override any colors from ui.source
+MNU=$'\033[1;36m'   # Bright cyan - headings/menu items
+STA=$'\033[1;32m'   # Bright green - status/values
+WRN=$'\033[1;33m'   # Bright yellow - warnings
+INF=$'\033[1;35m'   # Bright magenta - info
+OFF=$'\033[0m'      # Reset
 
 usagestr=$(
 cat <<EOF
@@ -76,19 +83,6 @@ EOF
 control_c() {
 	echo -e "\nCtrl-c detected\nCleaning up and exiting."
 	exit $CTLC_EXIT
-}
-
-# @description Initialize script environment
-#
-# @set background string Terminal background color setting
-#
-# @exitcode 0 Always succeeds
-init() {
-	local bgtemp
-
-	ui_setbg bgtemp
-	background=$bgtemp
-	return 0
 }
 
 # @description Parse command line options
@@ -151,6 +145,106 @@ is_shdoc_start() {
 is_shdoc_comment() {
 	local line="$1"
 	[[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "$line" ]]
+}
+
+# @description Format shdoc buffer into human-readable output
+#
+# Converts @arg, @set, @exitcode, @stdout annotations into
+# grouped, formatted sections.
+#
+# @arg $1 string The accumulated shdoc buffer
+#
+# @stdout Formatted documentation
+# @exitcode 0 Always succeeds
+format_shdoc() {
+	local buffer="$1"
+	local -a args=()
+	local -a globals=()
+	local -a exitcodes=()
+	local -a stdout_lines=()
+	local -a desc_lines=()
+	local line
+	local content
+
+	# Parse buffer into categories
+	while IFS= read -r line; do
+		# Remove leading # and whitespace
+		line="${line#\#}"
+		line="${line#"${line%%[![:space:]]*}"}"
+
+		if [[ "$line" =~ ^@description[[:space:]]*(.*) ]]; then
+			[[ -n "${BASH_REMATCH[1]}" ]] && desc_lines+=("${BASH_REMATCH[1]}")
+		elif [[ "$line" =~ ^@arg[[:space:]]+(.*) ]]; then
+			args+=("${BASH_REMATCH[1]}")
+		elif [[ "$line" =~ ^@set[[:space:]]+(.*) ]]; then
+			globals+=("${BASH_REMATCH[1]}")
+		elif [[ "$line" =~ ^@exitcode[[:space:]]+(.*) ]]; then
+			exitcodes+=("${BASH_REMATCH[1]}")
+		elif [[ "$line" =~ ^@stdout[[:space:]]+(.*) ]]; then
+			stdout_lines+=("${BASH_REMATCH[1]}")
+		elif [[ -n "$line" ]] && [[ ! "$line" =~ ^@ ]]; then
+			# Continuation line (part of description or previous annotation)
+			desc_lines+=("$line")
+		fi
+	done <<< "$buffer"
+
+	# Print additional description lines
+	for line in "${desc_lines[@]}"; do
+		echo "  $line"
+	done
+	((${#desc_lines[@]} > 0)) && echo
+
+	# Print Arguments
+	if ((${#args[@]} > 0)); then
+		echo -e "${MNU}Arguments:${OFF}"
+		for line in "${args[@]}"; do
+			# Parse: $1 type description
+			local arg_name arg_type arg_desc type_display
+			read -r arg_name arg_type arg_desc <<< "$line"
+			# Handle reference types (e.g., string-ref -> string, by ref)
+			if [[ "$arg_type" =~ ^(.+)-ref$ ]]; then
+				type_display="${BASH_REMATCH[1]}, by ref"
+			else
+				type_display="$arg_type"
+			fi
+			echo -e "  ${STA}${arg_name}${OFF} (${type_display}) - ${arg_desc}"
+		done
+		echo
+	fi
+
+	# Print Globals (from @set)
+	if ((${#globals[@]} > 0)); then
+		echo -e "${MNU}Globals:${OFF}"
+		for line in "${globals[@]}"; do
+			# Parse: varname type description
+			local var_name var_type var_desc
+			read -r var_name var_type var_desc <<< "$line"
+			echo -e "  ${STA}${var_name}${OFF} (${var_type}) - ${var_desc}"
+		done
+		echo
+	fi
+
+	# Print Output (from @stdout)
+	if ((${#stdout_lines[@]} > 0)); then
+		echo -e "${MNU}Output:${OFF}"
+		for line in "${stdout_lines[@]}"; do
+			echo "  $line"
+		done
+		echo
+	fi
+
+	# Print Exit Codes
+	if ((${#exitcodes[@]} > 0)); then
+		echo -e "${MNU}Exit Codes:${OFF}"
+		for line in "${exitcodes[@]}"; do
+			# Parse: code description
+			local code desc
+			read -r code desc <<< "$line"
+			echo -e "  ${STA}${code}${OFF} - ${desc}"
+		done
+	fi
+
+	return 0
 }
 
 # @description Extract function name from declaration line
@@ -258,7 +352,6 @@ main() {
 	local shdoc_buffer=""
 	local description=""
 
-	init
 	parseopts "$@"
 	shift "$optcount"
 
@@ -321,14 +414,7 @@ main() {
 
 				if $b_verbose; then
 					echo "$dash"
-					# Print buffer without the first line (already showed description)
-					while IFS= read -r bufline; do
-						[[ "$bufline" =~ @description ]] && continue
-						# Remove leading # and space
-						bufline="${bufline#\#}"
-						bufline="${bufline# }"
-						echo "$bufline"
-					done <<< "$shdoc_buffer"
+					format_shdoc "$shdoc_buffer"
 				fi
 
 				b_shdoc=false
