@@ -279,18 +279,24 @@ ui_set_colors() {
 	return 0
 }
 
-# is_darkbg: returns 0 if dark terminal background, else returns 1
-#
-# from:
-# https://stackoverflow.com/questions/2507337/how-to-determine-a-terminals-background-color
-#
+# @description Detect if terminal has dark background using OSC 11 query
+#   Sends xterm OSC 11 escape sequence to query background RGB color.
+#   Sums RGB components; if < 300 (~40% brightness), considers it dark.
+#   Times out after 1 second if terminal doesn't respond.
+# @see https://stackoverflow.com/questions/2507337/how-to-determine-a-terminals-background-color
+# @exitcode 0 Dark background (or timeout - defaults to dark)
+# @exitcode 1 Light background
 ui_isdarkbg() {
 	local bgraw
 	local bg
 	local -a bga=()
 	local -i sum=0
 
-	read -rs -d \\ -p $'\e]11;?\e\\' bgraw
+	# Query terminal with 1 second timeout; default to dark if no response
+	if ! read -rs -t 1 -d \\ -p $'\e]11;?\e\\' bgraw; then
+		return 0  # timeout or error - assume dark
+	fi
+
 	bg=$(echo "$bgraw" | xxd -c 32 | cut -d':' -f3)
 	ui_strtok "$bg" "/." bga
 
