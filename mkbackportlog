@@ -256,7 +256,7 @@ EOF
 # @description Validate and return a pathname
 # @arg $1 string Optional -r flag for realpath
 # @arg $2 string Path to verify
-# @arg $3 string Variable to receive path
+# @arg $3 string-ref Variable to receive validated path
 # @exitcode 0 Path valid
 # @exitcode * Exits if path invalid
 get_pathopt() {
@@ -279,7 +279,7 @@ get_pathopt() {
 
 # @description Replace commas with spaces in variable list
 # @arg $1 string Variables separated by commas
-# @arg $2 string Variable to receive space-separated string
+# @arg $2 string-ref Variable to receive space-separated string
 # @exitcode 0 Always succeeds
 get_varopt() {
 	local var="$1"
