@@ -290,6 +290,22 @@ git clone --recurse-submodules git@gitlab.cee.redhat.com:tcamuso/patchtools.git
 A GitHub mirror is available at https://github.com/camuso/patchtools
 for times when internal GitLab is inaccessible.
 
+### Using Older Versions
+
+Starting with v14.0, the `lib/` directory is a Git submodule. To
+checkout older versions (v13.x and earlier), use the `-f` flag:
+
+```bash
+git checkout -f v13.4
+```
+
+To return to the latest version:
+
+```bash
+git checkout master
+git submodule update --init
+```
+
 ## Usage
 
 Most scripts provide help when invoked with `-h` or `--help`:
