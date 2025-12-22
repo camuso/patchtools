@@ -277,6 +277,19 @@ if [[ ":$PATH:" != *":$HOME/patchtools:"* ]]; then
 fi
 ```
 
+### Switching from GitHub to Internal GitLab
+
+If you previously cloned from GitHub, the simplest approach is to
+remove your existing clone and start fresh:
+
+```bash
+rm -rf ~/patchtools
+git clone --recurse-submodules git@gitlab.cee.redhat.com:tcamuso/patchtools.git
+```
+
+A GitHub mirror is available at https://github.com/camuso/patchtools
+for times when internal GitLab is inaccessible.
+
 ## Usage
 
 Most scripts provide help when invoked with `-h` or `--help`:
