@@ -192,7 +192,11 @@ management, backporting, and review.
 
 ---
 
-## Library Files (`lib/` directory)
+## Library Files (`lib/` directory - submodule)
+
+The `lib/` directory is a Git submodule pointing to
+[shell-lib](https://github.com/camuso/shell-lib). This allows the
+library files to be shared across multiple projects.
 
 | File                        | Description                              |
 |-----------------------------|------------------------------------------|
@@ -246,10 +250,31 @@ management, backporting, and review.
 
 ## Installation
 
+Clone the repository with submodules:
+
+```bash
+git clone --recurse-submodules https://github.com/camuso/patchtools.git
+```
+
+Or if you already cloned without submodules:
+
+```bash
+cd patchtools
+git submodule update --init
+```
+
 Add the patchtools directory to your PATH:
 
 ```bash
-export PATH=$PATH:/path/to/patchtools
+export PATH="$PATH:$HOME/patchtools"
+```
+
+Add this to your `.bashrc` for persistence:
+
+```bash
+if [[ ":$PATH:" != *":$HOME/patchtools:"* ]]; then
+    export PATH="$PATH:$HOME/patchtools"
+fi
 ```
 
 ## Usage
