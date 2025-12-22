@@ -1,9 +1,29 @@
 #!/bin/bash
 #
+
+[ -n "$MYDIR" ] || {
+	declare MYDIR
+	MYDIR="$(dirname "$(readlink -f "$0")")"
+}
+
+[ -n "$MYLIB" ] || {
+	declare MYLIB
+	MYLIB="$MYDIR"/lib
+}
+
+[ -n "$MYMAN" ] || {
+	declare MYMAN
+	MYMAN="$MYDIR"/man
+}
+
+[ "$ptversion_loaded" ]     || source "$MYLIB"/patchtools-version.source
+
+genvers="${version%%.*}"
+
 declare prman="$(
 cat <<EOF
 ${MNU}==============================
-${STA}patchreview - patchtools v13.*
+${STA}patchreview - patchtools v${genvers}.*
 ${MNU}==============================
 $OFF
 This menu-driven script allows the user to compare a set of patches
@@ -39,7 +59,6 @@ For example, if you clone into "${INF}\$HOME/patchtools":
 
 $MNU	$ ${OFF}cd \$HOME
 $MNU	$ ${OFF}git clone --recurse-submodules \\\\
-
 	  https://gitlab.cee.redhat.com/tcamuso/patchtools.git
 $MNU	$ ${OFF}export PATH=\$PATH:\$HOME/patchtools
 
