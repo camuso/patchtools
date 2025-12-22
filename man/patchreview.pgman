@@ -40,7 +40,7 @@ For example, if you clone into "${INF}\$HOME/patchtools":
 $MNU	$ ${OFF}cd \$HOME
 $MNU	$ ${OFF}git clone --recurse-submodules \\\\
 
-	  https://github.com/camuso/patchtools.git
+	  https://gitlab.cee.redhat.com/tcamuso/patchtools.git
 $MNU	$ ${OFF}export PATH=\$PATH:\$HOME/patchtools
 
 Add this to .bashrc in your home directory.
