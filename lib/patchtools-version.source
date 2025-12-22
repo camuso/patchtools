@@ -1,6 +1,0 @@
-#!/bin/bash
-#
-declare ptversion_loaded=true
-
-declare version="13.4"
-
