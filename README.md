@@ -195,7 +195,7 @@ management, backporting, and review.
 ## Library Files (`lib/` directory - submodule)
 
 The `lib/` directory is a Git submodule pointing to
-[shell-lib](https://github.com/camuso/shell-lib). This allows the
+[shell-lib](https://gitlab.cee.redhat.com/tcamuso/shell-lib). This allows the
 library files to be shared across multiple projects.
 
 | File                        | Description                              |
@@ -253,7 +253,7 @@ library files to be shared across multiple projects.
 Clone the repository with submodules:
 
 ```bash
-git clone --recurse-submodules https://github.com/camuso/patchtools.git
+git clone --recurse-submodules https://gitlab.cee.redhat.com/tcamuso/patchtools.git
 ```
 
 Or if you already cloned without submodules:
