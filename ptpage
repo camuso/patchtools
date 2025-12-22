@@ -111,7 +111,8 @@ init() {
 
 get_txtname() {
 	local txt="$1"
-	grep -m1 'declare' "$txt" | cut -d' ' -f2 | cut -d= -f1
+	# Look for 'declare *man=' pattern to find the manual content variable
+	grep -m1 'declare.*man=' "$txt" | cut -d' ' -f2 | cut -d= -f1
 }
 
 # parseopts
