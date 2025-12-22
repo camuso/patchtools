@@ -299,6 +299,12 @@ checkout older versions (v13.x and earlier), use the `-f` flag:
 git checkout -f v13.4
 ```
 
+Or to create a branch from an older tag:
+
+```bash
+git checkout -f -b my-branch v13.0
+```
+
 To return to the latest version:
 
 ```bash
