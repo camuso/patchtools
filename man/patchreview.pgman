@@ -33,22 +33,20 @@ ${MNU}1. ${UND}Installation$OFF
 The patchreview script and its dependencies can be git-cloned into any
 directory, however that directory must be in your executable path.
 
-You can clone this toolkit into any directory, but you must that
+You can clone this toolkit into any directory, but you must add that
 directory to your executable path.
-For example, if you clone into "${INF}\$HOME/mybin":
+For example, if you clone into "${INF}\$HOME/patchtools":
 
 $MNU	$ ${OFF}cd \$HOME
-$MNU	$ ${OFF}git -c http.sslVerify=false \\\
+$MNU	$ ${OFF}git clone --recurse-submodules \\\\
 
-	  clone https://github.com/camuso/patchtools.git \\\
-
-	  mybin
-$MNU	$ ${OFF}export PATH=\$PATH:\$HOME/mybin
+	  https://github.com/camuso/patchtools.git
+$MNU	$ ${OFF}export PATH=\$PATH:\$HOME/patchtools
 
 Add this to .bashrc in your home directory.
 
-${INF}if [[ ":\$PATH:" != *":\$HOME/mybin:"* ]]; then
-${INF}    export PATH="\$PATH:\$HOME/mybin"
+${INF}if [[ ":\$PATH:" != *":\$HOME/patchtools:"* ]]; then
+${INF}    export PATH="\$PATH:\$HOME/patchtools"
 ${INF}fi
 
 If you are contributing to the development of the script, send email
