@@ -56,30 +56,30 @@ usage() {
 ${MNU}patcher${OFF} - Apply a patch file with configurable options
 
 ${HDR}USAGE${OFF}
-	patcher [OPTIONS] <patch-file>
+    patcher [OPTIONS] <patch-file>
 
 ${HDR}ARGUMENTS${OFF}
-	${MNU}patch-file${OFF}	The patch file to apply
+    ${MNU}patch-file${OFF}    The patch file to apply
 
 ${HDR}OPTIONS${OFF}
-	${MNU}-d${OFF}			Dry run - test the patch without applying it
-	${MNU}-m${OFF}			Use merge mode (conflict markers instead of .rej files)
-	${MNU}-f${OFF} NUM		Fuzz factor (default: $fuzz)
-	${MNU}-v${OFF}			Verbose output
-	${MNU}-h${OFF}			Show this help
+    ${MNU}-d${OFF}            Dry run - test the patch without applying it
+    ${MNU}-m${OFF}            Use merge mode (conflict markers instead of .rej files)
+    ${MNU}-f${OFF} NUM        Fuzz factor (default: $fuzz)
+    ${MNU}-v${OFF}            Verbose output
+    ${MNU}-h${OFF}            Show this help
 
 ${HDR}EXAMPLES${OFF}
-	patcher fix.patch			  # Apply with reject files on conflict
-	patcher -m fix.patch		   # Apply with merge conflict markers
-	patcher -d fix.patch		   # Test patch without applying
-	patcher -m -f 3 fix.patch	  # Merge mode with fuzz=3
+    patcher fix.patch              # Apply with reject files on conflict
+    patcher -m fix.patch           # Apply with merge conflict markers
+    patcher -d fix.patch           # Test patch without applying
+    patcher -m -f 3 fix.patch      # Merge mode with fuzz=3
 
 ${HDR}CONFLICT HANDLING${OFF}
-	Without -m: Creates .rej files for failed hunks
-	With -m:	Inserts <<<<<<< ======= >>>>>>> conflict markers
+    Without -m: Creates .rej files for failed hunks
+    With -m:    Inserts <<<<<<< ======= >>>>>>> conflict markers
 
 ${HDR}SEE ALSO${OFF}
-	patch(1), diff(1)
+    patch(1), diff(1)
 "
 	exit "${1:-0}"
 }
