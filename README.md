@@ -80,6 +80,11 @@ management, backporting, and review.
 |                      | project (-p), title regex (-r), date range   |
 |                      | (-da/-db), and count mode (-c).              |
 |                      |                                              |
+| `myjiras`            | Queries Red Hat Jira for issues where you    |
+|                      | are assignee, reporter, or watcher. Filters  |
+|                      | by project (-p), status (-s), title (-t),    |
+|                      | and role (-r). Shows dependencies.           |
+|                      |                                              |
 | `oneup`              | Extracts the upstream commit hash from a     |
 |                      | downstream (RHEL) commit's git log.          |
 |                      |                                              |
@@ -336,8 +341,9 @@ mkbackportlog
 - Bash 4.0 or higher
 - Git
 - Standard Linux utilities (awk, sed, grep, etc.)
-- Optional: jq and curl (for mygitlab-mrs)
+- Optional: jq and curl (for mygitlab-mrs, myjiras)
 - Optional: lab CLI tool (for mygitlab-mrs, auto-install offered)
+- Optional: Jira PAT in ~/.config/jira/token (for myjiras)
 - Optional: sshfs (for sshmount)
 - Optional: vimdiff, emacs, or tkdiff (for patcmp)
 
