@@ -1,0 +1,575 @@
+#!/bin/bash
+#
+# myjiras - Query Red Hat Jira for issues related to current user
+#
+# Queries issues.redhat.com for Jiras where $USER is:
+#   - Assignee
+#   - Reporter
+#   - Watcher
+#
+# Requires: curl, jq, klist/kinit (Kerberos)
+#
+# This file uses shdoc-style annotations. See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname myjiras' to view function documentation.
+#
+
+#######################################
+# Configuration
+#######################################
+
+declare JIRA_BASE_URL="https://issues.redhat.com"
+declare JIRA_API="$JIRA_BASE_URL/rest/api/2"
+declare -i MAX_RESULTS=50
+declare JIRA_TOKEN_FILE="$HOME/.config/jira/token"
+declare JIRA_TOKEN=""
+
+# Script location for sourcing libs
+declare MYDIR
+MYDIR="$(dirname "$(readlink -f "$0")")"
+declare MYLIB="$MYDIR/lib"
+
+# Source UI library if available
+[ -f "$MYLIB/ui.source" ] && source "$MYLIB/ui.source"
+
+# Fallback colors if ui.source not available
+: "${OFF:=\033[0m}"
+: "${MNU:=\033[1;33m}"
+: "${INF:=\033[0;36m}"
+: "${STA:=\033[0;32m}"
+: "${WRN:=\033[0;31m}"
+: "${CAU:=\033[1;31m}"
+: "${HDR:=\033[1;37m}"
+
+#######################################
+# Global variables
+#######################################
+
+declare project=""              # Required: Jira project key
+declare title_regex=""          # Optional: regex filter for title
+declare status_filter=""        # Optional: status filter (open, closed, etc.)
+declare -i b_comments=0         # Show latest comment
+declare -i b_all_comments=0     # Show all comments
+declare -i b_watchers=0         # Show all watchers
+declare -i b_reporter=0         # Show reporter if not $USER
+declare -i b_assignee=0         # Show assignee if not $USER
+declare -i b_json=0             # Output as JSON
+declare -i b_verbose=0          # Verbose output
+declare role="all"              # assignee, reporter, watcher, or all
+
+#######################################
+# Usage
+#######################################
+
+# usage
+# @description Display usage information and exit
+#
+# Returns:
+# @exitcode 0 Always
+#
+usage() {
+    echo -e "
+${MNU}myjiras${OFF} - Query Red Hat Jira for your issues
+
+${HDR}USAGE${OFF}
+    myjiras -p PROJECT [OPTIONS]
+
+${HDR}REQUIRED${OFF}
+    ${MNU}-p${OFF} PROJECT    Jira project key (e.g., RHEL, RHELPLAN, CentOS)
+
+${HDR}OPTIONS${OFF}
+    ${MNU}-r${OFF} ROLE       Filter by role: assignee, reporter, watcher, all (default: all)
+    ${MNU}-t${OFF} REGEX      Filter by title (summary) regex
+    ${MNU}-s${OFF} STATUS     Filter by status (open, closed, in-progress, or exact status name)
+    ${MNU}-c${OFF}            Show latest comment
+    ${MNU}-C${OFF}            Show all comments
+    ${MNU}-w${OFF}            Show all watchers
+    ${MNU}-R${OFF}            Show reporter (if not you)
+    ${MNU}-A${OFF}            Show assignee (if not you)
+    ${MNU}-j${OFF}            Output as JSON
+    ${MNU}-v${OFF}            Verbose output
+    ${MNU}-n${OFF} NUM        Max results (default: $MAX_RESULTS)
+    ${MNU}-h${OFF}            Show this help
+
+${HDR}EXAMPLES${OFF}
+    myjiras -p RHEL                    # All your RHEL Jiras
+    myjiras -p RHEL -r assignee        # Only assigned to you
+    myjiras -p RHEL -t 'ipmi.*driver'  # Filter by title regex
+    myjiras -p RHEL -s open            # Only open issues
+    myjiras -p RHEL -s closed          # Only closed issues
+    myjiras -p RHEL -c -w              # With comments and watchers
+    myjiras -p RHEL -j | jq '.issues'  # JSON output
+
+${HDR}AUTHENTICATION${OFF}
+    Requires a Personal Access Token saved at ~/.config/jira/token
+    Create one at: https://issues.redhat.com/secure/ViewProfile.jspa
+"
+    exit 0
+}
+
+#######################################
+# Dependency checks
+#######################################
+
+# check_command
+# @description Check if a command exists, offer to install if missing
+#
+# Arguments:
+# @arg $1 string Command name
+# @arg $2 string Package name (for dnf install)
+#
+# Returns:
+# @exitcode 0 Command available
+# @exitcode 1 Command not available and user declined install
+#
+check_command() {
+    local cmd="$1"
+    local pkg="${2:-$1}"
+    
+    if command -v "$cmd" &>/dev/null; then
+        return 0
+    fi
+    
+    echo -e "${WRN}Required command '$cmd' not found.${OFF}"
+    read -rp "Install '$pkg'? (y/n): " reply
+    
+    if [[ "$reply" =~ ^[Yy] ]]; then
+        echo -e "${INF}Installing $pkg...${OFF}"
+        sudo dnf install -y "$pkg" || {
+            echo -e "${CAU}Failed to install $pkg${OFF}"
+            return 1
+        }
+        return 0
+    else
+        echo -e "${CAU}Cannot continue without $cmd${OFF}"
+        return 1
+    fi
+}
+
+# check_dependencies
+# @description Verify all required tools are available
+#
+# Returns:
+# @exitcode 0 All dependencies met
+# @exitcode 1 Missing dependencies
+#
+check_dependencies() {
+    local -i failed=0
+    
+    check_command "curl" "curl" || ((failed++))
+    check_command "jq" "jq" || ((failed++))
+    
+    return $failed
+}
+
+# check_auth
+# @description Load and verify Jira Personal Access Token
+#
+# Globals:
+# @set JIRA_TOKEN string The PAT loaded from file
+#
+# Returns:
+# @exitcode 0 Token loaded successfully
+# @exitcode 1 Token not found
+#
+check_auth() {
+    if [[ ! -f "$JIRA_TOKEN_FILE" ]]; then
+        echo -e "${CAU}Jira token not found at: $JIRA_TOKEN_FILE${OFF}"
+        echo -e "${INF}Create a Personal Access Token at:${OFF}"
+        echo -e "  ${MNU}https://issues.redhat.com/secure/ViewProfile.jspa${OFF}"
+        echo -e "${INF}Then save it:${OFF}"
+        echo -e "  ${MNU}mkdir -p ~/.config/jira${OFF}"
+        echo -e "  ${MNU}echo 'YOUR_TOKEN' > ~/.config/jira/token${OFF}"
+        echo -e "  ${MNU}chmod 600 ~/.config/jira/token${OFF}"
+        return 1
+    fi
+    
+    JIRA_TOKEN=$(cat "$JIRA_TOKEN_FILE")
+    
+    if [[ -z "$JIRA_TOKEN" ]]; then
+        echo -e "${CAU}Token file is empty: $JIRA_TOKEN_FILE${OFF}"
+        return 1
+    fi
+    
+    ((b_verbose)) && echo -e "${STA}Jira token loaded${OFF}"
+    return 0
+}
+
+#######################################
+# Jira API functions
+#######################################
+
+# jira_request
+# @description Make authenticated request to Jira API
+#
+# Arguments:
+# @arg $1 string API endpoint (relative to JIRA_API)
+# @arg $2 string Optional: HTTP method (default: GET)
+# @arg $3 string Optional: POST data
+#
+# Globals:
+# @set JIRA_TOKEN string Personal Access Token
+#
+# Effects:
+# @stdout JSON response from API
+#
+# Returns:
+# @exitcode 0 Request successful
+# @exitcode 1 Request failed
+#
+jira_request() {
+    local endpoint="$1"
+    local method="${2:-GET}"
+    local data="$3"
+    local url="$JIRA_API/$endpoint"
+    local -a curl_opts=(
+        -s
+        -H "Authorization: Bearer $JIRA_TOKEN"
+        -H "Content-Type: application/json"
+    )
+    
+    if [[ "$method" == "POST" && -n "$data" ]]; then
+        curl_opts+=(-X POST -d "$data")
+    fi
+    
+    ((b_verbose)) && echo -e "${INF}Requesting: $url${OFF}" >&2
+    
+    curl "${curl_opts[@]}" "$url"
+}
+
+# search_issues
+# @description Search for Jira issues using JQL
+#
+# Arguments:
+# @arg $1 string JQL query
+#
+# Effects:
+# @stdout JSON response with issues
+#
+# Returns:
+# @exitcode 0 Search successful
+# @exitcode 1 Search failed
+#
+search_issues() {
+    local jql="$1"
+    local encoded_jql
+    local fields="key,summary,status,priority,issuetype,assignee,reporter,created,updated"
+    
+    # Add optional fields
+    ((b_comments || b_all_comments)) && fields+=",comment"
+    ((b_watchers)) && fields+=",watches"
+    fields+=",issuelinks"
+    
+    # URL encode the JQL
+    encoded_jql=$(printf '%s' "$jql" | jq -sRr @uri)
+    
+    jira_request "search?jql=$encoded_jql&maxResults=$MAX_RESULTS&fields=$fields"
+}
+
+# get_watchers
+# @description Get watchers for a specific issue
+#
+# Arguments:
+# @arg $1 string Issue key
+#
+# Effects:
+# @stdout JSON response with watchers
+#
+get_watchers() {
+    local issue_key="$1"
+    jira_request "issue/$issue_key/watchers"
+}
+
+#######################################
+# Query builders
+#######################################
+
+# build_jql
+# @description Build JQL query based on role, project, title, and status filters
+#
+# Globals:
+# @set project string Project key
+# @set role string User role filter
+# @set title_regex string Title regex filter
+# @set status_filter string Status filter
+#
+# Effects:
+# @stdout JQL query string
+#
+build_jql() {
+    local jql="project = $project"
+    
+    case "$role" in
+        assignee)
+            jql+=" AND assignee = currentUser()"
+            ;;
+        reporter)
+            jql+=" AND reporter = currentUser()"
+            ;;
+        watcher)
+            jql+=" AND watcher = currentUser()"
+            ;;
+        all)
+            jql+=" AND (assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser())"
+            ;;
+    esac
+    
+    # Add title filter if specified
+    if [[ -n "$title_regex" ]]; then
+        jql+=" AND summary ~ \"$title_regex\""
+    fi
+    
+    # Add status filter if specified
+    if [[ -n "$status_filter" ]]; then
+        case "${status_filter,,}" in
+            open)
+                jql+=" AND resolution = Unresolved"
+                ;;
+            closed)
+                jql+=" AND resolution != Unresolved"
+                ;;
+            in-progress|inprogress)
+                jql+=" AND status = \"In Progress\""
+                ;;
+            *)
+                # Use as exact status name
+                jql+=" AND status = \"$status_filter\""
+                ;;
+        esac
+    fi
+    
+    jql+=" ORDER BY updated DESC"
+    echo "$jql"
+}
+
+#######################################
+# Output formatting
+#######################################
+
+# format_issue
+# @description Format a single issue for display
+#
+# Arguments:
+# @arg $1 string JSON issue object
+#
+# Effects:
+# @stdout Formatted issue text
+#
+format_issue() {
+    local issue="$1"
+    local key summary status priority issuetype assignee reporter created updated
+    
+    key=$(echo "$issue" | jq -r '.key')
+    summary=$(echo "$issue" | jq -r '.fields.summary')
+    status=$(echo "$issue" | jq -r '.fields.status.name')
+    priority=$(echo "$issue" | jq -r '.fields.priority.name // "None"')
+    issuetype=$(echo "$issue" | jq -r '.fields.issuetype.name')
+    assignee=$(echo "$issue" | jq -r '.fields.assignee.displayName // "Unassigned"')
+    reporter=$(echo "$issue" | jq -r '.fields.reporter.displayName // "Unknown"')
+    updated=$(echo "$issue" | jq -r '.fields.updated' | cut -dT -f1)
+    
+    echo -e "${MNU}$key${OFF} [$status] $summary"
+    echo -e "  ${INF}Type:${OFF} $issuetype  ${INF}Priority:${OFF} $priority  ${INF}Updated:${OFF} $updated"
+    
+    # Show assignee if requested and not current user
+    if ((b_assignee)); then
+        local assignee_name
+        assignee_name=$(echo "$issue" | jq -r '.fields.assignee.name // ""')
+        [[ "$assignee_name" != "$USER" ]] && echo -e "  ${INF}Assignee:${OFF} $assignee"
+    fi
+    
+    # Show reporter if requested and not current user
+    if ((b_reporter)); then
+        local reporter_name
+        reporter_name=$(echo "$issue" | jq -r '.fields.reporter.name // ""')
+        [[ "$reporter_name" != "$USER" ]] && echo -e "  ${INF}Reporter:${OFF} $reporter"
+    fi
+    
+    # Show issue links (dependencies)
+    local links
+    links=$(echo "$issue" | jq -r '.fields.issuelinks[]? | 
+        if .outwardIssue then
+            "  → \(.type.outward): \(.outwardIssue.key) [\(.outwardIssue.fields.status.name)]"
+        elif .inwardIssue then
+            "  ← \(.type.inward): \(.inwardIssue.key) [\(.inwardIssue.fields.status.name)]"
+        else empty end' 2>/dev/null)
+    
+    [[ -n "$links" ]] && {
+        echo -e "  ${INF}Dependencies:${OFF}"
+        echo "$links"
+    }
+    
+    # Show latest comment if requested
+    if ((b_comments)); then
+        local comment
+        comment=$(echo "$issue" | jq -r '.fields.comment.comments[-1]? | 
+            "  \(.author.displayName) (\(.created | split("T")[0])): \(.body | split("\n")[0])"' 2>/dev/null)
+        [[ -n "$comment" && "$comment" != "null" ]] && {
+            echo -e "  ${INF}Latest comment:${OFF}"
+            echo "$comment"
+        }
+    fi
+    
+    # Show all comments if requested
+    if ((b_all_comments)); then
+        local comments
+        comments=$(echo "$issue" | jq -r '.fields.comment.comments[]? | 
+            "  \(.author.displayName) (\(.created | split("T")[0])):\n    \(.body | gsub("\n"; "\n    "))"' 2>/dev/null)
+        [[ -n "$comments" ]] && {
+            echo -e "  ${INF}Comments:${OFF}"
+            echo "$comments"
+        }
+    fi
+    
+    echo ""
+}
+
+# format_results
+# @description Format search results for display
+#
+# Arguments:
+# @arg $1 string JSON search results
+#
+# Effects:
+# @stdout Formatted results
+#
+format_results() {
+    local results="$1"
+    local total
+    local issues
+    
+    total=$(echo "$results" | jq -r '.total')
+    
+    if [[ "$total" == "0" ]]; then
+        echo -e "${INF}No issues found.${OFF}"
+        return
+    fi
+    
+    echo -e "${HDR}Found $total issue(s) in $project${OFF}"
+    echo ""
+    
+    # Iterate through issues
+    echo "$results" | jq -c '.issues[]' | while read -r issue; do
+        format_issue "$issue"
+    done
+}
+
+#######################################
+# Main
+#######################################
+
+# parse_opts
+# @description Parse command line options
+#
+# Arguments:
+# @arg $@ string Command line arguments
+#
+# Globals:
+# @set project string Project key
+# @set role string User role
+# @set b_comments int Show comments flag
+# @set b_all_comments int Show all comments flag
+# @set b_watchers int Show watchers flag
+# @set b_reporter int Show reporter flag
+# @set b_assignee int Show assignee flag
+# @set b_json int JSON output flag
+# @set b_verbose int Verbose flag
+# @set MAX_RESULTS int Max results
+#
+# Returns:
+# @exitcode 0 Options parsed successfully
+# @exitcode 1 Invalid options
+#
+parse_opts() {
+    while getopts "p:r:t:s:cCwRAjvn:h" opt; do
+        case $opt in
+            p) project="$OPTARG" ;;
+            r) role="$OPTARG" ;;
+            t) title_regex="$OPTARG" ;;
+            s) status_filter="$OPTARG" ;;
+            c) b_comments=1 ;;
+            C) b_all_comments=1 ;;
+            w) b_watchers=1 ;;
+            R) b_reporter=1 ;;
+            A) b_assignee=1 ;;
+            j) b_json=1 ;;
+            v) b_verbose=1 ;;
+            n) MAX_RESULTS="$OPTARG" ;;
+            h) usage ;;
+            *) usage ;;
+        esac
+    done
+    
+    # Validate required options
+    if [[ -z "$project" ]]; then
+        echo -e "${CAU}Error: Project (-p) is required${OFF}"
+        echo ""
+        usage
+    fi
+    
+    # Validate role
+    case "$role" in
+        assignee|reporter|watcher|all) ;;
+        *)
+            echo -e "${CAU}Error: Invalid role '$role'${OFF}"
+            echo -e "${INF}Valid roles: assignee, reporter, watcher, all${OFF}"
+            exit 1
+            ;;
+    esac
+    
+    return 0
+}
+
+# main
+# @description Main entry point
+#
+# Arguments:
+# @arg $@ string Command line arguments
+#
+main() {
+    # Show help if no arguments
+    [[ $# -eq 0 ]] && usage
+    
+    # Parse options
+    parse_opts "$@"
+    
+    # Check dependencies
+    check_dependencies || exit 1
+    
+    # Check authentication (load token)
+    check_auth || exit 1
+    
+    # Build query
+    local jql
+    jql=$(build_jql)
+    ((b_verbose)) && echo -e "${INF}JQL: $jql${OFF}"
+    
+    # Execute search
+    local results
+    results=$(search_issues "$jql")
+    
+    # Check for errors
+    if echo "$results" | jq -e '.errorMessages' &>/dev/null; then
+        echo -e "${CAU}Error from Jira:${OFF}"
+        echo "$results" | jq -r '.errorMessages[]'
+        exit 1
+    fi
+    
+    # Output results
+    if ((b_json)); then
+        echo "$results" | jq .
+    else
+        format_results "$results"
+    fi
+}
+
+main "$@"
+
