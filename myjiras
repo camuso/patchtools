@@ -46,7 +46,7 @@ declare HDR='\033[1;37m'    # Bold white
 #######################################
 
 declare project=""              # Required: Jira project key
-declare title_regex=""          # Optional: regex filter for title
+declare -a title_filters=()     # Optional: regex filters for title (multiple allowed)
 declare status_filter=""        # Optional: status filter (open, closed, etc.)
 declare -i b_comments=0         # Show latest comment
 declare -i b_all_comments=0     # Show all comments
@@ -78,27 +78,46 @@ ${HDR}REQUIRED${OFF}
     ${MNU}-p${OFF} PROJECT    Jira project key (e.g., RHEL, RHELPLAN, CentOS)
 
 ${HDR}OPTIONS${OFF}
-    ${MNU}-r${OFF} ROLE       Filter by role: assignee, reporter, watcher, all (default: all)
-    ${MNU}-t${OFF} REGEX      Filter by title (summary) regex
+    ${MNU}-R${OFF} ROLE       Filter by role: assignee, reporter, watcher, all (default: all)
+    ${MNU}-r${OFF} TEXT       Filter by title text (see TITLE FILTER below)
     ${MNU}-s${OFF} STATUS     Filter by status (open, closed, in-progress, or exact status name)
     ${MNU}-c${OFF}            Show latest comment
     ${MNU}-C${OFF}            Show all comments
-    ${MNU}-w${OFF}            Show all watchers
-    ${MNU}-R${OFF}            Show reporter (if not you)
-    ${MNU}-A${OFF}            Show assignee (if not you)
+
+    ${MNU}-A${OFF}            Show Assignee (if not you)
+    ${MNU}-O${OFF}            Show Originator/reporter (if not you)
+    ${MNU}-W${OFF}            Show Watchers
     ${MNU}-j${OFF}            Output as JSON
     ${MNU}-v${OFF}            Verbose output
     ${MNU}-n${OFF} NUM        Max results (default: $MAX_RESULTS)
     ${MNU}-h${OFF}            Show this help
 
+${HDR}TITLE FILTER (-r)${OFF}
+    Uses Jira's text search (JQL), NOT true regex. Supported syntax:
+      ${MNU}word${OFF}          Match issues containing 'word' (case-insensitive)
+      ${MNU}word1|word2${OFF}   Match 'word1' OR 'word2' (converted to JQL OR)
+      ${MNU}word*${OFF}         Wildcard: matches 'word', 'words', 'wording', etc.
+      ${MNU}word?${OFF}         Single char wildcard: 'wor?' matches 'word', 'work'
+
+    Multiple -r options are ANDed together:
+      ${MNU}-r 'intel|ish' -r 'stream-10'${OFF}
+      Matches titles with (intel OR ish) AND stream-10
+
+    ${WRN}Limitations:${OFF} No true regex (.*+^$), no character classes [a-z],
+    no anchors. For complex patterns, use -j and filter with jq.
+
 ${HDR}EXAMPLES${OFF}
-    myjiras -p RHEL                    # All your RHEL Jiras
-    myjiras -p RHEL -r assignee        # Only assigned to you
-    myjiras -p RHEL -t 'ipmi.*driver'  # Filter by title regex
-    myjiras -p RHEL -s open            # Only open issues
-    myjiras -p RHEL -s closed          # Only closed issues
-    myjiras -p RHEL -c -w              # With comments and watchers
-    myjiras -p RHEL -j | jq '.issues'  # JSON output
+    myjiras -p RHEL                          # All your RHEL Jiras
+    myjiras -p RHEL -R assignee              # Only assigned to you
+    myjiras -p RHEL -r 'ipmi'                # Title contains 'ipmi'
+    myjiras -p RHEL -r 'ipmi|driver'         # Title has 'ipmi' OR 'driver'
+    myjiras -p RHEL -r 'intel*'              # Wildcard: intel, intelligent, etc.
+    myjiras -p RHEL -r 'intel|ish' -r 'stream-10|stream-9'
+                                             # (intel OR ish) AND (stream-10 OR stream-9)
+    myjiras -p RHEL -s open                  # Only open issues
+    myjiras -p RHEL -s closed                # Only closed issues
+    myjiras -p RHEL -c -W                    # With comments and watchers
+    myjiras -p RHEL -j | jq '.issues'        # JSON output for scripting
 
 ${HDR}AUTHENTICATION${OFF}
     Requires a Personal Access Token saved at ~/.config/jira/token
@@ -290,7 +309,7 @@ get_watchers() {
 # Globals:
 # @set project string Project key
 # @set role string User role filter
-# @set title_regex string Title regex filter
+# @set title_filters array Title regex filters (multiple, ANDed together)
 # @set status_filter string Status filter
 #
 # Effects:
@@ -314,10 +333,12 @@ build_jql() {
             ;;
     esac
     
-    # Add title filter if specified
-    if [[ -n "$title_regex" ]]; then
-        jql+=" AND summary ~ \"$title_regex\""
-    fi
+    # Add title filters if specified (multiple -r options are ANDed)
+    for filter in "${title_filters[@]}"; do
+        # Convert | to OR for JQL text search
+        local jql_filter="${filter//|/ OR }"
+        jql+=" AND summary ~ \"$jql_filter\""
+    done
     
     # Add status filter if specified
     if [[ -n "$status_filter" ]]; then
@@ -421,6 +442,21 @@ format_issue() {
         }
     fi
     
+    # Show watchers if requested
+    if ((b_watchers)); then
+        local watcher_data watcher_list watcher_count
+        watcher_data=$(get_watchers "$key")
+        watcher_count=$(echo "$watcher_data" | jq -r '.watchCount // 0')
+        
+        if [[ "$watcher_count" -gt 0 ]]; then
+            watcher_list=$(echo "$watcher_data" | jq -r '.watchers[]? | "    \(.displayName)"' 2>/dev/null)
+            echo -e "  ${INF}Watchers (${watcher_count}):${OFF}"
+            echo "$watcher_list"
+        else
+            echo -e "  ${INF}Watchers:${OFF} None"
+        fi
+    fi
+    
     echo ""
 }
 
@@ -469,9 +505,9 @@ format_results() {
 # @set role string User role
 # @set b_comments int Show comments flag
 # @set b_all_comments int Show all comments flag
-# @set b_watchers int Show watchers flag
-# @set b_reporter int Show reporter flag
-# @set b_assignee int Show assignee flag
+# @set b_assignee int Show assignee flag (-A)
+# @set b_reporter int Show reporter flag (-O)
+# @set b_watchers int Show watchers flag (-W)
 # @set b_json int JSON output flag
 # @set b_verbose int Verbose flag
 # @set MAX_RESULTS int Max results
@@ -481,17 +517,17 @@ format_results() {
 # @exitcode 1 Invalid options
 #
 parse_opts() {
-    while getopts "p:r:t:s:cCwRAjvn:h" opt; do
+    while getopts "p:R:r:s:cCAOWjvn:h" opt; do
         case $opt in
             p) project="$OPTARG" ;;
-            r) role="$OPTARG" ;;
-            t) title_regex="$OPTARG" ;;
+            R) role="$OPTARG" ;;
+            r) title_filters+=("$OPTARG") ;;
             s) status_filter="$OPTARG" ;;
             c) b_comments=1 ;;
             C) b_all_comments=1 ;;
-            w) b_watchers=1 ;;
-            R) b_reporter=1 ;;
             A) b_assignee=1 ;;
+            O) b_reporter=1 ;;
+            W) b_watchers=1 ;;
             j) b_json=1 ;;
             v) b_verbose=1 ;;
             n) MAX_RESULTS="$OPTARG" ;;
