@@ -425,6 +425,7 @@ format_issue() {
     updated=$(echo "$issue" | jq -r '.fields.updated' | cut -dT -f1)
     
     echo -e "${MNU}$key${OFF} [$status] $summary"
+    echo -e "  ${INF}URL:${OFF} $JIRA_BASE_URL/browse/$key"
     echo -e "  ${INF}Type:${OFF} $issuetype  ${INF}Priority:${OFF} $priority  ${INF}Updated:${OFF} $updated"
     
     # Show assignee if requested and not current user
