@@ -45,14 +45,20 @@ declare HDR='\033[1;37m'    # Bold white
 # Global variables
 #######################################
 
-declare project=""              # Required: Jira project key
-declare -a title_filters=()     # Optional: regex filters for title (multiple allowed)
+declare project="RHEL"          # Jira project key (default: RHEL)
+declare -a title_filters=()     # Optional: text filters for title (multiple allowed)
 declare status_filter=""        # Optional: status filter (open, closed, etc.)
+declare jql_query=""            # Optional: raw JQL query to append
+declare history_since=""        # Optional: filter history to changes after this date
 declare -i b_comments=0         # Show latest comment
 declare -i b_all_comments=0     # Show all comments
 declare -i b_watchers=0         # Show all watchers
 declare -i b_reporter=0         # Show reporter if not $USER
 declare -i b_assignee=0         # Show assignee if not $USER
+declare -i b_history=0          # Show change history
+declare -i b_show_bots=0        # Include bot activity (default: hide bots)
+# Common bot name patterns (case-insensitive match)
+declare BOT_PATTERN="bot|automation|jenkins|bugzilla|jira|sync|service.account|system"
 declare -i b_json=0             # Output as JSON
 declare -i b_verbose=0          # Verbose output
 declare role="all"              # assignee, reporter, watcher, or all
@@ -72,52 +78,68 @@ usage() {
 ${MNU}myjiras${OFF} - Query Red Hat Jira for your issues
 
 ${HDR}USAGE${OFF}
-    myjiras -p PROJECT [OPTIONS]
-
-${HDR}REQUIRED${OFF}
-    ${MNU}-p${OFF} PROJECT    Jira project key (e.g., RHEL, RHELPLAN, CentOS)
+    myjiras [OPTIONS]
 
 ${HDR}OPTIONS${OFF}
+    ${MNU}-p${OFF} PROJECT    Jira project key (default: RHEL)
     ${MNU}-R${OFF} ROLE       Filter by role: assignee, reporter, watcher, all (default: all)
-    ${MNU}-r${OFF} TEXT       Filter by title text (see TITLE FILTER below)
+    ${MNU}-t${OFF} TEXT       Filter by title/summary text (see TITLE FILTER below)
     ${MNU}-s${OFF} STATUS     Filter by status (open, closed, in-progress, or exact status name)
+    ${MNU}-q${OFF} JQL        Raw JQL query (appended with AND to other filters)
     ${MNU}-c${OFF}            Show latest comment
     ${MNU}-C${OFF}            Show all comments
+    ${MNU}-H${OFF}            Show change History (auto-filters if -q has 'updated >=')
+    ${MNU}-d${OFF} DATE       Override history date filter (YYYY-MM-DD or -Nd for N days ago)
+    ${MNU}-B${OFF}            Include Bot activity (default: humans only)
 
     ${MNU}-A${OFF}            Show Assignee (if not you)
-    ${MNU}-O${OFF}            Show Originator/reporter (if not you)
+    ${MNU}-r${OFF}            Show Reporter (if not you)
     ${MNU}-W${OFF}            Show Watchers
     ${MNU}-j${OFF}            Output as JSON
     ${MNU}-v${OFF}            Verbose output
     ${MNU}-n${OFF} NUM        Max results (default: $MAX_RESULTS)
     ${MNU}-h${OFF}            Show this help
 
-${HDR}TITLE FILTER (-r)${OFF}
+${HDR}TITLE FILTER (-t)${OFF}
     Uses Jira's text search (JQL), NOT true regex. Supported syntax:
       ${MNU}word${OFF}          Match issues containing 'word' (case-insensitive)
       ${MNU}word1|word2${OFF}   Match 'word1' OR 'word2' (converted to JQL OR)
       ${MNU}word*${OFF}         Wildcard: matches 'word', 'words', 'wording', etc.
       ${MNU}word?${OFF}         Single char wildcard: 'wor?' matches 'word', 'work'
 
-    Multiple -r options are ANDed together:
-      ${MNU}-r 'intel|ish' -r 'stream-10'${OFF}
+    Multiple -t options are ANDed together:
+      ${MNU}-t 'intel|ish' -t 'stream-10'${OFF}
       Matches titles with (intel OR ish) AND stream-10
 
     ${WRN}Limitations:${OFF} No true regex (.*+^$), no character classes [a-z],
     no anchors. For complex patterns, use -j and filter with jq.
 
+${HDR}RAW JQL QUERY (-q)${OFF}
+    Pass any valid JQL expression directly. Combined with other options via AND.
+    See: https://support.atlassian.com/jira-software-cloud/docs/jql-fields/
+
+    Example: ${MNU}-q 'labels = backport AND priority = Critical'${OFF}
+
 ${HDR}EXAMPLES${OFF}
-    myjiras -p RHEL                          # All your RHEL Jiras
-    myjiras -p RHEL -R assignee              # Only assigned to you
-    myjiras -p RHEL -r 'ipmi'                # Title contains 'ipmi'
-    myjiras -p RHEL -r 'ipmi|driver'         # Title has 'ipmi' OR 'driver'
-    myjiras -p RHEL -r 'intel*'              # Wildcard: intel, intelligent, etc.
-    myjiras -p RHEL -r 'intel|ish' -r 'stream-10|stream-9'
+    myjiras                                  # All your RHEL Jiras (default project)
+    myjiras -R assignee                      # Only assigned to you
+    myjiras -t 'ipmi'                        # Title contains 'ipmi'
+    myjiras -t 'ipmi|driver'                 # Title has 'ipmi' OR 'driver'
+    myjiras -t 'intel*'                      # Wildcard: intel, intelligent, etc.
+    myjiras -t 'intel|ish' -t 'stream-10|stream-9'
                                              # (intel OR ish) AND (stream-10 OR stream-9)
-    myjiras -p RHEL -s open                  # Only open issues
-    myjiras -p RHEL -s closed                # Only closed issues
-    myjiras -p RHEL -c -W                    # With comments and watchers
-    myjiras -p RHEL -j | jq '.issues'        # JSON output for scripting
+    myjiras -q 'priority = Critical'         # Raw JQL for priority
+    myjiras -s open                          # Only open issues
+    myjiras -s closed                        # Only closed issues
+    myjiras -c -W                            # With comments and watchers
+    myjiras -H                               # Show full change history
+    myjiras -H -q 'updated >= -7d'           # History auto-filtered to last 7 days
+    myjiras -H -q 'updated >= 2024-12-01'    # History auto-filtered to that date
+    myjiras -H -B                            # History including bot activity
+    myjiras -C -B                            # All comments, including bots
+    myjiras -d -7d                           # Explicit: history from last 7 days only
+    myjiras -j | jq '.issues'                # JSON output for scripting
+    myjiras -p RHELPLAN                      # Different project
 
 ${HDR}AUTHENTICATION${OFF}
     Requires a Personal Access Token saved at ~/.config/jira/token
@@ -273,16 +295,23 @@ search_issues() {
     local jql="$1"
     local encoded_jql
     local fields="key,summary,status,priority,issuetype,assignee,reporter,created,updated"
+    local expand=""
     
     # Add optional fields
     ((b_comments || b_all_comments)) && fields+=",comment"
     ((b_watchers)) && fields+=",watches"
     fields+=",issuelinks"
     
+    # Add changelog expansion for history
+    ((b_history)) && expand="changelog"
+    
     # URL encode the JQL
     encoded_jql=$(printf '%s' "$jql" | jq -sRr @uri)
     
-    jira_request "search?jql=$encoded_jql&maxResults=$MAX_RESULTS&fields=$fields"
+    local url="search?jql=$encoded_jql&maxResults=$MAX_RESULTS&fields=$fields"
+    [[ -n "$expand" ]] && url+="&expand=$expand"
+    
+    jira_request "$url"
 }
 
 # get_watchers
@@ -304,13 +333,14 @@ get_watchers() {
 #######################################
 
 # build_jql
-# @description Build JQL query based on role, project, title, and status filters
+# @description Build JQL query based on role, project, title, status, and raw JQL filters
 #
 # Globals:
 # @set project string Project key
 # @set role string User role filter
-# @set title_filters array Title regex filters (multiple, ANDed together)
+# @set title_filters array Title text filters (multiple, ANDed together)
 # @set status_filter string Status filter
+# @set jql_query string Raw JQL query to append
 #
 # Effects:
 # @stdout JQL query string
@@ -333,7 +363,7 @@ build_jql() {
             ;;
     esac
     
-    # Add title filters if specified (multiple -r options are ANDed)
+    # Add title filters if specified (multiple -t options are ANDed)
     for filter in "${title_filters[@]}"; do
         # Convert | to OR for JQL text search
         local jql_filter="${filter//|/ OR }"
@@ -357,6 +387,11 @@ build_jql() {
                 jql+=" AND status = \"$status_filter\""
                 ;;
         esac
+    fi
+    
+    # Add raw JQL query if specified
+    if [[ -n "$jql_query" ]]; then
+        jql+=" AND ($jql_query)"
     fi
     
     jql+=" ORDER BY updated DESC"
@@ -423,8 +458,17 @@ format_issue() {
     # Show latest comment if requested
     if ((b_comments)); then
         local comment
-        comment=$(echo "$issue" | jq -r '.fields.comment.comments[-1]? | 
-            "  \(.author.displayName) (\(.created | split("T")[0])): \(.body | split("\n")[0])"' 2>/dev/null)
+        if ((b_show_bots)); then
+            # Include all comments including bots
+            comment=$(echo "$issue" | jq -r '.fields.comment.comments[-1]? | 
+                "  \(.author.displayName) (\(.created | split("T")[0])): \(.body | split("\n")[0])"' 2>/dev/null)
+        else
+            # Get last comment from a human (not a bot) - default
+            comment=$(echo "$issue" | jq -r --arg botpat "$BOT_PATTERN" '
+                [.fields.comment.comments[]? | select(.author.displayName | test($botpat; "i") | not)] | 
+                last | 
+                "  \(.author.displayName) (\(.created | split("T")[0])): \(.body | split("\n")[0])"' 2>/dev/null)
+        fi
         [[ -n "$comment" && "$comment" != "null" ]] && {
             echo -e "  ${INF}Latest comment:${OFF}"
             echo "$comment"
@@ -434,8 +478,17 @@ format_issue() {
     # Show all comments if requested
     if ((b_all_comments)); then
         local comments
-        comments=$(echo "$issue" | jq -r '.fields.comment.comments[]? | 
-            "  \(.author.displayName) (\(.created | split("T")[0])):\n    \(.body | gsub("\n"; "\n    "))"' 2>/dev/null)
+        if ((b_show_bots)); then
+            # Include all comments including bots
+            comments=$(echo "$issue" | jq -r '.fields.comment.comments[]? | 
+                "  \(.author.displayName) (\(.created | split("T")[0])):\n    \(.body | gsub("\n"; "\n    "))"' 2>/dev/null)
+        else
+            # Filter out bot comments - default
+            comments=$(echo "$issue" | jq -r --arg botpat "$BOT_PATTERN" '
+                .fields.comment.comments[]? | 
+                select(.author.displayName | test($botpat; "i") | not) |
+                "  \(.author.displayName) (\(.created | split("T")[0])):\n    \(.body | gsub("\n"; "\n    "))"' 2>/dev/null)
+        fi
         [[ -n "$comments" ]] && {
             echo -e "  ${INF}Comments:${OFF}"
             echo "$comments"
@@ -454,6 +507,62 @@ format_issue() {
             echo "$watcher_list"
         else
             echo -e "  ${INF}Watchers:${OFF} None"
+        fi
+    fi
+    
+    # Show change history if requested
+    if ((b_history)); then
+        local history filter_date=""
+        
+        # Parse date filter - from -d option or from -q 'updated >= ...'
+        if [[ -n "$history_since" ]]; then
+            # Explicit -d option takes priority
+            if [[ "$history_since" =~ ^-([0-9]+)d$ ]]; then
+                local days="${BASH_REMATCH[1]}"
+                filter_date=$(date -d "$days days ago" +%Y-%m-%d)
+            else
+                filter_date="$history_since"
+            fi
+        elif [[ -n "$jql_query" ]]; then
+            # Try to extract date from JQL 'updated >= ...'
+            if [[ "$jql_query" =~ updated[[:space:]]*\>=[[:space:]]*[\"\']?(-[0-9]+[dwmM])[\"\']? ]]; then
+                # Relative date like -7d, -2w, -1M
+                local rel="${BASH_REMATCH[1]}"
+                if [[ "$rel" =~ ^-([0-9]+)d$ ]]; then
+                    filter_date=$(date -d "${BASH_REMATCH[1]} days ago" +%Y-%m-%d)
+                elif [[ "$rel" =~ ^-([0-9]+)w$ ]]; then
+                    filter_date=$(date -d "${BASH_REMATCH[1]} weeks ago" +%Y-%m-%d)
+                elif [[ "$rel" =~ ^-([0-9]+)[mM]$ ]]; then
+                    filter_date=$(date -d "${BASH_REMATCH[1]} months ago" +%Y-%m-%d)
+                fi
+            elif [[ "$jql_query" =~ updated[[:space:]]*\>=[[:space:]]*[\"\']?([0-9]{4}-[0-9]{2}-[0-9]{2})[\"\']? ]]; then
+                # Absolute date YYYY-MM-DD
+                filter_date="${BASH_REMATCH[1]}"
+            fi
+        fi
+        
+        # Build jq filter based on options
+        local jq_filter='.changelog.histories[]?'
+        
+        # Add date filter if specified
+        [[ -n "$filter_date" ]] && jq_filter+=" | select(.created >= \$since)"
+        
+        # Filter out bots by default (unless -B specified)
+        ((b_show_bots)) || jq_filter+=" | select(.author.displayName | test(\$botpat; \"i\") | not)"
+        
+        # Format output
+        jq_filter+=' | "    \(.created | split("T")[0]) \(.created | split("T")[1] | split(".")[0]) - \(.author.displayName)\n" + (.items[] | "      \(.field): \(.fromString // "none") → \(.toString // "none")")'
+        
+        history=$(echo "$issue" | jq -r \
+            --arg since "${filter_date:-1970-01-01}" \
+            --arg botpat "$BOT_PATTERN" \
+            "$jq_filter" 2>/dev/null)
+        
+        if [[ -n "$history" ]]; then
+            echo -e "  ${INF}History${filter_date:+ (since $filter_date)}:${OFF}"
+            echo "$history"
+        else
+            echo -e "  ${INF}History:${OFF} No changes${filter_date:+ since $filter_date}"
         fi
     fi
     
@@ -505,8 +614,9 @@ format_results() {
 # @set role string User role
 # @set b_comments int Show comments flag
 # @set b_all_comments int Show all comments flag
+# @set b_history int Show change history flag (-H)
 # @set b_assignee int Show assignee flag (-A)
-# @set b_reporter int Show reporter flag (-O)
+# @set b_reporter int Show reporter flag (-r)
 # @set b_watchers int Show watchers flag (-W)
 # @set b_json int JSON output flag
 # @set b_verbose int Verbose flag
@@ -517,16 +627,20 @@ format_results() {
 # @exitcode 1 Invalid options
 #
 parse_opts() {
-    while getopts "p:R:r:s:cCAOWjvn:h" opt; do
+    while getopts "p:R:t:s:q:d:cCHBArWjvn:h" opt; do
         case $opt in
             p) project="$OPTARG" ;;
             R) role="$OPTARG" ;;
-            r) title_filters+=("$OPTARG") ;;
+            t) title_filters+=("$OPTARG") ;;
             s) status_filter="$OPTARG" ;;
+            q) jql_query="$OPTARG" ;;
+            d) history_since="$OPTARG"; b_history=1 ;;
             c) b_comments=1 ;;
             C) b_all_comments=1 ;;
+            H) b_history=1 ;;
+            B) b_show_bots=1 ;;
             A) b_assignee=1 ;;
-            O) b_reporter=1 ;;
+            r) b_reporter=1 ;;
             W) b_watchers=1 ;;
             j) b_json=1 ;;
             v) b_verbose=1 ;;
@@ -535,13 +649,6 @@ parse_opts() {
             *) usage ;;
         esac
     done
-    
-    # Validate required options
-    if [[ -z "$project" ]]; then
-        echo -e "${CAU}Error: Project (-p) is required${OFF}"
-        echo ""
-        usage
-    fi
     
     # Validate role
     case "$role" in
