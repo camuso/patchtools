@@ -1,1 +1,0 @@
-[ "$1" == "-h" ] && { echo -e "$usagestr"; exit 1; }
