@@ -1,0 +1,6 @@
+userstr="
+Must be root to invoke $(basename $0)
+"
+
+[ $(id -u) -eq 0 ] || { echo "$userstr";  exit 1; }
+

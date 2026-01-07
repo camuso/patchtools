@@ -1,0 +1,118 @@
+#!/bin/bash
+#
+# lib/patch-utils.source
+#
+# This source file provides utility routines for patch management,
+# manipulation, and review scripts.
+#
+# This file uses shdoc-style documentation annotations.
+# See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname lib/patch-utils.source' to view function documentation.
+
+[ -n "$MYDIR" ] || {
+	declare MYDIR
+	MYDIR="$(dirname "$(readlink -f "$0")")"
+}
+
+[ -n "$MYLIB" ] || {
+	declare MYLIB
+	MYLIB="$MYDIR"/lib
+}
+
+declare patchutils_loaded=true
+
+# If $MYLIB/$ui.source is already loaded, then the $ui_source_loaded
+# variable will not be empty.
+#
+[ "$ui_loaded" ] || source "$MYLIB"/ui.source
+
+# is_prologue
+# @description Check if a patch file is a series prologue (0/n)
+#
+# Arguments:
+# @arg $1 string Patch file path to check
+#
+# Globals:
+# @set ui_b_debug bool Debug flag (read)
+#
+# Returns:
+# @exitcode 0 If file is a prologue
+# @exitcode 1 If not a prologue
+#
+is_prologue() {
+	$ui_b_debug && echo -e "${STA}patch-utils::is_prologue$OFF"
+	local pfile="$1"
+	local subj
+	local subarray
+	local num
+	local numarray
+	local tok
+	local i
+
+	subj=$(grep -m1 "Subject: " "$pfile")
+	ui_strtok "$subj" " " subarray
+
+	for ((i = 0; i < ${#subarray[@]}; ++i)); do
+		tok="${subarray[i]}"
+		if (( $(ui_strindex "$tok" "/") > 0 )); then
+			ui_strtok "$tok" "/" numarray
+			num=${numarray[0]}
+
+			# test to see that it's actually a number
+			#
+			[[ "$num" =~ ^[0-9]+$ ]] || return 1
+
+			((num == 0)) && return 0
+		fi
+	done
+
+	return 1
+}
+
+# create_patchlist
+# @description Create validated patch list starting at specified patch
+#
+# Arguments:
+# @arg $1 string Space-separated list of patch files
+# @arg $2 string Nameref to receive validated patch list
+# @arg $3 int Optional starting patch number
+#
+# Globals:
+# @set ui_b_debug bool Debug flag (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+create_patchlist() {
+	$ui_b_debug && echo -e "${STA}patch-utils::create_patchlist$OFF"
+	local list=($1)
+	local startpat="$3"
+	local snum=0
+	local retlist=
+	local stat
+
+	[ "$startpat" ] && snum=$((startpat - 1))
+	list=("${list[@]:$snum}")
+
+	# If the first patch is a prologue, then skip it.
+	is_prologue "${list[0]}" && list=("${list[@]:1}")
+
+	retlist="${list[@]}"
+
+	# Return the string. Single quotes are necessary to preserve the
+	# string of strings as a whole, else only the first string in the
+	# string of strings will be eval'ed, and the second string will
+	# be left as a command to be executed, which will fail.
+	#
+	eval "$2='$retlist'"
+}
+

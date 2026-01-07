@@ -1,0 +1,497 @@
+#!/bin/bash
+#
+# kabiscan
+#
+
+# Enable extglob for more specific directory actions
+#
+shopt -s extglob
+
+########################################
+# Function Return Codes
+########################################
+declare rc_continue=0	# Continue for another pass
+declare rc_run=1	# Execute the selected options
+
+#######################################
+# Global variables
+#######################################
+declare lasttag=
+declare rmlasttag=false
+declare searchmask
+declare searchstr
+declare outfile
+declare gitbranch
+
+declare b_justone
+declare b_whitelist
+declare b_wholeword
+declare b_verbose
+declare b_type
+declare b_exported=false
+
+#*********************
+# Search Modes          # Search for ...
+#                       # -----------------------------
+declare -i smode_sym=0  # kABI-sensitive symbols
+declare -i smode_fun=1  # exported functions
+declare -i smode_def=2  # struct and union definitions
+declare -i smode_cnt=3  # count instances of one of the above
+declare -i smode
+
+#**********************
+# Saved Project Objects
+#
+declare prj_smode
+declare prj_outfile
+declare prj_searchstr
+declare prj_searchmask
+declare prj_b_justone
+declare prj_b_whitelist
+declare prj_b_wholeword
+declare prj_b_verbose
+declare prj_b_type
+
+declare -i boolindex
+
+declare usagestr=$(
+cat <<EOF
+$(basename $0)
+
+This is a wrapper for the kabi-lookup tool, which searches a kabi
+database for symbols. The results of the search are indented
+hierarchically and are printed to stdout or to the path entered by
+the user.
+
+Sources:
+http://giteengineering.redhat.com/git/users/tcamuso/kabitools/kabitools.git/
+
+RPMs:
+http://people.redhat.com/tcamuso/kabitools/
+
+Here is the help from the kabi-lookup tool.
+$(kabi-lookup -h | less)
+\0
+EOF
+)
+
+usage() {
+	echo -e "$usagestr"
+	exit $1
+}
+
+while getopts h OPTION; do
+    case "$OPTION" in
+
+	h ) optcount=$((optcount+1))
+	    usage 0
+	    ;;
+	* ) echo "unrecognized option -$OPTION"
+	    usage 127
+    esac
+done
+
+shift $optcount
+[ $# -eq 0 ] || usage 1
+
+# git_checkrepo
+# 	Determines whether the current directory is a valid git repo
+#
+# returns 0 - top of RHEL kernel git tree
+#         1 - not a git repo
+#         2 - not the top of a RHEL kernel tree
+#         3 - no kABI database
+#
+# usage:
+# 	$(git_checkrepo) || echo "$PWD is not a valid git repo" || exit 1
+#
+function git_checkrepo {
+	[ -d .git ] || return 1
+	[ -d redhat ] || return 2
+	[ -f "$kabidatafile" ] || return 3
+	return 0
+}
+
+# git_get_lasttag <tagstr> [path]
+#
+# Obtains the most recent tag in the current branch and stores it in
+# /dev/shm/lasttag, or the optional path submitted in $2 by the caller.
+#
+# Returns the tag in $1.
+#
+# Deletes the previously recorded last tagin /dev/shm/lasttag or the
+# optional path submitted by caller.
+#
+# This operation can take some time, so the git command is spawned
+# and we perform a wait for the tag file to appear.
+#
+# $1 - receives the last tag string
+# $2 - optional path to store lasttag file
+#
+git_get_lasttag() {
+
+	local _ltfile_
+	local _lasttag_
+	local _mypid_
+
+	[ $# -eq 2 ] && _ltfile_="$2" || _ltfile_="/dev/shm/lasttag"
+
+	[ -f "$_ltfile_" ] && rm -f $_ltfile_
+
+	echo -n "Getting last git tag."
+	git describe --tags --abbrev=0 > $_ltfile_ &
+	_mypid_=$!
+	ui_waitonproc $_mypid_ .1
+	_lasttag_=$(cat $_ltfile_)
+	eval $1="$_lasttag_"
+	echo
+}
+
+git_getcurrentbranch() {
+	echo $(git branch | egrep \* | cut -d' ' -f2)
+}
+
+# git_setbranch outdir
+#
+# $1 if it exists sets the outdir. Default is /tmp
+#
+git_setbranch() {
+	local index=1
+	local line
+	local _outdir="/tmp"
+
+	[ $# -eq 1 ] && _outdir="$1"
+
+	git branch > $_outdir/branchlist
+	echo -e "$attr_bold"
+
+	while read line; do
+		printf "%2d  $line\n" $index
+		let index++
+	done < $_outdir/branchlist
+
+	echo
+	echo -en "$BLD"
+	echo -en "Enter the number corresponding to the branch you want: "
+	echo -en "$OFF"
+	read  linenumber
+	gitbranch="$(ui_readline $linenumber $_outdir/branchlist | tr -d [\*" "])"
+	echo "git checkout "$gitbranch""
+	git checkout "$gitbranch" 2>&1
+
+	if [ $? -ne 0 ]; then
+		echo -e "$BLD\0Please commit or stash your changes first.$OFF"
+		return 1
+	fi
+
+	git log -n1
+	return 0
+}
+
+get_type() {
+	local _type_=$1
+	$_type_ && echo "struct" || echo "union"
+}
+
+show_type() {
+
+	structstr=$(
+cat <<EOF
+
+ t  struct or union             :$OFF $(get_type $b_type)$BLD
+EOF
+)
+	$b_wholeword && ! $b_exported && echo -e "$structstr"
+}
+
+show_search_mode() {
+	local _mode_=$1
+	b_exported=false
+
+	case $_mode_ in
+		$smode_sym ) echo "kABI Sensitive Symbols";;
+		$smode_fun ) echo "Exported Functions"; b_exported=true ;;
+		$smode_def ) echo "Symbol definition" ;;
+		$smode_cnt ) echo "Count symbol instances" ;;
+	esac
+}
+
+show_settings() {
+
+	settingstr=$(
+cat <<EOF
+$BLD
+    $UND\0Scan The Kernel for kABI Sensitive Symbols$OFF$BLD
+
+    $UND\0Environment        $OFF$BLD
+    Most Recent Tag             :$OFF $lasttag$BLD
+ b  Current git branch          :$OFF $gitbranch$BLD
+ f  File to receive output      :$OFF $outfile$BLD
+ n  Search name                 :$OFF $searchstr$BLD
+ m  Search mask                 :$OFF $searchmask$BLD$(show_type)
+
+    $UND\0Run Parameters     $OFF$BLD
+ 1  Stop after finding one      :$OFF $b_justone$BLD
+ l  Only seek whitelist symbols :$OFF $b_whitelist$BLD
+ w  Whole words only            :$OFF $b_wholeword$BLD
+ v  Verbose output              :$OFF $b_verbose$BLD
+ s  Search mode                 :$OFF $(show_search_mode $smode)$BLD
+
+    $UND\0Control            $OFF$BLD
+ r  Run the search
+ h  help text
+ q  Quit
+$OFF
+EOF
+)
+	echo -e "$settingstr"
+}
+
+menu_parser() {
+	local setting
+
+	[ $smode -eq $smode_fun ] && b_exported=true || b_exported=false
+	show_settings
+	promptgetchar "$BLD\0Enter one of the above: $OFF" setting
+	case $setting in
+		b )	git_setbranch
+			git_get_lasttag lasttag $last_tag_file
+			;;
+		f )	getuser "Send output to: " outfile
+			[ "$outfile" ] || outfile=/dev/stdout
+			;;
+		n )	getuser "Search name: " searchstr
+			prj_set_item $prj_searchstr $searchstr
+			;;
+		1 )	ui_toggle b_justone
+			prj_set_item $prj_b_justone $b_justone
+			;;
+		l )	ui_toggle b_whitelist
+			$b_wholeword || b_wholeword=true
+			prj_set_item $prj_b_whitelist $b_whitelist
+			prj_set_item $prj_b_wholeword $b_wholeword
+			;;
+		w )	ui_toggle b_wholeword
+			$b_wholeword || b_whitelist=false
+			prj_set_item $prj_b_wholeword $b_wholeword
+			prj_set_item $prj_b_whitelist $b_whitelist
+			;;
+		v )	ui_toggle b_verbose
+			prj_set_item $prj_b_verbose $b_verbose
+			;;
+		t )	$b_wholeword || continue
+			ui_toggle b_type
+			prj_set_item $prj_b_type $b_type
+			;;
+		m )	getuser "Search mask: " searchmask
+			prj_set_item $prj_searchmask $searchmask
+			;;
+		r )	return $rc_run
+			;;
+		s )	ui_cycle_state smode 4
+			prj_set_item $prj_smode $smode
+			;;
+		h )	[ $(which kabiscan.help) ] \
+				&& kabiscan.help \
+				|| echo -e "$usagestr"
+			;;
+		q )	set_booleans
+			rm -f $last_tag_file
+			echo
+			exit 0
+			;;
+	esac
+	return $rc_continue
+}
+
+init_booleans() {
+	prj_set_item $prj_b_justone true
+	prj_set_item $prj_b_whitelist true
+	prj_set_item $prj_b_wholeword true
+	prj_set_item $prj_b_verbose false
+	prj_set_item $prj_b_type true
+}
+
+get_booleans() {
+#	set -x
+	local index=$boolindex
+	for bool in \
+	b_justone \
+	b_whitelist \
+	b_wholeword \
+	b_verbose \
+	b_type
+	do
+		eval $bool=$(prj_get_item $index)
+		ui_digit2bool $bool
+		let index++
+	done
+}
+
+set_booleans() {
+	local index=$boolindex
+	for bool in \
+	b_justone \
+	b_whitelist \
+	b_wholeword \
+	b_verbose \
+	b_type
+	do
+		prj_set_item $index ${!bool}
+		let index++
+	done
+}
+
+#############################
+# Start of Script Execution
+#############################
+
+#*********************
+# Default files and dirs
+#
+declare prj_dir="$HOME/.kabiscan"
+declare prj_file="$prj_dir/kabiscan.prj"
+declare kabidatafile="redhat/kabi/kabi-datafiles.list"
+
+git_checkrepo
+stat=$?
+
+declare kabi_graph_msg="
+$BLD\0You must build the kABI graph first.$OFF
+\"$BLD\0kabi-graph$OFF\" does a clean kernel build and creates the kABI graph
+or type \"$BLD\0kabi-graph -h$OFF\" to see more options.
+"
+case $stat in
+	0 )	# all is well
+		;;
+	1 )	echo -e "\n$PWD$BLD is not a git repo$OFF\n"
+		exit 1
+		;;
+	2 )	echo -e "\n$PWD$BLD is not the top of a RHEL kernel tree$OFF\n"
+		exit 2
+		;;
+	3 )	echo -e "$kabi_graph_msg"
+		exit 3
+		;;
+	* )	echo -e "\n$BLD\0Unrecognized state.$OFF\n"
+		exit 127
+		;;
+esac
+
+git_get_lasttag lasttag $last_tag_file
+
+###########################################
+# Parameter Initialization
+###########################################
+
+# This loop enumerates and counts the items in the project file.
+# Add new booleans to the end of the list.
+# Add new non-boolean parameters to the top of the list.
+#
+index=0
+boolcount=0
+b_found_first_bool=false
+for offset in \
+prj_smode \
+prj_outfile \
+prj_searchstr \
+prj_searchmask \
+prj_b_justone \
+prj_b_whitelist \
+prj_b_wholeword \
+prj_b_verbose \
+prj_b_type
+do
+	let index++
+	let $offset=$index
+	if [ "${offset:3:3}" == "_b_" ]; then
+		let boolcount++
+		if ! $b_found_first_bool; then
+			boolindex=$index
+			b_found_first_bool=true
+		fi
+	fi
+done
+
+prj_entries=$index
+[ -d "$prj_dir" ] || mkdir $prj_dir
+[ -f "$prj_file" ] || touch $prj_file
+prj_init_prjfile $prj_file $prj_entries true
+stat=$?
+
+# If the above call to prj_init_prjfile returns nonzero, it means that a
+# new project file has been created and its values must be initialized.
+#
+if [ $stat -ne 0 ]; then
+	echo
+	echo "A new project file has been created."
+	init_booleans
+	smode=$smode_sym
+	prj_set_item $prj_smode $smode
+fi
+
+outfile=$(prj_get_item $prj_outfile)
+
+if ! [ -f "$outfile" ]; then
+	 outfile="/dev/stdout"
+	 prj_set_item $prj_outfile $outfile
+	 echo "Using $outfile for output"
+fi
+
+main() {
+    local optstr
+
+    while true; do
+	optstr=""
+
+	get_booleans
+
+	gitbranch=$(git_getcurrentbranch)
+	outfile="$(prj_get_item $prj_outfile)"
+	searchmask="$(prj_get_item $prj_searchmask)"
+	searchstr="$(prj_get_item $prj_searchstr)"
+	smode=$(prj_get_item $prj_smode)
+
+	while true; do
+		menu_parser
+		[ $? -eq $rc_run ] && break
+	done
+
+	[ "$searchmask" ] && optstr="$optstr""-m $searchmask "
+	$b_justone	  && optstr="$optstr""-1 "
+	$b_whitelist	  && optstr="$optstr""-l "
+	$b_wholeword	  && optstr="$optstr""-w "
+	$b_verbose	  && optstr="$optstr""-v "
+
+	case $smode in
+		$smode_fun ) optstr="$optstr""-e " ;;
+		$smode_sym ) optstr="$optstr""-s " ;;
+		$smode_def ) optstr="$optstr""-d " ;;
+		$smode_cnt ) optstr="$optstr""-c " ;;
+	esac
+
+	if $b_wholeword && ! $b_exported; then
+		searchstr="$(get_type $b_type) $searchstr"
+		echo "kabi-lookup $optstr \"$searchstr\""
+		kabi-lookup $optstr "$searchstr"
+	else
+		echo "kabi-lookup $optstr$searchstr"
+		kabi-lookup $optstr $searchstr
+	fi
+
+    done
+}
+
+# run if user hits control-c
+#
+control_c()
+{
+	set_booleans
+	rm -f $last_tag_file
+	exit $CTLC_EXIT		# defined in lib/ui.source
+}
+
+# trap keyboard interrupt (control-c)
+trap control_c SIGINT
+
+main

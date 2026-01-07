@@ -1,0 +1,21 @@
+# getkver
+#
+# Echo "kernel-V.P.S", where:
+# 	V is the kernel version
+# 	P is the patch level
+# 	S is the sublevel
+# 	(see first three lines of kernel Makefile)
+#
+getkver() {
+	local verhdr=$(head -3 Makefile)
+	local line
+	local ver=""
+
+	while read line; do
+		ver="$ver".$(echo $line | cut -d' ' -f3)
+	done <<< "$verhdr"
+
+	ver=kernel${ver/./-}
+	echo $ver
+}
+
