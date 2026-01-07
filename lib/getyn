@@ -1,0 +1,37 @@
+#!/bin/bash
+#
+# getyn
+#
+# getyn() $1 $2
+#
+# Takes $1 for a prompt string
+# Places true or false value into $2, which is an optional argument.
+# User is prompted for (y/n) answer at the end of the prompt string.
+#
+# Example:
+#
+# declare answer
+# getyn "True or False?" answer
+#
+# $answer && echo "you said yes" || echo "you said no"
+#
+
+getyn() {
+
+	local promptstring="$1"
+	local __answer__
+	local stat
+
+	while true; do
+		echo -en "$promptstring (y/n) : "
+		read -n1 __answer__
+		echo
+
+		[ "$__answer__" == "y" ] && stat=true  && break
+		[ "$__answer__" == "n" ] && stat=false && break
+
+		echo "Please answer y or n."
+	done
+
+	[ $# -eq 2 ] && eval $2=$stat
+}

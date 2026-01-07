@@ -1,0 +1,42 @@
+#!/bin/bash
+#
+# lib/formatargs
+#
+# Writes a neat list of arguments into the ofile.
+#
+# Useful for populating usage strings with the argument list.
+#
+#  ofile  - the output file
+#  argstr - a string containing the arguments to be processed
+#  argcnt - returns the number of arguments processed
+#
+formatargs() {
+	local ofile=$1
+	local arg
+	local spacer="  "
+	local -a args=($2)
+	local -i width
+	local -i widest
+	local -i index
+
+	echo -e " ${args[@]}\n" >> $ofile
+
+	# find the widest arg to use its space to create a nicely aligned
+	# list of arguments
+	#
+	index=0
+	widest=0
+	for arg in ${args[@]}; do
+		width=${#arg}
+		[ $width -gt $widest ] && widest=$width
+	done
+
+	printf "Arguments:\n" >> $ofile
+	index=0
+	for arg in ${args[@]}; do
+		printf "%s%-${widest}s - \n" "$spacer" "$arg" >> $ofile
+		let index++
+	done
+	eval $3=$index
+}
+

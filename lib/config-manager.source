@@ -1,0 +1,522 @@
+#!/bin/bash
+#
+# config-manager.source
+#
+# The configfile must be declared and defined globally and externally.
+#
+# This file uses shdoc-style documentation annotations.
+# See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname lib/config-manager.source' to view function documentation.
+#
+
+[ -n "$MYDIR" ] || {
+	declare MYDIR
+	MYDIR="$(dirname "$(readlink -f "$0")")"
+}
+
+[ -n "$MYLIB" ] || {
+	declare MYLIB
+	MYLIB="$MYDIR"/lib
+}
+
+[ "$ui_loaded" ] || source "$MYLIB"/ui.source
+
+declare configmanager_loaded=true
+
+declare -i cfg_err_nokey=1
+declare -i cfg_err_invopt=2
+declare -i cfg_err_invoper=3
+declare -i cfg_err_notready=4
+declare -i cfg_err_invdir=5
+declare -i cfg_err_invtemplate=6
+declare cfg_file=
+declare cfg_template=
+declare cfg_b_ready=false
+
+# cfg_manager_help
+# @description Display help text for config manager usage
+#
+# Effects:
+# @stdout Prints help documentation
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+cfg_manager_help() {
+	local helpmsg=
+
+	helpmsg=$(
+cat <<EOF
+	The config manager bash routines provide a means for maintaining
+	a config file of global variables with each line formatted as ...
+
+		key = value
+
+	... where 'key' is the name of the variable that will be assigned
+	the value.
+
+	Scripts can then call these routines to obtain or update values
+	in their respective config files.
+
+	To use the config manager, you must first supply two files
+	One is the template which will be updated when saved variables
+	change. The other is the individual config file for the script
+	using this config manager.
+
+	The cfgtemplate file will be tested against the config file by
+	cfg_init to see if there have been any changes in config variables
+	If so, the existing configfile will be updated to match the
+	contents of the cfgfile.
+
+	Init sequence:
+	cfg_set_template <template for the main script's config file>
+	cfg_set_configfile <main script's config file>
+	cfg_init - copies the contents of the configfile to the caller's
+	           global variables stored in the configfile
+
+EOF
+)
+	echo -e "$helpmsg"
+}
+
+cfg_err_msg=(
+	""
+	"Key not found"
+	"Invalid option"
+	"Invalid operation"
+	"Config files missing: need config template and config file"
+	"Invalid directory"
+	"Invalid template file"
+)
+
+# cfg_show_err
+# @description Display a config manager error message
+#
+# Arguments:
+# @arg $1 int Error code index
+# @arg $2 string Value to display with error
+#
+# Effects:
+# @stdout Prints formatted error message
+#
+# Returns:
+# @exitcode * Returns the error code
+#
+cfg_show_err() {
+	local err=$1
+	local val="$2"
+
+	echo -e "\n$WRN${cfg_err_msg[$err]} $INF: $STA$val$OFF"
+	return "$err"
+}
+
+# cfg_set_configfile
+# @description Set the config file path
+#
+# Arguments:
+# @arg $1 string Path to config file
+#
+# Globals:
+# @set cfg_file string Config file path (write)
+# @set cfg_template string Template file path (read)
+# @set cfg_b_ready bool Ready state flag (write)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+cfg_set_configfile() {
+	cfg_file="$1"
+	[ -f "$cfg_template" ] && cfg_b_ready=true
+}
+
+# cfg_get_configfile
+# @description Get the current config file path
+#
+# Arguments:
+# @arg $1 string Variable name to receive path
+#
+# Globals:
+# @set cfg_file string Config file path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+cfg_get_configfile() {
+	eval "$1"="$cfg_file"
+}
+
+# cfg_set_template
+# @description Set the config template file path
+#
+# Arguments:
+# @arg $1 string Path to template file
+#
+# Globals:
+# @set cfg_template string Template file path (write)
+# @set cfg_file string Config file path (read)
+# @set cfg_b_ready bool Ready state flag (write)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+cfg_set_template() {
+	cfg_template="$1"
+	[ -f "$cfg_file" ] && cfg_b_ready=true
+}
+
+# cfg_test_ready
+# @description Test if config manager is ready for operations
+#
+# Globals:
+# @set cfg_b_ready bool Ready state flag (read)
+# @set cfg_err_notready int Not ready error code (read)
+#
+# Effects:
+# @stdout Prints error if not ready
+#
+# Returns:
+# @exitcode 0 If ready
+# @exitcode cfg_err_notready If not ready
+#
+cfg_test_ready() {
+	$cfg_b_ready || {
+		echo -e "\n$WRN${cfg_err_msg[$cfg_err_notready]}$OFF"
+		return $cfg_err_notready
+	}
+}
+
+# cfg_read_key
+# @description Read a value from config file by key
+#
+# Arguments:
+# @arg $1 string Key to look up
+#
+# Globals:
+# @set cfg_file string Config file path (read)
+#
+# Effects:
+# @stdout Prints the value if found
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode cfg_err_notready If not ready
+# @exitcode cfg_err_nokey If key not found
+#
+cfg_read_key() {
+	local key="$1"
+	local keyline=
+	local value
+
+	cfg_test_ready || return $cfg_err_notready
+
+	keyline="$(grep -w "$key" "$cfg_file")" || {
+		cfg_show_err $cfg_err_nokey "$key"
+		return $cfg_err_nokey
+	}
+
+	shopt -s extglob # ON to enable trimming spaces
+	value="$(echo "$keyline" | cut -d'=' -f2-)"
+	value="${value##*( )}"
+	shopt -u extglob # OFF
+	echo "$value"
+}
+
+# cfg_get_item
+# @description Read a config value into a variable by reference
+#
+# Arguments:
+# @arg $1 string Key to look up
+# @arg $2 string Nameref variable to receive value
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+cfg_get_item() {
+	local key="$1"
+	local -n cfg_item="$2"
+
+	cfg_item=$(cfg_read_key "$key")
+}
+
+# cfg_write_key
+# @description Write a value to config file by key
+#
+# Arguments:
+# @arg $1 string Key to update
+# @arg $2 string Value to write
+#
+# Globals:
+# @set cfg_file string Config file path (read)
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode cfg_err_notready If not ready
+# @exitcode cfg_err_nokey If key not found
+#
+cfg_write_key() {
+	local key="$1"
+	local value="$2"
+	local keyline=
+	local linenumber=
+
+	cfg_test_ready || return $cfg_err_notready
+
+	keyline=$(grep -nw "$key" "$cfg_file") || {
+		cfg_show_err $cfg_err_nokey "$key"
+		return $cfg_err_nokey
+	}
+	linenumber=$(echo "$keyline" | cut -d":" -f1)
+	keyline=$(echo "$keyline" | cut -d":" -f2- | cut -d"=" -f1)
+	keyline="$keyline""= $value"
+	ui_replaceline_raw "$linenumber" "$keyline" "$cfg_file"
+}
+
+# cfg_set_item
+# @description Set a config item value (alias for cfg_write_key)
+#
+# Arguments:
+# @arg $1 string Key to update
+# @arg $2 string Value to write
+#
+# Returns:
+# @exitcode * Returns status from cfg_write_key
+#
+cfg_set_item() {
+	local key="$1"
+	local item="$2"
+
+	cfg_write_key "$key" "$item"
+}
+
+# cfg_read_configfile
+# @description Read all values from config file into variables
+#
+# Globals:
+# @set cfg_file string Config file path (read)
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode cfg_err_notready If not ready
+#
+cfg_read_configfile() {
+	local item
+	local value
+	local fd_cfgfile
+
+	cfg_test_ready || return $cfg_err_notready
+
+	exec {fd_cfgfile}< "$cfg_file"
+	while IFS+="=" read -ru "$fd_cfgfile" item value; do
+		[ -n "$value" ] && eval "$item"="\"$value\""
+	done
+	exec {fd_cfgfile}<&-
+}
+
+# cfg_dump_vars
+# @description Dump all config variables and their values
+#
+# Globals:
+# @set cfg_file string Config file path (read)
+#
+# Effects:
+# @stdout Prints all key-value pairs
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+cfg_dump_vars() {
+	local item
+	local value
+	local fd_cfgfile
+
+	exec {fd_cfgfile}< "$cfg_file"
+	while IFS+="=" read -ru "$fd_cfgfile" item value; do
+		echo "\"$item\": ${!item}"
+	done
+	exec {fd_cfgfile}<&-
+}
+
+
+# cfg_update_configfile
+# @description Write current variable values to config file
+#
+# Globals:
+# @set cfg_file string Config file path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+cfg_update_configfile() {
+	local item
+	local value
+	local tmpfile=/dev/shm/cfg_temp
+	local fd_cfgfile
+	local tmpfile
+
+	tmpfile="/dev/shm/tempfile"
+	: > "$tmpfile"
+
+	exec {fd_cfgfile}< "$cfg_file"
+
+	while IFS+="=" read -ru "$fd_cfgfile" item value; do
+		value="${!item}"
+		echo "$item" = "$value" >> "$tmpfile"
+	done
+
+	exec {fd_cfgfile}<&-
+	cp -f "$tmpfile" "$cfg_file"
+	rm -f "$tmpfile"
+}
+
+# cfg_refresh_configfile
+# @description Sync config file with template changes
+#
+# Globals:
+# @set cfg_file string Config file path (read)
+# @set cfg_template string Template file path (read)
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode cfg_err_notready If not ready
+#
+cfg_refresh_configfile() {
+	local key=
+	local tmp=
+	local tmpfile=/dev/shm/cfg_temp
+	local stat=
+	local fd_template
+
+	cfg_test_ready || return $cfg_err_notready
+
+	exec {fd_template}< "$cfg_template"
+	: > "$tmpfile"
+
+	while IFS+="=" read -ru "$fd_template" key tmp; do
+		cfgline=$(grep "^$key" "$cfg_file") \
+			&& echo "$cfgline" >> "$tmpfile" \
+			|| echo "$key = $tmp" >> "$tmpfile"
+	done
+
+	exec {fd_template}<&-
+	cp -f "$tmpfile" "$cfg_file"
+	rm -f "$tmpfile"
+}
+
+# cfg_compare_configfiles
+# @description Compare config file with template
+#
+# Globals:
+# @set cfg_file string Config file path (read)
+# @set cfg_template string Template file path (read)
+#
+# Returns:
+# @exitcode 0 If files have same elements in same order
+# @exitcode 1 If files differ
+# @exitcode cfg_err_notready If not ready
+#
+cfg_compare_configfiles() {
+	local key1=
+	local key2=
+	local tmp=
+	local stat=
+	local fd_template
+	local fd_cfgfile
+
+	cfg_test_ready || return $cfg_err_notready
+
+	(($(wc -l < "$cfg_template") != $(wc -l < "$cfg_file"))) && return 1
+
+	exec {fd_template}< "$cfg_template"
+	exec {fd_cfgfile}< "$cfg_file"
+
+	while :; do
+		IFS+="=" read -ru "$fd_template" key1 tmp || { stat=0; break; }
+		IFS+="=" read -ru "$fd_cfgfile"  key2 tmp
+		[ "$key1" == "$key2" ] || { stat=1; break; }
+	done
+
+	exec {fd_template}<&-
+	exec {fd_cfgfile}<&-
+	return $stat
+}
+
+# cfg_init
+# @description Initialize config manager and load values
+#
+# Globals:
+# @set cfg_file string Config file path (read)
+# @set cfg_template string Template file path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+cfg_init() {
+	cfg_compare_configfiles || cfg_refresh_configfile
+	cfg_read_configfile
+}
+
+# cfg_init_ready
+# @description Quick init for r/w access without full compare
+#
+# Arguments:
+# @arg $1 string Config file path
+#
+# Globals:
+# @set cfg_file string Config file path (write)
+# @set cfg_b_ready bool Ready state flag (write)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+cfg_init_ready() {
+	cfg_file="$(realpath "$1")"
+	cfg_b_ready=true
+}
+
+# cfg_start
+# @description Start config manager with template and config file
+#
+# Arguments:
+# @arg $1 string Template file path
+# @arg $2 string Config file path
+#
+# Globals:
+# @set cfg_template string Template file path (write)
+# @set cfg_file string Config file path (write)
+# @set cfg_b_ready bool Ready state flag (write)
+#
+# Returns:
+# @exitcode 0 On success
+# @exitcode 1 On error
+#
+cfg_start() {
+	cfg_template="$(realpath "$1")"
+	cfg_file="$(realpath "$2")"
+	local cfgdir
+
+	cfgdir=$(dirname "$cfg_file")
+
+	[ -f "$cfg_template" ] || cfg_show_err "$cfg_err_invtemplate" "$cfg_template"
+	[ -d "$cfgdir"   ]     || cfg_show_err "$cfg_err_invdir" "$cfgdir"
+
+	cfg_set_template "$cfg_template"
+
+	[ -f "$cfg_file" ] || {
+		cp "$cfg_template" "$cfg_file" || {
+			echo -e "${WRN}Cannot copy $MNU$cfg_template$WRN to $MNU$cfg_file!$OFF"
+			exit 1
+		}
+	}
+
+	cfg_b_ready=true
+	cfg_init
+}

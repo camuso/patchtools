@@ -1,0 +1,24 @@
+#!/bin/bash
+#
+# rhel-major
+#
+
+usagestr=$(
+cat <<EOF
+
+$(basename $0)
+
+Echo the system\'s major release number.
+
+\0
+EOF
+)
+
+usage() {
+	echo -e "$usagestr"
+	exit
+}
+
+[ $# -eq 0 ] || usage
+
+echo $(cat /etc/system-release | cut -d' ' -f7 | cut -d'.' -f1)

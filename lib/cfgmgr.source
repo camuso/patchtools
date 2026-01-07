@@ -1,0 +1,329 @@
+#!/bin/bash
+#
+# lib/cfgmgr.source
+#
+# This file uses shdoc-style documentation annotations.
+# See: https://github.com/reconquest/shdoc
+#
+# Common annotations:
+#   @description  - Function/script description
+#   @arg          - Function argument: @arg $1 type description
+#   @set          - Global variable set: @set varname type description
+#   @exitcode     - Exit code: @exitcode 0 description
+#   @stdout       - Standard output description
+#   @example      - Usage example
+#
+# Use 'docscript -f funcname lib/cfgmgr.source' to view function documentation.
+#
+
+declare cfgmgr_loaded=true
+
+[ -n "$MYDATA" ] || {
+	declare MYDATA=
+	MYDATA=$(realpath ./.data)
+}
+[ -d "$MYDATA" ] || mkdir -p "$MYDATA"
+
+declare usagestr=
+
+usagestr=$(
+cat <<EOF
+
+cfgmgr - Configuration file manager.
+         Call this library script by name from the command line
+	 to see this help text.
+
+A script configuration manager.
+
+Arguments
+---------
+configtable: name of the associative array, which must be declared
+             by the user in the calling script, e.g:
+             declare -A mycfgtable
+             It is passed by reference, so no leading $ in front of
+             the identifier when calling cfg_start.
+
+configfile:  Optional path of the file to contain the configtable
+             contents between invocations of the encapsulating script.
+	     If no name is provided, cfgmgr will create one in ./.data
+	     relative to the PWD of the executing script and using the
+	     script's basename with .conf extension, e.g.
+	     ./.data/myscript.conf.
+
+Public Functions
+----------------
+cfg_start configtable [configfile]
+            Called at the beginning of your script to initialize and
+	    synchronize your script's config table asssociative array
+	    with its config file.
+
+cfg_read_cfgfile configtable
+            Reads the contents of the config file into the config table
+	    associative array.
+
+cfg_write_cfgfile configtable
+            Writes the contents of the config table associative array
+	    into the config file.
+
+cfg_dump_cfgtbl configtable
+            Dumps the contents of the config table associative array
+	    to the screen.
+\0
+EOF
+)
+
+declare cfgfile=
+
+# Print the help text to the screen if this lib source is called from the
+# command line. Help text will not be printed if this file is sourced in
+# another script.
+# From:
+# https://stackoverflow.com/questions/2683279/how-to-detect-if-a-script-is-being-sourced
+: << 'COMMENT'
+Commenting this out for now, because it's impractical when concatenating
+this source to another source, instead of using the source operator.
+
+(return 0 2>/dev/null) || {
+	echo -e "$usagestr"
+	exit 0
+}
+COMMENT
+
+# is_inarray
+# @description Check if exact matching string is in array
+#
+# Arguments:
+# @arg $1 array Array name passed by reference
+# @arg $2 string String being sought
+#
+# Returns:
+# @exitcode 0 If match is found
+# @exitcode 1 If not found
+#
+is_inarray () {
+    local -n ar=$1
+    local fld="$2"
+    local -i ix
+
+    for ((ix = 0; ix < ${#ar[@]}; ix++))
+    do
+        [ "${ar[ix]}" == "$fld" ] && return 0
+    done
+
+    return 1
+}
+
+# cfg_init_cfgfile
+# @description Initialize config file from cfgtbl (PRIVATE)
+#
+# Globals:
+# @set cfgtbl array Config table (read)
+# @set cfgfile string Config file path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+cfg_init_cfgfile() {
+	for key in ${!cfgtbl[@]}; do
+		echo "$key = ${cfgtbl["$key"]}" >> "$cfgfile"
+	done
+}
+
+# cfg_set_cfgfile
+# @description Set config file path (PRIVATE)
+#
+# Arguments:
+# @arg $1 string Optional config file path
+#
+# Globals:
+# @set cfgfile string Config file path (write)
+# @set MYDATA string Data directory path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+cfg_set_cfgfile() {
+	cfgfile="$1"
+
+	[ -n "$cfgfile" ] || {
+		cfgfile="$MYDATA"/"$(basename "0")".conf
+	}
+}
+
+# cfg_diff_cfgfile
+# @description Diff and reconcile cfgfile with cfgtbl (PRIVATE)
+#
+# Globals:
+# @set cfgfile string Config file path (read)
+# @set cfgtbl array Config table (read)
+#
+# Returns:
+# @exitcode 0 If no differences found
+# @exitcode 1 If differences were reconciled
+#
+cfg_diff_cfgfile() {
+	local -a fkeys=()
+	local -a tkeys=()
+	local -i idx
+	local -i tblentries
+	local -i filentries
+	local -i stat=0
+	local -i i
+	local key
+
+	[ -s "$cfgfile" ] || {
+		cfg_init_cfgfile
+		return 0
+	}
+
+	tblentries=${#cfgtbl[@]}
+
+	# Get all the keys from the cfgfile using callback defined in
+	# the mapfile call. Mapfile delivers the index as $1 and the
+	# line as $2 to the callback.
+	#
+	mapfile -c1 -C 'f() {
+		# Extract the fkeys field from each line
+		fkeys[$1]=$(echo $2 | cut -d'=' -f1)
+		# remove all spaces from the fkeys field
+		fkeys[$1]=${fkeys[$1]// /}
+	}; f' < "$cfgfile"
+
+	# Get all the keys from the cfgtbl
+	#
+	mapfile -t -d' ' tkeys <<< "${!cfgtbl[@]}"
+
+	# If there are any differences, add the different key to the
+	# cfgfile. The stale keys will be removed from the cfgfile by
+	# the code following this.
+	#
+	for ((i = 0; i < tblentries; i++)); do
+		key="${tkeys[i]}"
+
+		# Remove all non-alphanum chars
+		#
+		key="${key//[!a-zA-Z0-9]/}"
+		is_inarray fkeys "$key" && continue
+		echo "$key = ${cfgtbl["$key"]}" >> "$cfgfile"
+		stat=1
+	done
+
+	filentries=$(wc -l < "$cfgfile")
+	# If there are more entries in the cfgfile than in the cfgtbl
+	# Delete the entries from the cfgfile.
+	#
+	((filentries > tblentries)) && {
+		for key in ${fkeys[@]}; do
+			key="${key//[!a-zA-Z0-9]/}"
+			is_inarray tkeys $key && continue
+			sed -i "/$key/d" "$cfgfile"
+			stat=1
+		done
+	}
+
+	# If there are more entries in the config table than in the cfgfile
+	# Add the new cfgtbl entries to the cfgfile.
+	#
+	((tblentries > filentries)) && {
+		for key in ${tkeys[@]}; do
+			key="${key//[!a-zA-Z0-9]/}"
+			is_inarray fkeys $key && continue
+			echo "$key = ${cfgtbl["$key"]}" >> "$cfgfile"
+			stat=1
+		done
+	}
+
+	return $stat
+}
+
+# cfg_dump_cfgtbl
+# @description Dump config table contents to screen
+#
+# Arguments:
+# @arg $1 array Reference to config table associative array
+#
+# Effects:
+# @stdout Prints all key-value pairs
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+cfg_dump_cfgtbl() {
+	local -n cfgtbl="$1"
+	local key
+
+	for key in "${!cfgtbl[@]}"; do
+		echo "$key = ${cfgtbl["$key"]}"
+	done
+}
+
+# cfg_read_cfgfile
+# @description Read config file into user's config table
+#
+# Arguments:
+# @arg $1 array Reference to config table associative array
+#
+# Globals:
+# @set cfgfile string Config file path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+cfg_read_cfgfile() {
+	(($# == 1)) && local -n cfgtbl="$1"
+	local key
+	local value
+
+	while IFS="= " read -r key val; do
+		key=${key// /}
+		cfgtbl["$key"]="$val"
+		eval "$key"="\"$val\""
+	done < "$cfgfile"
+}
+
+# cfg_write_cfgfile
+# @description Write config table contents to config file
+#
+# Arguments:
+# @arg $1 array Reference to config table associative array
+#
+# Globals:
+# @set cfgfile string Config file path (read)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+cfg_write_cfgfile() {
+	local -n cfgtbl="$1"
+	local key
+	local val
+
+	> "$cfgfile"
+
+	for key in "${!cfgtbl[@]}"; do
+		key=${key// /}
+		val="${cfgtbl["$key"]}"
+		echo "$key = $val" >> "$cfgfile"
+	done
+}
+
+# cfg_start
+# @description Start the config manager
+#
+# Arguments:
+# @arg $1 array Config table passed by reference
+# @arg $2 string Config file path
+#
+# Globals:
+# @set cfgfile string Config file path (write)
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+cfg_start() {
+	local -n cfgtbl="$1"
+
+	cfg_set_cfgfile "$(realpath "$2")"
+	cfg_diff_cfgfile
+	cfg_read_cfgfile
+}

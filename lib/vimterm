@@ -1,0 +1,4 @@
+    local STTYOPTS="$(stty --save)"
+    stty stop '' -ixoff
+    command vim "$@"
+    stty "$STTYOPTS"
