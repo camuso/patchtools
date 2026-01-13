@@ -114,6 +114,9 @@ ${HDR}TITLE FILTER (-t)${OFF}
     ${WRN}Limitations:${OFF} No true regex (.*+^$), no character classes [a-z],
     no anchors. For complex patterns, use -j and filter with jq.
 
+    ${WRN}Note:${OFF} Terms with dots/hyphens (e.g., '10.2') may need wildcards
+    to match hyphenated forms like 'RHEL-10.2'. Use ${MNU}'*10.2*'${OFF} instead.
+
 ${HDR}RAW JQL QUERY (-q)${OFF}
     Pass any valid JQL expression directly. Combined with other options via AND.
     See: https://support.atlassian.com/jira-software-cloud/docs/jql-fields/
@@ -128,6 +131,7 @@ ${HDR}EXAMPLES${OFF}
     myjiras -t 'intel*'                      # Wildcard: intel, intelligent, etc.
     myjiras -t 'intel|ish' -t 'stream-10|stream-9'
                                              # (intel OR ish) AND (stream-10 OR stream-9)
+    myjiras -t 'ipmi' -t '*10.2*'            # ipmi AND partial match for 10.2
     myjiras -q 'priority = Critical'         # Raw JQL for priority
     myjiras -s open                          # Only open issues
     myjiras -s closed                        # Only closed issues
