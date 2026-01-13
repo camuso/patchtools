@@ -332,6 +332,20 @@ get_watchers() {
     jira_request "issue/$issue_key/watchers"
 }
 
+# get_remote_links
+# @description Get remote links for a specific issue (includes GitLab MRs)
+#
+# Arguments:
+# @arg $1 string Issue key
+#
+# Effects:
+# @stdout JSON response with remote links
+#
+get_remote_links() {
+    local issue_key="$1"
+    jira_request "issue/$issue_key/remotelink"
+}
+
 #######################################
 # Query builders
 #######################################
@@ -430,6 +444,19 @@ format_issue() {
     
     echo -e "${MNU}$key${OFF} [$status] $summary"
     echo -e "  ${INF}URL:${OFF} $JIRA_BASE_URL/browse/$key"
+    
+    # Fetch and display GitLab Merge Request links
+    local remote_links mr_urls
+    remote_links=$(get_remote_links "$key" 2>/dev/null)
+    if [[ -n "$remote_links" ]]; then
+        mr_urls=$(echo "$remote_links" | jq -r '.[].object.url | select(test("gitlab.*merge_request"))' 2>/dev/null)
+        if [[ -n "$mr_urls" ]]; then
+            while IFS= read -r mr_url; do
+                echo -e "  ${INF}Merge Request:${OFF} $mr_url"
+            done <<< "$mr_urls"
+        fi
+    fi
+    
     echo -e "  ${INF}Type:${OFF} $issuetype  ${INF}Priority:${OFF} $priority  ${INF}Updated:${OFF} $updated"
     
     # Show assignee if requested and not current user
