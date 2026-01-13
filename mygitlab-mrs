@@ -353,6 +353,7 @@ list_mrs() {
 			title: .title,
 			state: .state,
 			created_at: .created_at,
+			updated_at: .updated_at,
 			merged_at: .merged_at,
 			url: .web_url'
 
