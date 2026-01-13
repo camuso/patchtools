@@ -26,6 +26,14 @@
 # Script-level variables
 declare config_file="$HOME/.config/lab/lab.toml"
 declare token=""
+
+# Basic ANSI colors (work on any terminal background)
+declare OFF=$'\033[0m'
+declare MNU=$'\033[1;33m'    # Bold yellow - titles
+declare INF=$'\033[0;36m'    # Cyan - labels
+declare STA=$'\033[0;32m'    # Green - state/status
+declare WRN=$'\033[0;31m'    # Red - warnings
+declare HDR=$'\033[1;37m'    # Bold white - headers
 declare -i b_state_open=0
 declare -i b_state_merged=0
 declare -i b_state_closed=0
@@ -452,19 +460,19 @@ list_mrs() {
 			echo "$result"
 		done
 	else
-		# Human-readable output
+		# Human-readable output with colors
 		for result in "${all_results[@]}"; do
-			echo "$result" | jq -r '
-				"\(.title)",
-				"  Project: \(.project)",
-				"  State: \(.state)",
-				"  Created: \(.created_at)",
-				"  Updated: \(.updated_at)",
-				(if .merged_at then "  Merged: \(.merged_at)" else empty end),
-				"  URL: \(.url)",
-				"  Jira: \(.jira)",
-				(if .labels_action then "  Action Labels: \(.labels_action | join(", "))" else empty end),
-				(if .labels_info then "  Info Labels: \(.labels_info | join(", "))" else empty end),
+			echo "$result" | jq -r --arg MNU "$MNU" --arg INF "$INF" --arg STA "$STA" --arg WRN "$WRN" --arg OFF "$OFF" '
+				"\($MNU)\(.title)\($OFF)",
+				"  \($INF)Project:\($OFF) \(.project)",
+				"  \($INF)State:\($OFF) \(.state)",
+				"  \($INF)Created:\($OFF) \(.created_at)",
+				"  \($INF)Updated:\($OFF) \(.updated_at)",
+				(if .merged_at then "  \($INF)Merged:\($OFF) \(.merged_at)" else empty end),
+				"  \($INF)URL:\($OFF) \(.url)",
+				"  \($INF)Jira:\($OFF) \(if .jira == "missing" then "\($WRN)\(.jira)\($OFF)" else .jira end)",
+				(if .labels_action then "  \($WRN)Action Labels:\($OFF) \(.labels_action | join(", "))" else empty end),
+				(if .labels_info then "  \($INF)Info Labels:\($OFF) \(.labels_info | join(", "))" else empty end),
 				""
 			'
 		done
