@@ -348,13 +348,22 @@ list_mrs() {
 
 		# Build jq arguments for safe variable passing
 		local -a jq_args=()
-		local jq_filter='.[] | {
+		# Helper function to convert UTC to local time with offset
+		# Strip milliseconds before parsing (e.g., .500Z -> Z)
+		# Get timezone offset from system (jq's %z is unreliable)
+		local tz_offset
+		tz_offset=$(date +"%Z (%z)")
+		
+		local date_convert="def localdate: if . then (gsub(\"\\\\.[0-9]+Z\$\"; \"Z\") | fromdateiso8601 | strflocaltime(\"%Y-%m-%d %H:%M\") + \" $tz_offset\") else null end;"
+		
+		local jq_filter="$date_convert"'
+		.[] | {
 			project: (.references.full // .web_url),
 			title: .title,
 			state: .state,
-			created_at: .created_at,
-			updated_at: .updated_at,
-			merged_at: .merged_at,
+			created_at: (.created_at | localdate),
+			updated_at: (.updated_at | localdate),
+			merged_at: (.merged_at | localdate),
 			url: .web_url'
 
 		# Add action labels if requested (not ::OK, not ::None, not Subsystem:, not Dependencies::)
