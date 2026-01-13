@@ -30,13 +30,13 @@ declare -i b_state_open=0
 declare -i b_state_merged=0
 declare -i b_state_closed=0
 declare project_filter=""
-declare title_regex=""
+declare -a title_filters=()    # Multiple -t patterns are ANDed
 declare date_before=""
 declare date_after=""
 declare -i b_count_only=0
 declare usagestr="$(
 cat <<EOF
-$(basename "$0") [-so] [-sm] [-sc] [-p project] [-r regex] [-da date] [-db date] [-c]
+$(basename "$0") [-so] [-sm] [-sc] [-p project] [-t text] [-da date] [-db date] [-c]
 
 List GitLab merge requests authored by you.
 
@@ -47,7 +47,7 @@ Filter Switches (all optional, can be combined):
   -sm         Include merged MRs
   -sc         Include closed MRs
   -p project  Filter by project name (partial match, case-insensitive)
-  -r regex    Filter MR titles by regex pattern (case-insensitive)
+  -t text     Filter MR titles by text/regex (case-insensitive, multiple ANDed)
   -da date    Filter MRs created after (since) the given date
   -db date    Filter MRs created before the given date
   -c          Print only the count of MRs matching the filter(s)
@@ -72,8 +72,11 @@ Examples:
   $(basename "$0") -so -sm
       List both open and merged MRs
 
-  $(basename "$0") -p "stream-10" -r "usb|xhci"
+  $(basename "$0") -p "stream-10" -t "usb|xhci"
       List all MRs in "stream-10" projects with titles matching "usb" or "xhci"
+
+  $(basename "$0") -t 'ipmi' -t '10.2'
+      List MRs with titles matching BOTH "ipmi" AND "10.2"
 
   $(basename "$0") -sm -da 2025-01-01
       List MRs merged since January 1, 2025
@@ -84,7 +87,7 @@ Examples:
   $(basename "$0") -sm -c
       Print only the count of merged MRs
 
-  $(basename "$0") -so -p "rhel-9" -r "net" -c
+  $(basename "$0") -so -p "rhel-9" -t "net" -c
       Count open MRs in "rhel-9" projects with titles matching "net"
 
 EOF
@@ -270,7 +273,7 @@ convert_date() {
 # @set b_state_merged int Include merged MRs flag
 # @set b_state_closed int Include closed MRs flag
 # @set project_filter string Project name filter
-# @set title_regex string Title regex filter
+# @set title_filters array Title text filters (multiple ANDed)
 # @set date_before string Filter MRs before this date
 # @set date_after string Filter MRs after this date
 # @set b_count_only int Output count only flag
@@ -368,11 +371,13 @@ list_mrs() {
 			jq_filter+=' | select((.project // "") | test($pf; "i"))'
 		fi
 
-		# Add title regex filter if specified
-		if [[ -n "$title_regex" ]]; then
-			jq_args+=(--arg tr "$title_regex")
-			jq_filter+=' | select((.title // "") | test($tr; "i"))'
-		fi
+		# Add title filters if specified (multiple -t are ANDed)
+		local -i filter_idx=0
+		for filter in "${title_filters[@]}"; do
+			jq_args+=(--arg "tf$filter_idx" "$filter")
+			jq_filter+=" | select((.title // \"\") | test(\$tf$filter_idx; \"i\"))"
+			((filter_idx++))
+		done
 
 		# Collect results
 		local page_results
@@ -416,7 +421,7 @@ list_mrs() {
 # @set b_state_merged int Merged state filter
 # @set b_state_closed int Closed state filter
 # @set project_filter string Project filter
-# @set title_regex string Title regex filter
+# @set title_filters array Title text filters (multiple ANDed)
 # @set date_after string After date filter
 # @set date_before string Before date filter
 # @set b_count_only int Count only flag
@@ -448,12 +453,12 @@ parse_args() {
 				fi
 				project_filter="$1"
 				;;
-			-r)
+			-t)
 				shift
 				if [[ -z "$1" || "$1" == -* ]]; then
-					exitme 1 "Error: -r requires a regex pattern"
+					exitme 1 "Error: -t requires a text pattern"
 				fi
-				title_regex="$1"
+				title_filters+=("$1")
 				;;
 			-da)
 				shift
