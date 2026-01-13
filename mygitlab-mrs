@@ -356,7 +356,10 @@ list_mrs() {
 		
 		local date_convert="def localdate: if . then (gsub(\"\\\\.[0-9]+Z\$\"; \"Z\") | fromdateiso8601 | strflocaltime(\"%Y-%m-%d %H:%M\") + \" $tz_offset\") else null end;"
 		
-		local jq_filter="$date_convert"'
+		# Helper to extract Jira URL from description
+		local jira_extract='def jiraurl: ((.description // "") | capture("(?<url>https://issues\\.redhat\\.com/browse/[A-Z]+-[0-9]+)") | .url) // "missing";'
+		
+		local jq_filter="$date_convert $jira_extract"'
 		.[] | {
 			project: (.references.full // .web_url),
 			title: .title,
@@ -364,7 +367,8 @@ list_mrs() {
 			created_at: (.created_at | localdate),
 			updated_at: (.updated_at | localdate),
 			merged_at: (.merged_at | localdate),
-			url: .web_url'
+			url: .web_url,
+			jira: jiraurl'
 
 		# Add action labels if requested (not ::OK, not ::None, not Subsystem:, not Dependencies::)
 		if (( b_labels_action )); then
