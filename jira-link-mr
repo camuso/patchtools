@@ -1,0 +1,212 @@
+#!/bin/bash
+#
+# jira-link-mr - Link a GitLab Merge Request to a Jira issue
+#
+# Creates a remote link in Jira pointing to a GitLab MR.
+# Automatically fetches the MR title from GitLab.
+#
+# Usage: jira-link-mr JIRA-KEY MR-URL
+#
+# Example:
+#   jira-link-mr RHEL-97661 https://gitlab.com/redhat/centos-stream/rpms/tboot/-/merge_requests/26
+#
+
+# ANSI colors
+declare OFF=$'\033[0m'
+declare MNU=$'\033[1;33m'    # Bold yellow
+declare INF=$'\033[0;36m'    # Cyan
+declare STA=$'\033[0;32m'    # Green
+declare WRN=$'\033[0;31m'    # Red
+
+# Configuration
+declare JIRA_BASE_URL="https://issues.redhat.com"
+declare JIRA_API="$JIRA_BASE_URL/rest/api/2"
+declare JIRA_TOKEN_FILE="$HOME/.config/jira/token"
+declare GITLAB_TOKEN_FILE="$HOME/.config/lab/lab.toml"
+
+usage() {
+	cat <<EOF
+${MNU}jira-link-mr${OFF} - Link a GitLab Merge Request to a Jira issue
+
+${INF}USAGE${OFF}
+    jira-link-mr JIRA-KEY MR-URL
+
+${INF}ARGUMENTS${OFF}
+    JIRA-KEY    Jira issue key (e.g., RHEL-97661)
+    MR-URL      GitLab merge request URL
+
+${INF}EXAMPLES${OFF}
+    jira-link-mr RHEL-97661 https://gitlab.com/redhat/centos-stream/rpms/tboot/-/merge_requests/26
+
+${INF}REQUIREMENTS${OFF}
+    - Jira PAT in ~/.config/jira/token
+    - GitLab token in ~/.config/lab/lab.toml (for fetching MR title)
+
+EOF
+	exit "${1:-0}"
+}
+
+# Get Jira token
+get_jira_token() {
+	if [[ ! -f "$JIRA_TOKEN_FILE" ]]; then
+		echo -e "${WRN}Error:${OFF} Jira token not found at $JIRA_TOKEN_FILE" >&2
+		echo "Create a PAT at: https://issues.redhat.com/secure/ViewProfile.jspa" >&2
+		exit 1
+	fi
+	cat "$JIRA_TOKEN_FILE"
+}
+
+# Get GitLab token from lab.toml
+get_gitlab_token() {
+	if [[ ! -f "$GITLAB_TOKEN_FILE" ]]; then
+		echo -e "${WRN}Warning:${OFF} GitLab token not found. MR title will be generic." >&2
+		return 1
+	fi
+	awk -F'=' '/token/{gsub(/[" ]/, "", $2); print $2; exit}' "$GITLAB_TOKEN_FILE"
+}
+
+# Extract project path and MR ID from URL
+# Input: https://gitlab.com/redhat/centos-stream/rpms/tboot/-/merge_requests/26
+# Output: project_path=redhat/centos-stream/rpms/tboot mr_id=26
+parse_mr_url() {
+	local url="$1"
+
+	# Extract the part after gitlab.com/
+	if [[ "$url" =~ gitlab\.com/(.+)/-/merge_requests/([0-9]+) ]]; then
+		project_path="${BASH_REMATCH[1]}"
+		mr_id="${BASH_REMATCH[2]}"
+		return 0
+	else
+		echo -e "${WRN}Error:${OFF} Invalid GitLab MR URL format" >&2
+		echo "Expected: https://gitlab.com/PROJECT/-/merge_requests/NUMBER" >&2
+		exit 1
+	fi
+}
+
+# Fetch MR title from GitLab API
+get_mr_title() {
+	local project_path="$1"
+	local mr_id="$2"
+	local gitlab_token
+
+	gitlab_token=$(get_gitlab_token) || return 1
+
+	# URL encode the project path
+	local encoded_path
+	encoded_path=$(printf '%s' "$project_path" | jq -sRr @uri)
+
+	local response
+	response=$(curl -s --header "PRIVATE-TOKEN: $gitlab_token" \
+		"https://gitlab.com/api/v4/projects/$encoded_path/merge_requests/$mr_id")
+
+	local title
+	title=$(echo "$response" | jq -r '.title // empty')
+
+	if [[ -n "$title" ]]; then
+		echo "$title"
+	else
+		return 1
+	fi
+}
+
+# Create remote link in Jira
+create_remote_link() {
+	local jira_key="$1"
+	local mr_url="$2"
+	local title="$3"
+	local jira_token
+
+	jira_token=$(get_jira_token)
+
+	local response
+	response=$(curl -s -w "\n%{http_code}" -X POST \
+		-H "Authorization: Bearer $jira_token" \
+		-H "Content-Type: application/json" \
+		"$JIRA_API/issue/$jira_key/remotelink" \
+		-d "{
+			\"object\": {
+				\"url\": \"$mr_url\",
+				\"title\": \"Merge Request: $title\",
+				\"icon\": {
+					\"url16x16\": \"https://gitlab.com/assets/favicon-72a2cad5025aa931d6ea56c3201d1f18e68a8cd39788c7c80d5b2b82aa5143ef.png\",
+					\"title\": \"GitLab Merge Request\"
+				}
+			}
+		}")
+
+	local http_code
+	http_code=$(echo "$response" | tail -n1)
+	local body
+	body=$(echo "$response" | sed '$d')
+
+	if [[ "$http_code" =~ ^2 ]]; then
+		return 0
+	else
+		echo -e "${WRN}Error:${OFF} Failed to create link (HTTP $http_code)" >&2
+		echo "$body" | jq -r '.errorMessages[]? // .errors // .' 2>/dev/null >&2
+		return 1
+	fi
+}
+
+# Check for required tools
+check_deps() {
+	local missing=()
+	command -v curl &>/dev/null || missing+=("curl")
+	command -v jq &>/dev/null || missing+=("jq")
+
+	if [[ ${#missing[@]} -gt 0 ]]; then
+		echo -e "${WRN}Error:${OFF} Missing required tools: ${missing[*]}" >&2
+		exit 1
+	fi
+}
+
+main() {
+	check_deps
+
+	# Parse arguments
+	if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+		usage 0
+	fi
+
+	if [[ $# -lt 2 ]]; then
+		usage 1
+	fi
+
+	local jira_key="$1"
+	local mr_url="$2"
+
+	# Validate Jira key format
+	if [[ ! "$jira_key" =~ ^[A-Z]+-[0-9]+$ ]]; then
+		echo -e "${WRN}Error:${OFF} Invalid Jira key format: $jira_key" >&2
+		echo "Expected format: PROJECT-NUMBER (e.g., RHEL-97661)" >&2
+		exit 1
+	fi
+
+	# Parse MR URL
+	local project_path mr_id
+	parse_mr_url "$mr_url"
+
+	echo -e "${INF}Jira:${OFF} $jira_key"
+	echo -e "${INF}MR:${OFF} $mr_url"
+
+	# Get MR title from GitLab
+	local mr_title
+	mr_title=$(get_mr_title "$project_path" "$mr_id")
+	if [[ -z "$mr_title" ]]; then
+		# Fallback to generic title
+		mr_title="MR !$mr_id"
+		echo -e "${INF}Title:${OFF} $mr_title (could not fetch from GitLab)"
+	else
+		echo -e "${INF}Title:${OFF} $mr_title"
+	fi
+
+	# Create the link
+	echo -e "${INF}Creating link...${OFF}"
+	if create_remote_link "$jira_key" "$mr_url" "$mr_title"; then
+		echo -e "${STA}✓ Successfully linked MR to $jira_key${OFF}"
+	else
+		exit 1
+	fi
+}
+
+main "$@"
