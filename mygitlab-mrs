@@ -471,7 +471,7 @@ list_mrs() {
 				(if .merged_at then "  \($INF)Merged:\($OFF) \(.merged_at)" else empty end),
 				"  \($INF)URL:\($OFF) \(.url)",
 				"  \($INF)Jira:\($OFF) \(if .jira == "missing" then "\($WRN)\(.jira)\($OFF)" else .jira end)",
-				(if .labels_action then "  \($WRN)Action Labels:\($OFF) \(.labels_action | join(", "))" else empty end),
+				(if .labels_action then "  \($WRN)Action Labels:\($OFF) \(if (.labels_action | length) > 0 then .labels_action | join(", ") else "None" end)" else empty end),
 				(if .labels_info then "  \($INF)Info Labels:\($OFF) \(.labels_info | join(", "))" else empty end),
 				""
 			'
