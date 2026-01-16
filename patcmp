@@ -53,7 +53,9 @@ declare -i prevmmindex		# previous index into the missmatch array (loop)
 declare -i maxmmindex		# highest mismatch index
 declare -i mismatch_count	# cardinal number of mismatches (maxmmindex + 1)
 declare -a mismatch_array	# array of patch numbers in the series that
-				# : conflict with upstream.
+			# : conflict with upstream.
+declare -A possible_fp		# associative array: index -> 1 if possible false positive
+declare -i possible_fp_count=0	# count of possible false positives
 declare -a mlfiles
 declare -a usfiles
 
@@ -318,6 +320,65 @@ EOF
 	return 0
 }
 
+#** check_possible_fp: check if a conflict might be a false positive
+#*
+#* Compares actual changes per-file between two patches.
+#* If all files have identical changes (just different context/offsets),
+#* marks it as a POSSIBLE false positive. User must verify.
+#*
+#* Arguments
+#*   $1 - path to RHEL/backport patch
+#*   $2 - path to upstream patch
+#*
+#* Returns
+#*   0 - possible false positive (per-file changes match)
+#*   1 - definite conflict (changes differ)
+#*
+check_possible_fp() {
+	local patch_a="$1"
+	local patch_b="$2"
+	local tmp_dir="/dev/shm/patcmp_fp.$$"
+	local file_a file_b file_escaped
+	local -a files_a files_b
+
+	mkdir -p "$tmp_dir"
+
+	# Extract files modified in each patch
+	mapfile -t files_a < <(grep '^diff --git' "$patch_a" | sed 's|.*a/||; s| b/.*||' | sort -u)
+	mapfile -t files_b < <(grep '^diff --git' "$patch_b" | sed 's|.*a/||; s| b/.*||' | sort -u)
+
+	# If different files are modified, it's a real conflict
+	if [[ "${files_a[*]}" != "${files_b[*]}" ]]; then
+		rm -rf "$tmp_dir"
+		return 1
+	fi
+
+	# Compare changes for each file
+	for file_a in "${files_a[@]}"; do
+		# Escape special regex chars in filename (especially /)
+		file_escaped=$(printf '%s' "$file_a" | sed 's/[.[\/*^$]/\\&/g')
+
+		# Extract changes for this file from each patch
+		# Use awk with escaped filename pattern
+		awk "/^diff --git.*$file_escaped/ { found=1; next }
+		     /^diff --git/ { found=0 }
+		     found && /^[+-][^+-]/ { print }" "$patch_a" | sort > "$tmp_dir/a_changes"
+
+		awk "/^diff --git.*$file_escaped/ { found=1; next }
+		     /^diff --git/ { found=0 }
+		     found && /^[+-][^+-]/ { print }" "$patch_b" | sort > "$tmp_dir/b_changes"
+
+		# If changes differ for any file, it's a real conflict
+		if ! diff -q "$tmp_dir/a_changes" "$tmp_dir/b_changes" > /dev/null 2>&1; then
+			rm -rf "$tmp_dir"
+			return 1
+		fi
+	done
+
+	rm -rf "$tmp_dir"
+	return 0  # All per-file changes match - possible false positive
+}
+
 say_nomismatch() {
 	echo -e "$INF *********************************************"
 	echo -e     " *                                           *"
@@ -330,9 +391,13 @@ say_nomismatch() {
 #
 # Prints:
 # 	conflict number. patch number: conflicting patch file
+#	Marks possible false positives with [?] at line start
+#	Indents other lines by 4 spaces if any [?] markers present
 #
 # Globals:
 # 	mismatch_array
+#	possible_fp
+#	possible_fp_count
 # 	mlfiles
 #
 show_mismatch() {
@@ -342,13 +407,25 @@ show_mismatch() {
 	local -i mlcountwid="${#mlcount}"	# field width of number of patch files
 	local -i mmcount="${#mismatch_array[@]}"	# number of mismatches
 	local -i mmcountwid="${#mmcount}"		# field width of mmcount
+	local prefix=""
+	local indent=""
+
+	# If there are any possible false positives, we need indentation
+	((possible_fp_count > 0)) && indent="    "
 
 	echo -e "\n${MNU}Patches conflicting with upstream commits$INF"
 	echo -e       "=========================================$OFF"
-	echo -e "${INF}Conflict number. Patch number: Conflicting Patch file$OFF"
+	((possible_fp_count > 0)) && \
+		echo -e "${INF}[?] = possible false positive (per-file changes match, verify manually)$OFF"
+	echo -e "${INF}${indent}Conflict number. Patch number: Conflicting Patch file$OFF"
 	for seqno in "${mismatch_array[@]}"; do
-		printf "${MNU}%${mmcountwid}d. %${mlcountwid}d: ${STA}%s${OFF}\n" \
-			"$confnum" "$((seqno + 1))" "${mlfiles[seqno]}"
+		if [[ -n "${possible_fp[$seqno]}" ]]; then
+			prefix="${INF}[?]${OFF} "
+		else
+			prefix="$indent"
+		fi
+		printf "%b${MNU}%${mmcountwid}d. %${mlcountwid}d: ${STA}%s${OFF}\n" \
+			"$prefix" "$confnum" "$((seqno + 1))" "${mlfiles[seqno]}"
 		((confnum++))
 	done
 }
@@ -367,21 +444,22 @@ show_mismatch() {
 #	index
 #
 init_mismatch() {
-	local line	# loop var gets each line in the mismatch_file
-	local verbosity	# level of verbosity in the mismatch_file
-	local seqno	# sequence number of patch
+	local line		# loop var gets each line in the mismatch_file
+	local verbosity		# level of verbosity in the mismatch_file
+	local seqno		# sequence number of patch
+	local -i patch_idx	# 0-based index into patch arrays
 
 	mmindex=0
+	possible_fp_count=0
+	mismatch_array=()
+	possible_fp=()
 
 	# Determine the verbose level of the mismatch_file
 	#
 	line=$(ui_readline 1 "$mismatch_file")
 	verbosity=$(echo "$line" | cut -d':' -f2)
 
-	# create the array of mismatched patched file indexes. The index is
-	# 0-based, while the patch sequence number is 1-basd, so subtract 1
-	# from each sequence number to get the index into the mlfiles and
-	# usfiles arrays.
+	# First pass: collect all conflicts into mismatch_array
 	#
 	while read -r line; do
 		[ "${line:0:6}" == "PATCH:" ] || continue
@@ -389,9 +467,20 @@ init_mismatch() {
 
 		seqno=$(echo "$line" | cut -d':' -f2)
 		mismatch_array[mmindex]=$((seqno - 1))
-
 		((mmindex++))
 	done < "$mismatch_file"
+
+	# Second pass: check each conflict for possible false positive
+	#
+	if ((mmindex > 0)); then
+		echo -e "\n${INF}Checking for possible false positives...$OFF"
+		for patch_idx in "${mismatch_array[@]}"; do
+			if check_possible_fp "${mlfiles[$patch_idx]}" "${usfiles[$patch_idx]}"; then
+				possible_fp[$patch_idx]=1
+				((possible_fp_count++))
+			fi
+		done
+	fi
 
 	[ ${#mismatch_array[@]} -gt 0 ] && show_mismatch
 
@@ -399,12 +488,12 @@ init_mismatch() {
 	maxmmindex=$((mismatch_count - 1))
 
 	if [ "$mismatch_count" -gt 0 ]; then
-		echo -e "\n${INF}Total number of conflicts with upstream:"\
-			"$STA$mismatch_count$OFF"
+		echo -e "\n${INF}Total conflicts with upstream: $STA$mismatch_count$OFF"
+		((possible_fp_count > 0)) && \
+			echo -e "${INF}Possible false positives [?]: $STA$possible_fp_count$INF (verify manually)$OFF"
 		last_mismatch=${mismatch_array[$((mmindex-1))]}
 		first_mismatch=${mismatch_array[0]}
 		index=$first_mismatch
-		# echo "mismatch_count; $mismatch_count max mmindex: $((mmindex-1))"
 		b_nomismatch=false
 		b_runmismatch=true
 	else
@@ -454,7 +543,7 @@ show_env() {
 }
 
 vim_cmd() {
-	vimdiff "$1" "$2"
+	vimdiff -c 'redraw!' "$1" "$2"
 }
 
 emacs_cmd() {
