@@ -91,20 +91,23 @@ parseopts() {
 	done
 }
 
-#** commit_exists: check if a commit hash exists in the repository
+#** commit_exists: check if a commit hash has been backported
 #
-# Uses git rev-parse for O(1) lookup against git's object database.
-# Much faster than grep through git log output.
+# Searches commit messages for the upstream hash, which appears in
+# cherry-pick annotations like "(cherry picked from commit <hash>)".
+# Uses git log --grep for efficient searching.
 #
 # Arguments
-#   $1 - commit hash to check
+#   $1 - upstream commit hash to check
 #
 # Returns
-#   0 - commit exists
-#   1 - commit does not exist
+#   0 - commit has been backported (hash found in commit messages)
+#   1 - commit not found
 #*
 commit_exists() {
-	git rev-parse --verify -q "$1^{commit}" > /dev/null 2>&1
+	local result
+	result=$(git log --grep="$1" --oneline -1 --no-merges 2>/dev/null)
+	[[ -n "$result" ]]
 }
 
 #** replaceline: replace a numbered line in a file
@@ -187,7 +190,7 @@ main() {
 		# Skip already-marked lines
 		[[ "${hash:0:1}" == "#" ]] && continue
 
-		# Check if commit exists (O(1) lookup via git rev-parse)
+		# Check if commit has been backported (search commit messages)
 		if commit_exists "$hash"; then
 			echo -e "${GRN}committed:${OFF}       $hash $rest"
 			mark_skip "$hash"
