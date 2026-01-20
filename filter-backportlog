@@ -9,7 +9,14 @@
 }
 declare bplog
 declare -a argv=()
-declare -i argc=1
+declare -i committed_count=0
+declare -i pending_count=0
+
+# Terminal colors
+declare OFF='\033[0m'
+declare GRN='\033[0;32m'
+declare YEL='\033[0;33m'
+declare INF='\033[0;36m'
 
 declare usagestr="$(
 cat <<EOF
@@ -29,7 +36,7 @@ Arguments
 EOF
 )"
 
-#** usage - print usage to the screen
+#** usage: print usage to the screen
 #
 # Globals:
 #   usagestr - Script info and usage instructions
@@ -45,7 +52,7 @@ usage() {
 #*
 control_c() {
 	echo -e "\nCtrl-c detected\nCleaning up and exiting."
-	exit $CTLC_EXIT
+	exitme 1
 }
 
 #** exitme
@@ -59,45 +66,45 @@ exitme() {
 	local msg="$2"
 
 	((code == 0)) && exit "$code"
-	echo -e "$msg"
+	[[ -n "$msg" ]] && echo -e "$msg" >&2
 	usage
 	exit "$code"
-}
-
-#** check_arg
-#
-# Globals:
-#   argv - array containing command line arguments
-#*
-check_arg() {
-        local arg="$1"
-
-        # If 1st char is a hyphen, then invalid switch
-        [ "${arg:0:1}" == "-" ] && return 1
-
-        # Otherwise, add the arg to the argary
-        argv+=("$arg")
-        return 0
 }
 
 #** parseopts
 #
 # Globals
 #   argv
-#   argc
 #*
 parseopts() {
 	while (($# > 0)); do
-	    case "$1" in
-		-h | --help )
-		     echo -e "$usagestr"
-		     exit 0
-		     ;;
-		* )  argv+=("$1")
-		     ;;
-	    esac
-	    shift
+		case "$1" in
+			-h|--help|help)
+				usage
+				exit 0
+				;;
+			*)
+				argv+=("$1")
+				;;
+		esac
+		shift
 	done
+}
+
+#** commit_exists: check if a commit hash exists in the repository
+#
+# Uses git rev-parse for O(1) lookup against git's object database.
+# Much faster than grep through git log output.
+#
+# Arguments
+#   $1 - commit hash to check
+#
+# Returns
+#   0 - commit exists
+#   1 - commit does not exist
+#*
+commit_exists() {
+	git rev-parse --verify -q "$1^{commit}" > /dev/null 2>&1
 }
 
 #** replaceline: replace a numbered line in a file
@@ -105,37 +112,41 @@ parseopts() {
 # Replaces one line in a file, using only the line number instead of
 # pattern matching.
 #
-# $1 - Line number
-# $2 - Text to write over the existing text in the line
-# $3 - File
-#
+# Arguments
+#   $1 - Line number
+#   $2 - Text to write over the existing text in the line
+#   $3 - File
 #*
 replaceline() {
-	local -i line
-	local new_content
+	local -i line="$1"
+	local new_content="$2"
+	local file="$3"
 	local tempfile
 
 	tempfile="$(mktemp)"
 
-	awk -v line="$1" -v new_content="$2" '{
+	awk -v line="$line" -v new_content="$new_content" '{
 		if (NR == line) {
 			print new_content;
 		} else {
 			print $0;
 		}
-	}' "$3" > "$tempfile"
-	[ -f "$tempfile" ] && mv -f "$tempfile" "$3"
+	}' "$file" > "$tempfile"
+	[ -f "$tempfile" ] && mv -f "$tempfile" "$file"
 
 	rm -f "$tempfile"
 }
 
 #** mark_skip: mark the line with a leading #
 #
-#  Indicates the upstream hash in this line of the backport commits file has
-#  been backported.
+# Indicates the upstream hash in this line of the backport commits file has
+# been backported.
 #
-#     ARGUMENTS:  $1 - uphash, upstream hash to mark with a leading #
-#       GLOBALS:  bplog
+# Arguments
+#   $1 - uphash, upstream hash to mark with a leading #
+#
+# Globals
+#   bplog
 #*
 mark_skip() {
 	local uphash="$1"
@@ -154,23 +165,45 @@ mark_skip() {
 #*
 main() {
 	local line
+	local hash
+	local rest
 
-        # Trap for control-c
-        trap control_c SIGINT
+	# Trap for control-c
+	trap control_c SIGINT
 
 	parseopts "$@"
 	bplog="${argv[0]}"
+	[[ -z "$bplog" ]] && exitme 1 "No backport log file specified"
 	bplog="$(realpath "$bplog")"
 	[ -f "$bplog" ] || exitme 1 "Cannot find: $bplog"
 
-	while read line; do
-		line=$(cut -d' ' -f1 <<< "$line")
-		[[ "${line:0:1}" == "#" ]] && continue
-		git log --oneline --no-merges | grep -m1 "$line" \
-			&& mark_skip "$line"
+	echo -e "${INF}Checking commits in backport log...${OFF}\n"
+
+	# Process each line in the backport log
+	while IFS= read -r line; do
+		hash="${line%% *}"
+		rest="${line#* }"
+
+		# Skip already-marked lines
+		[[ "${hash:0:1}" == "#" ]] && continue
+
+		# Check if commit exists (O(1) lookup via git rev-parse)
+		if commit_exists "$hash"; then
+			echo -e "${GRN}committed:${OFF}       $hash $rest"
+			mark_skip "$hash"
+			((committed_count++))
+		else
+			echo -e "${YEL}not yet committed:${OFF} $hash $rest"
+			((pending_count++))
+		fi
 	done < "$bplog"
 
-	exitme 0
+	# Print summary
+	echo -e "\n${INF}Summary:${OFF}"
+	echo -e "  ${GRN}Committed (marked with #):${OFF} $committed_count"
+	echo -e "  ${YEL}Not yet committed:${OFF}         $pending_count"
+
+	exit 0
 }
 
 main "$@"
