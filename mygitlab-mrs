@@ -42,16 +42,17 @@ declare -a title_filters=()    # Multiple -t patterns are ANDed
 declare date_before=""
 declare date_after=""
 declare -i b_count_only=0
-declare -i b_labels_action=0    # Show action-needed labels
-declare -i b_labels_info=0      # Show informational labels
+declare -i b_labels_action=1    # Show action-needed labels (default: on)
+declare -i b_labels_info=1      # Show informational labels (default: on)
 declare -i b_json=0             # Output as JSON
 declare usagestr="$(
 cat <<EOF
-$(basename "$0") [-so] [-sm] [-sc] [-p project] [-t text] [-da date] [-db date] [-la] [-li] [-j] [-c]
+$(basename "$0") [-so] [-sm] [-sc] [-p project] [-t text] [-da date] [-db date] [-nl] [-j] [-c]
 
 List GitLab merge requests authored by you.
 
-By default, all your MRs are returned. Use filter switches to narrow the results.
+By default, all your MRs are returned with both action and informational labels shown.
+Use filter switches to narrow the results.
 
 Filter Switches (all optional, can be combined):
   -so         Include open MRs
@@ -61,8 +62,7 @@ Filter Switches (all optional, can be combined):
   -t text     Filter MR titles by text/regex (case-insensitive, multiple ANDed)
   -da date    Filter MRs created after (since) the given date
   -db date    Filter MRs created before the given date
-  -la         Show action-needed labels (not ::OK, not ::None, not Subsystem:)
-  -li         Show informational labels (Subsystem:, Dependencies:, etc.)
+  -nl         No labels - suppress label output (labels shown by default)
   -j          Output as JSON (default is human-readable)
   -c          Print only the count of MRs matching the filter(s)
   -h          Show this help message
@@ -104,11 +104,8 @@ Examples:
   $(basename "$0") -so -p "rhel-9" -t "net" -c
       Count open MRs in "rhel-9" projects with titles matching "net"
 
-  $(basename "$0") -so -la
-      List open MRs with action-needed labels (Conflicts, Missing, Failed, etc.)
-
-  $(basename "$0") -so -la -li
-      List open MRs with both action and informational labels shown
+  $(basename "$0") -so -nl
+      List open MRs without label output (labels are shown by default)
 
 EOF
 )"
@@ -548,11 +545,9 @@ parse_args() {
 			-c)
 				b_count_only=1
 				;;
-			-la)
-				b_labels_action=1
-				;;
-			-li)
-				b_labels_info=1
+			-nl)
+				b_labels_action=0
+				b_labels_info=0
 				;;
 			-j)
 				b_json=1
