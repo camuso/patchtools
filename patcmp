@@ -2,7 +2,7 @@
 #
 # compare submitted patches with upstream
 
-declare version="8.0"
+declare version="9.0"
 
 declare MYDIR=
 MYDIR="$(dirname "$(readlink -f "$0")")"
@@ -10,6 +10,7 @@ declare MYLIB="$MYDIR"/lib
 
 [ "$ui_loaded" ]         || source "$MYLIB"/ui.source
 [ "$patchutils_loaded" ] || source "$MYLIB"/patch-utils.source
+[ "$ai_loaded" ]         || source "$MYLIB"/ai-analysis.source
 
 declare -i code_ok=0
 declare -i code_special_action=1
@@ -107,6 +108,12 @@ $(basename "$0") [options] dir-1 dir-2 editor commits-file
   -q         - OPTIONAL Quiet operation, non-verbose output.
 
   -h         - This help text.
+
+  Interactive Menu Options (partial list):
+    A - AI analysis of all conflicts (requires ollama or ANTHROPIC_API_KEY)
+    c - show conflicting patches
+    m - toggle mismatch-only mode
+    C - run batch comparison to find conflicts
 
   Exit codes:
     0 - normal exit
@@ -819,6 +826,8 @@ while :; do
 	echo -e  "\t${MNU}s$OFF - show contents of conflicts log"
 	echo -e  "\t${MNU}e$OFF - show environment, directories, last tag, etc.$OFF"
 	echo -e  "\t${MNU}C$OFF - run batch file comparison to find conflicts with upstream$OFF"
+	$b_runmismatch && \
+	echo -e  "\t${MNU}A$OFF - AI analysis of all conflicts (using $(ai_get_backend_display))$OFF"
 	echo -e  "\t${MNU}q$OFF - quit and return to previous execution environment"
 	$b_zstr && echo -e  "\t${MNU}z$OFF - $zstr"
 	echo -e  "$anystr$STA$((index + 1))$MNU of $STA$((maxindex + 1))$MNU.$OFF"
@@ -895,6 +904,14 @@ while :; do
 			continue
 			;;
 		f )	show_missing_fixes
+			continue
+			;;
+		A )	if $b_runmismatch && ((${#mismatch_array[@]} > 0)); then
+				ai_analyze_all_conflicts
+			else
+				echo -e "${WRN}No conflicts to analyze.${OFF}"
+				echo -e "${INF}Run 'C' first to detect conflicts.${OFF}"
+			fi
 			continue
 			;;
 	esac
