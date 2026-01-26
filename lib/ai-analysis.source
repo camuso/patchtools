@@ -1,0 +1,457 @@
+#!/bin/bash
+#
+# ai-analysis.source - AI-assisted patch conflict analysis
+#
+# Provides functions for using LLMs (ollama local or Anthropic API)
+# to analyze patch conflicts and determine if they are true conflicts
+# or false positives.
+#
+
+declare ai_loaded=true
+declare ai_backend=""		# "ollama" or "anthropic"
+declare ai_model=""		# Model name to use
+declare -i ai_configured=0	# Whether AI has been configured
+
+# Default models
+declare OLLAMA_MODEL="llama3.2"
+declare ANTHROPIC_MODEL="claude-3-5-sonnet-20241022"
+
+#** ai_get_backend_display: get display string for current/available backend
+#*
+#* Returns a string suitable for menu display indicating which AI
+#* backend is or will be used.
+#*
+#* Outputs
+#*   Backend display string to stdout
+#*
+ai_get_backend_display() {
+	# If already configured, show what's in use
+	if ((ai_configured)); then
+		echo "$ai_backend"
+		return
+	fi
+
+	# Otherwise, show what will be used
+	if ai_check_ollama; then
+		echo "ollama"
+	elif ai_check_anthropic; then
+		echo "anthropic"
+	else
+		echo "install required"
+	fi
+}
+
+#** ai_check_ollama: check if ollama is installed and running
+#*
+#* Returns
+#*   0 - ollama is available
+#*   1 - ollama is not available
+#*
+ai_check_ollama() {
+	command -v ollama &>/dev/null || return 1
+	ollama list &>/dev/null || return 1
+	return 0
+}
+
+#** ai_check_anthropic: check if Anthropic API is configured
+#*
+#* Looks for ANTHROPIC_API_KEY environment variable
+#*
+#* Returns
+#*   0 - API key is set
+#*   1 - API key is not set
+#*
+ai_check_anthropic() {
+	[[ -n "$ANTHROPIC_API_KEY" ]] && return 0
+	return 1
+}
+
+#** ai_install_ollama: offer to install ollama
+#*
+#* Returns
+#*   0 - ollama installed successfully
+#*   1 - user declined or installation failed
+#*
+ai_install_ollama() {
+	echo -e "${INF}Ollama is not installed.${OFF}"
+	echo -e "${INF}Ollama provides local AI analysis (no cloud, no cost).${OFF}"
+	echo ""
+	read -rp "Would you like to install ollama now? (y/n): " response
+	if [[ "$response" =~ ^[Yy] ]]; then
+		echo -e "${INF}Installing ollama...${OFF}"
+		curl -fsSL https://ollama.com/install.sh | sh
+		if [[ $? -ne 0 ]]; then
+			echo -e "${WRN}Failed to install ollama.${OFF}"
+			return 1
+		fi
+		echo -e "${INF}Pulling model $OLLAMA_MODEL...${OFF}"
+		ollama pull "$OLLAMA_MODEL"
+		if [[ $? -ne 0 ]]; then
+			echo -e "${WRN}Failed to pull model.${OFF}"
+			return 1
+		fi
+		echo -e "${STA}Ollama installed successfully!${OFF}"
+		return 0
+	fi
+	return 1
+}
+
+#** ai_configure: detect and configure AI backend
+#*
+#* Checks for available AI backends in order of preference:
+#*   1. ollama (local)
+#*   2. Anthropic API (cloud)
+#*
+#* Globals
+#*   ai_backend - set to the configured backend
+#*   ai_model - set to the model to use
+#*   ai_configured - set to 1 if configured
+#*
+#* Returns
+#*   0 - AI configured successfully
+#*   1 - no AI backend available
+#*
+ai_configure() {
+	# Already configured?
+	((ai_configured)) && return 0
+
+	echo -e "\n${INF}Configuring AI analysis backend...${OFF}"
+
+	# Check ollama first (preferred - local)
+	if ai_check_ollama; then
+		ai_backend="ollama"
+		ai_model="$OLLAMA_MODEL"
+		ai_configured=1
+		echo -e "${STA}Using ollama with model: $ai_model${OFF}"
+		return 0
+	fi
+
+	# Check Anthropic API
+	if ai_check_anthropic; then
+		ai_backend="anthropic"
+		ai_model="$ANTHROPIC_MODEL"
+		ai_configured=1
+		echo -e "${STA}Using Anthropic API with model: $ai_model${OFF}"
+		return 0
+	fi
+
+	# Neither available - offer to install ollama
+	echo -e "${WRN}No AI backend detected.${OFF}"
+	if ai_install_ollama; then
+		ai_backend="ollama"
+		ai_model="$OLLAMA_MODEL"
+		ai_configured=1
+		return 0
+	fi
+
+	# Check if they have an API key to set
+	echo ""
+	echo -e "${INF}Alternatively, you can set ANTHROPIC_API_KEY environment variable${OFF}"
+	echo -e "${INF}to use the Anthropic Claude API.${OFF}"
+	echo ""
+	return 1
+}
+
+#** ai_query_ollama: send query to ollama
+#*
+#* Arguments
+#*   $1 - prompt text
+#*   $2 - output file for response
+#*
+#* Returns
+#*   0 - success
+#*   1 - failure
+#*
+ai_query_ollama() {
+	local prompt="$1"
+	local outfile="$2"
+
+	ollama run "$ai_model" "$prompt" > "$outfile" 2>/dev/null
+	return $?
+}
+
+#** ai_query_anthropic: send query to Anthropic API
+#*
+#* Arguments
+#*   $1 - prompt text
+#*   $2 - output file for response
+#*
+#* Returns
+#*   0 - success
+#*   1 - failure
+#*
+ai_query_anthropic() {
+	local prompt="$1"
+	local outfile="$2"
+	local response
+
+	# Escape the prompt for JSON
+	local escaped_prompt
+	escaped_prompt=$(printf '%s' "$prompt" | jq -Rs .)
+
+	response=$(curl -s "https://api.anthropic.com/v1/messages" \
+		-H "Content-Type: application/json" \
+		-H "x-api-key: $ANTHROPIC_API_KEY" \
+		-H "anthropic-version: 2023-06-01" \
+		-d "{
+			\"model\": \"$ai_model\",
+			\"max_tokens\": 1024,
+			\"messages\": [{
+				\"role\": \"user\",
+				\"content\": $escaped_prompt
+			}]
+		}" 2>/dev/null)
+
+	if [[ $? -ne 0 ]]; then
+		echo "Error querying Anthropic API" > "$outfile"
+		return 1
+	fi
+
+	# Extract the text content from the response
+	echo "$response" | jq -r '.content[0].text // .error.message // "Unknown error"' > "$outfile"
+	return 0
+}
+
+#** ai_query: send query to configured AI backend with progress indicator
+#*
+#* Runs the query in background and shows dots while waiting.
+#*
+#* Arguments
+#*   $1 - prompt text
+#*   $2 - output file for response
+#*   $3 - optional status message
+#*
+#* Returns
+#*   0 - success
+#*   1 - failure
+#*
+ai_query() {
+	local prompt="$1"
+	local outfile="$2"
+	local msg="$3"
+	local -i pid
+	local -i stat
+
+	case "$ai_backend" in
+		ollama)
+			ai_query_ollama "$prompt" "$outfile" &
+			pid=$!
+			;;
+		anthropic)
+			ai_query_anthropic "$prompt" "$outfile" &
+			pid=$!
+			;;
+		*)
+			echo "No AI backend configured" > "$outfile"
+			return 1
+			;;
+	esac
+
+	# Show dots while waiting (0.5 sec interval)
+	ui_waitonproc_tty "$pid" 0.5 "$msg"
+	stat=$?
+	return $stat
+}
+
+#** ai_analyze_conflict: analyze a single patch conflict with AI
+#*
+#* Sends both patches to the LLM and asks it to determine if the
+#* conflict is a true conflict or a false positive.
+#*
+#* If the downstream patch contains a "Conflicts:" stanza, the submitter
+#* has already documented the conflict, so skip AI analysis and report
+#* as a documented true conflict.
+#*
+#* Arguments
+#*   $1 - path to downstream patch
+#*   $2 - path to upstream patch
+#*   $3 - patch number (for display)
+#*
+#* Outputs
+#*   Analysis result to stdout (wrapped at 75 chars)
+#*
+#* Returns
+#*   0 - likely false positive
+#*   1 - true conflict
+#*   2 - error/uncertain
+#*
+ai_analyze_conflict() {
+	local patch_down="$1"
+	local patch_up="$2"
+	local patch_num="$3"
+	local prompt
+	local response
+	local verdict
+	local tmpfile="/dev/shm/ai_response.$$"
+
+	# Check for documented conflicts - skip AI analysis (trust submitter)
+	if grep -q "^Conflicts:" "$patch_down"; then
+		echo -e "${WRN}Patch $patch_num: TRUE CONFLICT (documented by submitter)${OFF}"
+		sed -n '/^Conflicts:/,/^$/p' "$patch_down" | head -10 | fold -s -w 75
+		echo ""
+		return 1  # true conflict
+	fi
+
+	# Pre-check: Compare file lists - if different, it's definitely a conflict
+	local files_down files_up
+	files_down=$(grep '^diff --git' "$patch_down" | sed 's|.*a/||; s| b/.*||' | sort)
+	files_up=$(grep '^diff --git' "$patch_up" | sed 's|.*a/||; s| b/.*||' | sort)
+	if [[ "$files_down" != "$files_up" ]]; then
+		echo -e "${WRN}Patch $patch_num: TRUE CONFLICT (different files modified)${OFF}"
+		echo "Downstream files: $(echo "$files_down" | wc -l)"
+		echo "Upstream files: $(echo "$files_up" | wc -l)"
+		echo ""
+		return 1  # true conflict
+	fi
+
+	# Read patch contents (truncate if too large)
+	local down_content up_content
+	down_content=$(head -200 "$patch_down")
+	up_content=$(head -200 "$patch_up")
+
+	prompt="You are analyzing two kernel patches to determine if applying either patch would result in the SAME code changes in the affected areas.
+
+DOWNSTREAM PATCH (backported to RHEL):
+\`\`\`
+$down_content
+\`\`\`
+
+UPSTREAM PATCH (original from Linux kernel):
+\`\`\`
+$up_content
+\`\`\`
+
+Focus on the OUTCOME, not the structure:
+- Ignore hunk boundaries (one patch may split changes into multiple hunks)
+- Ignore context line numbers (they shift due to unrelated changes)
+- Compare the actual code being added (+) and removed (-)
+
+A TRUE CONFLICT exists if:
+- One patch adds/removes code that the other doesn't
+- The patches change the same lines differently
+- One patch modifies files the other doesn't touch
+- The downstream explicitly elides or skips upstream changes
+
+A FALSE POSITIVE exists if:
+- Both patches make the SAME additions and removals
+- The differences are only in hunk structure or context offsets
+- Applying either patch would result in identical code in affected areas
+
+Respond with EXACTLY one of these verdicts on the first line:
+- VERDICT: FALSE_POSITIVE (same code changes, different structure)
+- VERDICT: TRUE_CONFLICT (different code changes)
+- VERDICT: UNCERTAIN (cannot determine)
+
+Then provide a brief explanation (2-3 sentences max)."
+
+	# Query with progress dots
+	ai_query "$prompt" "$tmpfile" "${INF}Analyzing patch $patch_num${OFF}"
+
+	if [[ $? -ne 0 ]] || [[ ! -s "$tmpfile" ]]; then
+		echo -e "${WRN}Error analyzing patch $patch_num${OFF}"
+		rm -f "$tmpfile"
+		return 2
+	fi
+
+	response=$(cat "$tmpfile")
+	rm -f "$tmpfile"
+
+	# Parse the verdict
+	if echo "$response" | grep -q "VERDICT: FALSE_POSITIVE"; then
+		verdict="FALSE_POSITIVE"
+		echo -e "${STA}Patch $patch_num: Likely FALSE POSITIVE${OFF}"
+	elif echo "$response" | grep -q "VERDICT: TRUE_CONFLICT"; then
+		verdict="TRUE_CONFLICT"
+		echo -e "${WRN}Patch $patch_num: TRUE CONFLICT${OFF}"
+	else
+		verdict="UNCERTAIN"
+		echo -e "${MNU}Patch $patch_num: UNCERTAIN${OFF}"
+	fi
+
+	# Print the explanation (skip the verdict line, wrap at 75 chars)
+	echo "$response" | tail -n +2 | head -5 | fold -s -w 75
+	echo ""
+
+	case "$verdict" in
+		FALSE_POSITIVE) return 0 ;;
+		TRUE_CONFLICT) return 1 ;;
+		*) return 2 ;;
+	esac
+}
+
+#** ai_analyze_all_conflicts: analyze all conflicts with AI
+#*
+#* Iterates through all conflicts in mismatch_array and analyzes each.
+#*
+#* Globals
+#*   mismatch_array - array of conflict indices
+#*   mlfiles - downstream patch files
+#*   usfiles - upstream patch files
+#*
+#* Returns
+#*   0 - analysis complete
+#*   1 - AI not configured or error
+#*
+ai_analyze_all_conflicts() {
+	local -i idx
+	local -i patch_idx
+	local -i fp_count=0
+	local -i tc_count=0
+	local -i doc_count=0
+	local -i unc_count=0
+	local -i ai_count=0
+	local -i total=${#mismatch_array[@]}
+	local result
+	local patch_file
+
+	# Count documented conflicts first (no AI needed for these)
+	for idx in "${!mismatch_array[@]}"; do
+		patch_idx=${mismatch_array[$idx]}
+		patch_file="${mlfiles[$patch_idx]}"
+		if grep -q "^Conflicts:" "$patch_file"; then
+			((doc_count++))
+		else
+			((ai_count++))
+		fi
+	done
+
+	echo -e "\n${MNU}AI Analysis of All Conflicts${OFF}"
+	echo -e "${INF}==============================${OFF}"
+	echo -e "${INF}Total conflicts: $total${OFF}"
+	echo -e "${INF}Documented by submitter: $doc_count (skipping AI)${OFF}"
+	echo -e "${INF}Requiring AI analysis: $ai_count${OFF}"
+
+	if ((ai_count > 0)); then
+		if ! ai_configure; then
+			echo -e "${WRN}AI analysis not available.${OFF}"
+			return 1
+		fi
+		echo -e "${INF}Backend: $ai_backend | Model: $ai_model${OFF}"
+	fi
+	echo ""
+
+	for idx in "${!mismatch_array[@]}"; do
+		patch_idx=${mismatch_array[$idx]}
+		ai_analyze_conflict "${mlfiles[$patch_idx]}" "${usfiles[$patch_idx]}" "$((patch_idx + 1))"
+		result=$?
+
+		case $result in
+			0) ((fp_count++)) ;;
+			1) ((tc_count++)) ;;
+			*) ((unc_count++)) ;;
+		esac
+	done
+
+	echo -e "${MNU}========= Analysis Summary =========${OFF}"
+	echo -e "${STA}Likely False Positives:      $fp_count${OFF}"
+	echo -e "${WRN}True Conflicts (documented): $doc_count${OFF}"
+	((tc_count > doc_count)) && \
+	echo -e "${WRN}True Conflicts (AI detected):$((tc_count - doc_count))${OFF}"
+	((unc_count > 0)) && echo -e "${MNU}Uncertain:                   $unc_count${OFF}"
+	echo -e "${INF}Total conflicts:             $total${OFF}"
+	echo ""
+
+	read -rn1 -p "Press any key to continue..."
+	echo ""
+	return 0
+}
