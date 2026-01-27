@@ -337,6 +337,9 @@ A FALSE POSITIVE exists if:
 - The differences are only in hunk structure or context offsets
 - Applying either patch would result in identical code in affected areas
 
+When explaining, say "the differences are" not "the changes are" when
+describing what varies between patches.
+
 Respond with EXACTLY one of these verdicts on the first line:
 - VERDICT: FALSE_POSITIVE (same code changes, different structure)
 - VERDICT: TRUE_CONFLICT (different code changes)
