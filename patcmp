@@ -347,6 +347,11 @@ check_possible_fp() {
 	local tmp_dir="/dev/shm/patcmp_fp.$$"
 	local -a files_a files_b
 
+	# If downstream has Conflicts: stanza, submitter documented it as real
+	if grep -q '^Conflicts:' "$patch_a"; then
+		return 1
+	fi
+
 	mkdir -p "$tmp_dir"
 
 	# Extract files modified in each patch
