@@ -57,6 +57,7 @@ declare -i b_reporter=0         # Show reporter if not $USER
 declare -i b_assignee=0         # Show assignee if not $USER
 declare -i b_history=0          # Show change history
 declare -i b_show_bots=0        # Include bot activity (default: hide bots)
+declare -i b_labels=1           # Show labels (default: on)
 # Common bot name patterns (case-insensitive match)
 declare BOT_PATTERN="bot|automation|jenkins|bugzilla|jira|sync|service.account|system"
 declare -i b_json=0             # Output as JSON
@@ -95,6 +96,7 @@ ${HDR}OPTIONS${OFF}
     ${MNU}-A${OFF}            Show Assignee (if not you)
     ${MNU}-r${OFF}            Show Reporter (if not you)
     ${MNU}-W${OFF}            Show Watchers
+    ${MNU}-nl${OFF}           No Labels (suppress label display)
     ${MNU}-j${OFF}            Output as JSON
     ${MNU}-v${OFF}            Verbose output
     ${MNU}-n${OFF} NUM        Max results (default: $MAX_RESULTS)
@@ -298,7 +300,7 @@ jira_request() {
 search_issues() {
     local jql="$1"
     local encoded_jql
-    local fields="key,summary,status,priority,issuetype,assignee,reporter,created,updated"
+    local fields="key,summary,status,priority,issuetype,assignee,reporter,created,updated,labels"
     local expand=""
     
     # Add optional fields
@@ -458,6 +460,15 @@ format_issue() {
     fi
     
     echo -e "  ${INF}Type:${OFF} $issuetype  ${INF}Priority:${OFF} $priority  ${INF}Updated:${OFF} $updated"
+    
+    # Show labels if enabled
+    if ((b_labels)); then
+        local labels_str
+        labels_str=$(echo "$issue" | jq -r '.fields.labels | if length > 0 then join(", ") else empty end')
+        if [[ -n "$labels_str" ]]; then
+            echo -e "  ${INF}Labels:${OFF} $labels_str"
+        fi
+    fi
     
     # Show assignee if requested and not current user
     if ((b_assignee)); then
@@ -659,6 +670,17 @@ format_results() {
 # @exitcode 1 Invalid options
 #
 parse_opts() {
+    # Pre-process for long options before getopts
+    local args=()
+    while (( $# > 0 )); do
+        case "$1" in
+            -nl) b_labels=0 ;;
+            *) args+=("$1") ;;
+        esac
+        shift
+    done
+    set -- "${args[@]}"
+    
     while getopts "p:R:t:s:q:d:cCHBArWjvn:h" opt; do
         case $opt in
             p) project="$OPTARG" ;;
