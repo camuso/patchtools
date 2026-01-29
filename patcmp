@@ -345,7 +345,6 @@ check_possible_fp() {
 	local patch_a="$1"
 	local patch_b="$2"
 	local tmp_dir="/dev/shm/patcmp_fp.$$"
-	local file_a file_b file_escaped
 	local -a files_a files_b
 
 	mkdir -p "$tmp_dir"
@@ -360,30 +359,19 @@ check_possible_fp() {
 		return 1
 	fi
 
-	# Compare changes for each file
-	for file_a in "${files_a[@]}"; do
-		# Escape special regex chars in filename (especially /)
-		file_escaped=$(printf '%s' "$file_a" | sed 's/[.[\/*^$]/\\&/g')
+	# Compare all +/- lines (actual changes) between patches
+	# Since file lists match, comparing sorted change lines detects false positives
+	# caused by context shifts while catching true conflicts where changes differ
+	grep '^[+-][^+-]' "$patch_a" | sort > "$tmp_dir/a_changes"
+	grep '^[+-][^+-]' "$patch_b" | sort > "$tmp_dir/b_changes"
 
-		# Extract changes for this file from each patch
-		# Use awk with escaped filename pattern
-		awk "/^diff --git.*$file_escaped/ { found=1; next }
-		     /^diff --git/ { found=0 }
-		     found && /^[+-][^+-]/ { print }" "$patch_a" | sort > "$tmp_dir/a_changes"
-
-		awk "/^diff --git.*$file_escaped/ { found=1; next }
-		     /^diff --git/ { found=0 }
-		     found && /^[+-][^+-]/ { print }" "$patch_b" | sort > "$tmp_dir/b_changes"
-
-		# If changes differ for any file, it's a real conflict
-		if ! diff -q "$tmp_dir/a_changes" "$tmp_dir/b_changes" > /dev/null 2>&1; then
-			rm -rf "$tmp_dir"
-			return 1
-		fi
-	done
+	if ! diff -q "$tmp_dir/a_changes" "$tmp_dir/b_changes" > /dev/null 2>&1; then
+		rm -rf "$tmp_dir"
+		return 1
+	fi
 
 	rm -rf "$tmp_dir"
-	return 0  # All per-file changes match - possible false positive
+	return 0  # Same files, same changes - possible false positive
 }
 
 say_nomismatch() {

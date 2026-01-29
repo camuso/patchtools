@@ -309,7 +309,7 @@ ai_analyze_conflict() {
 	down_content=$(head -200 "$patch_down")
 	up_content=$(head -200 "$patch_up")
 
-	prompt="You are analyzing two kernel patches to determine if applying either patch would result in the SAME code changes in the affected areas.
+	prompt="You are analyzing two kernel patches to determine if they make IDENTICAL code changes.
 
 DOWNSTREAM PATCH (backported to RHEL):
 \`\`\`
@@ -321,27 +321,32 @@ UPSTREAM PATCH (original from Linux kernel):
 $up_content
 \`\`\`
 
-Focus on the OUTCOME, not the structure:
-- Ignore hunk boundaries (one patch may split changes into multiple hunks)
-- Ignore context line numbers (they shift due to unrelated changes)
-- Compare the actual code being added (+) and removed (-)
+STRICT COMPARISON RULES:
+- The +/- lines (actual code changes) must be IDENTICAL for a FALSE_POSITIVE
+- Variable or function name differences = TRUE_CONFLICT (not equivalent)
+- Macro name differences = TRUE_CONFLICT
+- Any identifier change = TRUE_CONFLICT
+
+ACCEPTABLE DIFFERENCES (still FALSE_POSITIVE):
+- Whitespace-only differences (leading/trailing spaces, tabs vs spaces)
+- Hunk boundaries (one patch may split changes into multiple hunks)
+- Context line numbers (they shift due to unrelated upstream changes)
+- Context line content (surrounding unchanged code may differ)
 
 A TRUE CONFLICT exists if:
+- Any +/- line has different content (beyond whitespace)
+- Variable, function, or macro names differ between patches
 - One patch adds/removes code that the other doesn't
-- The patches change the same lines differently
-- One patch modifies files the other doesn't touch
 - The downstream explicitly elides or skips upstream changes
 
 A FALSE POSITIVE exists if:
-- Both patches make the SAME additions and removals
-- The differences are only in hunk structure or context offsets
-- Applying either patch would result in identical code in affected areas
+- The +/- lines are identical (or differ only in whitespace)
+- The differences are only in hunk structure, context, or line offsets
 
-When explaining, say "the differences are" not "the changes are" when
-describing what varies between patches.
+When explaining, say "the differences are" not "the changes are".
 
 Respond with EXACTLY one of these verdicts on the first line:
-- VERDICT: FALSE_POSITIVE (same code changes, different structure)
+- VERDICT: FALSE_POSITIVE (identical changes, context/structure differs)
 - VERDICT: TRUE_CONFLICT (different code changes)
 - VERDICT: UNCERTAIN (cannot determine)
 
