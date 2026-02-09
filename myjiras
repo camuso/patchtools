@@ -47,6 +47,7 @@ declare HDR='\033[1;37m'    # Bold white
 
 declare project="RHEL"          # Jira project key (default: RHEL)
 declare -a title_filters=()     # Optional: text filters for title (multiple allowed)
+declare -a label_filters=()     # Optional: label filters (multiple allowed, ANDed)
 declare status_filter=""        # Optional: status filter (open, closed, etc.)
 declare jql_query=""            # Optional: raw JQL query to append
 declare history_since=""        # Optional: filter history to changes after this date
@@ -85,6 +86,7 @@ ${HDR}OPTIONS${OFF}
     ${MNU}-p${OFF} PROJECT    Jira project key (default: RHEL)
     ${MNU}-R${OFF} ROLE       Filter by role: assignee, reporter, watcher, all (default: all)
     ${MNU}-t${OFF} TEXT       Filter by title/summary text (see TITLE FILTER below)
+    ${MNU}-l${OFF} LABEL      Filter by label (multiple -l options are ORed)
     ${MNU}-s${OFF} STATUS     Filter by status (open, closed, in-progress, or exact status name)
     ${MNU}-q${OFF} JQL        Raw JQL query (appended with AND to other filters)
     ${MNU}-c${OFF}            Show latest comment
@@ -359,6 +361,7 @@ get_remote_links() {
 # @set project string Project key
 # @set role string User role filter
 # @set title_filters array Title text filters (multiple, ANDed together)
+# @set label_filters array Label filters (multiple, ORed together)
 # @set status_filter string Status filter
 # @set jql_query string Raw JQL query to append
 #
@@ -389,6 +392,16 @@ build_jql() {
         local jql_filter="${filter//|/ OR }"
         jql+=" AND summary ~ \"$jql_filter\""
     done
+    
+    # Add label filters if specified (multiple -l options are ORed)
+    if (( ${#label_filters[@]} > 0 )); then
+        local label_jql=""
+        for label in "${label_filters[@]}"; do
+            [[ -n "$label_jql" ]] && label_jql+=", "
+            label_jql+="\"$label\""
+        done
+        jql+=" AND labels in ($label_jql)"
+    fi
     
     # Add status filter if specified
     if [[ -n "$status_filter" ]]; then
@@ -681,11 +694,12 @@ parse_opts() {
     done
     set -- "${args[@]}"
     
-    while getopts "p:R:t:s:q:d:cCHBArWjvn:h" opt; do
+    while getopts "p:R:t:l:s:q:d:cCHBArWjvn:h" opt; do
         case $opt in
             p) project="$OPTARG" ;;
             R) role="$OPTARG" ;;
             t) title_filters+=("$OPTARG") ;;
+            l) label_filters+=("$OPTARG") ;;
             s) status_filter="$OPTARG" ;;
             q) jql_query="$OPTARG" ;;
             d) history_since="$OPTARG"; b_history=1 ;;
