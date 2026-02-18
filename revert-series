@@ -1,0 +1,494 @@
+#!/bin/bash
+#
+# revert-series - Revert a patch series in reverse order
+#
+# Takes a directory containing numbered patch files and reverts them
+# in reverse numeric order, applying the reverts to the git repo in PWD.
+# Each reverted patch is committed separately.
+#
+
+#######################################
+# Script-Level Variables
+#######################################
+
+declare OFF=$'\e[0m'
+declare BLD=$'\e[1m'
+declare INF=$'\e[0;96m'
+declare WRN=$'\e[0;93m'
+declare CAU=$'\e[0;91m'
+declare STA=$'\e[0;92m'
+
+declare patch_dir=""
+declare jira_number=""
+declare -a patch_files=()
+declare -i dry_run=0
+
+declare usagestr="$(
+cat <<EOF
+$(basename "$0") [-h] [-n] [-j NUMBER] PATCH_DIR
+
+Revert a patch series in reverse numeric order.
+
+Each reverted patch is committed separately with a modified commit message.
+
+Arguments:
+  PATCH_DIR      Directory containing numbered patch files
+
+Options:
+  -h, --help     Show this help message
+  -n, --dry-run  Show what would be done without making changes
+  -j NUMBER      Jira number (numeric only, e.g., 12345)
+                 Replaces the last number in the JIRA: URL line
+
+The patches must be numbered files (e.g., 0001-foo.patch, 0002-bar.patch).
+They will be reverted in reverse numeric order (highest number first).
+
+The commit message is modified:
+  - JIRA: URL has its trailing number replaced with -j NUMBER
+  - Upstream status: line is replaced with "Upstream status: RHEL-only"
+
+The current working directory must be a valid git repository.
+
+Examples:
+  $(basename "$0") -j 149438 ~/patches/my-series
+  $(basename "$0") -n -j 12345 ./patch-dir    # dry run
+
+EOF
+)"
+
+#######################################
+# Functions
+#######################################
+
+#** usage: print usage information
+#*
+usage() {
+	echo -e "$usagestr"
+}
+
+#** control_c: control-c trap
+#*
+control_c() {
+	echo -e "\nCtrl-c detected\nCleaning up and exiting."
+	exitme 130
+}
+
+#** exitme: exit with code and optional message
+#*
+# Arguments
+#   $1 - exit code
+#   $2 - optional message
+#*
+exitme() {
+	local -i code="$1"
+	local msg="$2"
+
+	((code == 0)) && exit "$code"
+	[[ -n "$msg" ]] && echo -e "$msg" >&2
+	exit "$code"
+}
+
+#** check_git_repo: verify PWD is a valid git repository
+#*
+# Returns
+#   0 - valid git repo
+#   1 - not a git repo
+#*
+check_git_repo() {
+	if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+		echo -e "${CAU}Error:${OFF} Current directory is not a git repository"
+		echo "  PWD: $(pwd)"
+		return 1
+	fi
+	return 0
+}
+
+#** get_patch_files: find and sort patch files in reverse order
+#*
+# Arguments
+#   $1 - patch directory
+#*
+get_patch_files() {
+	local dir="$1"
+	local -a files=()
+
+	# Find patch files (common extensions: .patch, .diff, or no extension with number prefix)
+	while IFS= read -r -d '' file; do
+		files+=("$file")
+	done < <(find "$dir" -maxdepth 1 -type f \( -name "*.patch" -o -name "*.diff" -o -name "[0-9]*" \) -print0 2>/dev/null)
+
+	if [[ ${#files[@]} -eq 0 ]]; then
+		echo -e "${CAU}Error:${OFF} No patch files found in $dir"
+		return 1
+	fi
+
+	# Sort in reverse numeric order by filename
+	mapfile -t patch_files < <(printf '%s\n' "${files[@]}" | sort -t/ -k$(echo "$dir" | tr -cd '/' | wc -c | xargs -I{} expr {} + 2) -rV)
+
+	return 0
+}
+
+#** find_commit_hash: find the commit hash for a patch subject in git history
+#*
+# Arguments
+#   $1 - subject line to search for
+#*
+# Outputs
+#   Full 40-character commit hash to stdout, or empty if not found
+#*
+find_commit_hash() {
+	local subject="$1"
+	local hash
+
+	# Search for commit with matching subject (use fixed string for safety)
+	# Use --format=%H for full 40-char hash
+	hash=$(git log --format=%H --grep="$subject" --fixed-strings -1 2>/dev/null)
+	echo "$hash"
+}
+
+#** extract_commit_message: extract commit message from patch file
+#*
+# Arguments
+#   $1 - patch file path
+#*
+# Outputs
+#   Modified commit message to stdout
+#*
+extract_commit_message() {
+	local patch="$1"
+	local in_body=0
+	local subject=""
+	local -a body_lines=()
+	local line
+	local in_subject=0
+	local revert_hash=""
+
+	while IFS= read -r line; do
+		# Stop at the diff section
+		if [[ "$line" =~ ^diff\ --git ]]; then
+			break
+		fi
+
+		# Stop at the "---" delimiter before diffstat
+		if [[ "$line" == "---" ]]; then
+			break
+		fi
+
+		# Match Subject line - handles [PATCH], [RHEL-X.Y], etc.
+		if [[ "$line" =~ ^Subject:\ \[.*\]\ (.*)$ ]]; then
+			subject="${BASH_REMATCH[1]}"
+			in_subject=1
+			continue
+		fi
+
+		# Also handle Subject without brackets
+		if [[ "$line" =~ ^Subject:\ (.+)$ ]] && [[ -z "$subject" ]]; then
+			subject="${BASH_REMATCH[1]}"
+			in_subject=1
+			continue
+		fi
+
+		# Continuation of subject line (starts with whitespace)
+		if ((in_subject)) && [[ "$line" =~ ^[[:space:]]+(.+)$ ]]; then
+			subject+=" ${BASH_REMATCH[1]}"
+			continue
+		fi
+
+		# End of subject continuation
+		if ((in_subject)) && [[ ! "$line" =~ ^[[:space:]] ]]; then
+			in_subject=0
+		fi
+
+		# Start of body (blank line after subject)
+		if [[ -z "$line" ]] && [[ -n "$subject" ]] && ((in_body == 0)); then
+			in_body=1
+			continue
+		fi
+
+		# Collect body lines
+		if ((in_body)); then
+			body_lines+=("$line")
+		fi
+	done < "$patch"
+
+	# Find the commit hash being reverted
+	if [[ -n "$subject" ]]; then
+		revert_hash=$(find_commit_hash "$subject")
+	fi
+
+	# Build the commit message
+	if [[ -z "$subject" ]]; then
+		echo "Revert: $(basename "$patch")"
+	else
+		echo "$subject"
+	fi
+	echo ""
+
+	for line in "${body_lines[@]}"; do
+		# Replace JIRA: URL - change the last number to jira_number
+		if [[ "$line" =~ ^JIRA: ]] && [[ -n "$jira_number" ]]; then
+			line=$(echo "$line" | sed "s/[0-9]\+[[:space:]]*$/$jira_number/")
+		fi
+
+		# Replace Upstream status line and add Reverts line after it
+		if [[ "$line" =~ ^Upstream[[:space:]]*status: ]]; then
+			echo "Upstream status: RHEL-only"
+			if [[ -n "$revert_hash" ]]; then
+				echo "Reverts RHEL commit $revert_hash"
+			else
+				echo "Reverts RHEL commit <not found>"
+			fi
+			continue
+		fi
+
+		echo "$line"
+	done
+}
+
+#** revert_and_commit: revert a single patch and commit it
+#*
+# Arguments
+#   $1 - patch file path
+#*
+# Returns
+#   0 - success
+#   1 - failure
+#*
+revert_and_commit() {
+	local patch="$1"
+	local filename
+	local commit_msg
+	local tmpfile
+
+	filename=$(basename "$patch")
+
+	if ((dry_run)); then
+		echo -e "  ${INF}[DRY-RUN]${OFF} Would revert and commit: $filename"
+		echo -e "  ${INF}[DRY-RUN]${OFF} Commit message preview:"
+		extract_commit_message "$patch" | head -10 | sed 's/^/    /'
+		echo "    ..."
+		return 0
+	fi
+
+	echo -e "  ${INF}Reverting:${OFF} $filename"
+
+	# Apply the reverse patch - try multiple strategies
+	local apply_output
+	local -i applied=0
+
+	# Strategy 1: Standard reverse
+	apply_output=$(git apply --reverse "$patch" 2>&1)
+	if [[ $? -eq 0 ]]; then
+		applied=1
+	fi
+
+	# Strategy 2: 3-way merge
+	if ((! applied)); then
+		echo -e "  ${INF}Trying 3-way merge...${OFF}"
+		apply_output=$(git apply --reverse --3way "$patch" 2>&1)
+		if [[ $? -eq 0 ]]; then
+			applied=1
+		fi
+	fi
+
+	# Strategy 3: Reduced context (C1)
+	if ((! applied)); then
+		echo -e "  ${INF}Trying with reduced context...${OFF}"
+		apply_output=$(git apply --reverse -C1 "$patch" 2>&1)
+		if [[ $? -eq 0 ]]; then
+			applied=1
+		fi
+	fi
+
+	# Strategy 4: Use patch command (more forgiving with fuzz)
+	if ((! applied)); then
+		echo -e "  ${INF}Trying patch command with fuzz...${OFF}"
+		apply_output=$(patch -R -p1 --fuzz=3 < "$patch" 2>&1)
+		if [[ $? -eq 0 ]]; then
+			applied=1
+			# Clean up any .orig files created by patch
+			find . -name "*.orig" -delete 2>/dev/null
+		fi
+	fi
+
+	if ((! applied)); then
+		echo -e "  ${CAU}Failed:${OFF} Could not revert $filename"
+		echo -e "  ${WRN}Last attempt output:${OFF}"
+		echo "$apply_output" | sed 's/^/    /'
+		return 1
+	fi
+
+	# Stage all changes
+	git add -A
+
+	# Check if there are any changes to commit
+	if git diff --cached --quiet; then
+		echo -e "  ${WRN}Warning:${OFF} No changes to commit (patch may already be reverted)"
+		return 0
+	fi
+
+	# Extract and modify commit message
+	tmpfile=$(mktemp)
+	extract_commit_message "$patch" > "$tmpfile"
+
+	# Commit with the modified message
+	local commit_output
+	commit_output=$(git commit -F "$tmpfile" 2>&1)
+	if [[ $? -ne 0 ]]; then
+		echo -e "  ${CAU}Failed:${OFF} Could not commit revert of $filename"
+		echo -e "  ${WRN}Git output:${OFF}"
+		echo "$commit_output" | sed 's/^/    /'
+		echo -e "  ${INF}Staged files:${OFF}"
+		git diff --cached --stat | sed 's/^/    /'
+		rm -f "$tmpfile"
+		return 1
+	fi
+
+	rm -f "$tmpfile"
+	echo -e "  ${STA}Success:${OFF} $filename reverted and committed"
+	return 0
+}
+
+#** revert_all: revert all patches in the series
+#*
+# Returns
+#   0 - all patches reverted successfully
+#   1 - one or more patches failed
+#*
+revert_all() {
+	local -i failed=0
+	local -i count=0
+	local -i total=${#patch_files[@]}
+
+	echo -e "${BLD}Reverting $total patch(es) in reverse order${OFF}"
+	echo ""
+
+	for patch in "${patch_files[@]}"; do
+		((count++))
+		echo -e "${INF}[$count/$total]${OFF}"
+		if ! revert_and_commit "$patch"; then
+			((failed++))
+			echo -e "${WRN}Warning:${OFF} Continuing with remaining patches..."
+		fi
+	done
+
+	echo ""
+	if ((failed > 0)); then
+		echo -e "${WRN}Completed with $failed failure(s)${OFF}"
+		return 1
+	else
+		echo -e "${STA}All patches reverted and committed successfully${OFF}"
+		return 0
+	fi
+}
+
+#** parse_args: parse command line arguments
+#*
+# Arguments
+#   $@ - command line arguments
+#*
+parse_args() {
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			-h|--help|help)
+				usage
+				exit 0
+				;;
+			-n|--dry-run)
+				dry_run=1
+				shift
+				;;
+			-j)
+				shift
+				if [[ -z "$1" ]]; then
+					echo -e "${CAU}Error:${OFF} -j requires a numeric argument"
+					exitme 1
+				fi
+				if [[ ! "$1" =~ ^[0-9]+$ ]]; then
+					echo -e "${CAU}Error:${OFF} -j argument must be numeric only (no prefix)"
+					echo "  Got: $1"
+					echo "  Expected: 12345 (not RHEL-12345)"
+					exitme 1
+				fi
+				jira_number="$1"
+				shift
+				;;
+			-*)
+				echo -e "${CAU}Unknown option:${OFF} $1"
+				usage
+				exitme 1
+				;;
+			*)
+				if [[ -z "$patch_dir" ]]; then
+					patch_dir="$1"
+				else
+					echo -e "${CAU}Error:${OFF} Too many arguments"
+					usage
+					exitme 1
+				fi
+				shift
+				;;
+		esac
+	done
+
+	# Validate patch directory argument
+	if [[ -z "$patch_dir" ]]; then
+		echo -e "${CAU}Error:${OFF} PATCH_DIR argument required"
+		usage
+		exitme 1
+	fi
+
+	# Check if directory exists
+	if [[ ! -d "$patch_dir" ]]; then
+		echo -e "${CAU}Error:${OFF} Directory not found: $patch_dir"
+		exitme 1
+	fi
+
+	# Validate jira number if provided
+	if [[ -z "$jira_number" ]]; then
+		echo -e "${WRN}Warning:${OFF} No -j JIRA number provided, JIRA: lines will be unchanged"
+	fi
+}
+
+#** main: main entry point
+#*
+main() {
+	trap control_c SIGINT
+
+	parse_args "$@"
+
+	# Verify we're in a git repo
+	check_git_repo || exitme 1
+
+	# Get patch files in reverse order
+	get_patch_files "$patch_dir" || exitme 1
+
+	echo -e "${INF}Patch directory:${OFF} $patch_dir"
+	echo -e "${INF}Git repository:${OFF} $(git rev-parse --show-toplevel)"
+	echo -e "${INF}Patches found:${OFF} ${#patch_files[@]}"
+	[[ -n "$jira_number" ]] && echo -e "${INF}JIRA number:${OFF} $jira_number"
+	echo ""
+
+	# Show the order
+	echo -e "${INF}Revert order:${OFF}"
+	for patch in "${patch_files[@]}"; do
+		echo "  $(basename "$patch")"
+	done
+	echo ""
+
+	# Confirm unless dry-run
+	if ! ((dry_run)); then
+		read -rp "Proceed with revert and commit? (y/N): " confirm
+		if [[ ! "$confirm" =~ ^[Yy] ]]; then
+			echo "Aborted."
+			exit 0
+		fi
+		echo ""
+	fi
+
+	# Revert all patches
+	revert_all
+	exit $?
+}
+
+main "$@"
