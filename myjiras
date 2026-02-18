@@ -59,6 +59,7 @@ declare -i b_assignee=0         # Show assignee if not $USER
 declare -i b_history=0          # Show change history
 declare -i b_show_bots=0        # Include bot activity (default: hide bots)
 declare -i b_labels=1           # Show labels (default: on)
+declare -i b_description=0      # Show issue description
 # Common bot name patterns (case-insensitive match)
 declare BOT_PATTERN="bot|automation|jenkins|bugzilla|jira|sync|service.account|system"
 declare -i b_json=0             # Output as JSON
@@ -99,6 +100,7 @@ ${HDR}OPTIONS${OFF}
     ${MNU}-r${OFF}            Show Reporter (if not you)
     ${MNU}-W${OFF}            Show Watchers
     ${MNU}-nl${OFF}           No Labels (suppress label display)
+    ${MNU}-dx${OFF}           Show Description (issue body text)
     ${MNU}-j${OFF}            Output as JSON
     ${MNU}-v${OFF}            Verbose output
     ${MNU}-n${OFF} NUM        Max results (default: $MAX_RESULTS)
@@ -302,7 +304,7 @@ jira_request() {
 search_issues() {
     local jql="$1"
     local encoded_jql
-    local fields="key,summary,status,priority,issuetype,assignee,reporter,created,updated,labels"
+    local fields="key,summary,status,priority,issuetype,assignee,reporter,created,updated,labels,description"
     local expand=""
     
     # Add optional fields
@@ -483,6 +485,16 @@ format_issue() {
         fi
     fi
     
+    # Show description if requested
+    if ((b_description)); then
+        local description
+        description=$(echo "$issue" | jq -r '.fields.description // empty')
+        if [[ -n "$description" ]]; then
+            echo -e "  ${INF}Description:${OFF}"
+            echo "$description" | sed 's/^/    /'
+        fi
+    fi
+    
     # Show assignee if requested and not current user
     if ((b_assignee)); then
         local assignee_name
@@ -606,8 +618,15 @@ format_issue() {
         # Filter out bots by default (unless -B specified)
         ((b_show_bots)) || jq_filter+=" | select(.author.displayName | test(\$botpat; \"i\") | not)"
         
-        # Format output
-        jq_filter+=' | "    \(.created | split("T")[0]) \(.created | split("T")[1] | split(".")[0]) - \(.author.displayName)\n" + (.items[] | "      \(.field): \(.fromString // "none") → \(.toString // "none")")'
+        # Format output - truncate long values (especially description)
+        # For description field, just show "[updated]" instead of full text
+        # For other fields, truncate at 80 chars
+        jq_filter+=' | "    \(.created | split("T")[0]) \(.created | split("T")[1] | split(".")[0]) - \(.author.displayName)\n" + (.items[] | 
+            if .field == "description" then
+                "      \(.field): [updated]"
+            else
+                "      \(.field): \((.fromString // "none") | if length > 80 then .[:80] + "..." else . end) → \((.toString // "none") | if length > 80 then .[:80] + "..." else . end)"
+            end)'
         
         history=$(echo "$issue" | jq -r \
             --arg since "${filter_date:-1970-01-01}" \
@@ -688,6 +707,7 @@ parse_opts() {
     while (( $# > 0 )); do
         case "$1" in
             -nl) b_labels=0 ;;
+            -dx) b_description=1 ;;
             *) args+=("$1") ;;
         esac
         shift
