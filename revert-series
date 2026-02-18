@@ -216,11 +216,11 @@ extract_commit_message() {
 		revert_hash=$(find_commit_hash "$subject")
 	fi
 
-	# Build the commit message
+	# Build the commit message - always prefix with "Revert: "
 	if [[ -z "$subject" ]]; then
 		echo "Revert: $(basename "$patch")"
 	else
-		echo "$subject"
+		echo "Revert: $subject"
 	fi
 	echo ""
 
