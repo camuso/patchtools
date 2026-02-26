@@ -288,6 +288,25 @@ jira_request() {
     curl "${curl_opts[@]}" "$url"
 }
 
+# get_issue_assignee
+# @description Get the assignee display name for an issue
+#
+# Arguments:
+# @arg $1 string Issue key (e.g., RHEL-12345)
+#
+# Outputs:
+# @stdout Assignee display name or "Unassigned"
+#
+get_issue_assignee() {
+    local key="$1"
+    local result
+    
+    result=$(jira_request "issue/$key?fields=assignee" 2>/dev/null | \
+        jq -r '.fields.assignee.displayName // "Unassigned"' 2>/dev/null)
+    
+    echo "${result:-Unassigned}"
+}
+
 # search_issues
 # @description Search for Jira issues using JQL
 #
@@ -509,19 +528,27 @@ format_issue() {
         [[ "$reporter_name" != "$USER" ]] && echo -e "  ${INF}Reporter:${OFF} $reporter"
     fi
     
-    # Show issue links (dependencies)
-    local links
-    links=$(echo "$issue" | jq -r '.fields.issuelinks[]? | 
+    # Show issue links (dependencies) with assignee
+    local links_raw link_key link_type link_dir link_status assignee
+    links_raw=$(echo "$issue" | jq -r '.fields.issuelinks[]? | 
         if .outwardIssue then
-            "  → \(.type.outward): \(.outwardIssue.key) [\(.outwardIssue.fields.status.name)]"
+            "outward|\(.type.outward)|\(.outwardIssue.key)|\(.outwardIssue.fields.status.name)"
         elif .inwardIssue then
-            "  ← \(.type.inward): \(.inwardIssue.key) [\(.inwardIssue.fields.status.name)]"
+            "inward|\(.type.inward)|\(.inwardIssue.key)|\(.inwardIssue.fields.status.name)"
         else empty end' 2>/dev/null)
     
-    [[ -n "$links" ]] && {
+    if [[ -n "$links_raw" ]]; then
         echo -e "  ${INF}Dependencies:${OFF}"
-        echo "$links"
-    }
+        while IFS='|' read -r link_dir link_type link_key link_status; do
+            [[ -z "$link_key" ]] && continue
+            assignee=$(get_issue_assignee "$link_key")
+            if [[ "$link_dir" == "outward" ]]; then
+                echo "  → $link_type: $link_key [$link_status] ($assignee)"
+            else
+                echo "  ← $link_type: $link_key [$link_status] ($assignee)"
+            fi
+        done <<< "$links_raw"
+    fi
     
     # Show latest comment if requested
     if ((b_comments)); then
