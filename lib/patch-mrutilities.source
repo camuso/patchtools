@@ -389,7 +389,7 @@ update_history() {
 		# the update to the end of the file.
 		if [ -n "$nextitem" ]; then
 			linenumber=$((linenumber + nextitem))
-			ui_insertline "$linenumber" "$spc $(date)  $action" "$mrhistoryfile"
+			ui_insertline "$linenumber" "$spc $(date)  $action : $patchcount" "$mrhistoryfile"
 		else
 			echo "$spc $(date)  $action : $patchcount" >> "$mrhistoryfile"
 		fi
