@@ -27,10 +27,13 @@
 #######################################
 
 declare JIRA_BASE_URL="https://issues.redhat.com"
-declare JIRA_API="$JIRA_BASE_URL/rest/api/2"
+declare JIRA_API_URL="https://redhat.atlassian.net"
+declare JIRA_API="$JIRA_API_URL/rest/api/3"
 declare -i MAX_RESULTS=50
 declare JIRA_TOKEN_FILE="$HOME/.config/jira/token"
+declare JIRA_EMAIL_FILE="$HOME/.config/jira/email"
 declare JIRA_TOKEN=""
+declare JIRA_EMAIL=""
 
 # Basic ANSI colors (work on any terminal background)
 declare OFF='\033[0m'
@@ -64,6 +67,7 @@ declare -i b_description=0      # Show issue description
 declare BOT_PATTERN="bot|automation|jenkins|bugzilla|jira|sync|service.account|system"
 declare -i b_json=0             # Output as JSON
 declare -i b_verbose=0          # Verbose output
+declare -i b_my_changes=0       # Only show issues where I made changes
 declare role="all"              # assignee, reporter, watcher, or all
 
 #######################################
@@ -95,6 +99,7 @@ ${HDR}OPTIONS${OFF}
     ${MNU}-H${OFF}            Show change History (auto-filters if -q has 'updated >=')
     ${MNU}-d${OFF} DATE       Override history date filter (YYYY-MM-DD or -Nd for N days ago)
     ${MNU}-B${OFF}            Include Bot activity (default: humans only)
+    ${MNU}-m${OFF}            My changes only (filter to issues where you appear in changelog)
 
     ${MNU}-A${OFF}            Show Assignee (if not you)
     ${MNU}-r${OFF}            Show Reporter (if not you)
@@ -152,8 +157,10 @@ ${HDR}EXAMPLES${OFF}
     myjiras -p RHELPLAN                      # Different project
 
 ${HDR}AUTHENTICATION${OFF}
-    Requires a Personal Access Token saved at ~/.config/jira/token
-    Create one at: https://issues.redhat.com/secure/ViewProfile.jspa
+    Requires an Atlassian API token:
+      1. Go to https://id.atlassian.com/manage-profile/security/api-tokens
+      2. Create a token and save to: ~/.config/jira/token
+      3. Save your email to: ~/.config/jira/email (your Red Hat email)
 "
     exit 0
 }
@@ -214,20 +221,23 @@ check_dependencies() {
 }
 
 # check_auth
-# @description Load and verify Jira Personal Access Token
+# @description Load Atlassian API token for Basic authentication
 #
 # Globals:
-# @set JIRA_TOKEN string The PAT loaded from file
+# @set JIRA_TOKEN string The API token loaded from file
+# @set JIRA_EMAIL string The email loaded from file
 #
 # Returns:
-# @exitcode 0 Token loaded successfully
-# @exitcode 1 Token not found
+# @exitcode 0 Credentials loaded successfully
+# @exitcode 1 Credentials not found
 #
 check_auth() {
     if [[ ! -f "$JIRA_TOKEN_FILE" ]]; then
-        echo -e "${CAU}Jira token not found at: $JIRA_TOKEN_FILE${OFF}"
-        echo -e "${INF}Create a Personal Access Token at:${OFF}"
-        echo -e "  ${MNU}https://issues.redhat.com/secure/ViewProfile.jspa${OFF}"
+        echo -e "${CAU}Jira API token not found at: $JIRA_TOKEN_FILE${OFF}"
+        echo -e "${INF}Create an Atlassian API token:${OFF}"
+        echo -e "  1. Go to ${MNU}https://id.atlassian.com/manage-profile/security/api-tokens${OFF}"
+        echo -e "  2. Click ${MNU}Create API token${OFF}"
+        echo -e "  3. Copy the token"
         echo -e "${INF}Then save it:${OFF}"
         echo -e "  ${MNU}mkdir -p ~/.config/jira${OFF}"
         echo -e "  ${MNU}echo 'YOUR_TOKEN' > ~/.config/jira/token${OFF}"
@@ -235,14 +245,28 @@ check_auth() {
         return 1
     fi
     
-    JIRA_TOKEN=$(cat "$JIRA_TOKEN_FILE")
+    if [[ ! -f "$JIRA_EMAIL_FILE" ]]; then
+        echo -e "${CAU}Jira email not found at: $JIRA_EMAIL_FILE${OFF}"
+        echo -e "${INF}Save your Red Hat email (used for JQL queries):${OFF}"
+        echo -e "  ${MNU}echo 'your.email@redhat.com' > ~/.config/jira/email${OFF}"
+        echo -e "  ${MNU}chmod 600 ~/.config/jira/email${OFF}"
+        return 1
+    fi
+    
+    JIRA_TOKEN=$(tr -d '[:space:]' < "$JIRA_TOKEN_FILE")
+    JIRA_EMAIL=$(tr -d '[:space:]' < "$JIRA_EMAIL_FILE")
     
     if [[ -z "$JIRA_TOKEN" ]]; then
         echo -e "${CAU}Token file is empty: $JIRA_TOKEN_FILE${OFF}"
         return 1
     fi
     
-    ((b_verbose)) && echo -e "${STA}Jira token loaded${OFF}"
+    if [[ -z "$JIRA_EMAIL" ]]; then
+        echo -e "${CAU}Email file is empty: $JIRA_EMAIL_FILE${OFF}"
+        return 1
+    fi
+    
+    ((b_verbose)) && echo -e "${STA}Jira credentials loaded (${JIRA_EMAIL})${OFF}"
     return 0
 }
 
@@ -275,7 +299,8 @@ jira_request() {
     local url="$JIRA_API/$endpoint"
     local -a curl_opts=(
         -s
-        -H "Authorization: Bearer $JIRA_TOKEN"
+        -L
+        -u "${JIRA_EMAIL}:${JIRA_TOKEN}"
         -H "Content-Type: application/json"
     )
     
@@ -331,13 +356,13 @@ search_issues() {
     ((b_watchers)) && fields+=",watches"
     fields+=",issuelinks"
     
-    # Add changelog expansion for history
-    ((b_history)) && expand="changelog"
+    # Add changelog expansion for history or for filtering by user changes
+    ((b_history || b_my_changes)) && expand="changelog"
     
     # URL encode the JQL
     encoded_jql=$(printf '%s' "$jql" | jq -sRr @uri)
     
-    local url="search?jql=$encoded_jql&maxResults=$MAX_RESULTS&fields=$fields"
+    local url="search/jql?jql=$encoded_jql&maxResults=$MAX_RESULTS&fields=$fields"
     [[ -n "$expand" ]] && url+="&expand=$expand"
     
     jira_request "$url"
@@ -385,25 +410,28 @@ get_remote_links() {
 # @set label_filters array Label filters (multiple, ORed together)
 # @set status_filter string Status filter
 # @set jql_query string Raw JQL query to append
+# @set JIRA_EMAIL string User email for queries
 #
 # Effects:
 # @stdout JQL query string
 #
 build_jql() {
     local jql="project = $project"
+    # Use explicit email instead of currentUser() - required for Atlassian Cloud API tokens
+    local user_ref="\"$JIRA_EMAIL\""
     
     case "$role" in
         assignee)
-            jql+=" AND assignee = currentUser()"
+            jql+=" AND assignee = $user_ref"
             ;;
         reporter)
-            jql+=" AND reporter = currentUser()"
+            jql+=" AND reporter = $user_ref"
             ;;
         watcher)
-            jql+=" AND watcher = currentUser()"
+            jql+=" AND watcher = $user_ref"
             ;;
         all)
-            jql+=" AND (assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser())"
+            jql+=" AND (assignee = $user_ref OR reporter = $user_ref OR watcher = $user_ref)"
             ;;
     esac
     
@@ -671,6 +699,62 @@ format_issue() {
     echo ""
 }
 
+# user_in_changelog
+# @description Check if the user appears in an issue's changelog
+#
+# Arguments:
+# @arg $1 string JSON issue object
+#
+# Returns:
+# @exitcode 0 User appears in changelog
+# @exitcode 1 User does not appear in changelog
+#
+user_in_changelog() {
+    local issue="$1"
+    local user_display_name
+    local filter_date=""
+    
+    # Get user's display name from JIRA_EMAIL (use first part before @ capitalized)
+    # Or check against the actual display name in history
+    
+    # Parse date filter if specified
+    if [[ -n "$history_since" ]]; then
+        if [[ "$history_since" =~ ^-([0-9]+)d$ ]]; then
+            filter_date=$(date -d "${BASH_REMATCH[1]} days ago" +%Y-%m-%d)
+        else
+            filter_date="$history_since"
+        fi
+    elif [[ -n "$jql_query" ]]; then
+        if [[ "$jql_query" =~ updated[[:space:]]*\>=[[:space:]]*[\"\']?(-[0-9]+[dwmM])[\"\']? ]]; then
+            local rel="${BASH_REMATCH[1]}"
+            if [[ "$rel" =~ ^-([0-9]+)d$ ]]; then
+                filter_date=$(date -d "${BASH_REMATCH[1]} days ago" +%Y-%m-%d)
+            elif [[ "$rel" =~ ^-([0-9]+)w$ ]]; then
+                filter_date=$(date -d "${BASH_REMATCH[1]} weeks ago" +%Y-%m-%d)
+            elif [[ "$rel" =~ ^-([0-9]+)[mM]$ ]]; then
+                filter_date=$(date -d "${BASH_REMATCH[1]} months ago" +%Y-%m-%d)
+            fi
+        elif [[ "$jql_query" =~ updated[[:space:]]*\>=[[:space:]]*[\"\']?([0-9]{4}-[0-9]{2}-[0-9]{2})[\"\']? ]]; then
+            filter_date="${BASH_REMATCH[1]}"
+        fi
+    fi
+    
+    # Check if user's email appears in any changelog author's emailAddress
+    local found
+    if [[ -n "$filter_date" ]]; then
+        found=$(echo "$issue" | jq -r --arg email "$JIRA_EMAIL" --arg since "$filter_date" '
+            [.changelog.histories[]? | 
+             select(.created >= $since) |
+             select(.author.emailAddress == $email)] | length')
+    else
+        found=$(echo "$issue" | jq -r --arg email "$JIRA_EMAIL" '
+            [.changelog.histories[]? | 
+             select(.author.emailAddress == $email)] | length')
+    fi
+    
+    [[ "$found" -gt 0 ]]
+}
+
 # format_results
 # @description Format search results for display
 #
@@ -683,19 +767,45 @@ format_issue() {
 format_results() {
     local results="$1"
     local total
-    local issues
+    local -i filtered_count=0
+    local -i shown_count=0
     
-    total=$(echo "$results" | jq -r '.total')
+    # API v3 may not have .total, fall back to counting issues array
+    total=$(echo "$results" | jq -r '.total // (.issues | length)')
     
     if [[ "$total" == "0" ]]; then
         echo -e "${INF}No issues found.${OFF}"
         return
     fi
     
+    # If filtering to only my changes
+    if ((b_my_changes)); then
+        local filtered_issues=()
+        while IFS= read -r issue; do
+            if user_in_changelog "$issue"; then
+                filtered_issues+=("$issue")
+            fi
+        done < <(echo "$results" | jq -c '.issues[]')
+        
+        filtered_count=${#filtered_issues[@]}
+        
+        if [[ $filtered_count -eq 0 ]]; then
+            echo -e "${INF}No issues found where you made changes (of $total updated).${OFF}"
+            return
+        fi
+        
+        echo -e "${HDR}Found $filtered_count issue(s) where you made changes (of $total updated)${OFF}"
+        echo ""
+        
+        for issue in "${filtered_issues[@]}"; do
+            format_issue "$issue"
+        done
+        return
+    fi
+    
+    # Default: show all issues
     echo -e "${HDR}Found $total issue(s) in $project${OFF}"
     echo ""
-    
-    # Iterate through issues
     echo "$results" | jq -c '.issues[]' | while read -r issue; do
         format_issue "$issue"
     done
@@ -741,7 +851,7 @@ parse_opts() {
     done
     set -- "${args[@]}"
     
-    while getopts "p:R:t:l:s:q:d:cCHBArWjvn:h" opt; do
+    while getopts "p:R:t:l:s:q:d:cCHBmArWjvn:h" opt; do
         case $opt in
             p) project="$OPTARG" ;;
             R) role="$OPTARG" ;;
@@ -754,6 +864,7 @@ parse_opts() {
             C) b_all_comments=1 ;;
             H) b_history=1 ;;
             B) b_show_bots=1 ;;
+            m) b_my_changes=1 ;;
             A) b_assignee=1 ;;
             r) b_reporter=1 ;;
             W) b_watchers=1 ;;
@@ -806,7 +917,20 @@ main() {
     local results
     results=$(search_issues "$jql")
     
-    # Check for errors
+    # Check if response is valid JSON
+    if ! echo "$results" | jq -e . &>/dev/null; then
+        echo -e "${CAU}Error: Invalid response from Jira API${OFF}"
+        echo -e "${INF}Response (first 500 chars):${OFF}"
+        echo "$results" | head -c 500
+        echo
+        echo -e "${INF}Possible causes:${OFF}"
+        echo "  - Invalid/expired Jira token (regenerate at issues.redhat.com)"
+        echo "  - Network connectivity issue"
+        echo "  - Jira API unavailable"
+        exit 1
+    fi
+    
+    # Check for Jira error messages
     if echo "$results" | jq -e '.errorMessages' &>/dev/null; then
         echo -e "${CAU}Error from Jira:${OFF}"
         echo "$results" | jq -r '.errorMessages[]'
