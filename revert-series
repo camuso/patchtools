@@ -19,24 +19,28 @@ declare CAU=$'\e[0;91m'
 declare STA=$'\e[0;92m'
 
 declare patch_dir=""
+declare patch_file=""
 declare jira_number=""
 declare -a patch_files=()
 declare -i dry_run=0
+declare -i single_patch=0
 
 declare usagestr="$(
 cat <<EOF
-$(basename "$0") [-h] [-n] [-j NUMBER] PATCH_DIR
+$(basename "$0") [-h] [-n] [-1] [-j NUMBER] PATCH_DIR|PATCH_FILE
 
-Revert a patch series in reverse numeric order.
+Revert a patch series in reverse numeric order, or a single patch.
 
 Each reverted patch is committed separately with a modified commit message.
 
 Arguments:
   PATCH_DIR      Directory containing numbered patch files
+  PATCH_FILE     Single patch file (when using -1)
 
 Options:
   -h, --help     Show this help message
   -n, --dry-run  Show what would be done without making changes
+  -1, --single   Revert a single patch file instead of a series
   -j NUMBER      Jira number (numeric only, e.g., 12345)
                  Replaces the last number in the JIRA: URL line
 
@@ -52,6 +56,7 @@ The current working directory must be a valid git repository.
 Examples:
   $(basename "$0") -j 149438 ~/patches/my-series
   $(basename "$0") -n -j 12345 ./patch-dir    # dry run
+  $(basename "$0") -1 -j 12345 ./0001-foo.patch  # single patch
 
 EOF
 )"
@@ -398,6 +403,10 @@ parse_args() {
 				dry_run=1
 				shift
 				;;
+			-1|--single)
+				single_patch=1
+				shift
+				;;
 			-j)
 				shift
 				if [[ -z "$1" ]]; then
@@ -431,17 +440,30 @@ parse_args() {
 		esac
 	done
 
-	# Validate patch directory argument
+	# Validate patch directory/file argument
 	if [[ -z "$patch_dir" ]]; then
-		echo -e "${CAU}Error:${OFF} PATCH_DIR argument required"
+		if ((single_patch)); then
+			echo -e "${CAU}Error:${OFF} PATCH_FILE argument required"
+		else
+			echo -e "${CAU}Error:${OFF} PATCH_DIR argument required"
+		fi
 		usage
 		exitme 1
 	fi
 
-	# Check if directory exists
-	if [[ ! -d "$patch_dir" ]]; then
-		echo -e "${CAU}Error:${OFF} Directory not found: $patch_dir"
-		exitme 1
+	# Check if path exists
+	if ((single_patch)); then
+		if [[ ! -f "$patch_dir" ]]; then
+			echo -e "${CAU}Error:${OFF} Patch file not found: $patch_dir"
+			exitme 1
+		fi
+		patch_file="$patch_dir"
+		patch_dir=""
+	else
+		if [[ ! -d "$patch_dir" ]]; then
+			echo -e "${CAU}Error:${OFF} Directory not found: $patch_dir"
+			exitme 1
+		fi
 	fi
 
 	# Validate jira number if provided
@@ -459,6 +481,33 @@ main() {
 
 	# Verify we're in a git repo
 	check_git_repo || exitme 1
+
+	# Handle single patch mode
+	if ((single_patch)); then
+		echo -e "${INF}Patch file:${OFF} $patch_file"
+		echo -e "${INF}Git repository:${OFF} $(git rev-parse --show-toplevel)"
+		[[ -n "$jira_number" ]] && echo -e "${INF}JIRA number:${OFF} $jira_number"
+		echo ""
+
+		# Confirm unless dry-run
+		if ! ((dry_run)); then
+			read -rp "Proceed with revert and commit? (y/N): " confirm
+			if [[ ! "$confirm" =~ ^[Yy] ]]; then
+				echo "Aborted."
+				exit 0
+			fi
+			echo ""
+		fi
+
+		# Revert single patch
+		if revert_and_commit "$patch_file"; then
+			echo -e "${STA}Patch reverted and committed successfully${OFF}"
+			exit 0
+		else
+			echo -e "${CAU}Failed to revert patch${OFF}"
+			exit 1
+		fi
+	fi
 
 	# Get patch files in reverse order
 	get_patch_files "$patch_dir" || exitme 1
