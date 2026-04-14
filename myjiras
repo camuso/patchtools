@@ -532,9 +532,20 @@ format_issue() {
     fi
     
     # Show description if requested
+    # Note: Jira API v3 returns description as ADF (Atlassian Document Format)
     if ((b_description)); then
         local description
-        description=$(echo "$issue" | jq -r '.fields.description // empty')
+        description=$(echo "$issue" | jq -r '
+            def extract_text: 
+                if type == "object" then
+                    if .type == "text" then .text // ""
+                    elif .content then [.content[] | extract_text] | join("")
+                    else ""
+                    end
+                elif type == "array" then [.[] | extract_text] | join("")
+                else ""
+                end;
+            .fields.description | if . then extract_text else empty end' 2>/dev/null)
         if [[ -n "$description" ]]; then
             echo -e "  ${INF}Description:${OFF}"
             echo "$description" | sed 's/^/    /'
@@ -578,18 +589,39 @@ format_issue() {
     fi
     
     # Show latest comment if requested
+    # Note: Jira API v3 returns body as ADF (Atlassian Document Format), not plain text
+    # We need to recursively extract text from the content tree
     if ((b_comments)); then
         local comment
         if ((b_show_bots)); then
             # Include all comments including bots
-            comment=$(echo "$issue" | jq -r '.fields.comment.comments[-1]? | 
-                "  \(.author.displayName) (\(.created | split("T")[0])): \(.body | split("\n")[0])"' 2>/dev/null)
+            comment=$(echo "$issue" | jq -r '
+                def extract_text: 
+                    if type == "object" then
+                        if .type == "text" then .text // ""
+                        elif .content then [.content[] | extract_text] | join("")
+                        else ""
+                        end
+                    elif type == "array" then [.[] | extract_text] | join("")
+                    else ""
+                    end;
+                .fields.comment.comments[-1]? | 
+                "  \(.author.displayName) (\(.created | split("T")[0])): \(.body | extract_text | split("\n")[0])"' 2>/dev/null)
         else
             # Get last comment from a human (not a bot) - default
             comment=$(echo "$issue" | jq -r --arg botpat "$BOT_PATTERN" '
+                def extract_text: 
+                    if type == "object" then
+                        if .type == "text" then .text // ""
+                        elif .content then [.content[] | extract_text] | join("")
+                        else ""
+                        end
+                    elif type == "array" then [.[] | extract_text] | join("")
+                    else ""
+                    end;
                 [.fields.comment.comments[]? | select(.author.displayName | test($botpat; "i") | not)] | 
                 last | 
-                "  \(.author.displayName) (\(.created | split("T")[0])): \(.body | split("\n")[0])"' 2>/dev/null)
+                "  \(.author.displayName) (\(.created | split("T")[0])): \(.body | extract_text | split("\n")[0])"' 2>/dev/null)
         fi
         [[ -n "$comment" && "$comment" != "null" ]] && {
             echo -e "  ${INF}Latest comment:${OFF}"
@@ -602,14 +634,33 @@ format_issue() {
         local comments
         if ((b_show_bots)); then
             # Include all comments including bots
-            comments=$(echo "$issue" | jq -r '.fields.comment.comments[]? | 
-                "  \(.author.displayName) (\(.created | split("T")[0])):\n    \(.body | gsub("\n"; "\n    "))"' 2>/dev/null)
+            comments=$(echo "$issue" | jq -r '
+                def extract_text: 
+                    if type == "object" then
+                        if .type == "text" then .text // ""
+                        elif .content then [.content[] | extract_text] | join("")
+                        else ""
+                        end
+                    elif type == "array" then [.[] | extract_text] | join("")
+                    else ""
+                    end;
+                .fields.comment.comments[]? | 
+                "  \(.author.displayName) (\(.created | split("T")[0])):\n    \(.body | extract_text | gsub("\n"; "\n    "))"' 2>/dev/null)
         else
             # Filter out bot comments - default
             comments=$(echo "$issue" | jq -r --arg botpat "$BOT_PATTERN" '
+                def extract_text: 
+                    if type == "object" then
+                        if .type == "text" then .text // ""
+                        elif .content then [.content[] | extract_text] | join("")
+                        else ""
+                        end
+                    elif type == "array" then [.[] | extract_text] | join("")
+                    else ""
+                    end;
                 .fields.comment.comments[]? | 
                 select(.author.displayName | test($botpat; "i") | not) |
-                "  \(.author.displayName) (\(.created | split("T")[0])):\n    \(.body | gsub("\n"; "\n    "))"' 2>/dev/null)
+                "  \(.author.displayName) (\(.created | split("T")[0])):\n    \(.body | extract_text | gsub("\n"; "\n    "))"' 2>/dev/null)
         fi
         [[ -n "$comments" ]] && {
             echo -e "  ${INF}Comments:${OFF}"
