@@ -22,6 +22,7 @@
 #   gort                    # Interactive mode
 #   gort help               # Show help
 #   gort new                # Start a new session
+#   gort init               # Initialize session (use with --batch for non-interactive)
 #   gort run                # Run all remaining commits
 #   gort next               # Run next commit only
 #   gort status             # Show current session status
@@ -29,6 +30,26 @@
 #   gort continue           # Continue after external commit
 #   gort reset              # Reset to earlier commit
 #   gort history            # Show history of applied patches
+#
+# Options (for non-interactive/batch mode):
+#   --batch                 Run in batch mode (no prompts, fail if required values missing)
+#   -f | --backportfile FILE  Set backport commits file
+#   -u | --updir DIR        Set upstream repository directory
+#   -w | --workdir DIR      Set working directory for session
+#   -b | --branch BRANCH    Set/checkout downstream branch
+#   -m | --mode MODE        Set backport mode (1-6 or name: patchpal, cherry, apply,
+#                           apply3, patch, patch_merge)
+#   -j | --jira JIRA        Set JIRA link for commit messages
+#   -C | --cve CVE          Set CVE for commit messages
+#   -U | --upstream VERSION Set upstream version for commit messages
+#   -S | --stop HASH        Stop before this commit hash
+#
+# Examples:
+#   # Non-interactive run with cherry-pick
+#   gort --batch -f /path/to/backport.log -u /work/upstream -w /tmp/work -m cherry run
+#
+#   # Initialize and run in one command
+#   gort --batch -f backport.log -u /work/upstream -w /tmp/work -b my-branch -m 2 init
 #
 
 #######################################
@@ -82,6 +103,20 @@ declare exit_bad=10	# Exiting from command line call with bad status
 declare b_session_inited=false	# boolean to indicate session is inited
 declare b_cmdline=false		# boolean indicating a comman line call
 declare b_log=false
+declare b_batch=false		# boolean for batch/non-interactive mode
+
+#########################################
+# Command-line Option Variables
+#########################################
+declare opt_backportfile=	# -f | --backportfile
+declare opt_updir=		# -u | --updir
+declare opt_workdir=		# -w | --workdir
+declare opt_branch=		# -b | --branch
+declare opt_mode=		# -m | --mode
+declare opt_jira=		# -j | --jira
+declare opt_cve=		# -C | --cve
+declare opt_upstream=		# -U | --upstream
+declare opt_stop=		# -S | --stop
 
 #########################################
 # Config Variables
@@ -292,6 +327,26 @@ select_gitbranch() {
 	local hilite=
 	local branchlistfile="$workdir"/branchlist
 
+	# In batch mode, if gitbranch is set, try to checkout; else use current
+	$b_batch && {
+		if [ -n "$gitbranch" ]; then
+			# Try to checkout the specified branch
+			git checkout "$gitbranch" 2>/dev/null || {
+				# Try to create it
+				git checkout -b "$gitbranch" 2>/dev/null || {
+					echo -e "${CAU}Batch mode: cannot checkout or create branch '$gitbranch'$OFF" >&2
+					return 1
+				}
+			}
+		else
+			# Use current branch
+			gitbranch="$(get_gitbranch)"
+		fi
+		set_cfg_item gitbranch "$gitbranch"
+		init_newhead
+		return 0
+	}
+
 	echo
 	echo -e "${MNU}Select the Downstrean Branch or press $qstr$INF to leave" \
 		"the current "
@@ -422,7 +477,8 @@ git_set_subjectprefix() {
 # @stdout Directory prompts and confirmation
 #
 # Returns:
-# @exitcode 0 Always succeeds
+# @exitcode 0 Directory set successfully
+# @exitcode 1 Batch mode and directory not set
 #
 input_dir() {
 	ui_log "input_dir"
@@ -430,6 +486,18 @@ input_dir() {
 	local dircfgkey="$2"
 	local dir="${!3}"
 	local b_msgshown=false
+
+	# In batch mode, if directory is already valid, use it; else fail
+	$b_batch && {
+		[ -d "$dir" ] && {
+			dir=$(realpath "$dir")
+			set_cfg_item "$dircfgkey" "$dir"
+			eval "$3"="$dir"
+			return 0
+		}
+		echo -e "${CAU}Batch mode: $dirstr directory not set or invalid$OFF" >&2
+		return 1
+	}
 
 	[ -n "$dir" ] && {
 		echo -e "${INF}Current $STA$dirstr$INF directory : $STA$dir$OFF"
@@ -488,6 +556,17 @@ input_backportfile() {
 	local commitsfilemsg
 	local exitmsg
 	local currentfile
+
+	# In batch mode, if backportfile is already valid, use it; else fail
+	$b_batch && {
+		[ -f "$backportfile" ] && {
+			backportfile="$(realpath "$backportfile")"
+			set_cfg_item "backportfile" "$backportfile"
+			return 0
+		}
+		echo -e "${CAU}Batch mode: backportfile not set or invalid$OFF" >&2
+		return 1
+	}
 
 	prstr=$(
 cat <<EOF
@@ -2771,10 +2850,29 @@ You cannot use patchpal for backporting without an X DISPLAY.$OFF"
 #
 # Returns:
 # @exitcode 0 Mode selected
+# @exitcode 1 Batch mode and mode not set
 #
 get_backport_mode() {
-while :; do
 	$b_log && ui_log "get_backport_mode"
+
+	# In batch mode, if backport_mode is already valid, use it; else fail
+	$b_batch && {
+		((backport_mode >= bm_lower && backport_mode <= bm_upper)) && {
+			# Still check patchpal needs X
+			if ((backport_mode == bm_patchpal)); then
+				check_X || {
+					echo -e "${CAU}Batch mode: patchpal requires X display$OFF" >&2
+					return 1
+				}
+			fi
+			set_cfg_item "backport_mode" "$backport_mode"
+			return 0
+		}
+		echo -e "${CAU}Batch mode: backport mode not set or invalid$OFF" >&2
+		return 1
+	}
+
+while :; do
 	echo
 	echo -e "    ${INF}Which backport mode do you want to use?$MNU"
 	echo -e "      1.$OFF patchpal$MNU"
@@ -2881,6 +2979,7 @@ read_session() {
 #
 # Returns:
 # @exitcode 0 On correct branch or switched successfully
+# @exitcode 1 Batch mode and branch unavailable
 #
 check_gitbranch() {
 	$b_log && ui_log "check_gitbranch backportfile:$backportfile"
@@ -2892,6 +2991,13 @@ check_gitbranch() {
 
 	[[ $cbranch == $sbranch ]] && return 0
 	git checkout "$sbranch" 2> /dev/null && return 0
+
+	# In batch mode, fail if we can't checkout the saved branch
+	$b_batch && {
+		echo -e "${CAU}Batch mode: cannot checkout saved branch '$sbranch'$OFF" >&2
+		echo -e "${INF}Current branch is '$cbranch'. Use -b to specify a branch.$OFF" >&2
+		return 1
+	}
 
 	# Okay, not the same branch, and previous branch is no longer valid.
 	# Clear all done markers in the backport file.
@@ -3008,9 +3114,14 @@ init_common() {
 
 	# If we don't have a valid upstream directory, get it now.
 	([ -d "$updir" ] && is_valid_gitdir "$updir") || {
+		# In batch mode, fail immediately if updir is not valid
+		$b_batch && {
+			echo -e "${CAU}Batch mode: upstream directory not valid$OFF" >&2
+			exit_gort 1
+		}
 		# Get the directory containing the upstream repo
 		while :; do
-			input_dir "Upstream repo" "updir" updir
+			input_dir "Upstream repo" "updir" updir || exit_gort 1
 			is_valid_gitdir "$updir" && break
 		done
 	}
@@ -3069,8 +3180,15 @@ Fetching the upstream mirror...
 	    ui_waitonproc $!
 	fi
 
-	check_gitbranch
-	check_repostate
+	check_gitbranch || {
+		$b_batch && exit_gort 1
+	}
+	check_repostate || {
+		$b_batch && {
+			echo -e "$starterr" >&2
+			exit_gort 1
+		}
+	}
 
 	$b_new && init_newhead
 
@@ -3118,13 +3236,62 @@ init_newsession() {
 	> "$configfile"
 	read_session
 
+	# Re-apply command-line options after re-reading session
+	apply_cmdline_options
+
 	# Set the timestamp for this new session
 	set_cfg_item timestamp "$time"
 
 	b_conflict=false
 	set_cfg_item b_conflict "$b_conflict"
 
-	# Get the directory containing the upstream repo
+	# In batch mode, validate we have all required values
+	$b_batch && {
+		# Validate upstream directory
+		is_valid_gitdir "$updir" || {
+			echo -e "${CAU}Batch mode: upstream directory not valid$OFF" >&2
+			exit_gort 1
+		}
+		# Validate workdir exists or can be created
+		[ -d "$workdir" ] || mkdir -p "$workdir" || {
+			echo -e "${CAU}Batch mode: cannot create work directory$OFF" >&2
+			exit_gort 1
+		}
+		# Validate backportfile
+		[ -f "$backportfile" ] || {
+			echo -e "${CAU}Batch mode: backportfile not found$OFF" >&2
+			exit_gort 1
+		}
+		# Validate backport_mode
+		((backport_mode >= bm_lower && backport_mode <= bm_upper)) || {
+			echo -e "${CAU}Batch mode: backport mode not set$OFF" >&2
+			exit_gort 1
+		}
+		# Save values to config
+		set_cfg_item "updir" "$updir"
+		set_cfg_item "workdir" "$workdir"
+		set_cfg_item "backportfile" "$backportfile"
+		set_cfg_item "backport_mode" "$backport_mode"
+		[ -n "$str_jira" ] && set_cfg_item "str_jira" "$str_jira"
+		[ -n "$str_cve" ] && set_cfg_item "str_cve" "$str_cve"
+		[ -n "$str_upstream" ] && set_cfg_item "str_upstream" "$str_upstream"
+
+		# Select branch in batch mode
+		select_gitbranch || exit_gort 1
+
+		# Create and init the gort.log file in the workdir.
+		gortlog="${workdir%/}"/gort.log
+		> "$gortlog"
+
+		b_lasthashvalid=false
+		b_new=true
+		clear_alldone
+		init_common
+		$b_cmdline && exit_gort $exit_good
+		return 0
+	}
+
+	# Interactive mode - get the directory containing the upstream repo
 	while :; do
 		input_dir "Upstream repo" "updir" updir
 		is_valid_gitdir "$updir" && break
@@ -3263,6 +3430,205 @@ check_command() {
 	return 1
 }
 
+# mode_name_to_number
+# @description Convert backport mode name to number
+#
+# Arguments:
+# @arg $1 string Mode name or number
+#
+# Effects:
+# @stdout Mode number (1-6)
+#
+# Returns:
+# @exitcode 0 Valid mode
+# @exitcode 1 Invalid mode
+#
+mode_name_to_number() {
+	local mode="$1"
+	case "$mode" in
+		1|patchpal)    echo 1 ;;
+		2|cherry|cherry-pick) echo 2 ;;
+		3|apply)       echo 3 ;;
+		4|apply3)      echo 4 ;;
+		5|patch)       echo 5 ;;
+		6|patch_merge|patch-merge) echo 6 ;;
+		*) return 1 ;;
+	esac
+	return 0
+}
+
+# apply_cmdline_options
+# @description Apply command-line options to config variables
+#   Called after read_session to override saved values with command-line options.
+#
+# Globals:
+# @set backportfile string Updated from opt_backportfile
+# @set updir string Updated from opt_updir
+# @set workdir string Updated from opt_workdir
+# @set gitbranch string Updated from opt_branch
+# @set backport_mode int Updated from opt_mode
+# @set str_jira string Updated from opt_jira
+# @set str_cve string Updated from opt_cve
+# @set str_upstream string Updated from opt_upstream
+# @set stophash string Updated from opt_stop
+#
+# Returns:
+# @exitcode 0 Always succeeds
+#
+apply_cmdline_options() {
+	$b_log && ui_log "apply_cmdline_options"
+	local mode_num
+
+	[ -n "$opt_backportfile" ] && {
+		backportfile="$(realpath "$opt_backportfile" 2>/dev/null || echo "$opt_backportfile")"
+		set_cfg_item "backportfile" "$backportfile"
+	}
+	[ -n "$opt_updir" ] && {
+		updir="$(realpath "$opt_updir" 2>/dev/null || echo "$opt_updir")"
+		set_cfg_item "updir" "$updir"
+	}
+	[ -n "$opt_workdir" ] && {
+		workdir="$(realpath "$opt_workdir" 2>/dev/null || echo "$opt_workdir")"
+		set_cfg_item "workdir" "$workdir"
+	}
+	[ -n "$opt_branch" ] && {
+		gitbranch="$opt_branch"
+		set_cfg_item "gitbranch" "$gitbranch"
+	}
+	[ -n "$opt_mode" ] && {
+		mode_num="$(mode_name_to_number "$opt_mode")" && {
+			backport_mode="$mode_num"
+			set_cfg_item "backport_mode" "$backport_mode"
+		}
+	}
+	[ -n "$opt_jira" ] && {
+		str_jira="$opt_jira"
+		set_cfg_item "str_jira" "$str_jira"
+	}
+	[ -n "$opt_cve" ] && {
+		str_cve="$opt_cve"
+		set_cfg_item "str_cve" "$str_cve"
+	}
+	[ -n "$opt_upstream" ] && {
+		str_upstream="$opt_upstream"
+		set_cfg_item "str_upstream" "$str_upstream"
+	}
+	[ -n "$opt_stop" ] && {
+		stophash="$opt_stop"
+		set_cfg_item "stophash" "$stophash"
+	}
+	return 0
+}
+
+# validate_batch_requirements
+# @description Validate that required values are present for batch mode
+#
+# Globals:
+# @set backportfile string Backport file path (read)
+# @set updir string Upstream directory (read)
+# @set workdir string Work directory (read)
+# @set backport_mode int Backport mode (read)
+#
+# Effects:
+# @stdout Error messages for missing requirements
+#
+# Returns:
+# @exitcode 0 All required values present
+# @exitcode 1 Missing required values
+#
+validate_batch_requirements() {
+	$b_log && ui_log "validate_batch_requirements"
+	local -i missing=0
+
+	[ -f "$backportfile" ] || {
+		echo -e "${CAU}Batch mode requires backportfile (-f)$OFF" >&2
+		((missing++))
+	}
+	[ -d "$updir" ] && is_valid_gitdir "$updir" || {
+		echo -e "${CAU}Batch mode requires valid upstream directory (-u)$OFF" >&2
+		((missing++))
+	}
+	[ -d "$workdir" ] || {
+		# Try to create it
+		mkdir -p "$workdir" 2>/dev/null || {
+			echo -e "${CAU}Batch mode requires valid work directory (-w)$OFF" >&2
+			((missing++))
+		}
+	}
+	((backport_mode >= bm_lower && backport_mode <= bm_upper)) || {
+		echo -e "${CAU}Batch mode requires backport mode (-m 1-6)$OFF" >&2
+		((missing++))
+	}
+
+	((missing > 0)) && return 1
+	return 0
+}
+
+# parse_options
+# @description Parse command-line options before the command
+#   Extracts options like --batch, -f FILE, etc. and sets globals.
+#   Remaining arguments (the command) are left in positional parameters.
+#
+# Arguments:
+# @arg $@ All command-line arguments
+#
+# Globals:
+# @set b_batch bool Batch mode flag
+# @set opt_* string Various option values
+#
+# Effects:
+# @stdout Usage info on error
+#
+# Returns:
+# @exitcode 0 Options parsed, remaining args set
+#
+parse_options() {
+	$b_log && ui_log "parse_options"
+	local -a remaining=()
+
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			-f|--backportfile)
+				opt_backportfile="$2"; shift 2 ;;
+			-u|--updir)
+				opt_updir="$2"; shift 2 ;;
+			-w|--workdir)
+				opt_workdir="$2"; shift 2 ;;
+			-b|--branch)
+				opt_branch="$2"; shift 2 ;;
+			-m|--mode)
+				opt_mode="$2"; shift 2 ;;
+			-j|--jira)
+				opt_jira="$2"; shift 2 ;;
+			-C|--cve)
+				opt_cve="$2"; shift 2 ;;
+			-U|--upstream)
+				opt_upstream="$2"; shift 2 ;;
+			-S|--stop)
+				opt_stop="$2"; shift 2 ;;
+			--batch)
+				b_batch=true; shift ;;
+			--)
+				shift; remaining+=("$@"); break ;;
+			-*)
+				# Could be a command option like -h, -p, -r, -s
+				# Pass it through to command parsing
+				remaining+=("$1"); shift ;;
+			*)
+				# Not an option - command or argument
+				remaining+=("$1"); shift ;;
+		esac
+	done
+
+	# Set positional parameters to remaining args
+	set -- "${remaining[@]}"
+	# Return remaining args via global
+	GORT_REMAINING_ARGS=("${remaining[@]}")
+}
+
+# Declare array for remaining args after option parsing
+declare -a GORT_REMAINING_ARGS=()
+
 parse_command_line() {
 	#########################################
 	# Commands and Options
@@ -3279,6 +3645,11 @@ parse_command_line() {
 			;;
 		"branch" )
 			select_gitbranch
+			;;
+		"init" )
+			# Initialize a new session (batch mode uses command-line options)
+			read_session
+			init_newsession
 			;;
 		"commit" )
 			[ "$2" == "1" ] && b_one=true || b_one=false
@@ -3340,15 +3711,38 @@ main() {
 
 	$b_log && ui_log "start of script execution"
 
+	# Parse options first, before reading session
+	parse_options "$@"
+
 	read_session
 	init_global_strings
 
+	# Apply any command-line options to override saved config
+	apply_cmdline_options
+
+	# Use remaining args after option parsing
+	set -- "${GORT_REMAINING_ARGS[@]}"
+
 	if [ $# -eq 0 ]; then
 		b_cmdline=false
-		print_herald
-	else
+		# In batch mode with no command, default to 'run'
+		$b_batch && set -- "run"
+	fi
+
+	if [ $# -gt 0 ]; then
 		b_cmdline=true
 	fi
+
+	if ! $b_cmdline; then
+		print_herald
+	fi
+
+	# In batch mode, validate requirements before proceeding
+	$b_batch && {
+		validate_batch_requirements || exit_gort 1 \
+"${CAU}Missing required parameters for batch mode.
+Use --help for usage information.$OFF"
+	}
 
 	# If any one of workdir, updir, or backportfile is missing, then this
 	# is a new session but only if it's NOT from the command line.
