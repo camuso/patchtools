@@ -1,0 +1,296 @@
+#!/bin/bash
+#
+# mksubpatch - Extract subsystem-specific patch from a tree-wide commit
+#
+# Creates a patch containing only the hunks from a commit that affect
+# specified paths. Useful for backporting tree-wide changes to a specific
+# subsystem without including unrelated changes.
+#
+
+declare usagestr="$(
+cat <<EOF
+
+$(basename "$0") [OPTIONS] <commit> <path> [path2 ...]
+
+Extract subsystem-specific hunks from a tree-wide commit.
+
+Creates a patch file containing only the changes from <commit> that
+affect the specified path(s). Useful for backporting tree-wide changes
+(e.g., API renames, treewide cleanups) to a specific subsystem.
+
+Arguments:
+  commit    Git commit hash or reference
+  path      Path(s) to filter (e.g., drivers/char/ipmi)
+
+Options:
+  -o DIR    Output directory for patch file (default: current directory)
+  -f FILE   Output to specific file (overrides -o and default naming)
+  -s        Print patch to stdout instead of file
+  -n        Dry run - show what would be extracted without creating patch
+  -v        Verbose - show additional information
+  -h        Show this help message
+
+Examples:
+  $(basename "$0") 69050f8d6d07 drivers/char/ipmi
+  $(basename "$0") -o patches/ abc123 drivers/char/ipmi include/linux/ipmi.h
+  $(basename "$0") -s abc123 drivers/hid/intel-ish-hid
+
+Output:
+  Creates a patch file named: <short-hash>-<sanitized-subject>.patch
+
+EOF
+)"
+
+declare commit=
+declare -a paths=()
+declare outdir="."
+declare outfile=
+declare -i stdout_mode=0
+declare -i dry_run=0
+declare -i verbose=0
+
+#** usage: print usage information
+#*
+usage() {
+	echo -e "$usagestr"
+}
+
+#** control_c: control-c trap
+#*
+control_c() {
+	echo -e "\nCtrl-c detected\nCleaning up and exiting."
+	exitme 130
+}
+
+#** exitme: exit with code and optional message
+#*
+# Arguments
+#   $1 - exit code
+#   $2 - optional message
+#*
+exitme() {
+	local -i code="$1"
+	local msg="$2"
+
+	((code == 0)) && exit "$code"
+	[[ -n "$msg" ]] && echo -e "$msg" >&2
+	exit "$code"
+}
+
+#** validate_commit: verify commit exists in repo
+#*
+# Arguments
+#   $1 - commit hash or reference
+#*
+validate_commit() {
+	local cmt="$1"
+
+	if ! git rev-parse --verify "$cmt^{commit}" >/dev/null 2>&1; then
+		exitme 1 "Error: '$cmt' is not a valid commit"
+	fi
+}
+
+#** get_commit_info: extract commit subject and short hash
+#*
+# Arguments
+#   $1 - commit hash
+#*
+# Sets globals:
+#   commit_short - short hash
+#   commit_subject - commit subject line
+#*
+get_commit_info() {
+	local cmt="$1"
+
+	commit_short=$(git rev-parse --short "$cmt")
+	commit_subject=$(git log -1 --format="%s" "$cmt")
+}
+
+#** sanitize_filename: convert string to safe filename
+#*
+# Arguments
+#   $1 - string to sanitize
+#*
+# Output:
+#   Sanitized string on stdout
+#*
+sanitize_filename() {
+	local str="$1"
+
+	# Replace spaces and special chars with hyphens, truncate
+	echo "$str" | sed -e 's/[^a-zA-Z0-9._-]/-/g' -e 's/--*/-/g' -e 's/^-//' -e 's/-$//' | cut -c1-60
+}
+
+#** check_paths_in_commit: verify paths have changes in commit
+#*
+# Arguments
+#   $1 - commit hash
+#   $@ - paths to check
+#*
+# Returns:
+#   0 if at least one path has changes
+#   1 if no paths have changes
+#*
+check_paths_in_commit() {
+	local cmt="$1"
+	shift
+	local -a check_paths=("$@")
+	local path
+
+	for path in "${check_paths[@]}"; do
+		if git diff-tree --no-commit-id --name-only -r "$cmt" -- "$path" 2>/dev/null | grep -q .; then
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+#** generate_patch: create the filtered patch
+#*
+# Arguments
+#   $1 - commit hash
+#   $@ - paths to include
+#*
+# Output:
+#   Patch content on stdout
+#*
+generate_patch() {
+	local cmt="$1"
+	shift
+	local -a filter_paths=("$@")
+
+	git format-patch -1 --stdout "$cmt" -- "${filter_paths[@]}"
+}
+
+#** parse_args: parse command line arguments
+#*
+# Arguments
+#   $@ - command line arguments
+#*
+parse_args() {
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			-h|--help|help)
+				usage
+				exit 0
+				;;
+			-o)
+				shift
+				[[ -z "$1" ]] && exitme 1 "Error: -o requires a directory argument"
+				outdir="$1"
+				;;
+			-f)
+				shift
+				[[ -z "$1" ]] && exitme 1 "Error: -f requires a filename argument"
+				outfile="$1"
+				;;
+			-s)
+				stdout_mode=1
+				;;
+			-n)
+				dry_run=1
+				;;
+			-v)
+				verbose=1
+				;;
+			-*)
+				exitme 1 "Error: Unknown option: $1"
+				;;
+			*)
+				if [[ -z "$commit" ]]; then
+					commit="$1"
+				else
+					paths+=("$1")
+				fi
+				;;
+		esac
+		shift
+	done
+
+	# Validate required arguments
+	[[ -z "$commit" ]] && exitme 1 "Error: Commit hash is required"
+	[[ ${#paths[@]} -eq 0 ]] && exitme 1 "Error: At least one path is required"
+}
+
+#** main: main entry point
+#*
+main() {
+	local patch_content
+	local output_path
+	local files_changed
+
+	trap control_c SIGINT
+
+	parse_args "$@"
+
+	# Must be in a git repo
+	if ! git rev-parse --git-dir >/dev/null 2>&1; then
+		exitme 1 "Error: Not in a git repository"
+	fi
+
+	validate_commit "$commit"
+	get_commit_info "$commit"
+
+	# Check if paths have changes in this commit
+	if ! check_paths_in_commit "$commit" "${paths[@]}"; then
+		exitme 1 "Error: No changes found in '$commit' for paths: ${paths[*]}"
+	fi
+
+	# Show what files will be included
+	files_changed=$(git diff-tree --no-commit-id --name-only -r "$commit" -- "${paths[@]}")
+
+	if ((verbose || dry_run)); then
+		echo "Commit: $commit_short - $commit_subject"
+		echo "Paths filter: ${paths[*]}"
+		echo "Files to include:"
+		echo "$files_changed" | sed 's/^/  /'
+		echo
+	fi
+
+	if ((dry_run)); then
+		echo "[Dry run] Would create patch with above files"
+		exit 0
+	fi
+
+	# Generate the patch
+	patch_content=$(generate_patch "$commit" "${paths[@]}")
+
+	if [[ -z "$patch_content" ]]; then
+		exitme 1 "Error: Failed to generate patch (empty output)"
+	fi
+
+	# Output handling
+	if ((stdout_mode)); then
+		echo "$patch_content"
+	else
+		# Determine output filename
+		if [[ -n "$outfile" ]]; then
+			output_path="$outfile"
+		else
+			local safe_subject
+			safe_subject=$(sanitize_filename "$commit_subject")
+			output_path="${outdir}/${commit_short}-${safe_subject}.patch"
+		fi
+
+		# Create output directory if needed
+		if [[ ! -d "$(dirname "$output_path")" ]]; then
+			mkdir -p "$(dirname "$output_path")" || exitme 1 "Error: Cannot create directory: $(dirname "$output_path")"
+		fi
+
+		echo "$patch_content" > "$output_path"
+		echo "Created: $output_path"
+
+		if ((verbose)); then
+			local -i lines hunks
+			lines=$(echo "$patch_content" | wc -l)
+			hunks=$(echo "$patch_content" | grep -c '^@@')
+			echo "  Lines: $lines"
+			echo "  Hunks: $hunks"
+		fi
+	fi
+
+	exitme 0
+}
+
+main "$@"
