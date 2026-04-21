@@ -402,6 +402,10 @@ $MNU -m MODE$OFF   - set backport mode (1-6 or name: patchpal, cherry, apply,
 $MNU -j JIRA$OFF   - set JIRA link for commit messages
 $MNU -C CVE$OFF    - set CVE for commit messages
 $MNU -U VERSION$OFF- set upstream version for commit messages
+$MNU -B INFO$OFF   - set brew/build info for commit messages
+$MNU -t INFO$OFF   - set test information for commit messages
+$MNU -p PREFIX$OFF - set git format-patch subject prefix
+$MNU -d DIR$OFF    - set directory for patch series output
 $MNU -S HASH$OFF   - stop before this commit hash
 $MNU --batch$OFF   - force batch mode (rarely needed, command-line is auto-batch)
 

@@ -41,6 +41,10 @@
 #   -j | --jira JIRA        Set JIRA link for commit messages
 #   -C | --cve CVE          Set CVE for commit messages
 #   -U | --upstream VERSION Set upstream version for commit messages
+#   -B | --brew INFO        Set brew/build info for commit messages
+#   -t | --test INFO        Set test information for commit messages
+#   -p | --prefix PREFIX    Set git format-patch subject prefix
+#   -d | --patchdir DIR     Set directory for patch series output
 #   -S | --stop HASH        Stop before this commit hash
 #   --batch                 Force batch mode (rarely needed, command-line is auto-batch)
 #
@@ -137,6 +141,10 @@ declare opt_jira=		# -j | --jira
 declare opt_cve=		# -C | --cve
 declare opt_upstream=		# -U | --upstream
 declare opt_stop=		# -S | --stop
+declare opt_brew=		# -B | --brew
+declare opt_test=		# -t | --test
+declare opt_prefix=		# -p | --prefix
+declare opt_patchdir=		# -d | --patchdir
 
 #########################################
 # Config Variables
@@ -3537,6 +3545,21 @@ apply_cmdline_options() {
 		stophash="$opt_stop"
 		set_cfg_item "stophash" "$stophash"
 	}
+	[ -n "$opt_brew" ] && {
+		str_brew="$opt_brew"
+		set_cfg_item "str_brew" "$str_brew"
+	}
+	[ -n "$opt_test" ] && {
+		str_test="$opt_test"
+		set_cfg_item "str_test" "$str_test"
+	}
+	[ -n "$opt_prefix" ] && {
+		git config format.subjectprefix "$opt_prefix"
+	}
+	[ -n "$opt_patchdir" ] && {
+		patchdir="$(realpath "$opt_patchdir" 2>/dev/null || echo "$opt_patchdir")"
+		set_cfg_item "patchdir" "$patchdir"
+	}
 	return 0
 }
 
@@ -3630,12 +3653,20 @@ parse_options() {
 				opt_upstream="$2"; shift 2 ;;
 			-S|--stop)
 				opt_stop="$2"; shift 2 ;;
+			-B|--brew)
+				opt_brew="$2"; shift 2 ;;
+			-t|--test)
+				opt_test="$2"; shift 2 ;;
+			-p|--prefix)
+				opt_prefix="$2"; shift 2 ;;
+			-d|--patchdir)
+				opt_patchdir="$2"; shift 2 ;;
 			--batch)
 				b_batch=true; shift ;;
 			--)
 				shift; remaining+=("$@"); break ;;
 			-*)
-				# Could be a command option like -h, -p, -r, -s
+				# Could be a command option like -h, -r, -s
 				# Pass it through to command parsing
 				remaining+=("$1"); shift ;;
 			*)
