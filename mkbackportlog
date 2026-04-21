@@ -1178,8 +1178,11 @@ run() {
 	fi
 
 	echo
-	echo -en "${CAU}Press any key to proceed or CTRL-C to exit...$OFF"
-	read -r -n1
+	if $b_interactive; then
+		echo -en "${CAU}Press any key to proceed or CTRL-C to exit...$OFF"
+		read -r -n1
+		echo
+	fi
 
 	echo -e "$STA$PWD$OFF"
 	echo -e "${STA}Creating $outdir/$uplog$INF"
