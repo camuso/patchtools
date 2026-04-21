@@ -186,7 +186,7 @@ $(basename "$0") $OFF
   With no arguments invokes interactive mode.
   Type 'h' at the main menu of interactive mode for help with that.
 $MNU
-$(basename "$0") -od -dc -ud path [path-2 path-n] [-uc] [-us] $OFF
+$(basename "$0") -od -dc -ud path [path-2 path-n] [-ub BRANCH] [-uc] [-us] $OFF
 
 Create a list of commits to be backported from an upstream repo
 Commits that have already been backported will have a leading$MNU #$OFF to
@@ -239,6 +239,9 @@ $MNU   -ud$OFF - Directory having the upstream repo,
          If there is no upstream repo declared with the "${MNU}-ud$OFF" switch
 	 and no remote one in the current$MNU \$PWD$OFF, then this script will exit
 	 with an error message.
+$MNU   -ub$OFF [BRANCH] - Upstream repo/branch to search.
+         If BRANCH is provided (e.g.$MNU origin/master$OFF), it is used directly.
+	 If omitted, an interactive menu allows selection from available branches.
   $MNU${UND}Informational$OFF
   $MNU -V $OFF - show patchtools version and exit
   $MNU -h $OFF - this help text
@@ -464,7 +467,12 @@ parseops() {
 			 ;;
 		    ue ) getcmt "$1" "$arg" configtable[upscope]
 			 ;;
-		    ub ) select_remote
+		    ub ) # Check if next arg is a branch name (not another option or path)
+			 if [[ -n "$1" && "${1:0:1}" != "-" && ! -e "$1" ]]; then
+			     set_upstream_branch "$1"
+			 else
+			     select_remote
+			 fi
 			 ;;
 		    S  ) get_varopt "$1" configtable[searchstr]
 			 ;;
@@ -652,6 +660,48 @@ seek_str() {
 	done
 	ui_cd -
 	return 0
+}
+
+# set_upstream_branch
+# @description Set upstream branch directly from command line argument
+#
+# Arguments:
+# @arg $1 string Branch name (e.g., origin/master)
+#
+# Globals:
+# @set repobr string Selected remote branch (written)
+# @set configtable array Config variables (written)
+# @set updir string Upstream directory (read)
+#
+# Returns:
+# @exitcode 0 Branch set successfully
+# @exitcode 1 Branch not found in upstream repo
+#
+set_upstream_branch() {
+	local branch="$1"
+	local brstr=
+
+	# Get all branches from upstream repo
+	if [[ "$updir" != "$PWD" ]]; then
+		ui_cd "$updir"
+		brstr=$(git branch -r)
+		ui_cd -
+	else
+		brstr=$(git branch -r)
+	fi
+
+	# Check if the specified branch exists (handle leading whitespace)
+	if echo "$brstr" | grep -qE "(^|[[:space:]])${branch}$"; then
+		repobr="$branch"
+		configtable[repobr]="$repobr"
+		echo -e "${INF}Using upstream branch: $STA$repobr$OFF"
+		return 0
+	else
+		echo -e "${WRN}Branch '$branch' not found in upstream repo: $STA$updir$OFF"
+		echo -e "${INF}Falling back to interactive selection...$OFF"
+		select_remote
+		return $?
+	fi
 }
 
 # select_remote
@@ -1259,7 +1309,8 @@ main() {
 		# update the configfile before going any further
 		cfg_write
 
-		select_remote repobr
+		# Only prompt for branch if not already set via -ub
+		[[ -z "$repobr" && -z "${configtable[repobr]}" ]] && select_remote repobr
 		currentbranch=$(get_currentbranch)
 		configtable[currentbranch]="$currentbranch"
 	fi
