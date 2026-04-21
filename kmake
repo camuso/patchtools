@@ -19,12 +19,48 @@ $0 [OPTION]
 	-m make RHEL config file and copy to .config before build
 	-v verbose make
 	-k make kabitools database
+	-e email address to notify on completion (default: tcamuso@redhat.com)
+	-n disable email notification
 	-h this help screen
 
 	With no options, kmake will build and install the kernel
 	and kernel modules using all processors.
 EOF
 )
+
+# send_notification
+# Send email notification when build completes
+#
+send_notification() {
+	local status="$1"
+	local elapsed="$2"
+	local subject body
+
+	[[ -z "$notify_email" ]] && return
+
+	local kver
+	kver=$(cat localversion 2>/dev/null || echo "unknown")
+	local host
+	host=$(hostname)
+
+	if ((status == 0)); then
+		subject="[kmake] Build SUCCESS on $host - $kver"
+	else
+		subject="[kmake] Build FAILED on $host - $kver (exit: $status)"
+	fi
+
+	body="Kernel build completed on $host
+Version: $kver
+Status: $(((status == 0)) && echo 'SUCCESS' || echo "FAILED (exit code: $status)")
+Level: $level
+Elapsed time: $elapsed
+Working directory: $PWD
+
+Log file: $(dirname "$PWD")/make.log"
+
+	echo "$body" | mail -s "$subject" "$notify_email" 2>/dev/null || \
+		echo "Warning: Could not send email notification to $notify_email"
+}
 
 mkconfig() {
 	echo "Building the .config file."
@@ -43,8 +79,9 @@ sparse=0	# no sparse
 verbose=""	# no verbose
 kabi=""		# no kabitools database
 cores=$(grep -cw processor /proc/cpuinfo)
+notify_email="tcamuso@redhat.com"	# email notification
 
-while getopts b:l:c:j:vkhm OPTION; do
+while getopts b:l:c:j:e:nvkhm OPTION; do
     case "$OPTION" in
 	b ) echo "$OPTARG" > localversion
 		;;
@@ -59,6 +96,10 @@ while getopts b:l:c:j:vkhm OPTION; do
 	k ) kabi="K=1"
 		;;
 	m ) mkconfig
+		;;
+	e ) notify_email=$OPTARG
+		;;
+	n ) notify_email=""
 		;;
 	h ) echo -e "$usage"
             exit 0
@@ -91,8 +132,14 @@ echo | tee -a ../make.log
 echo "Elapsed time: $minutes : $seconds" | tee -a ../make.log
 echo | tee -a ../make.log
 
-((level == 1)) && exit 0
-((makestat == 0)) || exit $makestat
+if ((level == 1)); then
+	send_notification $makestat "$minutes : $seconds"
+	exit $makestat
+fi
+if ((makestat != 0)); then
+	send_notification $makestat "$minutes : $seconds"
+	exit $makestat
+fi
 
 echo "make -j$cores $verbose C=$sparse modules_install 2>&1 | tee -a ../make.log" | \
 	tee -a ../make.log
@@ -107,12 +154,19 @@ echo | tee -a ../make.log
 echo "Elapsed time: $minutes : $seconds" | tee -a ../make.log
 echo | tee -a ../make.log
 
-[ $level -eq 2 ] && exit 0
-[ $makestat -eq 0 ] || exit $makestat
+if [ $level -eq 2 ]; then
+	send_notification $makestat "$minutes : $seconds"
+	exit $makestat
+fi
+if [ $makestat -ne 0 ]; then
+	send_notification $makestat "$minutes : $seconds"
+	exit $makestat
+fi
 
 echo "make -j$cores $verbose C=$sparse install 2>&1 | tee -a ../make.log" | \
 	tee -a ../make.log
 make -j$cores $verbose C=$sparse install 2>&1 | tee -a ../make.log
+makestat=$?
 
 END=$(date +%s)
 DIFF=$(( END - START1 ))
@@ -121,3 +175,6 @@ seconds=$(( DIFF % 60 ))
 echo | tee -a ../make.log
 echo "Elapsed time: $minutes : $seconds" | tee -a ../make.log
 echo | tee -a ../make.log
+
+send_notification $makestat "$minutes : $seconds"
+exit $makestat
