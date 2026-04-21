@@ -52,6 +52,24 @@ $OFF
 The$MNU gort$OFF menu fields and other salient init and setup information
 are explained below the Workflow.
 
+$MNU gort$OFF can be run interactively (menu-driven) or from the command line.
+Command-line mode automatically uses saved session config, so you only need
+to provide options when initializing or overriding specific values.
+
+${MNU}Typical Workflow:$OFF
+
+  ${MNU}1.$OFF Initialize session once (interactive or command-line):
+     ${STA}gort new$OFF                           # Interactive setup
+     ${STA}gort -f backport.log -u /work/upstream -w /tmp/work -m cherry init$OFF
+
+  ${MNU}2.$OFF Run backports (no options needed - uses saved config):
+     ${STA}gort run$OFF                           # Run all remaining
+     ${STA}gort next$OFF                          # Run just the next one
+
+  ${MNU}3.$OFF Override specific values as needed:
+     ${STA}gort -m apply next$OFF                 # Use different mode
+     ${STA}gort -S abc123 run$OFF                 # Stop before commit
+
 Workflow consists of these steps.
 
 $MNU${UND}The Backport Commits File
@@ -309,8 +327,8 @@ $MNU h$OFF Help
 $MNU${UND}Options Menu$OFF
 
 $MNU u$OFF Upstream Status${OFF}, e.g. v6.7, will be entered into commit logs
-$MNU j$OFF JIRA Link$OFF will be entered into commit logs
-$MNU j$OFF CVE$OFF will be entered into commit logs
+$MNU J$OFF JIRA Link$OFF will be entered into commit logs
+$MNU C$OFF CVE$OFF will be entered into commit logs
 $MNU b$OFF Brew of build info$OFF will be entered into commit logs
 $MNU t$OFF Test information$OFF will be entered into commit logs
 $MNU p$OFF Patch subject prefix$OFF used in patch series creation
@@ -319,12 +337,13 @@ $MNU B$OFF Backport mode$INF
    Selecting this option makes the following menu appear.
 
 $MNU   Which backport mode do you want to use?
-$MNU       1.$OFF git cherry-pick$MNU
-$MNU       2.$OFF git apply --reject$MNU
-$MNU       3.$OFF git apply with 3-way merge$MNU
-$MNU       4.$OFF patch with reject files$MNU
-$MNU       5.$OFF patch --merge, use conflict markers instead of rej files$MNU
-$MNU Please enter a number between 1 and 5:
+$MNU       1.$OFF patchpal$MNU
+$MNU       2.$OFF git cherry-pick$MNU
+$MNU       3.$OFF git apply --reject$MNU
+$MNU       4.$OFF git apply with 3-way merge$MNU
+$MNU       5.$OFF patch with reject files$MNU
+$MNU       6.$OFF patch --merge, use conflict markers instead of rej files$MNU
+$MNU Please enter a number between 1 and 6:
 
 $MNU c$OFF Change Terminal colors$OFF for light or dark terminal backgrounds
 $MNU q$OFF Quit to Main Menu
@@ -349,6 +368,7 @@ In command line mode, it can be used to backport single commits at
 a time or automate backporting from a list of upstream commits
 created with the mkbackportlog tool in this patchtools suite.
 
+${MNU}Commands:$OFF
 $MNU abort$OFF     - abort the current backport, restore head and index
              to previous successful backported commit.
 $MNU branch$OFF    - select a different downstream git branch
@@ -357,18 +377,39 @@ $MNU commit [1]$OFF- commit changes after conflict resolution and create commit 
              commit, otherwise the gort menu will be presented.
 $MNU help$OFF      - display this help
 $MNU history$OFF   - show commits so far this session
-$MNU new$OFF       - start a new session
+$MNU init$OFF      - initialize a new session (non-interactive with options)
+$MNU new$OFF       - start a new session (interactive prompts)
+$MNU next$OFF      - run the next commit only
 $MNU nit$OFF       - select the hunks you wish to backport from the upstream commit
              Available in cherry-pick mode only
 $MNU pick <h>$OFF  - backport one hash specified by <h>
 $MNU reset$OFF     - choose from a list of commits to reset to
-$MNU run$OFF       - run the backport automation
-$MNU select$OFF    - select the next upstream has to backport from a list
+$MNU run$OFF       - run the backport automation (all remaining commits)
+$MNU select$OFF    - select the next upstream hash to backport from a list
 $MNU setup$OFF     - run the gort menu to setup the runtime environment
              This is easier and simpler than having a different command
              for every parameter.
 $MNU status$OFF    - show the gort session status and git status
 $MNU version$OFF   - show this version of the gort tool
+
+${MNU}Options (override saved config values):$OFF
+$MNU -f FILE$OFF   - set backport commits file
+$MNU -u DIR$OFF    - set upstream repository directory
+$MNU -w DIR$OFF    - set working directory for session
+$MNU -b BRANCH$OFF - set/checkout downstream git branch
+$MNU -m MODE$OFF   - set backport mode (1-6 or name: patchpal, cherry, apply,
+             apply3, patch, patch_merge)
+$MNU -j JIRA$OFF   - set JIRA link for commit messages
+$MNU -C CVE$OFF    - set CVE for commit messages
+$MNU -U VERSION$OFF- set upstream version for commit messages
+$MNU -S HASH$OFF   - stop before this commit hash
+$MNU --batch$OFF   - force batch mode (rarely needed, command-line is auto-batch)
+
+${MNU}Examples:$OFF
+  ${STA}gort -f backport.log -u /work/upstream -w /tmp/work -m cherry init$OFF
+  ${STA}gort run$OFF
+  ${STA}gort -m apply next$OFF
+  ${STA}gort -S abc123 run$OFF
 
 $MNU${UND}Resolving Conflicts$OFF
 
