@@ -462,6 +462,9 @@ parseops() {
 		    od ) get_pathopt -r "$1" configtable[outdir]
 			;;
 		    dc ) getcmt "$1" "$arg" configtable[dncmt]
+			 # Clear cached upcmt so it's freshly extracted from new -dc
+			 upcmt=
+			 configtable[upcmt]=
 			 ;;
 		    us ) getcmt "$1" "$arg" configtable[upcmt]
 			 ;;
