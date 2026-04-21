@@ -19,10 +19,10 @@
 # Use 'docscript -f funcname <scriptname>' to view function documentation.
 #
 # Usage:
-#   gort                    # Interactive mode
+#   gort                    # Interactive mode (menu-driven)
 #   gort help               # Show help
-#   gort new                # Start a new session
-#   gort init               # Initialize session (use with --batch for non-interactive)
+#   gort new                # Start a new session (interactive setup)
+#   gort init               # Initialize session (non-interactive with options)
 #   gort run                # Run all remaining commits
 #   gort next               # Run next commit only
 #   gort status             # Show current session status
@@ -31,8 +31,7 @@
 #   gort reset              # Reset to earlier commit
 #   gort history            # Show history of applied patches
 #
-# Options (for non-interactive/batch mode):
-#   --batch                 Run in batch mode (no prompts, fail if required values missing)
+# Options (override saved config values):
 #   -f | --backportfile FILE  Set backport commits file
 #   -u | --updir DIR        Set upstream repository directory
 #   -w | --workdir DIR      Set working directory for session
@@ -43,13 +42,20 @@
 #   -C | --cve CVE          Set CVE for commit messages
 #   -U | --upstream VERSION Set upstream version for commit messages
 #   -S | --stop HASH        Stop before this commit hash
+#   --batch                 Force batch mode (rarely needed, command-line is auto-batch)
 #
-# Examples:
-#   # Non-interactive run with cherry-pick
-#   gort --batch -f /path/to/backport.log -u /work/upstream -w /tmp/work -m cherry run
+# Workflow:
+#   1. Initialize session once (interactively or with options):
+#      gort new                              # Interactive setup
+#      gort -f backport.log -u /work/upstream -w /tmp/work -m cherry init
 #
-#   # Initialize and run in one command
-#   gort --batch -f backport.log -u /work/upstream -w /tmp/work -b my-branch -m 2 init
+#   2. Run backports (uses saved config, no options needed):
+#      gort run                              # Run all remaining
+#      gort next                             # Run just the next one
+#
+#   3. Override specific values as needed:
+#      gort -m apply next                    # Use different mode for this run
+#      gort -S abc123 run                    # Stop before specific commit
 #
 
 #######################################
@@ -104,6 +110,20 @@ declare b_session_inited=false	# boolean to indicate session is inited
 declare b_cmdline=false		# boolean indicating a comman line call
 declare b_log=false
 declare b_batch=false		# boolean for batch/non-interactive mode
+
+# is_noninteractive
+# @description Check if running in non-interactive mode
+#   Returns true if either batch mode or command-line mode is active.
+#   Command-line invocations (gort run, gort next, etc.) should behave
+#   like batch mode - use saved config and fail if values missing.
+#
+# Returns:
+# @exitcode 0 Non-interactive mode active
+# @exitcode 1 Interactive mode
+#
+is_noninteractive() {
+	$b_batch || $b_cmdline
+}
 
 #########################################
 # Command-line Option Variables
@@ -327,8 +347,8 @@ select_gitbranch() {
 	local hilite=
 	local branchlistfile="$workdir"/branchlist
 
-	# In batch mode, if gitbranch is set, try to checkout; else use current
-	$b_batch && {
+	# In non-interactive mode, if gitbranch is set, try to checkout; else use current
+	is_noninteractive && {
 		if [ -n "$gitbranch" ]; then
 			# Try to checkout the specified branch
 			git checkout "$gitbranch" 2>/dev/null || {
@@ -478,7 +498,7 @@ git_set_subjectprefix() {
 #
 # Returns:
 # @exitcode 0 Directory set successfully
-# @exitcode 1 Batch mode and directory not set
+# @exitcode 1 Non-interactive mode and directory not set
 #
 input_dir() {
 	ui_log "input_dir"
@@ -487,15 +507,15 @@ input_dir() {
 	local dir="${!3}"
 	local b_msgshown=false
 
-	# In batch mode, if directory is already valid, use it; else fail
-	$b_batch && {
+	# In non-interactive mode, if directory is already valid, use it; else fail
+	is_noninteractive && {
 		[ -d "$dir" ] && {
 			dir=$(realpath "$dir")
 			set_cfg_item "$dircfgkey" "$dir"
 			eval "$3"="$dir"
 			return 0
 		}
-		echo -e "${CAU}Batch mode: $dirstr directory not set or invalid$OFF" >&2
+		echo -e "${CAU}$dirstr directory not set or invalid$OFF" >&2
 		return 1
 	}
 
@@ -557,14 +577,14 @@ input_backportfile() {
 	local exitmsg
 	local currentfile
 
-	# In batch mode, if backportfile is already valid, use it; else fail
-	$b_batch && {
+	# In non-interactive mode, if backportfile is already valid, use it; else fail
+	is_noninteractive && {
 		[ -f "$backportfile" ] && {
 			backportfile="$(realpath "$backportfile")"
 			set_cfg_item "backportfile" "$backportfile"
 			return 0
 		}
-		echo -e "${CAU}Batch mode: backportfile not set or invalid$OFF" >&2
+		echo -e "${CAU}backportfile not set or invalid$OFF" >&2
 		return 1
 	}
 
@@ -2850,25 +2870,25 @@ You cannot use patchpal for backporting without an X DISPLAY.$OFF"
 #
 # Returns:
 # @exitcode 0 Mode selected
-# @exitcode 1 Batch mode and mode not set
+# @exitcode 1 Non-interactive mode and mode not set
 #
 get_backport_mode() {
 	$b_log && ui_log "get_backport_mode"
 
-	# In batch mode, if backport_mode is already valid, use it; else fail
-	$b_batch && {
+	# In non-interactive mode, if backport_mode is already valid, use it; else fail
+	is_noninteractive && {
 		((backport_mode >= bm_lower && backport_mode <= bm_upper)) && {
 			# Still check patchpal needs X
 			if ((backport_mode == bm_patchpal)); then
 				check_X || {
-					echo -e "${CAU}Batch mode: patchpal requires X display$OFF" >&2
+					echo -e "${CAU}patchpal requires X display$OFF" >&2
 					return 1
 				}
 			fi
 			set_cfg_item "backport_mode" "$backport_mode"
 			return 0
 		}
-		echo -e "${CAU}Batch mode: backport mode not set or invalid$OFF" >&2
+		echo -e "${CAU}backport mode not set or invalid. Use -m to specify.$OFF" >&2
 		return 1
 	}
 
@@ -2992,9 +3012,9 @@ check_gitbranch() {
 	[[ $cbranch == $sbranch ]] && return 0
 	git checkout "$sbranch" 2> /dev/null && return 0
 
-	# In batch mode, fail if we can't checkout the saved branch
-	$b_batch && {
-		echo -e "${CAU}Batch mode: cannot checkout saved branch '$sbranch'$OFF" >&2
+	# In non-interactive mode, fail if we can't checkout the saved branch
+	is_noninteractive && {
+		echo -e "${CAU}Cannot checkout saved branch '$sbranch'$OFF" >&2
 		echo -e "${INF}Current branch is '$cbranch'. Use -b to specify a branch.$OFF" >&2
 		return 1
 	}
@@ -3114,9 +3134,9 @@ init_common() {
 
 	# If we don't have a valid upstream directory, get it now.
 	([ -d "$updir" ] && is_valid_gitdir "$updir") || {
-		# In batch mode, fail immediately if updir is not valid
-		$b_batch && {
-			echo -e "${CAU}Batch mode: upstream directory not valid$OFF" >&2
+		# In non-interactive mode, fail immediately if updir is not valid
+		is_noninteractive && {
+			echo -e "${CAU}upstream directory not valid. Use -u to specify.$OFF" >&2
 			exit_gort 1
 		}
 		# Get the directory containing the upstream repo
@@ -3181,10 +3201,10 @@ Fetching the upstream mirror...
 	fi
 
 	check_gitbranch || {
-		$b_batch && exit_gort 1
+		is_noninteractive && exit_gort 1
 	}
 	check_repostate || {
-		$b_batch && {
+		is_noninteractive && {
 			echo -e "$starterr" >&2
 			exit_gort 1
 		}
@@ -3245,26 +3265,26 @@ init_newsession() {
 	b_conflict=false
 	set_cfg_item b_conflict "$b_conflict"
 
-	# In batch mode, validate we have all required values
-	$b_batch && {
+	# In non-interactive mode, validate we have all required values
+	is_noninteractive && {
 		# Validate upstream directory
 		is_valid_gitdir "$updir" || {
-			echo -e "${CAU}Batch mode: upstream directory not valid$OFF" >&2
+			echo -e "${CAU}upstream directory not valid. Use -u to specify.$OFF" >&2
 			exit_gort 1
 		}
 		# Validate workdir exists or can be created
 		[ -d "$workdir" ] || mkdir -p "$workdir" || {
-			echo -e "${CAU}Batch mode: cannot create work directory$OFF" >&2
+			echo -e "${CAU}cannot create work directory. Use -w to specify.$OFF" >&2
 			exit_gort 1
 		}
 		# Validate backportfile
 		[ -f "$backportfile" ] || {
-			echo -e "${CAU}Batch mode: backportfile not found$OFF" >&2
+			echo -e "${CAU}backportfile not found. Use -f to specify.$OFF" >&2
 			exit_gort 1
 		}
 		# Validate backport_mode
 		((backport_mode >= bm_lower && backport_mode <= bm_upper)) || {
-			echo -e "${CAU}Batch mode: backport mode not set$OFF" >&2
+			echo -e "${CAU}backport mode not set. Use -m to specify.$OFF" >&2
 			exit_gort 1
 		}
 		# Save values to config
@@ -3521,7 +3541,7 @@ apply_cmdline_options() {
 }
 
 # validate_batch_requirements
-# @description Validate that required values are present for batch mode
+# @description Validate that required values are present for non-interactive mode
 #
 # Globals:
 # @set backportfile string Backport file path (read)
@@ -3541,22 +3561,26 @@ validate_batch_requirements() {
 	local -i missing=0
 
 	[ -f "$backportfile" ] || {
-		echo -e "${CAU}Batch mode requires backportfile (-f)$OFF" >&2
+		echo -e "${CAU}backportfile not found: $STA$backportfile$OFF" >&2
+		echo -e "${INF}  Use -f FILE or run 'gort new' to initialize$OFF" >&2
 		((missing++))
 	}
 	[ -d "$updir" ] && is_valid_gitdir "$updir" || {
-		echo -e "${CAU}Batch mode requires valid upstream directory (-u)$OFF" >&2
+		echo -e "${CAU}upstream directory not valid: $STA$updir$OFF" >&2
+		echo -e "${INF}  Use -u DIR or run 'gort new' to initialize$OFF" >&2
 		((missing++))
 	}
 	[ -d "$workdir" ] || {
 		# Try to create it
 		mkdir -p "$workdir" 2>/dev/null || {
-			echo -e "${CAU}Batch mode requires valid work directory (-w)$OFF" >&2
+			echo -e "${CAU}work directory not valid: $STA$workdir$OFF" >&2
+			echo -e "${INF}  Use -w DIR or run 'gort new' to initialize$OFF" >&2
 			((missing++))
 		}
 	}
 	((backport_mode >= bm_lower && backport_mode <= bm_upper)) || {
-		echo -e "${CAU}Batch mode requires backport mode (-m 1-6)$OFF" >&2
+		echo -e "${CAU}backport mode not set$OFF" >&2
+		echo -e "${INF}  Use -m MODE or run 'gort new' to initialize$OFF" >&2
 		((missing++))
 	}
 
@@ -3737,11 +3761,12 @@ main() {
 		print_herald
 	fi
 
-	# In batch mode, validate requirements before proceeding
-	$b_batch && {
+	# In non-interactive mode (command-line), validate requirements before proceeding
+	# This provides early failure with helpful messages
+	is_noninteractive && {
 		validate_batch_requirements || exit_gort 1 \
-"${CAU}Missing required parameters for batch mode.
-Use --help for usage information.$OFF"
+"${CAU}Missing required parameters. Initialize with 'gort new' first,
+or provide options on the command line. Use --help for info.$OFF"
 	}
 
 	# If any one of workdir, updir, or backportfile is missing, then this
