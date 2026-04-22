@@ -1,0 +1,1047 @@
+#!/bin/bash
+#
+# backport-agent - Autonomous backporting orchestration tool
+#
+# Designed for AI-assisted backporting with structured output,
+# automatic conflict resolution, and integrated build validation.
+#
+# This script orchestrates mkbackportlog, gort, and mkmod to provide
+# a streamlined, machine-parseable backporting workflow.
+#
+
+[ "$MYDIR" ] || {
+	declare MYDIR=
+	MYDIR="$(dirname "$(readlink -f "$0")")"
+}
+[ "$MYLIB" ] || {
+	declare MYLIB=
+	MYLIB="$MYDIR"/lib
+}
+
+[ "$ui_loaded" ] || source "$MYLIB"/ui.source
+
+# Exit codes - distinct values for different outcomes
+declare -ri EXIT_OK=0
+declare -ri EXIT_CONFLICT=1
+declare -ri EXIT_BUILD_FAIL=2
+declare -ri EXIT_PREREQ_MISSING=3
+declare -ri EXIT_INVALID_ARG=4
+declare -ri EXIT_NO_STATE=5
+declare -ri EXIT_GIT_ERROR=6
+declare -ri EXIT_CTLC=130
+
+# State file and directory
+declare state_dir=".backport-agent"
+declare state_file="state.json"
+declare log_file="agent.log"
+declare conflict_log="conflicts.json"
+
+# Configuration variables
+declare jira=""
+declare -a paths=()
+declare downstream_commit=""
+declare upstream_repo=""
+declare upstream_branch="origin/master"
+declare output_dir=""
+declare build_test_path=""
+declare -i auto_resolve=1
+declare -i build_after_each=1
+declare -i verbose=0
+
+# Runtime state
+declare -i current_index=0
+declare -i total_commits=0
+declare current_state="init"
+declare current_commit=""
+declare -a commit_list=()
+declare -a conflict_history=()
+
+declare usagestr="$(
+cat <<EOF
+$(basename "$0") [OPTIONS] COMMAND
+
+Autonomous backporting orchestration tool with structured JSON output.
+
+COMMANDS:
+  init          Initialize a new backporting session
+  status        Show current status (JSON output)
+  next          Apply next commit with build test
+  run           Apply all remaining commits
+  resolve       Attempt to resolve current conflict
+  skip          Skip current commit
+  rollback N    Rollback last N commits
+  patches       Generate patch files
+  report        Generate summary report
+
+OPTIONS:
+  -j, --jira JIRA         JIRA ticket (e.g., RHEL-169911)
+  -p, --path PATH         Path to include (can be repeated)
+  -d, --downstream CMT    Downstream commit to start from
+  -u, --upstream-repo DIR Upstream repository directory
+  -b, --branch BRANCH     Upstream branch (default: origin/master)
+  -o, --output DIR        Output directory for logs and patches
+  -t, --build-test PATH   Path for mkmod build testing
+  --no-build              Skip build testing after each commit
+  --no-auto-resolve       Disable automatic conflict resolution
+  -v, --verbose           Verbose output
+  -h, --help              Show this help
+
+EXAMPLES:
+  # Initialize a new session
+  $(basename "$0") init -j RHEL-169911 \\
+    -p drivers/char/ipmi -p include/linux/ipmi.h \\
+    -d 8af5d6359445 -u /work/upstream/kernel \\
+    -o /work/c10s/backports/103/ipmi \\
+    -t drivers/char/ipmi
+
+  # Check status
+  $(basename "$0") status
+
+  # Apply all commits with build testing
+  $(basename "$0") run
+
+  # Generate patches when complete
+  $(basename "$0") patches
+
+EXIT CODES:
+  0  - Success
+  1  - Conflict needs manual resolution
+  2  - Build test failed
+  3  - Missing prerequisites detected
+  4  - Invalid argument
+  5  - No state file found
+  6  - Git error
+  130 - Interrupted (Ctrl-C)
+
+EOF
+)"
+
+#** log: Write to log file with timestamp
+#*
+# Arguments:
+#   $1 - log level (INFO, WARN, ERROR, DEBUG)
+#   $2 - message
+#*
+log() {
+	local level="$1"
+	local msg="$2"
+	local timestamp
+	timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+	
+	echo "[$timestamp] [$level] $msg" >> "$state_dir/$log_file"
+	((verbose)) && echo "[$level] $msg" >&2
+}
+
+#** json_output: Output JSON to stdout
+#*
+# Arguments:
+#   $1 - JSON string
+#*
+json_output() {
+	echo "$1"
+}
+
+#** json_error: Output error as JSON
+#*
+# Arguments:
+#   $1 - error message
+#   $2 - error code
+#*
+json_error() {
+	local msg="$1"
+	local -i code="${2:-1}"
+	
+	json_output "{\"error\": \"$msg\", \"code\": $code}"
+	log "ERROR" "$msg"
+}
+
+#** init_state_dir: Create state directory structure
+#*
+init_state_dir() {
+	mkdir -p "$state_dir"
+	mkdir -p "$output_dir"
+	: > "$state_dir/$log_file"
+	log "INFO" "Initialized state directory: $state_dir"
+}
+
+#** save_state: Persist current state to JSON file
+#*
+save_state() {
+	local paths_json
+	local commits_json
+	local conflicts_json
+	
+	# Convert arrays to JSON
+	paths_json=$(printf '%s\n' "${paths[@]}" | jq -R . | jq -s .)
+	commits_json=$(printf '%s\n' "${commit_list[@]}" | jq -R . | jq -s .)
+	conflicts_json=$(printf '%s\n' "${conflict_history[@]}" | jq -R . | jq -s . 2>/dev/null || echo "[]")
+	
+	cat > "$state_dir/$state_file" <<EOF
+{
+  "version": "1.0",
+  "jira": "$jira",
+  "paths": $paths_json,
+  "downstream_commit": "$downstream_commit",
+  "upstream_repo": "$upstream_repo",
+  "upstream_branch": "$upstream_branch",
+  "output_dir": "$output_dir",
+  "build_test_path": "$build_test_path",
+  "auto_resolve": $auto_resolve,
+  "build_after_each": $build_after_each,
+  "current_index": $current_index,
+  "total_commits": $total_commits,
+  "current_state": "$current_state",
+  "current_commit": "$current_commit",
+  "commit_list": $commits_json,
+  "conflict_history": $conflicts_json,
+  "last_updated": "$(date -Iseconds)"
+}
+EOF
+	log "DEBUG" "State saved: index=$current_index, state=$current_state"
+}
+
+#** load_state: Load state from JSON file
+#*
+# Returns:
+#   0 - success
+#   1 - no state file
+#*
+load_state() {
+	local state_path="$state_dir/$state_file"
+	
+	[[ -f "$state_path" ]] || return 1
+	
+	# Parse JSON state file
+	jira=$(jq -r '.jira // ""' "$state_path")
+	downstream_commit=$(jq -r '.downstream_commit // ""' "$state_path")
+	upstream_repo=$(jq -r '.upstream_repo // ""' "$state_path")
+	upstream_branch=$(jq -r '.upstream_branch // "origin/master"' "$state_path")
+	output_dir=$(jq -r '.output_dir // ""' "$state_path")
+	build_test_path=$(jq -r '.build_test_path // ""' "$state_path")
+	auto_resolve=$(jq -r '.auto_resolve // 1' "$state_path")
+	build_after_each=$(jq -r '.build_after_each // 1' "$state_path")
+	current_index=$(jq -r '.current_index // 0' "$state_path")
+	total_commits=$(jq -r '.total_commits // 0' "$state_path")
+	current_state=$(jq -r '.current_state // "init"' "$state_path")
+	current_commit=$(jq -r '.current_commit // ""' "$state_path")
+	
+	# Load arrays
+	mapfile -t paths < <(jq -r '.paths[]? // empty' "$state_path")
+	mapfile -t commit_list < <(jq -r '.commit_list[]? // empty' "$state_path")
+	mapfile -t conflict_history < <(jq -r '.conflict_history[]? // empty' "$state_path")
+	
+	log "DEBUG" "State loaded: index=$current_index, state=$current_state"
+	return 0
+}
+
+#** get_status: Output current status as JSON
+#*
+get_status() {
+	local git_status
+	local branch
+	local has_conflicts="false"
+	local next_commit=""
+	local next_subject=""
+	local progress_pct=0
+	
+	# Get git info
+	branch=$(git branch --show-current 2>/dev/null || echo "unknown")
+	
+	# Check for conflicts
+	if git diff --name-only --diff-filter=U 2>/dev/null | grep -q .; then
+		has_conflicts="true"
+	fi
+	
+	# Get next commit info
+	if ((current_index < total_commits)); then
+		next_commit="${commit_list[$current_index]}"
+		if [[ -n "$next_commit" ]]; then
+			next_subject=$(git -C "$upstream_repo" log -1 --format='%s' "$next_commit" 2>/dev/null || echo "")
+		fi
+	fi
+	
+	# Calculate progress
+	((total_commits > 0)) && progress_pct=$((current_index * 100 / total_commits))
+	
+	json_output "{
+  \"session_state\": \"$current_state\",
+  \"branch\": \"$branch\",
+  \"progress\": {
+    \"current\": $current_index,
+    \"total\": $total_commits,
+    \"percentage\": $progress_pct
+  },
+  \"next_commit\": {
+    \"hash\": \"$next_commit\",
+    \"subject\": $(echo "$next_subject" | jq -R .)
+  },
+  \"has_conflicts\": $has_conflicts,
+  \"jira\": \"$jira\",
+  \"build_test_path\": \"$build_test_path\",
+  \"auto_resolve\": $auto_resolve
+}"
+}
+
+#** run_mkbackportlog: Generate backport list with prerequisite detection
+#*
+# Returns:
+#   0 - success
+#   3 - prerequisites missing (with -ip they're included)
+#*
+run_mkbackportlog() {
+	local -a mkbl_args=()
+	local path_args=""
+	local result
+	
+	log "INFO" "Running mkbackportlog..."
+	
+	# Build path arguments
+	for p in "${paths[@]}"; do
+		path_args="$path_args $p"
+	done
+	
+	mkbl_args=(
+		"-ip"  # Include prerequisites automatically
+		"-dc" "$downstream_commit"
+		"-od" "$output_dir"
+		"-ud" "$upstream_repo"
+		"-ub" "$upstream_branch"
+		$path_args
+	)
+	
+	log "DEBUG" "mkbackportlog args: ${mkbl_args[*]}"
+	
+	# Run mkbackportlog
+	if ! mkbackportlog "${mkbl_args[@]}" > "$state_dir/mkbackportlog.out" 2>&1; then
+		log "ERROR" "mkbackportlog failed"
+		json_error "mkbackportlog failed - check $state_dir/mkbackportlog.out"
+		return $EXIT_PREREQ_MISSING
+	fi
+	
+	# Load commit list from backport.log
+	if [[ -f "$output_dir/backport.log" ]]; then
+		mapfile -t commit_list < <(grep -v '^#' "$output_dir/backport.log" | cut -d' ' -f1)
+		total_commits=${#commit_list[@]}
+		log "INFO" "Loaded $total_commits commits from backport.log"
+	else
+		log "ERROR" "backport.log not created"
+		json_error "backport.log not created"
+		return $EXIT_GIT_ERROR
+	fi
+	
+	return $EXIT_OK
+}
+
+#** apply_commit: Apply a single commit using cherry-pick
+#*
+# Arguments:
+#   $1 - commit hash
+#*
+# Returns:
+#   0 - success
+#   1 - conflict
+#   6 - git error
+#*
+apply_commit() {
+	local commit="$1"
+	local result
+	local subject
+	
+	subject=$(git -C "$upstream_repo" log -1 --format='%s' "$commit" 2>/dev/null)
+	log "INFO" "Applying commit: $commit - $subject"
+	
+	# Try cherry-pick
+	if git cherry-pick -x "$commit" > "$state_dir/cherry-pick.out" 2>&1; then
+		log "INFO" "Successfully applied: $commit"
+		return $EXIT_OK
+	fi
+	
+	# Check if it's a conflict or other error
+	if git diff --name-only --diff-filter=U 2>/dev/null | grep -q .; then
+		log "WARN" "Conflict detected in commit: $commit"
+		current_state="conflict"
+		save_state
+		return $EXIT_CONFLICT
+	else
+		log "ERROR" "Git error applying commit: $commit"
+		cat "$state_dir/cherry-pick.out" >> "$state_dir/$log_file"
+		return $EXIT_GIT_ERROR
+	fi
+}
+
+#** analyze_conflict: Analyze current conflict and return structured info
+#*
+analyze_conflict() {
+	local -a conflict_files=()
+	local file
+	local analysis=""
+	
+	# Get list of conflicted files
+	mapfile -t conflict_files < <(git diff --name-only --diff-filter=U 2>/dev/null)
+	
+	log "INFO" "Analyzing conflict in ${#conflict_files[@]} file(s)"
+	
+	# Build JSON analysis
+	local files_json="["
+	local first=true
+	
+	for file in "${conflict_files[@]}"; do
+		local conflict_markers
+		local ours_lines
+		local theirs_lines
+		
+		conflict_markers=$(grep -c '^<<<<<<< ' "$file" 2>/dev/null || echo "0")
+		ours_lines=$(sed -n '/^<<<<<<</,/^=======/p' "$file" 2>/dev/null | wc -l)
+		theirs_lines=$(sed -n '/^=======/,/^>>>>>>>/p' "$file" 2>/dev/null | wc -l)
+		
+		$first || files_json+=","
+		first=false
+		
+		files_json+="{
+      \"path\": \"$file\",
+      \"conflict_regions\": $conflict_markers,
+      \"ours_lines\": $ours_lines,
+      \"theirs_lines\": $theirs_lines
+    }"
+	done
+	files_json+="]"
+	
+	json_output "{
+  \"commit\": \"$current_commit\",
+  \"state\": \"conflict\",
+  \"files\": $files_json,
+  \"suggestion\": \"Review conflicts and run 'backport-agent resolve' or resolve manually then 'git add' and 'backport-agent next'\"
+}"
+}
+
+#** try_auto_resolve: Attempt automatic conflict resolution
+#*
+# Returns:
+#   0 - resolved successfully
+#   1 - could not resolve
+#*
+try_auto_resolve() {
+	local -a conflict_files=()
+	local file
+	local resolved_count=0
+	local total_conflicts=0
+	
+	mapfile -t conflict_files < <(git diff --name-only --diff-filter=U 2>/dev/null)
+	total_conflicts=${#conflict_files[@]}
+	
+	log "INFO" "Attempting auto-resolve for $total_conflicts file(s)"
+	
+	for file in "${conflict_files[@]}"; do
+		local strategy=""
+		
+		# Strategy 1: If conflict is only whitespace/context, take theirs
+		if ! grep -q '^<<<<<<< ' "$file" 2>/dev/null; then
+			# No conflict markers - might be resolved already
+			git add "$file"
+			((resolved_count++))
+			log "DEBUG" "File $file has no conflict markers, staged"
+			continue
+		fi
+		
+		# Strategy 2: For simple conflicts, try taking upstream (theirs)
+		# This works when downstream just has older code
+		if git checkout --theirs "$file" 2>/dev/null; then
+			git add "$file"
+			strategy="theirs"
+			log "DEBUG" "Resolved $file using 'theirs' strategy"
+			
+			# Verify it builds
+			if ((build_after_each)) && [[ -n "$build_test_path" ]]; then
+				if ! run_build_test; then
+					# Revert and try ours
+					git checkout --conflict=merge "$file" 2>/dev/null
+					if git checkout --ours "$file" 2>/dev/null; then
+						git add "$file"
+						strategy="ours"
+						log "DEBUG" "Theirs failed build, trying 'ours' for $file"
+						if ! run_build_test; then
+							# Neither works, restore conflict
+							git checkout --conflict=merge "$file" 2>/dev/null
+							log "WARN" "Neither strategy worked for $file"
+							continue
+						fi
+					fi
+				fi
+			fi
+			((resolved_count++))
+		fi
+	done
+	
+	log "INFO" "Auto-resolved $resolved_count of $total_conflicts conflicts"
+	
+	if ((resolved_count == total_conflicts)); then
+		return $EXIT_OK
+	else
+		return $EXIT_CONFLICT
+	fi
+}
+
+#** complete_commit: Complete a commit after conflict resolution
+#*
+# Arguments:
+#   $1 - optional conflict description
+#*
+complete_commit() {
+	local conflict_desc="${1:-Resolved automatically by backport-agent}"
+	local original_msg
+	local new_msg
+	
+	# Get original commit message
+	original_msg=$(git -C "$upstream_repo" log -1 --format='%B' "$current_commit" 2>/dev/null)
+	
+	# Add conflicts stanza if we had a conflict
+	if [[ "$current_state" == "conflict" ]]; then
+		new_msg="Conflicts: $conflict_desc
+
+$original_msg"
+		conflict_history+=("$current_commit: $conflict_desc")
+	else
+		new_msg="$original_msg"
+	fi
+	
+	# Complete the cherry-pick
+	if git cherry-pick --continue --no-edit 2>/dev/null || \
+	   git commit -m "$new_msg" 2>/dev/null; then
+		log "INFO" "Commit completed: $current_commit"
+		current_state="ready"
+		((current_index++))
+		save_state
+		return $EXIT_OK
+	else
+		log "ERROR" "Failed to complete commit"
+		return $EXIT_GIT_ERROR
+	fi
+}
+
+#** run_build_test: Run mkmod build test
+#*
+# Returns:
+#   0 - build success
+#   2 - build failed
+#*
+run_build_test() {
+	[[ -z "$build_test_path" ]] && return $EXIT_OK
+	
+	log "INFO" "Running build test: mkmod -p $build_test_path"
+	
+	if mkmod -p "$build_test_path" > "$state_dir/mkmod.out" 2>&1; then
+		log "INFO" "Build test passed"
+		return $EXIT_OK
+	else
+		log "ERROR" "Build test failed - see $state_dir/mkmod.out"
+		return $EXIT_BUILD_FAIL
+	fi
+}
+
+#** cmd_init: Initialize a new backporting session
+#*
+cmd_init() {
+	log "INFO" "Initializing new backporting session"
+	
+	# Validate required options
+	if [[ -z "$downstream_commit" ]]; then
+		json_error "Missing required option: --downstream" $EXIT_INVALID_ARG
+		return $EXIT_INVALID_ARG
+	fi
+	if [[ ${#paths[@]} -eq 0 ]]; then
+		json_error "Missing required option: --path" $EXIT_INVALID_ARG
+		return $EXIT_INVALID_ARG
+	fi
+	if [[ -z "$upstream_repo" ]]; then
+		json_error "Missing required option: --upstream-repo" $EXIT_INVALID_ARG
+		return $EXIT_INVALID_ARG
+	fi
+	if [[ -z "$output_dir" ]]; then
+		json_error "Missing required option: --output" $EXIT_INVALID_ARG
+		return $EXIT_INVALID_ARG
+	fi
+	
+	# Initialize state
+	init_state_dir
+	current_state="initializing"
+	current_index=0
+	save_state
+	
+	# Generate backport list
+	if ! run_mkbackportlog; then
+		return $?
+	fi
+	
+	current_state="ready"
+	save_state
+	
+	json_output "{
+  \"status\": \"initialized\",
+  \"total_commits\": $total_commits,
+  \"output_dir\": \"$output_dir\",
+  \"backport_log\": \"$output_dir/backport.log\"
+}"
+	
+	return $EXIT_OK
+}
+
+#** cmd_status: Show current status
+#*
+cmd_status() {
+	if ! load_state; then
+		json_error "No active session. Run 'init' first." $EXIT_NO_STATE
+		return $EXIT_NO_STATE
+	fi
+	
+	get_status
+	return $EXIT_OK
+}
+
+#** cmd_next: Apply next commit
+#*
+cmd_next() {
+	local result
+	
+	if ! load_state; then
+		json_error "No active session. Run 'init' first." $EXIT_NO_STATE
+		return $EXIT_NO_STATE
+	fi
+	
+	# Check if we have a pending conflict
+	if [[ "$current_state" == "conflict" ]]; then
+		# Check if conflicts are resolved
+		if ! git diff --name-only --diff-filter=U 2>/dev/null | grep -q .; then
+			# Conflicts resolved, complete the commit
+			complete_commit "Manual resolution"
+		else
+			json_error "Unresolved conflict. Run 'resolve' or fix manually." $EXIT_CONFLICT
+			return $EXIT_CONFLICT
+		fi
+	fi
+	
+	# Check if we're done
+	if ((current_index >= total_commits)); then
+		json_output "{\"status\": \"complete\", \"message\": \"All commits applied\"}"
+		current_state="complete"
+		save_state
+		return $EXIT_OK
+	fi
+	
+	# Get next commit
+	current_commit="${commit_list[$current_index]}"
+	current_state="applying"
+	save_state
+	
+	# Apply the commit
+	result=$EXIT_OK
+	apply_commit "$current_commit"
+	result=$?
+	
+	if ((result == EXIT_OK)); then
+		# Build test if enabled
+		if ((build_after_each)) && [[ -n "$build_test_path" ]]; then
+			if ! run_build_test; then
+				json_output "{
+  \"status\": \"build_failed\",
+  \"commit\": \"$current_commit\",
+  \"message\": \"Build test failed after applying commit\"
+}"
+				return $EXIT_BUILD_FAIL
+			fi
+		fi
+		
+		((current_index++))
+		current_state="ready"
+		save_state
+		
+		json_output "{
+  \"status\": \"applied\",
+  \"commit\": \"$current_commit\",
+  \"progress\": {\"current\": $current_index, \"total\": $total_commits},
+  \"build_test\": \"passed\"
+}"
+		return $EXIT_OK
+		
+	elif ((result == EXIT_CONFLICT)); then
+		# Try auto-resolve if enabled
+		if ((auto_resolve)); then
+			if try_auto_resolve; then
+				complete_commit "Auto-resolved by backport-agent"
+				
+				# Build test
+				if ((build_after_each)) && [[ -n "$build_test_path" ]]; then
+					if ! run_build_test; then
+						json_output "{
+  \"status\": \"build_failed_after_resolve\",
+  \"commit\": \"$current_commit\",
+  \"message\": \"Build failed after auto-resolve\"
+}"
+						return $EXIT_BUILD_FAIL
+					fi
+				fi
+				
+				json_output "{
+  \"status\": \"auto_resolved\",
+  \"commit\": \"$current_commit\",
+  \"progress\": {\"current\": $current_index, \"total\": $total_commits}
+}"
+				return $EXIT_OK
+			fi
+		fi
+		
+		# Could not auto-resolve
+		analyze_conflict
+		return $EXIT_CONFLICT
+	else
+		json_error "Git error applying commit $current_commit" $result
+		return $result
+	fi
+}
+
+#** cmd_run: Apply all remaining commits
+#*
+cmd_run() {
+	local result
+	local -i applied=0
+	local -i conflicts=0
+	
+	if ! load_state; then
+		json_error "No active session. Run 'init' first." $EXIT_NO_STATE
+		return $EXIT_NO_STATE
+	fi
+	
+	log "INFO" "Starting batch run from index $current_index"
+	
+	while ((current_index < total_commits)); do
+		# Run next commit
+		cmd_next > "$state_dir/next.out" 2>&1
+		result=$?
+		
+		if ((result == EXIT_OK)); then
+			((applied++))
+			# Output progress
+			echo "{\"progress\": $current_index, \"total\": $total_commits, \"last_status\": \"applied\"}"
+		elif ((result == EXIT_CONFLICT)); then
+			((conflicts++))
+			# Stop on unresolved conflict
+			json_output "{
+  \"status\": \"stopped\",
+  \"reason\": \"conflict\",
+  \"applied\": $applied,
+  \"conflicts\": $conflicts,
+  \"current_commit\": \"$current_commit\"
+}"
+			cat "$state_dir/next.out"
+			return $EXIT_CONFLICT
+		elif ((result == EXIT_BUILD_FAIL)); then
+			json_output "{
+  \"status\": \"stopped\",
+  \"reason\": \"build_failure\",
+  \"applied\": $applied,
+  \"current_commit\": \"$current_commit\"
+}"
+			return $EXIT_BUILD_FAIL
+		else
+			json_output "{
+  \"status\": \"error\",
+  \"applied\": $applied,
+  \"error_code\": $result
+}"
+			return $result
+		fi
+	done
+	
+	current_state="complete"
+	save_state
+	
+	json_output "{
+  \"status\": \"complete\",
+  \"applied\": $applied,
+  \"conflicts_resolved\": ${#conflict_history[@]},
+  \"total\": $total_commits
+}"
+	return $EXIT_OK
+}
+
+#** cmd_resolve: Attempt to resolve current conflict
+#*
+cmd_resolve() {
+	if ! load_state; then
+		json_error "No active session" $EXIT_NO_STATE
+		return $EXIT_NO_STATE
+	fi
+	
+	if [[ "$current_state" != "conflict" ]]; then
+		json_error "No active conflict to resolve" $EXIT_INVALID_ARG
+		return $EXIT_INVALID_ARG
+	fi
+	
+	if try_auto_resolve; then
+		complete_commit "Auto-resolved by backport-agent"
+		
+		if ((build_after_each)) && [[ -n "$build_test_path" ]]; then
+			if ! run_build_test; then
+				json_output "{\"status\": \"resolved_but_build_failed\"}"
+				return $EXIT_BUILD_FAIL
+			fi
+		fi
+		
+		json_output "{\"status\": \"resolved\", \"commit\": \"$current_commit\"}"
+		return $EXIT_OK
+	else
+		analyze_conflict
+		return $EXIT_CONFLICT
+	fi
+}
+
+#** cmd_skip: Skip current commit
+#*
+cmd_skip() {
+	if ! load_state; then
+		json_error "No active session" $EXIT_NO_STATE
+		return $EXIT_NO_STATE
+	fi
+	
+	# Abort any in-progress cherry-pick
+	git cherry-pick --abort 2>/dev/null
+	
+	log "INFO" "Skipping commit: $current_commit"
+	conflict_history+=("$current_commit: SKIPPED")
+	
+	((current_index++))
+	current_state="ready"
+	save_state
+	
+	json_output "{\"status\": \"skipped\", \"commit\": \"$current_commit\"}"
+	return $EXIT_OK
+}
+
+#** cmd_rollback: Rollback last N commits
+#*
+# Arguments:
+#   $1 - number of commits to rollback
+#*
+cmd_rollback() {
+	local -i count="${1:-1}"
+	
+	if ! load_state; then
+		json_error "No active session" $EXIT_NO_STATE
+		return $EXIT_NO_STATE
+	fi
+	
+	if ((count > current_index)); then
+		count=$current_index
+	fi
+	
+	log "INFO" "Rolling back $count commit(s)"
+	
+	if git reset --hard "HEAD~$count" 2>/dev/null; then
+		((current_index -= count))
+		current_state="ready"
+		save_state
+		
+		json_output "{\"status\": \"rolled_back\", \"count\": $count, \"new_index\": $current_index}"
+		return $EXIT_OK
+	else
+		json_error "Failed to rollback" $EXIT_GIT_ERROR
+		return $EXIT_GIT_ERROR
+	fi
+}
+
+#** cmd_patches: Generate patch files
+#*
+cmd_patches() {
+	local patch_dir
+	local last_tag
+	local -i patch_count=0
+	
+	if ! load_state; then
+		json_error "No active session" $EXIT_NO_STATE
+		return $EXIT_NO_STATE
+	fi
+	
+	patch_dir="$output_dir/patches"
+	mkdir -p "$patch_dir"
+	
+	# Get last tag
+	last_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "HEAD~$total_commits")
+	
+	log "INFO" "Generating patches from $last_tag to HEAD"
+	
+	# Generate patches
+	if git format-patch -o "$patch_dir" "$last_tag..HEAD" > "$state_dir/format-patch.out" 2>&1; then
+		patch_count=$(ls -1 "$patch_dir"/*.patch 2>/dev/null | wc -l)
+		
+		# Add JIRA link if specified
+		if [[ -n "$jira" ]]; then
+			for patch in "$patch_dir"/*.patch; do
+				sed -i "/^Upstream status:/a JIRA: https://redhat.atlassian.net/browse/$jira" "$patch"
+			done
+			log "INFO" "Added JIRA link to $patch_count patches"
+		fi
+		
+		json_output "{
+  \"status\": \"generated\",
+  \"patch_count\": $patch_count,
+  \"patch_dir\": \"$patch_dir\",
+  \"jira_added\": $([ -n "$jira" ] && echo "true" || echo "false")
+}"
+		return $EXIT_OK
+	else
+		json_error "Failed to generate patches" $EXIT_GIT_ERROR
+		return $EXIT_GIT_ERROR
+	fi
+}
+
+#** cmd_report: Generate summary report
+#*
+cmd_report() {
+	local conflicts_json
+	
+	if ! load_state; then
+		json_error "No active session" $EXIT_NO_STATE
+		return $EXIT_NO_STATE
+	fi
+	
+	conflicts_json=$(printf '%s\n' "${conflict_history[@]}" | jq -R . | jq -s .)
+	
+	json_output "{
+  \"summary\": {
+    \"jira\": \"$jira\",
+    \"total_commits\": $total_commits,
+    \"applied\": $current_index,
+    \"state\": \"$current_state\",
+    \"conflicts_encountered\": ${#conflict_history[@]},
+    \"conflict_details\": $conflicts_json
+  },
+  \"paths\": $(printf '%s\n' "${paths[@]}" | jq -R . | jq -s .),
+  \"output_dir\": \"$output_dir\"
+}"
+	return $EXIT_OK
+}
+
+#** control_c: Handle Ctrl-C
+#*
+control_c() {
+	echo ""
+	log "WARN" "Interrupted by user"
+	save_state 2>/dev/null
+	exit $EXIT_CTLC
+}
+
+#** usage: Print usage information
+#*
+usage() {
+	echo "$usagestr"
+}
+
+#** main: Main entry point
+#*
+main() {
+	local cmd=""
+	
+	trap control_c SIGINT
+	
+	# Parse options
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			-j|--jira)
+				jira="$2"
+				shift 2
+				;;
+			-p|--path)
+				paths+=("$2")
+				shift 2
+				;;
+			-d|--downstream)
+				downstream_commit="$2"
+				shift 2
+				;;
+			-u|--upstream-repo)
+				upstream_repo="$2"
+				shift 2
+				;;
+			-b|--branch)
+				upstream_branch="$2"
+				shift 2
+				;;
+			-o|--output)
+				output_dir="$2"
+				shift 2
+				;;
+			-t|--build-test)
+				build_test_path="$2"
+				shift 2
+				;;
+			--no-build)
+				build_after_each=0
+				shift
+				;;
+			--no-auto-resolve)
+				auto_resolve=0
+				shift
+				;;
+			-v|--verbose)
+				verbose=1
+				shift
+				;;
+			-h|--help|help)
+				usage
+				exit $EXIT_OK
+				;;
+			-*)
+				json_error "Unknown option: $1" $EXIT_INVALID_ARG
+				exit $EXIT_INVALID_ARG
+				;;
+			*)
+				# First non-option is the command
+				if [[ -z "$cmd" ]]; then
+					cmd="$1"
+				fi
+				shift
+				;;
+		esac
+	done
+	
+	# Default command is status
+	[[ -z "$cmd" ]] && cmd="status"
+	
+	# Execute command
+	case "$cmd" in
+		init)
+			cmd_init
+			;;
+		status)
+			cmd_status
+			;;
+		next)
+			cmd_next
+			;;
+		run)
+			cmd_run
+			;;
+		resolve)
+			cmd_resolve
+			;;
+		skip)
+			cmd_skip
+			;;
+		rollback)
+			cmd_rollback "${2:-1}"
+			;;
+		patches)
+			cmd_patches
+			;;
+		report)
+			cmd_report
+			;;
+		*)
+			json_error "Unknown command: $cmd" $EXIT_INVALID_ARG
+			exit $EXIT_INVALID_ARG
+			;;
+	esac
+	
+	exit $?
+}
+
+main "$@"
