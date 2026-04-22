@@ -128,7 +128,8 @@ log() {
 	local timestamp
 	timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 	
-	echo "[$timestamp] [$level] $msg" >> "$state_dir/$log_file"
+	# Ensure log directory exists before writing
+	[[ -d "$state_dir" ]] && echo "[$timestamp] [$level] $msg" >> "$state_dir/$log_file"
 	((verbose)) && echo "[$level] $msg" >&2
 }
 
@@ -875,7 +876,13 @@ cmd_patches() {
 		# Add JIRA link if specified
 		if [[ -n "$jira" ]]; then
 			for patch in "$patch_dir"/*.patch; do
-				sed -i "/^Upstream status:/a JIRA: https://redhat.atlassian.net/browse/$jira" "$patch"
+				# Try to add after "cherry picked from commit" line
+				if grep -q "cherry picked from commit" "$patch"; then
+					sed -i "/cherry picked from commit/a JIRA: https://redhat.atlassian.net/browse/$jira" "$patch"
+				# Or after "Upstream status:" if present
+				elif grep -q "^Upstream status:" "$patch"; then
+					sed -i "/^Upstream status:/a JIRA: https://redhat.atlassian.net/browse/$jira" "$patch"
+				fi
 			done
 			log "INFO" "Added JIRA link to $patch_count patches"
 		fi
