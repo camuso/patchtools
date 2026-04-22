@@ -1476,6 +1476,14 @@ main() {
 		[[ -z "$repobr" && -z "${configtable[repobr]}" ]] && select_remote repobr
 		currentbranch=$(get_currentbranch)
 		configtable[currentbranch]="$currentbranch"
+
+		# Copy configtable values to standalone variables for run()
+		dncmt="${configtable[dncmt]}"
+		upcmt="${configtable[upcmt]}"
+		outdir="${configtable[outdir]}"
+		repobr="${configtable[repobr]}"
+		path="${configtable[path]}"
+		upscope="${configtable[upscope]}"
 	fi
 
 	run
