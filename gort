@@ -61,6 +61,12 @@
 #      gort -m apply next                    # Use different mode for this run
 #      gort -S abc123 run                    # Stop before specific commit
 #
+# Substitute Patches:
+#   For tree-wide commits, place subsystem-specific patches in:
+#      $(dirname backport.log)/substitutes/<hash>.patch
+#   gort will automatically use the substitute instead of cherry-picking.
+#   Use mksubpatch to extract subsystem-specific hunks from tree-wide commits.
+#
 
 #######################################
 # Default file locations
@@ -2419,32 +2425,43 @@ backport() {
 	date '+%Y-%m-%d %H:%M:%S' > "$outfil"
 	echo "backport mode: $(show_backport_mode)" >> "$outfil"
 
-	case "$backport_mode" in
-	    "$bm_cherry" )
-		if $b_nit; then
-			git cherry-pick -n "$uphash" >> "$outfil" 2>&1
-		else
-			git -c merge.renameLimit=1 cherry-pick -x \
-				"$uphash" >> "$outfil" 2>&1
-		fi
-		;;
-	    "$bm_patchpal" ) patchpal "$uphash"
-		;;
-	    "$bm_apply" )
-		git apply --reject < <(git show "$uphash") >> "$outfil" 2>&1
-		;;
-	    "$bm_apply3" )
-		git apply -3 < <(git show "$uphash") >> "$outfil" 2>&1
-		;;
-	    "$bm_patch" )
-		patch --no-backup-if-mismatch --batch --verbose \
-			-p1 < <(git_upcmd show "$uphash") >> "$outfil" 2>&1
-		;;
-            "$bm_patch_merge" )
-                patch --no-backup-if-mismatch --batch --verbose --merge \
-			-p1 < <(git_upcmd show "$uphash") >> "$outfil" 2>&1
-                ;;
-	esac
+	# Check for substitute patch first
+	local substitute_patch
+	local b_substitute=false
+	substitute_patch=$(get_substitute_patch "$uphash")
+
+	if [[ -n "$substitute_patch" ]]; then
+		echo -e "${MNU}Using substitute:$STA $(basename "$substitute_patch")$OFF"
+		apply_substitute_patch "$substitute_patch" "$outfil"
+		b_substitute=true
+	else
+		case "$backport_mode" in
+		    "$bm_cherry" )
+			if $b_nit; then
+				git cherry-pick -n "$uphash" >> "$outfil" 2>&1
+			else
+				git -c merge.renameLimit=1 cherry-pick -x \
+					"$uphash" >> "$outfil" 2>&1
+			fi
+			;;
+		    "$bm_patchpal" ) patchpal "$uphash"
+			;;
+		    "$bm_apply" )
+			git apply --reject < <(git show "$uphash") >> "$outfil" 2>&1
+			;;
+		    "$bm_apply3" )
+			git apply -3 < <(git show "$uphash") >> "$outfil" 2>&1
+			;;
+		    "$bm_patch" )
+			patch --no-backup-if-mismatch --batch --verbose \
+				-p1 < <(git_upcmd show "$uphash") >> "$outfil" 2>&1
+			;;
+		    "$bm_patch_merge" )
+			patch --no-backup-if-mismatch --batch --verbose --merge \
+				-p1 < <(git_upcmd show "$uphash") >> "$outfil" 2>&1
+			;;
+		esac
+	fi
 
 	sts=$?
 
@@ -2478,9 +2495,13 @@ backport() {
 		flag_conflict "$uphash"
 	fi
 
-	# We process differently for patchpal.
-	# If stage_patchpal doesn't return 0, then return with its status.
-	if ((backport_mode == bm_patchpal )); then
+	# Substitute patches are already committed by git am, so skip staging.
+	# For other modes, process the commit appropriately.
+	if $b_substitute; then
+		# git am already committed - just mark done
+		mark_done "$uphash"
+	elif ((backport_mode == bm_patchpal )); then
+		# If stage_patchpal doesn't return 0, then return with its status.
 		stage_patchpal || return $?
 	else
 		stage_commit
@@ -2676,6 +2697,58 @@ $OFF"
 	set +f	# re-enable wildcards
 	mark_done "$uphash"
 	return 0
+}
+
+# get_substitute_patch
+# @description Check if a substitute patch exists for a commit
+#   Looks in $(dirname backportfile)/substitutes/<hash>.patch
+#
+# Arguments:
+# @arg $1 string Upstream commit hash
+#
+# Globals:
+# @set backportfile string Backport file path (read)
+#
+# Effects:
+# @stdout Path to substitute patch if found
+#
+# Returns:
+# @exitcode 0 Substitute found
+# @exitcode 1 No substitute
+#
+get_substitute_patch() {
+	local uphash="$1"
+	local subst_dir
+	local subst_patch
+
+	subst_dir="$(dirname "$backportfile")/substitutes"
+	subst_patch="$subst_dir/${uphash}.patch"
+
+	if [[ -f "$subst_patch" ]]; then
+		echo "$subst_patch"
+		return 0
+	fi
+
+	return 1
+}
+
+# apply_substitute_patch
+# @description Apply a substitute patch using git am
+#
+# Arguments:
+# @arg $1 string Path to patch file
+# @arg $2 string Output log file
+#
+# Returns:
+# @exitcode * Return code from git am
+#
+apply_substitute_patch() {
+	local patch_file="$1"
+	local outfil="$2"
+
+	echo "Using substitute patch: $patch_file" >> "$outfil"
+	git am --3way "$patch_file" >> "$outfil" 2>&1
+	return $?
 }
 
 # is_backport_done
