@@ -24,7 +24,7 @@ Arguments:
 
 Options:
   -o DIR    Output directory for patch file (default: current directory)
-  -f FILE   Output to specific file (overrides -o and default naming)
+  -f FILE   Output filename (uses -o directory if FILE has no path)
   -s        Print patch to stdout instead of file
   -n        Dry run - show what would be extracted without creating patch
   -v        Verbose - show additional information
@@ -266,7 +266,12 @@ main() {
 	else
 		# Determine output filename
 		if [[ -n "$outfile" ]]; then
-			output_path="$outfile"
+			# If outfile has no directory component, use outdir
+			if [[ "$outfile" != */* ]]; then
+				output_path="${outdir}/${outfile}"
+			else
+				output_path="$outfile"
+			fi
 		else
 			local safe_subject
 			safe_subject=$(sanitize_filename "$commit_subject")
@@ -279,7 +284,7 @@ main() {
 		fi
 
 		echo "$patch_content" > "$output_path"
-		echo "Created: $output_path"
+		echo "Created: $(basename "$output_path")"
 
 		if ((verbose)); then
 			local -i lines hunks
