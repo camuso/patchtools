@@ -149,6 +149,7 @@ declare upbase=		# the upstream commit that is the base of this
 declare b_upeqdn=false	# Upstream commit is same as downstream commit,
 			# because the downstream commit is actually
 			# encompassed by the base upstream kernel (upbase).
+declare b_include_prereqs=false	# automatically include prerequisite gaps
 
 declare myman="$MYMAN"/mkbackportlog.pgman
 
@@ -233,6 +234,11 @@ $MNU   -ue$OFF - The upstream commit where you want to end the search.
 	 like git-backport will ignore lines with a leading "${MNU}#$OFF", and the
 	 "${MNU}+ $OFF" is added to inform that this commit is outside the scope of
 	 the search.
+$MNU   -ip$OFF - Include prerequisites. If upstream commits exist that touch
+         your paths but are BEFORE your starting point and NOT in downstream,
+	 automatically prepend them to the backport.log. Without this flag,
+	 such "gap" commits are written to a separate prerequisite-gaps.log
+	 file and a warning is displayed.
 $MNU   -ud$OFF - Directory having the upstream repo,
          Without this switch, the script expects a remote upstream repo
 	 in the current$MNU \$PWD: $STA$PWD$OFF
@@ -272,6 +278,19 @@ Upstream commits, starting from$INF v6.4$OFF ending at$INF v6.6$OFF in $INF/work
 are written to the$INF upstream.log$OFF file.
 The$INF backports.log$OFF file will have the upstream commits, but with those already
 downstream having a leading$INF #$OFF. Commits beyond$INF v6.6$OFF will have a leading$INF #+$OFF.
+$MNU${UND}
+Prerequisite Gap Detection$OFF
+When downstream has selectively backported some commits but not others, gaps may
+exist where later commits depend on earlier ones that are missing. This script
+detects these gaps and warns you about potential prerequisite commits.
+
+If gaps are detected:
+  - A$INF prerequisite-gaps.log$OFF file is created in the output directory
+  - In interactive mode, you'll be asked whether to include them
+  - Use$MNU -ip$OFF to automatically include prerequisites in backport.log
+
+Example with auto-include:$INF
+  $(basename "$0") -ip -dc 975a8302ed36 -od ../backports/perf drivers/perf
 $OFF
 \0
 EOF
@@ -479,6 +498,10 @@ parseops() {
 			 ;;
 		    S  ) get_varopt "$1" configtable[searchstr]
 			 ;;
+		    ip ) b_include_prereqs=true
+			 # Don't shift - no argument for this flag
+			 continue
+			 ;;
 		    V  ) echo "Patchtools v$version"
 			 exit 0
 			 ;;
@@ -496,6 +519,82 @@ parseops() {
 
 	configtable[path]="${path##*( )}"
 	cfg_write
+	return 0
+}
+
+# detect_prerequisite_gaps
+# @description Detect upstream commits that may be missing prerequisites
+#   Looks for upstream commits that touch our paths, are chronologically
+#   BEFORE the "Upstream Start commit", but are NOT in downstream.
+#   These are potential prerequisites that could cause conflicts.
+#
+# Arguments:
+# @arg $1 string File to write gap commits to (optional)
+#
+# Globals:
+# @set updir string Upstream directory (read)
+# @set upbase string Upstream base version (read)
+# @set upcmt string Upstream start commit (read)
+# @set path string Paths to search (read)
+# @set outdir string Output directory (read)
+#
+# Effects:
+# @stdout Warning messages about detected gaps
+#
+# Returns:
+# @exitcode 0 No gaps detected
+# @exitcode 1 Gaps detected (potential missing prerequisites)
+#
+detect_prerequisite_gaps() {
+	local gapfile="${1:-}"
+	local -a gap_commits=()
+	local line
+	local commit
+	local commit_date
+	local upcmt_date
+	local -i gap_count=0
+
+	# Get the date of the upstream start commit for comparison
+	ui_cd "$updir"
+	upcmt_date=$(git log -1 --format='%ci' "$upcmt" 2>/dev/null | cut -d' ' -f1)
+
+	# Get all upstream commits touching our paths between upbase and upcmt
+	# These are commits that are BEFORE our starting point
+	while read -r line; do
+		[ -z "$line" ] && continue
+		commit=$(echo "$line" | cut -d' ' -f1)
+
+		# Check if this commit is already in downstream
+		# by searching for it in downstream commit messages
+		if ! git -C "$OLDPWD" log --oneline --all --grep="$commit" -- $path 2>/dev/null | grep -q .; then
+			# Not in downstream - this is a potential gap
+			gap_commits+=("$line")
+			((gap_count++))
+		fi
+	done < <(gitnice -r -c -d --no-merges "$upbase..$upcmt^" $path 2>/dev/null)
+
+	ui_cd -
+
+	if ((gap_count > 0)); then
+		echo -e "\n${WRN}WARNING: Detected $gap_count potential prerequisite commit(s)$OFF"
+		echo -e "${INF}These upstream commits touch your paths but are BEFORE your starting point"
+		echo -e "and are NOT in downstream. They may be prerequisites for later commits.$OFF\n"
+
+		for line in "${gap_commits[@]}"; do
+			echo -e "${CAU}  $line$OFF"
+		done
+
+		echo -e "\n${INF}Consider using an earlier -dc commit or manually adding these to backport.log$OFF"
+
+		# Write gaps to file if requested
+		if [[ -n "$gapfile" ]]; then
+			printf "# PREREQUISITE GAPS - commits before starting point not in downstream\n" > "$gapfile"
+			printf "%s\n" "${gap_commits[@]}" >> "$gapfile"
+		fi
+
+		return 1
+	fi
+
 	return 0
 }
 
@@ -1014,6 +1113,7 @@ $MNU e$OFF - End at upstream commit   : $STA${configtable[upscope]}$OFF
 $MNU B$OFF - Current Downstream Branch: $STA$currentbranch$OFF
 $MNU A$OFF - Add to search path
 $MNU D$OFF - Delete from search path
+$MNU I$OFF - Include prerequisites     : $($b_include_prereqs && echo -e "${STA}yes" || echo -e "${INF}no")$OFF
 $MNU$UND
 Functional$OFF
 $MNU r$OFF - Run with the above parameters
@@ -1061,6 +1161,8 @@ menu_parser() {
 		    ;;
 		D ) delete_paths path
 		    configtable[path]="$path"
+		    ;;
+		I ) $b_include_prereqs && b_include_prereqs=false || b_include_prereqs=true
 		    ;;
 		o ) getuser "Directory to receive output files: " outdir
 		    get_pathopt -r "$outdir" outdir && configtable[outdir]="$outdir"
@@ -1181,6 +1283,33 @@ run() {
 	fi
 
 	echo
+
+	# Check for potential prerequisite gaps before proceeding
+	local gapfile="$outdir/prerequisite-gaps.log"
+	local b_has_gaps=false
+	if ! detect_prerequisite_gaps "$gapfile"; then
+		b_has_gaps=true
+		echo -e "\n${CAU}Gap commits written to: $STA$gapfile$OFF"
+		if $b_include_prereqs; then
+			echo -e "${INF}Prerequisites will be automatically included (-ip flag)$OFF"
+		elif $b_interactive; then
+			echo -en "${CAU}Include these prerequisites in backport.log? (y/n): $OFF"
+			read -r -n1 response
+			echo
+			if [[ "$response" == "y" || "$response" == "Y" ]]; then
+				b_include_prereqs=true
+			else
+				echo -en "${CAU}Continue without them? (y/n): $OFF"
+				read -r -n1 response
+				echo
+				[[ "$response" != "y" && "$response" != "Y" ]] && return 1
+			fi
+		else
+			echo -e "${INF}Use -ip to auto-include prerequisites, or -us with an earlier commit.$OFF"
+			echo -e "${INF}You can also manually prepend $gapfile to your backport.log$OFF"
+		fi
+	fi
+
 	if $b_interactive; then
 		echo -en "${CAU}Press any key to proceed or CTRL-C to exit...$OFF"
 		read -r -n1
@@ -1227,6 +1356,22 @@ run() {
 	echo
 	echo -e "${STA}Creating $outdir/$bplog$INF"
 	compare_strings
+
+	# Prepend prerequisites if requested and gaps exist
+	if $b_include_prereqs && $b_has_gaps && [ -f "$gapfile" ]; then
+		echo -e "\n${INF}Prepending prerequisite commits to $bplog...$OFF"
+		local tmpfile
+		tmpfile=$(mktemp)
+		# Get gap commits (skip comment header line)
+		grep -v '^#' "$gapfile" > "$tmpfile"
+		# Add separator comment
+		echo "# === Original backport commits below ===" >> "$tmpfile"
+		# Append existing backport.log
+		cat "$outdir/$bplog" >> "$tmpfile"
+		# Replace backport.log
+		mv "$tmpfile" "$outdir/$bplog"
+		echo -e "${STA}Prerequisites prepended to $outdir/$bplog$OFF"
+	fi
 
 	[ -n "$searchstr" ] && seek_str
 	echo -e "$OFF"
