@@ -553,35 +553,26 @@ detect_prerequisite_gaps() {
 	local commit_date
 	local upcmt_date
 	local -i gap_count=0
-	local -i total_checked=0
-
-	# Debug output
-	echo -e "${INF}Gap detection: upbase=$upbase upcmt=$upcmt$OFF" >&2
-	echo -e "${INF}Gap detection: updir=$updir path=$path$OFF" >&2
 
 	# Get the date of the upstream start commit for comparison
 	ui_cd "$updir"
 	upcmt_date=$(git log -1 --format='%ci' "$upcmt" 2>/dev/null | cut -d' ' -f1)
-
-	echo -e "${INF}Gap detection: checking range $upbase..$upcmt^$OFF" >&2
 
 	# Get all upstream commits touching our paths between upbase and upcmt
 	# These are commits that are BEFORE our starting point
 	while read -r line; do
 		[ -z "$line" ] && continue
 		commit=$(echo "$line" | cut -d' ' -f1)
-		((total_checked++))
 
 		# Check if this commit is already in downstream
-		# by searching for it in downstream commit messages
-		if ! git -C "$OLDPWD" log --oneline --all --grep="$commit" -- $path 2>/dev/null | grep -q .; then
+		# by searching for it in downstream commit messages on the CURRENT branch only
+		# (not --all, which would include other feature branches)
+		if ! git -C "$OLDPWD" log --oneline --grep="$commit" -- $path 2>/dev/null | grep -q .; then
 			# Not in downstream - this is a potential gap
 			gap_commits+=("$line")
 			((gap_count++))
 		fi
 	done < <(gitnice -r -c -d --no-merges "$upbase..$upcmt^" $path 2>/dev/null)
-
-	echo -e "${INF}Gap detection: checked $total_checked commits, found $gap_count gaps$OFF" >&2
 
 	ui_cd -
 
