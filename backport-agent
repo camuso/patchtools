@@ -55,6 +55,7 @@ declare current_state="init"
 declare current_commit=""
 declare -a commit_list=()
 declare -a conflict_history=()
+declare -a auto_resolve_details=()
 
 declare usagestr="$(
 cat <<EOF
@@ -434,6 +435,7 @@ try_auto_resolve() {
 	
 	for file in "${conflict_files[@]}"; do
 		local strategy=""
+		local build_verified="no"
 		
 		# Strategy 1: If conflict is only whitespace/context, take theirs
 		if ! grep -q '^<<<<<<< ' "$file" 2>/dev/null; then
@@ -453,14 +455,18 @@ try_auto_resolve() {
 			
 			# Verify it builds
 			if ((build_after_each)) && [[ -n "$build_test_path" ]]; then
-				if ! run_build_test; then
+				if run_build_test; then
+					build_verified="yes"
+				else
 					# Revert and try ours
 					git checkout --conflict=merge "$file" 2>/dev/null
 					if git checkout --ours "$file" 2>/dev/null; then
 						git add "$file"
 						strategy="ours"
 						log "DEBUG" "Theirs failed build, trying 'ours' for $file"
-						if ! run_build_test; then
+						if run_build_test; then
+							build_verified="yes"
+						else
 							# Neither works, restore conflict
 							git checkout --conflict=merge "$file" 2>/dev/null
 							log "WARN" "Neither strategy worked for $file"
@@ -470,6 +476,8 @@ try_auto_resolve() {
 				fi
 			fi
 			((resolved_count++))
+			# Track the resolution details
+			auto_resolve_details+=("$file: strategy=$strategy, build_verified=$build_verified")
 		fi
 	done
 	
@@ -902,8 +910,13 @@ cmd_patches() {
 
 #** cmd_report: Generate summary report
 #*
+# Generates both JSON output and a human-readable report file
+#*
 cmd_report() {
 	local conflicts_json
+	local report_file="$output_dir/backport-report.txt"
+	local timestamp
+	timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 	
 	if ! load_state; then
 		json_error "No active session" $EXIT_NO_STATE
@@ -912,6 +925,56 @@ cmd_report() {
 	
 	conflicts_json=$(printf '%s\n' "${conflict_history[@]}" | jq -R . | jq -s .)
 	
+	# Generate human-readable report file
+	cat > "$report_file" << EOF
+================================================================================
+                         BACKPORT AGENT REPORT
+================================================================================
+Generated: $timestamp
+JIRA:      ${jira:-"(none specified)"}
+
+SESSION SUMMARY
+---------------
+Total commits in backport.log:  $total_commits
+Commits applied:                $current_index
+Session state:                  $current_state
+Conflicts auto-resolved:        ${#conflict_history[@]}
+
+PATHS SEARCHED
+--------------
+$(printf "  %s\n" "${paths[@]}")
+
+OUTPUT DIRECTORY
+----------------
+$output_dir
+
+CONFLICT RESOLUTION HISTORY
+---------------------------
+EOF
+	
+	if [[ ${#conflict_history[@]} -eq 0 ]] || [[ -z "${conflict_history[0]}" ]]; then
+		echo "  (No conflicts encountered)" >> "$report_file"
+	else
+		for item in "${conflict_history[@]}"; do
+			[[ -n "$item" ]] && echo "  - $item" >> "$report_file"
+		done
+	fi
+	
+	cat >> "$report_file" << EOF
+
+GENERATED FILES
+---------------
+  Backport log:  $output_dir/backport.log
+  Patches:       $output_dir/patches/ (if generated)
+  This report:   $report_file
+  Agent log:     $state_dir/$log_file
+
+================================================================================
+EOF
+	
+	log "INFO" "Human-readable report written to: $report_file"
+	
+	# Also output JSON
 	json_output "{
   \"summary\": {
     \"jira\": \"$jira\",
@@ -922,7 +985,8 @@ cmd_report() {
     \"conflict_details\": $conflicts_json
   },
   \"paths\": $(printf '%s\n' "${paths[@]}" | jq -R . | jq -s .),
-  \"output_dir\": \"$output_dir\"
+  \"output_dir\": \"$output_dir\",
+  \"report_file\": \"$report_file\"
 }"
 	return $EXIT_OK
 }
