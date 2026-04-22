@@ -1394,16 +1394,28 @@ run() {
 #
 extract_upbase() {
 	local ktag=
+	local version=
 
 	# Get the most recent RHEL kernel tag
 	ktag="$(git tag --list 'kernel-*' --sort=-v:refname | head -n 1)"
 
-	# Now extract the upstream base kernel version from the rhel
-	# kernel tag.
+	# Extract upstream base kernel version from the RHEL kernel tag.
+	# Handle different tag formats:
+	#   RHEL-9:  kernel-5.14.0-503.el9
+	#   RHEL-10: kernel-ivos-qualcomm-6.12.0-220.32.el10iv
 	#
-	upbase="$(cut -d'-' -f2 <<< "$ktag")"
-	upbase="$(cut -d. -f1-2 <<< "$upbase")"
-	upbase="v${upbase}"
+	# Use regex to find version pattern (X.Y.Z or X.Y where X,Y,Z are numbers)
+	if [[ "$ktag" =~ ([0-9]+\.[0-9]+)\.[0-9]+ ]]; then
+		version="${BASH_REMATCH[1]}"
+	elif [[ "$ktag" =~ ([0-9]+\.[0-9]+) ]]; then
+		version="${BASH_REMATCH[1]}"
+	else
+		# Fallback to old method for backwards compatibility
+		version="$(cut -d'-' -f2 <<< "$ktag")"
+		version="$(cut -d. -f1-2 <<< "$version")"
+	fi
+
+	upbase="v${version}"
 	return 0
 }
 
