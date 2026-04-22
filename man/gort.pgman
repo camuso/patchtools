@@ -92,6 +92,30 @@ $OFF
   the file explaining why the commit is being excluded. These comments can
   then be used in the$MNU Omitted-fix:$OFF section of your MR Description.
 
+$MNU${UND}Substitute Patches
+$OFF
+  For tree-wide commits that touch many subsystems, you often only want
+  the changes affecting your specific subsystem. The$MNU mksubpatch$OFF tool can
+  extract just the relevant hunks from such commits.
+
+  To use a substitute patch instead of cherry-picking the original commit:
+
+  ${MNU}1.$OFF Create a$MNU substitutes/$OFF directory next to your backport.log:
+     ${STA}mkdir \$(dirname backport.log)/substitutes$OFF
+
+  ${MNU}2.$OFF Name your patch file with the 12-char commit hash:
+     ${STA}substitutes/69050f8d6d07.patch$OFF
+
+  ${MNU}3.$OFF Run$MNU gort$OFF normally - it will automatically detect and use
+     the substitute patch instead of cherry-picking the original.
+
+  Example using$MNU mksubpatch$OFF to create a substitute for IPMI:
+     ${STA}mksubpatch 69050f8d6d07 drivers/char/ipmi include/linux/ipmi*.h \\
+         -o substitutes -f 69050f8d6d07.patch$OFF
+
+  Substitute patches are applied using$MNU git am --3way$OFF, which handles
+  conflicts similarly to cherry-pick.
+
   Invoke$MNU gort$OFF without arguments. If this is the first time you have used
   ${MNU}gort$OFF in the current directory,$MNU gort$OFF will start the$MNU New Session$OFF procedure.
   After this initialization, the$MNU gort$OFF character cell menu interface will
