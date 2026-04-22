@@ -2478,12 +2478,11 @@ backport() {
 	#
 	(($sts > 1)) && exit_gort $exit_bogus "$CAU$err$OFF"
 
-	# If the backport wants to add a new file to the index, or if the
-	# backport exited with a nonzero status greater than 1, then we
-	# must report the conflict and stop.
-	untracked="$(git ls-files --others --exclude-standard)"
-
-	if [ -n "$untracked" ] || ((sts != 0)); then
+	# If the backport exited with a nonzero status, report conflict.
+	# Note: We no longer check for untracked files here as they may
+	# exist from before the backport and cause false positives.
+	# New files added by commits will be handled by stage_commit.
+	if ((sts != 0)); then
 		$b_log && ui_log "backport: conflict"
 		b_setexit=true
 		b_conflict=true
