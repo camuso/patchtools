@@ -241,7 +241,7 @@ main() {
 	((number == 0)) && number=
 	[ -n "$number" ] && number="-$number"
 
-	git log --date=short --pretty=format:"$fmtstr" $reverse $number ${gitopt[@]} $cmtexpr -- $path
+	git log --date=short --pretty=tformat:"$fmtstr" $reverse $number ${gitopt[@]} $cmtexpr -- $path
 
 	return $?
 }
