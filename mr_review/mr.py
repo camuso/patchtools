@@ -241,6 +241,17 @@ def mr_extract_patches(
     # Get MR comments first
     console.print(f"Getting comments...")
     mrcomments = mr_show(mr_number, comments_only=True, origin=origin)
+
+    if not mrcomments or not mrcomments.strip():
+        console.print(
+            f"[bold red]MR {mr_number} not found or returned no data.[/bold red]"
+        )
+        console.print(
+            f"[yellow]Repo: {repo_url}[/yellow]\n"
+            "[yellow]Make sure this MR belongs to the current repo.[/yellow]"
+        )
+        return False
+
     mrcomments_file = outdir / "mrcomments.log"
     mrcomments_file.write_text(mrcomments)
 

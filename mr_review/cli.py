@@ -66,7 +66,7 @@ def mr_review(mr_number):
     _require_repo()
     cfg = _load_config()
 
-    from .mr import mr_extract_patches, mr_list, display_mr_list, select_mr_from_list
+    from .mr import mr_extract_patches, mr_list, display_mr_list
     from .format import format_upstream_patches
     from .fixes import seek_missing_fixes
     from .compare import run_compare
@@ -74,35 +74,36 @@ def mr_review(mr_number):
     from rich.prompt import Prompt
 
     current_mr = mr_number
+    next_action = None
 
     while True:
-        if not mr_extract_patches(current_mr, cfg):
-            return
-
-        format_upstream_patches(cfg)
-        if cfg.seek_fixes:
-            seek_missing_fixes(cfg)
-        run_compare(cfg)
-
-        while True:
+        if next_action == "P":
+            next_action = None
+            run_compare(cfg)
             result = acknack_menu(cfg)
-            if result == "review":
-                run_compare(cfg)
-                continue
-            elif result == "list_mr":
-                display_mr_list(mr_list())
-                continue
-            else:
-                break
+        elif next_action == "m":
+            next_action = None
+            display_mr_list(mr_list())
+            result = acknack_menu(cfg)
+        else:
+            if next_action == "M":
+                next_action = None
+                current_mr = Prompt.ask("  Enter MR number (q to cancel)")
+                if current_mr.lower() == "q" or not current_mr.isdigit():
+                    return
 
-        if result == "new_mr":
-            new_num = Prompt.ask("  Enter MR number (q to cancel)")
-            if new_num.lower() == "q" or not new_num.isdigit():
+            if not mr_extract_patches(current_mr, cfg):
                 return
-            current_mr = new_num
-            continue
+            format_upstream_patches(cfg)
+            if cfg.seek_fixes:
+                seek_missing_fixes(cfg)
+            run_compare(cfg)
+            result = acknack_menu(cfg)
 
-        return
+        if result in ("new_mr", "list_mr", "review"):
+            next_action = {"new_mr": "M", "list_mr": "m", "review": "P"}[result]
+        else:
+            return
 
 
 @mr.command("list")
