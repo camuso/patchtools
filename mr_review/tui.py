@@ -316,6 +316,7 @@ def acknack_menu(cfg: Config) -> Optional[str]:
         console.print(f"  [bold]c[/bold]  Comment only")
         console.print(f"  [bold]v[/bold]  View comments for {mr_num}")
         console.print(f"  [bold]H[/bold]  Review history")
+        console.print(f"  [bold]W[/bold]  Select a working repo")
         console.print(f"  [bold]M[/bold]  Review another MR")
         console.print(f"  [bold]m[/bold]  Display list of MRs")
         console.print(f"  [bold]P[/bold]  Review diffs for {mr_num}")
@@ -368,6 +369,8 @@ def acknack_menu(cfg: Config) -> Optional[str]:
             display_in_pager(text)
         elif choice == "H":
             _history_menu(cfg)
+        elif choice == "W":
+            select_repo(cfg)
         elif choice == "M":
             return "new_mr"
         elif choice == "m":
