@@ -66,18 +66,43 @@ def mr_review(mr_number):
     _require_repo()
     cfg = _load_config()
 
-    from .mr import mr_extract_patches
+    from .mr import mr_extract_patches, mr_list, display_mr_list, select_mr_from_list
     from .format import format_upstream_patches
     from .fixes import seek_missing_fixes
     from .compare import run_compare
     from .tui import acknack_menu
+    from rich.prompt import Prompt
 
-    if mr_extract_patches(mr_number, cfg):
+    current_mr = mr_number
+
+    while True:
+        if not mr_extract_patches(current_mr, cfg):
+            return
+
         format_upstream_patches(cfg)
         if cfg.seek_fixes:
             seek_missing_fixes(cfg)
         run_compare(cfg)
-        acknack_menu(cfg)
+
+        while True:
+            result = acknack_menu(cfg)
+            if result == "review":
+                run_compare(cfg)
+                continue
+            elif result == "list_mr":
+                display_mr_list(mr_list())
+                continue
+            else:
+                break
+
+        if result == "new_mr":
+            new_num = Prompt.ask("  Enter MR number (q to cancel)")
+            if new_num.lower() == "q" or not new_num.isdigit():
+                return
+            current_mr = new_num
+            continue
+
+        return
 
 
 @mr.command("list")
