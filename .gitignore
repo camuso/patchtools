@@ -4,6 +4,7 @@
 *.tar
 *.gz
 *.list
+__pycache__/
 
 # Natively compiled executables
 #

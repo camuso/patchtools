@@ -1,0 +1,5 @@
+#!/bin/bash
+# mr-review - wrapper to invoke mr_review Python package
+MYDIR="$(dirname "$(readlink -f "$0")")"
+export PYTHONPATH="$MYDIR:${PYTHONPATH}"
+exec python3 -m mr_review "$@"
