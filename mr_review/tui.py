@@ -453,7 +453,7 @@ def main_menu(cfg: Config):
     )
 
     def _review_mr_loop(cfg: Config, prompt_number: bool = True):
-        """Review MRs in a loop — 'M' from acknack re-prompts for next MR."""
+        """Review MRs in a loop — handles all acknack return actions."""
         from .format import format_upstream_patches
         from .fixes import seek_missing_fixes
         from .compare import run_compare
@@ -478,10 +478,22 @@ def main_menu(cfg: Config):
                 if cfg.seek_fixes:
                     seek_missing_fixes(cfg)
                 run_compare(cfg)
-                result = acknack_menu(cfg)
+
+                while True:
+                    result = acknack_menu(cfg)
+                    if result == "new_mr":
+                        break
+                    elif result == "review":
+                        run_compare(cfg)
+                        continue
+                    elif result == "list_mr":
+                        display_mr_list(mr_list())
+                        continue
+                    else:
+                        return
+
                 if result == "new_mr":
                     continue
-                return
             else:
                 return
 
