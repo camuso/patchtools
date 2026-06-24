@@ -617,15 +617,18 @@ def main_menu(cfg: Config):
 
 
 def _show_help():
-    """Display help text."""
-    help_text = """
+    """Display help text in pager with colors, wait for keypress to return."""
+    from io import StringIO
+    from .utils import display_in_pager, readchar
+
+    help_markup = """\
 [bold cyan]mr-review - Kernel Patch Review Tool[/bold cyan]
 
 This tool compares downstream (RHEL) patches with their upstream
 counterparts, helping reviewers identify differences.
 
 [bold]Workflow:[/bold]
-  1. Enter an MR number (M) or select from list (m)
+  1. Enter an MR number ([bold]M[/bold]) or select from list ([bold]m[/bold])
   2. Patches are extracted from the MR
   3. Upstream commits are identified and formatted
   4. Missing fixes are sought upstream
@@ -641,13 +644,50 @@ counterparts, helping reviewers identify differences.
     - Skip (mark as bulk import)
     - Manual selection (paginated, searchable list)
 
-[bold]Command line usage:[/bold]
-  mr-review                       Interactive mode
-  mr-review mr review <number>    Review specific MR
-  mr-review mr list               List MRs
-  mr-review format                Format upstream patches
-  mr-review seek                  Seek missing fixes
-  mr-review compare               Compare patches
-  mr-review status                Show current status
+[bold cyan]Main menu keys:[/bold cyan]
+  [bold]c[/bold]   Config menu
+  [bold]d[/bold]   Set patch directory
+  [bold]w[/bold]   Set work directory
+  [bold]u[/bold]   Set upstream dir/branch
+  [bold]W[/bold]   Select a working repo (kernel tree)
+  [bold]M[/bold]   Enter a specific MR for review
+  [bold]m[/bold]   Show list of MRs and select one
+  [bold]v[/bold]   View comments for current MR
+  [bold]a[/bold]   Ack/Nack/Comment on MR
+  [bold]F[/bold]   Format upstream patches
+  [bold]S[/bold]   Seek missing fixes
+  [bold]P[/bold]   Compare patches
+  [bold]H[/bold]   Review history
+  [bold]h[/bold]   This help
+  [bold]q[/bold]   Quit
+
+[bold cyan]Review menu keys:[/bold cyan]
+  [bold]a[/bold]   Approve
+  [bold]A[/bold]   Approve with comment
+  [bold]b[/bold]   Block and start discussion
+  [bold]u[/bold]   Unapprove
+  [bold]c[/bold]   Comment only
+  [bold]v[/bold]   View MR comments
+  [bold]W[/bold]   Select a working repo
+  [bold]M[/bold]   Review another MR
+  [bold]m[/bold]   Display list of MRs
+  [bold]P[/bold]   Review diffs
+  [bold]H[/bold]   Review history
+  [bold]q[/bold]   Return to main menu
+
+[bold cyan]Command line usage:[/bold cyan]
+  [bold]mr-review[/bold]                       Interactive mode
+  [bold]mr-review mr review <number>[/bold]    Review specific MR
+  [bold]mr-review mr list[/bold]               List MRs
+  [bold]mr-review format[/bold]                Format upstream patches
+  [bold]mr-review seek[/bold]                  Seek missing fixes
+  [bold]mr-review compare[/bold]               Compare patches
+  [bold]mr-review status[/bold]                Show current status
 """
-    console.print(help_text)
+    buf = StringIO()
+    ansi_console = Console(file=buf, force_terminal=True)
+    ansi_console.print(help_markup)
+    display_in_pager(buf.getvalue())
+    console.print("\n  [bold cyan]Press any key to continue...[/bold cyan]", end=" ")
+    readchar()
+    console.print()
