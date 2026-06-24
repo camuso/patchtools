@@ -331,6 +331,21 @@ def acknack_menu(cfg: Config) -> Optional[str]:
         if choice == "q":
             return None
         elif choice in ("a", "A"):
+            # Check cached MR comments for prior approval
+            mrcomments_file = cfg.outdir / "mrcomments.log" if cfg.outdir else None
+            if mrcomments_file and mrcomments_file.exists():
+                from .mr import _get_lab_user
+                lab_user = _get_lab_user()
+                comments_text = mrcomments_file.read_text(errors="replace")
+                if lab_user and "Approved By" in comments_text:
+                    for cline in comments_text.splitlines():
+                        if "Approved By" in cline and lab_user in cline:
+                            console.print(
+                                f"[yellow]  MR {mr_num} is already approved "
+                                f"by you.[/yellow]"
+                            )
+                            break
+
             with_comment = (choice == "A")
             if confirm_key(f"  Approve MR {mr_num}?"):
                 if mr_approve(mr_num, with_comment=with_comment):
@@ -452,50 +467,16 @@ def main_menu(cfg: Config):
         display_mr_list,
     )
 
-    def _review_mr_loop(cfg: Config, prompt_number: bool = True):
-        """Review MRs in a loop — handles all acknack return actions."""
-        from .format import format_upstream_patches
-        from .fixes import seek_missing_fixes
-        from .compare import run_compare
-        from .mr import (
-            mr_extract_patches, mr_list, select_mr_from_list,
-        )
-
-        while True:
-            if prompt_number:
-                mr_num = Prompt.ask("  Enter MR number (q to cancel)")
-                if mr_num.lower() == "q" or not mr_num.isdigit():
-                    return
-            else:
-                mrs = mr_list()
-                mr_num = select_mr_from_list(mrs)
-                if not mr_num:
-                    return
-                prompt_number = True  # subsequent loops prompt by number
-
-            if mr_extract_patches(mr_num, cfg):
-                format_upstream_patches(cfg)
-                if cfg.seek_fixes:
-                    seek_missing_fixes(cfg)
-                run_compare(cfg)
-
-                while True:
-                    result = acknack_menu(cfg)
-                    if result == "new_mr":
-                        break
-                    elif result == "review":
-                        run_compare(cfg)
-                        continue
-                    elif result == "list_mr":
-                        display_mr_list(mr_list())
-                        continue
-                    else:
-                        return
-
-                if result == "new_mr":
-                    continue
-            else:
-                return
+    def _run_mr_pipeline(cfg: Config, mr_num: str):
+        """Run the full review pipeline for a single MR (extract, format,
+        seek fixes, compare).  Returns True on success."""
+        if not mr_extract_patches(mr_num, cfg):
+            return False
+        format_upstream_patches(cfg)
+        if cfg.seek_fixes:
+            seek_missing_fixes(cfg)
+        run_compare(cfg)
+        return True
 
     if not git_is_repo():
         console.print(
@@ -523,53 +504,63 @@ def main_menu(cfg: Config):
         cfg.set("editor", prompt_editor())
         cfg.save()
 
+    # Trampoline: acknack_menu can set next_action to feed back into
+    # the main loop, just like patchreview's case_qanret / menu_parser.
+    next_action = None
+
     while True:
-        last_tag = git_get_last_tag()
-        head = git_get_head_oneline()
-        branch = git_get_current_branch()
-        patch_count = len(get_patch_files(cfg.indir)) if cfg.indir else 0
-        remote_str = (
-            f"{cfg.remote_dir} : {cfg.remote_repo}/{cfg.remote_branch}"
-            if cfg.remote_dir else "(not set)"
-        )
+        # If acknack set a follow-up action, execute it directly
+        # instead of showing the main menu.
+        if next_action:
+            choice = next_action
+            next_action = None
+        else:
+            last_tag = git_get_last_tag()
+            head = git_get_head_oneline()
+            branch = git_get_current_branch()
+            patch_count = len(get_patch_files(cfg.indir)) if cfg.indir else 0
+            remote_str = (
+                f"{cfg.remote_dir} : {cfg.remote_repo}/{cfg.remote_branch}"
+                if cfg.remote_dir else "(not set)"
+            )
 
-        mr_status = ""
-        if cfg.current_mr:
-            mr_status = f" MR [bold]{cfg.current_mr}[/bold]"
-            if cfg.get_bool("b_acked"):
-                mr_status += " [green]Approved[/green]"
-            elif cfg.get_bool("b_nacked"):
-                mr_status += " [bold red]Blocked[/bold red]"
+            mr_status = ""
+            if cfg.current_mr:
+                mr_status = f" MR [bold]{cfg.current_mr}[/bold]"
+                if cfg.get_bool("b_acked"):
+                    mr_status += " [green]Approved[/green]"
+                elif cfg.get_bool("b_nacked"):
+                    mr_status += " [bold red]Blocked[/bold red]"
 
-        console.print(Panel(
-            f"[bold]mr-review v{__version__}[/bold]{mr_status}",
-            style="cyan",
-        ))
-        console.print(f"  [bold]c[/bold]  Config menu")
-        console.print(f"      Most recent tag      : [bold]{last_tag}[/bold]")
-        console.print(f"      Current head         : [bold]{head}[/bold]")
-        console.print(f"      Branch               : [bold]{branch}[/bold]")
-        console.print(f"  [bold]d[/bold]  Patch directory        : [bold]{cfg.indir}[/bold] ({patch_count} patches)")
-        console.print(f"  [bold]w[/bold]  Work directory         : [bold]{cfg.outdir}[/bold]")
-        console.print(f"  [bold]u[/bold]  Upstream dir/branch    : [bold]{remote_str}[/bold]")
+            console.print(Panel(
+                f"[bold]mr-review v{__version__}[/bold]{mr_status}",
+                style="cyan",
+            ))
+            console.print(f"  [bold]c[/bold]  Config menu")
+            console.print(f"      Most recent tag      : [bold]{last_tag}[/bold]")
+            console.print(f"      Current head         : [bold]{head}[/bold]")
+            console.print(f"      Branch               : [bold]{branch}[/bold]")
+            console.print(f"  [bold]d[/bold]  Patch directory        : [bold]{cfg.indir}[/bold] ({patch_count} patches)")
+            console.print(f"  [bold]w[/bold]  Work directory         : [bold]{cfg.outdir}[/bold]")
+            console.print(f"  [bold]u[/bold]  Upstream dir/branch    : [bold]{remote_str}[/bold]")
 
-        console.print(f"\n  [bold cyan]Main Controls[/bold cyan]")
-        console.print(f"  [bold]W[/bold]  Select a working repo")
-        console.print(f"  [bold]M[/bold]  Enter a specific MR for review")
-        console.print(f"  [bold]m[/bold]  Show list of MRs and select one")
-        console.print(f"  [bold]v[/bold]  View comments for current MR")
-        console.print(f"  [bold]a[/bold]  Ack/Nack/Comment on MR")
+            console.print(f"\n  [bold cyan]Main Controls[/bold cyan]")
+            console.print(f"  [bold]W[/bold]  Select a working repo")
+            console.print(f"  [bold]M[/bold]  Enter a specific MR for review")
+            console.print(f"  [bold]m[/bold]  Show list of MRs and select one")
+            console.print(f"  [bold]v[/bold]  View comments for current MR")
+            console.print(f"  [bold]a[/bold]  Ack/Nack/Comment on MR")
 
-        console.print(f"\n  [bold cyan]Operations[/bold cyan]")
-        console.print(f"  [bold]F[/bold]  Format upstream patches")
-        console.print(f"  [bold]S[/bold]  Seek missing fixes")
-        console.print(f"  [bold]P[/bold]  Compare patches")
-        console.print(f"  [bold]H[/bold]  Review history")
-        console.print(f"  [bold]h[/bold]  Help")
-        console.print(f"  [bold]q[/bold]  Quit")
+            console.print(f"\n  [bold cyan]Operations[/bold cyan]")
+            console.print(f"  [bold]F[/bold]  Format upstream patches")
+            console.print(f"  [bold]S[/bold]  Seek missing fixes")
+            console.print(f"  [bold]P[/bold]  Compare patches")
+            console.print(f"  [bold]H[/bold]  Review history")
+            console.print(f"  [bold]h[/bold]  Help")
+            console.print(f"  [bold]q[/bold]  Quit")
 
-        from .utils import prompt_key
-        choice = prompt_key("\n  Enter one of the above")
+            from .utils import prompt_key
+            choice = prompt_key("\n  Enter one of the above")
 
         if choice == "q":
             cfg.save()
@@ -596,9 +587,21 @@ def main_menu(cfg: Config):
         elif choice == "W":
             select_repo(cfg)
         elif choice == "M":
-            _review_mr_loop(cfg, prompt_number=True)
+            mr_num = Prompt.ask("  Enter MR number (q to cancel)")
+            if mr_num.lower() == "q" or not mr_num.isdigit():
+                continue
+            if _run_mr_pipeline(cfg, mr_num):
+                result = acknack_menu(cfg)
+                if result in ("new_mr", "list_mr", "review"):
+                    next_action = {"new_mr": "M", "list_mr": "m", "review": "P"}[result]
         elif choice == "m":
-            _review_mr_loop(cfg, prompt_number=False)
+            mrs = mr_list()
+            mr_num = select_mr_from_list(mrs)
+            if mr_num:
+                if _run_mr_pipeline(cfg, mr_num):
+                    result = acknack_menu(cfg)
+                    if result in ("new_mr", "list_mr", "review"):
+                        next_action = {"new_mr": "M", "list_mr": "m", "review": "P"}[result]
         elif choice == "v":
             from .utils import display_in_pager
             if cfg.current_mr:
@@ -613,7 +616,9 @@ def main_menu(cfg: Config):
                     display_in_pager(text)
         elif choice == "a":
             if cfg.current_mr:
-                acknack_menu(cfg)
+                result = acknack_menu(cfg)
+                if result in ("new_mr", "list_mr", "review"):
+                    next_action = {"new_mr": "M", "list_mr": "m", "review": "P"}[result]
             else:
                 console.print("[yellow]No MR selected. Use M first.[/yellow]")
         elif choice == "H":
@@ -686,6 +691,19 @@ counterparts, helping reviewers identify differences.
   [bold]P[/bold]   Review diffs
   [bold]H[/bold]   Review history
   [bold]q[/bold]   Return to main menu
+
+[bold cyan]Diff viewer keys:[/bold cyan]
+  [bold]r[/bold]   Replay the last diff
+  [bold]b[/bold]   Go back one diff
+  [bold]n[/bold]   Jump to a specific patch number
+  [bold]p[/bold]   Substitute a different upstream commit
+  [bold]c[/bold]   Show conflicting patches
+  [bold]m[/bold]   Toggle conflict-only mode
+  [bold]f[/bold]   View missing fixes (if any)
+  [bold]e[/bold]   Show environment info
+  [bold]C[/bold]   Re-run batch comparison
+  [bold]q[/bold]   Quit diff viewer
+  [bold]any[/bold] Display diff for current patch
 
 [bold cyan]Command line usage:[/bold cyan]
   [bold]mr-review[/bold]                       Interactive mode

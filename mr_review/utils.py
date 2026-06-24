@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import atexit
 import os
 import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -16,6 +18,37 @@ from typing import Optional
 
 HASH_RE = re.compile(r"\b[0-9a-f]{40}\b")
 SHORT_HASH_RE = re.compile(r"\b[0-9a-f]{7,12}\b")
+
+# Save the terminal state at import time so we can always restore it.
+_saved_term_attrs = None
+try:
+    if sys.stdin.isatty():
+        _saved_term_attrs = termios.tcgetattr(sys.stdin.fileno())
+except Exception:
+    pass
+
+
+def _restore_terminal():
+    """Restore terminal to the state captured at startup."""
+    if _saved_term_attrs is not None:
+        try:
+            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, _saved_term_attrs)
+        except Exception:
+            pass
+    # Re-show cursor in case Rich or something hid it
+    sys.stdout.write("\033[?25h")
+    sys.stdout.flush()
+
+
+def _signal_handler(signum, frame):
+    """Handle termination signals by restoring the terminal first."""
+    _restore_terminal()
+    sys.exit(128 + signum)
+
+
+atexit.register(_restore_terminal)
+signal.signal(signal.SIGINT, _signal_handler)
+signal.signal(signal.SIGTERM, _signal_handler)
 
 
 def run_git(

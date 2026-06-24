@@ -217,6 +217,65 @@ def _launch_diff(editor: str, file_a: Path, file_b: Path):
         subprocess.run([editor, str(file_a), str(file_b)])
 
 
+def _substitute_upstream(cfg: Config, patch_idx: int, us_patches: list[Path]):
+    """Replace the upstream patch for patch_idx with a different commit.
+
+    Prompts for a new commit hash, formats it from the upstream repo,
+    and overwrites the existing upstream patch file.
+    """
+    from .utils import (
+        git_show_exists, git_format_patch, git_log_oneline,
+        patch_number_prefix,
+    )
+
+    outdir = cfg.outdir
+    remote_dir = cfg.remote_dir
+
+    if not remote_dir or not remote_dir.is_dir():
+        console.print("[bold red]Upstream directory not configured.[/bold red]")
+        return
+
+    current_file = us_patches[patch_idx] if patch_idx < len(us_patches) else None
+    if current_file:
+        console.print(f"  Current upstream: [bold]{current_file.name}[/bold]")
+
+    commit = Prompt.ask("  Enter upstream commit hash (q to cancel)")
+    if not commit or commit.lower() == "q":
+        return
+
+    if not git_show_exists(commit, cwd=remote_dir):
+        console.print(f"[bold red]Commit {commit} not found in {remote_dir}[/bold red]")
+        return
+
+    summary = git_log_oneline(commit, cwd=remote_dir)
+    console.print(f"  [white]{summary}[/white]")
+
+    from .utils import confirm
+    if not confirm("  Replace upstream patch with this commit?"):
+        return
+
+    # Remove the old upstream patch file
+    if current_file and current_file.exists():
+        current_file.unlink()
+
+    patch_num = patch_idx + 1
+    result = git_format_patch(
+        commit,
+        destdir=outdir,
+        start_number=patch_num,
+        cwd=remote_dir,
+    )
+
+    if result:
+        new_path = Path(result)
+        us_patches[patch_idx] = new_path
+        console.print(
+            f"[bold green]  Replaced with: {new_path.name}[/bold green]"
+        )
+    else:
+        console.print("[bold red]  Failed to format patch.[/bold red]")
+
+
 def interactive_compare(
     cfg: Config,
     conflicts: Optional[list[ConflictInfo]] = None,
@@ -265,6 +324,9 @@ def interactive_compare(
         return True
 
     pos = 0  # position in nav_list
+    last_rhel = None  # last pair shown in diff editor
+    last_us = None
+    last_idx = None   # patch index of last viewed diff
 
     while True:
         idx = nav_list[pos]
@@ -305,7 +367,10 @@ def interactive_compare(
         console.print("[white]" + "-" * 68 + "[/white]")
 
         # Menu
+        console.print("  [bold]r[/bold] - replay the last diff")
+        console.print("  [bold]b[/bold] - go back one diff")
         console.print("  [bold]n[/bold] - go to specific patch number")
+        console.print("  [bold]p[/bold] - substitute a different upstream commit")
         console.print(
             f"  [bold]c[/bold] - show conflicting patches"
         )
@@ -314,7 +379,7 @@ def interactive_compare(
             f"[bold]{'ON' if conflict_mode else 'OFF'}[/bold]"
         )
         if has_missing_fixes:
-            console.print("  [bold]f[/bold] - show missing fixes")
+            console.print("  [bold]f[/bold] - view missing fixes")
         console.print("  [bold]e[/bold] - show environment")
         console.print(
             "  [bold]C[/bold] - run batch comparison to find conflicts"
@@ -330,6 +395,34 @@ def interactive_compare(
 
         if choice == "q":
             break
+        elif choice == "r":
+            if last_rhel and last_us:
+                _launch_diff(editor, last_rhel, last_us)
+            else:
+                console.print("[yellow]No diff has been viewed yet.[/yellow]")
+            continue
+        elif choice == "b":
+            if pos > 0:
+                pos -= 1
+            back_idx = nav_list[pos]
+            bf_rhel = rhel_patches[back_idx]
+            bf_us = us_patches[back_idx]
+            _launch_diff(editor, bf_rhel, bf_us)
+            last_rhel = bf_rhel
+            last_us = bf_us
+            last_idx = back_idx
+            continue
+        elif choice == "p":
+            sub_idx = last_idx if last_idx is not None else idx
+            _substitute_upstream(cfg, sub_idx, us_patches)
+            # Immediately show the diff with the new upstream patch
+            pf_rhel = rhel_patches[sub_idx]
+            pf_us = us_patches[sub_idx]
+            _launch_diff(editor, pf_rhel, pf_us)
+            last_rhel = pf_rhel
+            last_us = pf_us
+            last_idx = sub_idx
+            continue
         elif choice == "n":
             try:
                 pnum = IntPrompt.ask(
@@ -369,7 +462,8 @@ def interactive_compare(
                 conflict_mode = False
             continue
         elif choice == "f" and has_missing_fixes:
-            console.print(missing_file.read_text(errors="replace"))
+            from .utils import display_in_pager
+            display_in_pager(missing_file.read_text(errors="replace"))
             continue
         elif choice == "e":
             from .utils import git_get_last_tag, git_get_current_branch
@@ -395,8 +489,11 @@ def interactive_compare(
                 pos = 0
             continue
         else:
-            # Launch diff editor
+            # Launch diff editor and remember what was shown
             _launch_diff(editor, rhel_file, us_file)
+            last_rhel = rhel_file
+            last_us = us_file
+            last_idx = idx
 
             # Advance to next or signal completion
             if pos < len(nav_list) - 1:
