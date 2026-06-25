@@ -203,6 +203,9 @@ def display_conflicts(conflicts: list[ConflictInfo], total_patches: int):
 
 def _launch_diff(editor: str, file_a: Path, file_b: Path):
     """Launch a diff editor on two files."""
+    if not editor:
+        console.print("[bold red]No diff editor configured. Use config menu (c) to set one.[/bold red]")
+        return
     if editor == "vimdiff":
         subprocess.run(["vimdiff", "-c", "redraw!", str(file_a), str(file_b)])
     elif editor == "emacs":
