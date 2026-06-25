@@ -470,6 +470,9 @@ def main_menu(cfg: Config):
     def _run_mr_pipeline(cfg: Config, mr_num: str):
         """Run the full review pipeline for a single MR (extract, format,
         seek fixes, compare).  Returns True on success."""
+        if not cfg.editor or cfg.editor not in ("vimdiff", "meld", "tkdiff", "emacs"):
+            cfg.set("editor", prompt_editor())
+            cfg.save()
         if not mr_extract_patches(mr_num, cfg):
             return False
         format_upstream_patches(cfg)
