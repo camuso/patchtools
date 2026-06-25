@@ -504,7 +504,7 @@ def interactive_compare(
             else:
                 label = "conflicts" if conflict_mode else "patches"
                 msg = f"All {label} have been reviewed."
-                pad = len(msg) + 4
+                pad = len(msg) + 6
                 console.print()
                 console.print(f"[bold green] {'*' * pad} [/bold green]")
                 console.print(f"[bold green] *  {msg}  * [/bold green]")
