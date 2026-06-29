@@ -405,8 +405,9 @@ def interactive_compare(
                 console.print("[yellow]No diff has been viewed yet.[/yellow]")
             continue
         elif choice == "b":
-            if pos > 0:
-                pos -= 1
+            # pos was already advanced after the last diff, so we need
+            # to go back 2: one to undo the advance, one to truly back up.
+            pos = max(pos - 2, 0)
             back_idx = nav_list[pos]
             bf_rhel = rhel_patches[back_idx]
             bf_us = us_patches[back_idx]
@@ -414,6 +415,9 @@ def interactive_compare(
             last_rhel = bf_rhel
             last_us = bf_us
             last_idx = back_idx
+            # Advance so the next default action shows the patch after this one
+            if pos < len(nav_list) - 1:
+                pos += 1
             continue
         elif choice == "p":
             sub_idx = last_idx if last_idx is not None else idx
