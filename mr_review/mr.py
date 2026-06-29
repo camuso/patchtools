@@ -239,8 +239,14 @@ def mr_extract_patches(
     console.print(f"\n[bold]MR {mr_number}[/bold] from [bold]{repo_url}[/bold]")
 
     # Get MR comments first
-    console.print(f"Getting comments...")
-    mrcomments = mr_show(mr_number, comments_only=True, origin=origin)
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold cyan]Getting comments for MR {task.description}...[/bold cyan]"),
+        console=console, transient=True,
+    ) as progress:
+        progress.add_task(mr_number, total=None)
+        mrcomments = mr_show(mr_number, comments_only=True, origin=origin)
 
     if not mrcomments or not mrcomments.strip():
         console.print(
@@ -293,11 +299,16 @@ def mr_extract_patches(
             return False
 
     # Extract commits
-    console.print(f"\n[bold]Getting patches from MR {mr_number}...[/bold]")
-    patch_count = mr_get_commits(
-        mr_number, bp_commits_file,
-        mrcomments=mrcomments, origin=origin,
-    )
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold cyan]Fetching patches from MR {task.description}...[/bold cyan]"),
+        console=console, transient=True,
+    ) as progress:
+        progress.add_task(mr_number, total=None)
+        patch_count = mr_get_commits(
+            mr_number, bp_commits_file,
+            mrcomments=mrcomments, origin=origin,
+        )
 
     if patch_count == 0:
         # Show which repo lab queried so user can spot wrong-directory errors
