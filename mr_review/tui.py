@@ -151,12 +151,15 @@ def select_repo(cfg: Config) -> bool:
         console.print(f"\n  [bold cyan]Kernel Repositories[/bold cyan]")
         for i, repo in enumerate(repos, 1):
             marker = "  <-- current" if os.path.realpath(repo) == os.path.realpath(cwd) else ""
-            console.print(f"  [bold]{i:3d}[/bold]  {repo}[green]{marker}[/green]")
+            console.print(f"  [bold bright_magenta]{i:3d}[/bold bright_magenta]  [bold bright_magenta]{repo}[/bold bright_magenta][bold green]{marker}[/bold green]")
 
         console.print(f"\n  [bold]R[/bold]  Rescan filesystem")
         console.print(f"  [bold]q[/bold]  Cancel")
 
-        choice = Prompt.ask("\n  Enter number, R, or q").strip()
+        if len(repos) < 10:
+            choice = prompt_key("\n  Enter number, R, or q")
+        else:
+            choice = Prompt.ask("\n  Enter number, R, or q").strip()
 
         if choice.lower() == "q":
             return False
