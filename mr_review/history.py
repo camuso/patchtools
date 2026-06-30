@@ -1,12 +1,9 @@
 """MR review history tracking.
 
-Uses the same ~/.data/patchreview/mrhistory.log file as the old
-patchreview tool, so history accumulates across both tools.
-
 File format:
     <MR#>  <URL>
-           <date>  <action> : <patch_count>
-           <date>  <action> : <patch_count>
+           <date>  <action> : <patch_count> patches, <conflict_count> conflicts
+           <date>  <action> : <patch_count> patches, <conflict_count> conflicts
     <MR#>  <URL>
            ...
 
@@ -90,12 +87,9 @@ def update_history(
     mr_number: str,
     action: str,
     patch_count: int = 0,
+    conflict_count: int = 0,
 ):
-    """Record an MR action in the history file.
-
-    Mirrors the bash update_history() exactly so both tools can
-    share the same file.
-    """
+    """Record an MR action in the history file."""
     hfile = _ensure_history_file()
     url = _get_mr_url(mr_number)
     now = datetime.now().strftime("%a %b %e %I:%M:%S %p %Z %Y")
@@ -107,7 +101,7 @@ def update_history(
 
     action_line = f"{spc}{now}  {action}"
     if patch_count:
-        action_line += f" : {patch_count}"
+        action_line += f" : {patch_count} patches, {conflict_count} conflicts"
 
     lines = hfile.read_text().splitlines()
     mr_line = _find_mr_line(lines, mr_number)

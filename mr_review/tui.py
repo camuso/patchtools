@@ -280,7 +280,7 @@ def config_menu(cfg: Config):
 # MR ack/nack menu
 # ---------------------------------------------------------------------------
 
-def acknack_menu(cfg: Config) -> Optional[str]:
+def acknack_menu(cfg: Config, conflict_count: int = 0) -> Optional[str]:
     """Interactive MR approval/rejection menu.
 
     Returns an action string or None to quit:
@@ -357,7 +357,7 @@ def acknack_menu(cfg: Config) -> Optional[str]:
                     cfg.set("b_nacked", False)
                     cfg.set("b_reviewed", True)
                     cfg.save()
-                    update_history(mr_num, action, patch_count)
+                    update_history(mr_num, action, patch_count, conflict_count)
                     console.print(f"[green]MR {mr_num} approved.[/green]")
                 else:
                     console.print("[bold red]Approve failed.[/bold red]")
@@ -368,7 +368,7 @@ def acknack_menu(cfg: Config) -> Optional[str]:
                     cfg.set("b_acked", False)
                     cfg.set("b_reviewed", True)
                     cfg.save()
-                    update_history(mr_num, "Blocked/Discussion", patch_count)
+                    update_history(mr_num, "Blocked/Discussion", patch_count, conflict_count)
                     console.print(f"[bold red]MR {mr_num} blocked.[/bold red]")
         elif choice == "u":
             if confirm_key(f"  Unapprove MR {mr_num}?"):
@@ -376,11 +376,11 @@ def acknack_menu(cfg: Config) -> Optional[str]:
                     cfg.set("b_acked", False)
                     cfg.set("b_reviewed", True)
                     cfg.save()
-                    update_history(mr_num, "Unapproved", patch_count)
+                    update_history(mr_num, "Unapproved", patch_count, conflict_count)
                     console.print(f"[yellow]MR {mr_num} unapproved.[/yellow]")
         elif choice == "c":
             mr_comment(mr_num)
-            update_history(mr_num, "Comment-only", patch_count)
+            update_history(mr_num, "Comment-only", patch_count, conflict_count)
         elif choice == "v":
             from .utils import display_in_pager
             text = mr_show(mr_num, full=True)
@@ -470,19 +470,19 @@ def main_menu(cfg: Config):
         display_mr_list,
     )
 
-    def _run_mr_pipeline(cfg: Config, mr_num: str):
+    def _run_mr_pipeline(cfg: Config, mr_num: str) -> tuple[bool, int]:
         """Run the full review pipeline for a single MR (extract, format,
-        seek fixes, compare).  Returns True on success."""
+        seek fixes, compare).  Returns (success, conflict_count)."""
         if not cfg.editor or cfg.editor not in ("vimdiff", "meld", "tkdiff", "emacs"):
             cfg.set("editor", prompt_editor())
             cfg.save()
         if not mr_extract_patches(mr_num, cfg):
-            return False
+            return False, 0
         format_upstream_patches(cfg)
         if cfg.seek_fixes:
             seek_missing_fixes(cfg)
-        run_compare(cfg)
-        return True
+        _ok, n_conflicts = run_compare(cfg)
+        return True, n_conflicts
 
     if not git_is_repo():
         console.print(
@@ -513,6 +513,7 @@ def main_menu(cfg: Config):
     # Trampoline: acknack_menu can set next_action to feed back into
     # the main loop, just like patchreview's case_qanret / menu_parser.
     next_action = None
+    last_conflict_count = 0
 
     while True:
         # If acknack set a follow-up action, execute it directly
@@ -596,16 +597,18 @@ def main_menu(cfg: Config):
             mr_num = Prompt.ask("  Enter MR number (q to cancel)")
             if mr_num.lower() == "q" or not mr_num.isdigit():
                 continue
-            if _run_mr_pipeline(cfg, mr_num):
-                result = acknack_menu(cfg)
+            ok, last_conflict_count = _run_mr_pipeline(cfg, mr_num)
+            if ok:
+                result = acknack_menu(cfg, last_conflict_count)
                 if result in ("new_mr", "list_mr", "review"):
                     next_action = {"new_mr": "M", "list_mr": "m", "review": "P"}[result]
         elif choice == "m":
             mrs = mr_list()
             mr_num = select_mr_from_list(mrs)
             if mr_num:
-                if _run_mr_pipeline(cfg, mr_num):
-                    result = acknack_menu(cfg)
+                ok, last_conflict_count = _run_mr_pipeline(cfg, mr_num)
+                if ok:
+                    result = acknack_menu(cfg, last_conflict_count)
                     if result in ("new_mr", "list_mr", "review"):
                         next_action = {"new_mr": "M", "list_mr": "m", "review": "P"}[result]
         elif choice == "v":
@@ -622,7 +625,7 @@ def main_menu(cfg: Config):
                     display_in_pager(text)
         elif choice == "a":
             if cfg.current_mr:
-                result = acknack_menu(cfg)
+                result = acknack_menu(cfg, last_conflict_count)
                 if result in ("new_mr", "list_mr", "review"):
                     next_action = {"new_mr": "M", "list_mr": "m", "review": "P"}[result]
             else:
@@ -634,7 +637,7 @@ def main_menu(cfg: Config):
         elif choice == "S":
             seek_missing_fixes(cfg)
         elif choice == "P":
-            run_compare(cfg)
+            _ok, last_conflict_count = run_compare(cfg)
         elif choice == "h":
             _show_help()
 
