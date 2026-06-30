@@ -517,14 +517,17 @@ def interactive_compare(
     return True
 
 
-def run_compare(cfg: Config) -> bool:
-    """Full comparison pipeline: batch compare then interactive review."""
+def run_compare(cfg: Config) -> tuple[bool, int]:
+    """Full comparison pipeline: batch compare then interactive review.
+
+    Returns (success, conflict_count).
+    """
     indir = cfg.indir
     outdir = cfg.outdir
 
     if not indir or not outdir:
         console.print("[bold red]Directories not configured.[/bold red]")
-        return False
+        return False, 0
 
     # Run batch comparison
     mm_file = outdir / "mm.log"
@@ -532,4 +535,5 @@ def run_compare(cfg: Config) -> bool:
     display_conflicts(conflicts, len(get_patch_files(indir)))
 
     # Enter interactive mode
-    return interactive_compare(cfg, conflicts=conflicts)
+    ok = interactive_compare(cfg, conflicts=conflicts)
+    return ok, len(conflicts)

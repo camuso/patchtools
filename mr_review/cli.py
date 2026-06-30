@@ -75,16 +75,17 @@ def mr_review(mr_number):
 
     current_mr = mr_number
     next_action = None
+    last_conflict_count = 0
 
     while True:
         if next_action == "P":
             next_action = None
-            run_compare(cfg)
-            result = acknack_menu(cfg)
+            _ok, last_conflict_count = run_compare(cfg)
+            result = acknack_menu(cfg, last_conflict_count)
         elif next_action == "m":
             next_action = None
             display_mr_list(mr_list())
-            result = acknack_menu(cfg)
+            result = acknack_menu(cfg, last_conflict_count)
         else:
             if next_action == "M":
                 next_action = None
@@ -97,8 +98,8 @@ def mr_review(mr_number):
             format_upstream_patches(cfg)
             if cfg.seek_fixes:
                 seek_missing_fixes(cfg)
-            run_compare(cfg)
-            result = acknack_menu(cfg)
+            _ok, last_conflict_count = run_compare(cfg)
+            result = acknack_menu(cfg, last_conflict_count)
 
         if result in ("new_mr", "list_mr", "review"):
             next_action = {"new_mr": "M", "list_mr": "m", "review": "P"}[result]
@@ -215,7 +216,7 @@ def compare():
     cfg = _load_config()
 
     from .compare import run_compare
-    run_compare(cfg)
+    run_compare(cfg)  # conflict_count not needed in standalone mode
 
 
 @main.command()
