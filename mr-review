@@ -1,5 +1,10 @@
 #!/bin/bash
 # mr-review - wrapper to invoke mr_review Python package
 MYDIR="$(dirname "$(readlink -f "$0")")"
+
+if [[ "$1" == "-h" ]]; then
+    exec man "$MYDIR/man/man1/mr-review.1"
+fi
+
 export PYTHONPATH="$MYDIR:${PYTHONPATH}"
 exec python3 -m mr_review "$@"
