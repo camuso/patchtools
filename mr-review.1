@@ -1,0 +1,403 @@
+.\" Man page for mr-review
+.TH MR-REVIEW 1 "July 2026" "mr-review 2.0.0" "User Commands"
+.SH NAME
+mr-review \- kernel patch review tool with GitLab MR integration
+.SH SYNOPSIS
+.B mr-review
+.PP
+.B mr-review mr review
+.I MR_NUMBER
+.PP
+.B mr-review mr list
+.RI [ \-\-state
+.IR STATE ]
+.RI [ \-\-author
+.IR AUTHOR ]
+.RI [ \-\-target
+.IR BRANCH ]
+.PP
+.B mr-review mr comments
+.I MR_NUMBER
+.PP
+.B mr-review mr approve
+.I MR_NUMBER
+.RI [ \-\-comment ]
+.PP
+.B mr-review mr block
+.I MR_NUMBER
+.PP
+.B mr-review
+.BR format | seek | compare | status
+.PP
+.B mr-review set-config
+.I KEY VALUE
+.PP
+Must be run from inside a RHEL kernel git repository.
+Requires the
+.B lab
+CLI tool for GitLab operations (see
+.BR PREREQUISITES ).
+.SH DESCRIPTION
+.B mr-review
+is a Python-based kernel patch review tool that extracts patches
+from GitLab Merge Requests, formats their upstream counterparts,
+identifies missing fixes, and provides an interactive diff viewer
+for side-by-side comparison.
+It replaces and extends the original
+.BR patchreview (1)
+bash tool with improved mega-merge handling, a rich terminal UI,
+and streamlined MR workflow.
+.PP
+When invoked without arguments,
+.B mr-review
+enters interactive mode with a menu-driven interface.
+When invoked with a subcommand, it operates in CLI mode.
+Both modes offer the same core functionality.
+.SS "Review workflow"
+The typical review workflow is:
+.IP 1. 3
+Enter an MR number or select one from a list.
+.IP 2. 3
+Patches are extracted from the MR via the
+.B lab
+CLI.
+.IP 3. 3
+Upstream commits are identified from the RHEL patches
+and formatted from the upstream repository.
+.IP 4. 3
+Missing
+.B Fixes:
+tags are sought in upstream history.
+.IP 5. 3
+RHEL patches are compared with upstream commits batch-style;
+conflicts are highlighted.
+.IP 6. 3
+An interactive diff viewer launches for reviewing conflicts
+using the configured editor (vimdiff, meld, tkdiff, or emacs).
+.IP 7. 3
+The MR is approved, blocked, or commented on.
+.SS "Mega-merge handling"
+When a patch contains more upstream commits than the
+.B mega_merge_threshold
+(default 10), the tool offers strategies to manage the
+volume:
+.IP \(bu 2
+.B "Group by subsystem"
+\(em see which source areas are touched and review per-group.
+.IP \(bu 2
+.B "Filter by files"
+\(em only commits touching the same files as the RHEL patch.
+.IP \(bu 2
+.B Skip
+\(em mark as a bulk import without individual review.
+.IP \(bu 2
+.B "Manual selection"
+\(em paginated, searchable commit list with single-key navigation.
+.SH INTERACTIVE MODE
+Invoke with no arguments:
+.PP
+.RS
+.nf
+mr-review
+.fi
+.RE
+.SS "Main menu keys"
+.TP
+.B c
+Config menu (editor, directories, toggles).
+.TP
+.B d
+Set patch directory.
+.TP
+.B w
+Set work directory.
+.TP
+.B u
+Set upstream directory and branch.
+.TP
+.B W
+Select a working kernel repository.
+Scans the filesystem for kernel git trees, caches results,
+and presents a numbered list with single-key selection.
+.TP
+.B M
+Enter a specific MR number for review.
+.TP
+.B m
+List open MRs and select one.
+.TP
+.B v
+View comments for the current MR (paged, searchable).
+.TP
+.B a
+Open the Ack/Nack/Comment menu for the current MR.
+.TP
+.B F
+Format upstream patches from commit hashes in RHEL patches.
+.TP
+.B S
+Seek missing
+.B Fixes:
+tags in upstream history.
+.TP
+.B P
+Run batch comparison and enter the interactive diff viewer.
+.TP
+.B H
+Review history menu.
+.TP
+.B h
+Help (paged, searchable, with color).
+.TP
+.B q
+Quit.
+.SS "MR review menu keys"
+After reviewing patches, the MR review menu is presented:
+.TP
+.B a
+Approve the MR.
+Checks for prior approval and warns if already approved.
+.TP
+.B A
+Approve with a comment.
+.TP
+.B b
+Block the MR and start a discussion.
+.TP
+.B u
+Unapprove (retract approval).
+.TP
+.B c
+Comment on the MR without approving or blocking.
+.TP
+.B v
+View MR comments.
+.TP
+.B W
+Select a different working repository.
+.TP
+.B M
+Review another MR (prompts for new MR number).
+.TP
+.B m
+Display the MR list.
+.TP
+.B P
+Re-enter the diff viewer for the current MR.
+.TP
+.B H
+Review history.
+.TP
+.B q
+Return to main menu.
+.SS "Diff viewer keys"
+The interactive diff viewer provides:
+.TP
+.BR "any other key"
+Display the diff for the current patch in the configured editor.
+.TP
+.B r
+Replay the last displayed diff.
+.TP
+.B b
+Go back one diff.
+.TP
+.B n
+Jump to a specific patch number.
+.TP
+.B p
+Substitute a different upstream commit for the last viewed patch.
+Prompts for a commit hash, formats it from the upstream repo,
+and immediately shows the updated diff.
+.TP
+.B c
+Show the conflicting patch list.
+.TP
+.B m
+Toggle conflict-only navigation mode.
+.TP
+.B f
+View missing fixes (if any were found).
+.TP
+.B e
+Show environment info (tag, branch, directories).
+.TP
+.B C
+Re-run the batch comparison to refresh the conflict list.
+.TP
+.B q
+Quit the diff viewer.
+.SH CLI SUBCOMMANDS
+.SS "mr review MR_NUMBER"
+Run the full review pipeline for a specific MR: extract patches,
+format upstream, seek missing fixes, compare, and present the
+MR review menu.
+The review menu remains active for follow-up actions
+(approve, block, review another MR) without exiting.
+.SS "mr list [\-\-state STATE] [\-\-author AUTHOR] [\-\-target BRANCH]"
+List merge requests.
+.B \-\-state
+accepts
+.BR opened ", " merged ", " closed ", or " all
+(default:
+.BR opened ).
+.SS "mr comments MR_NUMBER"
+View comments for a specific MR in a pager.
+.SS "mr approve MR_NUMBER [\-\-comment]"
+Approve a merge request.
+With
+.BR \-\-comment ,
+prompt for an approval comment.
+.SS "mr block MR_NUMBER"
+Block a merge request and start a discussion.
+.SS format
+Format upstream patches from commit hashes found in RHEL patches.
+.SS seek
+Seek missing
+.B Fixes:
+tags in the upstream remote branch.
+.SS compare
+Run batch comparison and enter the interactive diff viewer.
+.SS status
+Show the current configuration and environment.
+.SS "set-config KEY VALUE"
+Set a configuration value directly.
+.SH CONFIGURATION
+Configuration is stored per-repository in
+.IR .data/patchreview.conf .
+The file uses
+.B "key = value"
+format and is compatible with the original
+.BR patchreview (1)
+tool.
+.PP
+Key settings include:
+.TP
+.B editor
+Diff editor:
+.BR vimdiff ", " meld ", " tkdiff ", or " emacs .
+.TP
+.B indir
+Directory containing RHEL (downstream) patches.
+.TP
+.B outdir
+Work directory for formatted upstream patches and comparison output.
+.TP
+.B remote_dir
+Path to the upstream Linux kernel git repository.
+.TP
+.B remote_repo
+Upstream git remote name (e.g.\&
+.BR origin ).
+.TP
+.B remote_branch
+Upstream branch to search for fixes (e.g.\&
+.BR master ).
+.TP
+.B b_seekfixes
+Whether to automatically seek missing fixes (true/false).
+.TP
+.B mega_merge_threshold
+Number of commits beyond which mega-merge strategies are offered
+(default: 10).
+.TP
+.B mega_merge_default_strategy
+Default mega-merge strategy:
+.BR prompt ", " subsystem ", " files ", " skip ", or " manual .
+.SH HISTORY
+Review actions are recorded in
+.IR ~/.data/mr-review/mr-review-history.log .
+Each MR entry includes a URL and timestamped action lines showing
+the action taken, number of patches, and number of conflicts:
+.PP
+.RS
+.nf
+4594  https://gitlab.com/.../merge_requests/4594
+      Wed Jul  1 09:30:00 AM EDT 2026  Approved : 14 patches, 3 conflicts
+.fi
+.RE
+.PP
+The history menu
+.RB ( H )
+provides options to view all history, view history for a specific MR,
+or clear history.
+.SH REPOSITORY DISCOVERY
+The
+.B W
+key triggers kernel repository discovery.
+.B mr-review
+scans the filesystem from
+.B /
+for directories containing both a
+.I .git
+directory and a
+.I Kconfig
+file (indicating a kernel tree).
+System directories
+.RI ( /proc ", " /sys ", " /dev ", " /run ", etc.)"
+are skipped.
+.PP
+Results are cached in
+.I ~/.data/mr-review/repos.cache
+and presented as a numbered list.
+A rescan can be forced from the menu.
+When fewer than 10 repositories are found, single-key selection
+is used (no Enter required).
+.SH PREREQUISITES
+.TP
+.B Python 3.6+
+With the
+.B click
+and
+.B rich
+packages installed.
+.TP
+.B lab
+The GitLab CLI tool, configured with access to the target
+GitLab instance.
+Used for MR listing, patch extraction, approval, blocking,
+and commenting.
+.TP
+.B git
+Standard git, accessible on
+.BR PATH .
+.TP
+.B "Diff editor"
+One of
+.BR vimdiff ", " meld ", " tkdiff ", or " emacs .
+.SH EXIT STATUS
+.TP
+.B 0
+Normal exit.
+.TP
+.B 1
+Error: not in a git repository, missing prerequisites,
+or unrecoverable failure.
+.SH ENVIRONMENT
+.TP
+.B LESS
+Set to
+.B \-R
+automatically when paging output, enabling ANSI color passthrough.
+.SH FILES
+.TP
+.I .data/patchreview.conf
+Per-repository configuration file.
+.TP
+.I .patches/tmp/
+Temporary directory for extracted MR patches and formatted
+upstream patches.
+.TP
+.I ~/.data/mr-review/mr-review-history.log
+Review history file recording actions, patch counts, and
+conflict counts.
+.TP
+.I ~/.data/mr-review/repos.cache
+Cached list of kernel git repositories found on the system.
+.SH SEE ALSO
+.BR patchreview (1),
+.BR git-format-patch (1),
+.BR vimdiff (1),
+.BR lab (1)
+.SH AUTHORS
+Tony Camuso <tcamuso@redhat.com>
