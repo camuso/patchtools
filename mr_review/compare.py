@@ -182,7 +182,7 @@ def display_conflicts(conflicts: list[ConflictInfo], total_patches: int):
     table.add_column("FP?", width=4)
 
     for i, c in enumerate(conflicts, 1):
-        fp_mark = "[yellow]?[/yellow]" if c.possible_fp else ""
+        fp_mark = "[bold cyan]?[/bold cyan]" if c.possible_fp else ""
         table.add_row(
             str(i),
             str(c.patch_index),
@@ -196,7 +196,7 @@ def display_conflicts(conflicts: list[ConflictInfo], total_patches: int):
     )
     if fp_count:
         console.print(
-            f"Possible false positives [?]: [yellow]{fp_count}[/yellow] "
+            f"Possible false positives [?]: [bold cyan]{fp_count}[/bold cyan] "
             f"(verify manually)"
         )
 
@@ -251,7 +251,7 @@ def _substitute_upstream(cfg: Config, patch_idx: int, us_patches: list[Path]):
         return
 
     summary = git_log_oneline(commit, cwd=remote_dir)
-    console.print(f"  [white]{summary}[/white]")
+    console.print(f"  [bold]{summary}[/bold]")
 
     from .utils import confirm
     if not confirm("  Replace upstream patch with this commit?"):
@@ -351,12 +351,12 @@ def interactive_compare(
         console.print(
             f"\n[bold]{editor}[/bold] will diff local patches with upstream commits"
         )
-        console.print("[white]" + "-" * 68 + "[/white]")
+        console.print("[bold]" + "-" * 68 + "[/bold]")
         console.print(
             f"[bold]Patch {idx + 1}[/bold] of {total}"
         )
-        console.print(f"[white]RHEL    : {rhel_file.name}[/white]")
-        console.print(f"[white]Upstream: {us_file.name}[/white]")
+        console.print(f"[bold]RHEL    : {rhel_file.name}[/bold]")
+        console.print(f"[bold]Upstream: {us_file.name}[/bold]")
 
         if conflict_info:
             ci = conflict_indices.index(idx) if idx in conflict_indices else 0
@@ -365,9 +365,9 @@ def interactive_compare(
                 f"[bold red]{len(conflict_indices)}[/bold red]"
             )
             if conflict_info.possible_fp:
-                console.print("[yellow]  [?] Possible false positive[/yellow]")
+                console.print("[bold cyan]  [?] Possible false positive[/bold cyan]")
 
-        console.print("[white]" + "-" * 68 + "[/white]")
+        console.print("[bold]" + "-" * 68 + "[/bold]")
 
         # Menu
         console.print("  [bold]r[/bold] - replay the last diff")

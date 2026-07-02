@@ -169,7 +169,7 @@ def format_upstream_patches(
             if result:
                 formatted += 1
                 if cfg.verbose:
-                    progress.console.print(f"  [white]{result}[/white]")
+                    progress.console.print(f"  [bold]{result}[/bold]")
             else:
                 placeholder = outdir / f"{pfx}-inv.patch"
                 placeholder.write_text(f"invalid commit: {commit_hash}\n")

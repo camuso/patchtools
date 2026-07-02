@@ -113,7 +113,7 @@ def _validate_and_select_single(
         f"\n[bold]Multiple upstream commits found, "
         f"none matching subject line.[/bold]"
     )
-    console.print(f"  Subject: [white]{bare_subject}[/white]\n")
+    console.print(f"  Subject: [bold]{bare_subject}[/bold]\n")
 
     table = Table(show_header=True, header_style="bold cyan")
     table.add_column("#", style="bold", width=4)
@@ -383,7 +383,7 @@ def _handle_mega_merge(
         f"\n[bold yellow]Mega-merge detected:[/bold yellow] "
         f"[bold]{len(hashes)}[/bold] upstream commits in patch"
     )
-    console.print(f"  [white]{patch_path.name}[/white]")
+    console.print(f"  [bold]{patch_path.name}[/bold]")
 
     if default_strategy == "skip":
         return [], True
@@ -455,7 +455,7 @@ def extract_commits_from_patches(
             result = CommitResult(patch_index=idx, patch_path=patch_path)
 
             if verbose:
-                console.print(f"[white]{patch_path.name}[/white]")
+                console.print(f"[bold]{patch_path.name}[/bold]")
 
             commit_log = extract_commit_log(patch_path)
             subject = extract_subject(patch_path)
