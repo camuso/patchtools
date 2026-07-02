@@ -29,6 +29,15 @@ from .utils import (
 console = Console()
 
 
+def _context_line(cfg: Config) -> str:
+    """Build a repo/MR context string for panel subtitles."""
+    repo = str(cfg.repo_dir)
+    mr = cfg.current_mr
+    if mr:
+        return f"repo: {repo}  MR: {mr}"
+    return f"repo: {repo}"
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -214,6 +223,7 @@ def config_menu(cfg: Config):
 
         console.print(Panel(
             "[bold]Configuration[/bold]",
+            subtitle=_context_line(cfg),
             style="cyan",
         ))
         console.print(f"  [bold]d[/bold]  Patch directory      : [bold]{cfg.indir or '(not set)'}[/bold]")
@@ -299,6 +309,7 @@ def acknack_menu(cfg: Config, conflict_count: int = 0) -> Optional[str]:
     while True:
         console.print(Panel(
             f"[bold]Merge Request Review: MR {mr_num}[/bold]",
+            subtitle=_context_line(cfg),
             style="cyan",
         ))
 
@@ -409,7 +420,11 @@ def _history_menu(cfg: Config):
     from .utils import prompt_key, confirm as confirm_key, display_in_pager
 
     while True:
-        console.print(f"\n  [bold cyan]Review History[/bold cyan]")
+        console.print(Panel(
+            "[bold]Review History[/bold]",
+            subtitle=_context_line(cfg),
+            style="cyan",
+        ))
         console.print(f"  File: [bold]{HISTORY_FILE}[/bold]")
         console.print(f"  [bold]v[/bold]  View all review history")
         console.print(f"  [bold]m[/bold]  View history for current MR: [bold]{cfg.current_mr or '(none)'}[/bold]")
@@ -541,6 +556,7 @@ def main_menu(cfg: Config):
 
             console.print(Panel(
                 f"[bold]mr-review v{__version__}[/bold]{mr_status}",
+                subtitle=_context_line(cfg),
                 style="cyan",
             ))
             console.print(f"  [bold]c[/bold]  Config menu")

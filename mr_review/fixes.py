@@ -121,23 +121,11 @@ def _parse_missingfix(
 
     # 1. Intentionally omitted?
     if _check_omitted(fix_id, mr_commitlog, mrcomments):
-        with missing_file.open("a") as f:
-            f.write(
-                f"Intentionally Omitted Fix: "
-                f"{fix_line} for {index_frac}\n"
-            )
         return 1
 
     # 2. Fix is in the upstream commits list for this MR series?
-    #    (grep fix_id against the commits file, same as old code)
     for cline in commits_file_text.splitlines():
         if fix_id in cline:
-            found_frac = cline.split()[1] if len(cline.split()) > 1 else ""
-            with missing_file.open("a") as f:
-                f.write(
-                    f"{found_frac} contains Fix: "
-                    f"{fix_line} for {index_frac}\n"
-                )
             return 1
 
     # 3. Already merged downstream? Search the current (RHEL) branch
@@ -150,11 +138,6 @@ def _parse_missingfix(
         cwd=None, check=False,
     )
     if r.stdout.strip():
-        with missing_file.open("a") as f:
-            f.write(
-                f"Downstream has Fix: "
-                f"{fix_line} for {index_frac}\n"
-            )
         return 1
 
     # 4. Truly missing

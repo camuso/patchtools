@@ -348,10 +348,15 @@ def interactive_compare(
                     conflict_info = c
                     break
 
-        console.print(
-            f"\n[bold]{editor}[/bold] will diff local patches with upstream commits"
-        )
-        console.print("[bold]" + "-" * 68 + "[/bold]")
+        ctx = f"repo: {cfg.repo_dir}"
+        if cfg.current_mr:
+            ctx += f"  MR: {cfg.current_mr}"
+        from rich.panel import Panel
+        console.print(Panel(
+            f"[bold]{editor}[/bold] will diff local patches with upstream commits",
+            subtitle=ctx,
+            style="cyan",
+        ))
         console.print(
             f"[bold]Patch {idx + 1}[/bold] of {total}"
         )

@@ -382,6 +382,218 @@ def confirm(message: str, default: bool = False) -> bool:
             return default
 
 
+_URL_RE = re.compile(r"https?://\S+")
+_LORE_RE = re.compile(r"https?://lore\.kernel\.org/\S+")
+_GIT_COMMIT_URL_RE = re.compile(
+    r"https?://[^/]+/.+?/commit/?\?.*?id=([0-9a-fA-F]{7,40})"
+)
+
+
+def extract_upstream_status(patch_path: str | Path) -> Optional[str]:
+    """Extract a URL from the 'Upstream status:' line in a patch header.
+
+    Handles variants like:
+      Upstream status: Posted https://lore.kernel.org/...
+      Upstream status: https://lore.kernel.org/...
+      Upstream Status: https://git.kernel.org/.../commit/?id=abc123
+    """
+    for line in Path(patch_path).read_text(errors="replace").splitlines():
+        if line.startswith("diff --git "):
+            break
+        if re.match(r"^\s*[Uu]pstream\s+[Ss]tatus\s*:", line):
+            m = _URL_RE.search(line)
+            if m:
+                return m.group().rstrip("/")
+    return None
+
+
+def is_lore_url(url: str) -> bool:
+    """Return True if the URL points to lore.kernel.org."""
+    return bool(_LORE_RE.match(url))
+
+
+def fetch_lore_patch(url: str, dest: Path) -> bool:
+    """Download a raw patch from a lore.kernel.org URL and save to dest.
+
+    Appends /raw to the URL to get the raw email/patch content.
+    Returns True on success.
+    """
+    raw_url = url.rstrip("/") + "/raw"
+    try:
+        result = subprocess.run(
+            ["curl", "-sL", "--fail",
+             "-A", "mr-review/2.0",
+             "-o", str(dest), raw_url],
+            timeout=30,
+            capture_output=True,
+        )
+        if result.returncode != 0:
+            return False
+        return dest.exists() and dest.stat().st_size > 0
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False
+
+
+def fetch_lore_series(url: str, outdir: Path) -> list[Path]:
+    """Download a complete patch series from lore and split into files.
+
+    Fetches the thread mbox via /t.mbox.gz, then extracts individual
+    patches (messages containing 'diff --git') into outdir as
+    lore-NN.patch files.
+
+    Returns a list of saved patch file paths, sorted by subject.
+    """
+    import email
+    import email.policy
+    import gzip
+    import mailbox
+
+    lore_dir = outdir / ".lore_cache"
+    lore_dir.mkdir(exist_ok=True)
+
+    mbox_gz = lore_dir / "thread.mbox.gz"
+    mbox_path = lore_dir / "thread.mbox"
+    mbox_url = url.rstrip("/") + "/t.mbox.gz"
+
+    try:
+        result = subprocess.run(
+            ["curl", "-sL", "--fail",
+             "-A", "mr-review/2.0",
+             "-o", str(mbox_gz), mbox_url],
+            timeout=60,
+            capture_output=True,
+        )
+        if result.returncode != 0:
+            return []
+
+        with gzip.open(mbox_gz, "rb") as gz:
+            mbox_path.write_bytes(gz.read())
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return []
+    finally:
+        if mbox_gz.exists():
+            mbox_gz.unlink()
+
+    patches: list[tuple[str, str]] = []
+    try:
+        mbox = mailbox.mbox(str(mbox_path))
+        for msg in mbox:
+            body = msg.get_payload(decode=True)
+            if body is None:
+                if msg.is_multipart():
+                    parts = []
+                    for part in msg.walk():
+                        pl = part.get_payload(decode=True)
+                        if pl:
+                            parts.append(pl.decode("utf-8", errors="replace"))
+                    body_text = "\n".join(parts)
+                else:
+                    continue
+            else:
+                body_text = body.decode("utf-8", errors="replace")
+
+            if "diff --git " not in body_text:
+                continue
+
+            subject = msg.get("Subject", "")
+            subject = re.sub(r"\s+", " ", subject).strip()
+            patches.append((subject, msg.as_string()))
+        mbox.close()
+    except Exception:
+        return []
+    finally:
+        if mbox_path.exists():
+            mbox_path.unlink()
+
+    if not patches:
+        return []
+
+    saved: list[Path] = []
+    for i, (subj, raw) in enumerate(patches, 1):
+        dest = lore_dir / f"lore-{i:04d}.patch"
+        dest.write_text(raw)
+        saved.append(dest)
+
+    return saved
+
+
+def match_lore_patch_by_subject(
+    rhel_subject: str,
+    lore_patches: list[Path],
+    fuzz: int = 3,
+) -> Optional[Path]:
+    """Find the lore patch whose subject best matches the RHEL subject.
+
+    Uses the same fuzzy matching as commit comparison.
+    """
+    bare = extract_subject_bare(rhel_subject)
+
+    for lp in lore_patches:
+        lore_subj = extract_subject(lp)
+        lore_bare = extract_subject_bare(lore_subj)
+        if subjects_match(bare, lore_bare, fuzz=fuzz):
+            return lp
+
+    return None
+
+
+def extract_commit_from_url(url: str) -> Optional[str]:
+    """Try to extract a commit hash from a git web URL.
+
+    Handles URLs like:
+      https://git.kernel.org/.../commit/?id=abc123def456
+    """
+    m = _GIT_COMMIT_URL_RE.search(url)
+    return m.group(1) if m else None
+
+
+def extract_repo_from_url(url: str) -> Optional[str]:
+    """Try to extract a git:// or https:// clone URL from a web URL.
+
+    Handles cgit-style URLs like:
+      https://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git/commit/?id=...
+    Returns:
+      https://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git
+    """
+    m = re.match(r"(https?://[^/]+/.+?\.git)(?:/|$)", url)
+    return m.group(1) if m else None
+
+
+def fetch_commit_from_alt_repo(
+    commit: str,
+    repo_url: str,
+    cwd: Path,
+) -> bool:
+    """Add repo_url as a temporary remote and fetch the commit.
+
+    Returns True if the commit is reachable after fetch.
+    """
+    remote_name = "_mr_review_alt"
+    try:
+        subprocess.run(
+            ["git", "remote", "remove", remote_name],
+            cwd=cwd, capture_output=True,
+        )
+        result = subprocess.run(
+            ["git", "remote", "add", remote_name, repo_url],
+            cwd=cwd, capture_output=True,
+        )
+        if result.returncode != 0:
+            return False
+        result = subprocess.run(
+            ["git", "fetch", "--depth=1", remote_name, commit],
+            cwd=cwd, capture_output=True, timeout=60,
+        )
+        return result.returncode == 0 and git_show_exists(commit, cwd=cwd)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False
+    finally:
+        subprocess.run(
+            ["git", "remote", "remove", remote_name],
+            cwd=cwd, capture_output=True,
+        )
+
+
 def display_in_pager(text: str):
     """Display text in the system pager (less/more) for searchable viewing.
 

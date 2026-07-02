@@ -16,7 +16,21 @@ from rich.prompt import Confirm
 
 from .config import Config
 from .commits import extract_commits_from_patches
-from .utils import git_format_patch, git_show_exists, patch_number_prefix
+from .utils import (
+    extract_commit_from_url,
+    extract_repo_from_url,
+    extract_subject,
+    extract_upstream_status,
+    fetch_commit_from_alt_repo,
+    fetch_lore_patch,
+    fetch_lore_series,
+    get_patch_files,
+    git_format_patch,
+    git_show_exists,
+    is_lore_url,
+    match_lore_patch_by_subject,
+    patch_number_prefix,
+)
 
 console = Console()
 
@@ -102,6 +116,13 @@ def format_upstream_patches(
         console.print("[bold red]No commits to format.[/bold red]")
         return False
 
+    # Build a map from 1-based patch index to RHEL patch path
+    # so we can check Upstream status: when a commit is missing.
+    rhel_patches = get_patch_files(indir)
+    rhel_by_num: dict[int, Path] = {}
+    for i, rp in enumerate(rhel_patches, 1):
+        rhel_by_num[i] = rp
+
     console.print(f"\n[bold]Formatting {len(entries)} upstream patches[/bold]")
     console.print(f"From: [bold]{remote_dir}[/bold]")
     console.print(f"Into: [bold]{outdir}[/bold]")
@@ -112,6 +133,11 @@ def format_upstream_patches(
     seen_indices: dict[str, int] = {}
     formatted = 0
     not_found = 0
+    from_lore = 0
+    from_alt = 0
+
+    # Cache lore series: URL -> list of downloaded patch files
+    lore_cache: dict[str, list[Path]] = {}
 
     with Progress(
         SpinnerColumn(),
@@ -128,15 +154,27 @@ def format_upstream_patches(
                 patch_num = formatted + 1
 
             pfx = patch_number_prefix(patch_num)
+            rhel_patch = rhel_by_num.get(patch_num)
 
-            if is_skipped or int(commit_hash, 16) == 0:
+            if is_skipped:
                 placeholder = outdir / f"{pfx}-nocommit.patch"
-                if is_skipped:
-                    placeholder.write_text(
-                        f"No upstream commit detected for patch {patch_num}.\n"
-                        f"Skipped: mega-merge\n"
-                    )
+                placeholder.write_text(
+                    f"No upstream commit detected for patch {patch_num}.\n"
+                    f"Skipped: mega-merge\n"
+                )
+                progress.update(task, advance=1)
+                continue
+
+            # Null commit hash -- no upstream commit found in the patch
+            if int(commit_hash, 16) == 0:
+                if _try_upstream_status_fallback(
+                    rhel_patch, patch_num, pfx, outdir, remote_dir,
+                    progress, cfg, lore_cache=lore_cache,
+                ):
+                    formatted += 1
+                    from_lore += 1
                 else:
+                    placeholder = outdir / f"{pfx}-nocommit.patch"
                     placeholder.write_text(
                         f"No upstream commit detected for patch {patch_num}.\n"
                     )
@@ -151,11 +189,20 @@ def format_upstream_patches(
             seen_indices[index_frac] = patch_num
 
             if not git_show_exists(commit_hash, cwd=remote_dir):
-                placeholder = outdir / f"{pfx}-notfound.patch"
-                placeholder.write_text(
-                    f"Commit {commit_hash} was not found in any upstream repo.\n"
-                )
-                not_found += 1
+                # Commit not in configured upstream; try Upstream status: URL
+                if _try_upstream_status_fallback(
+                    rhel_patch, patch_num, pfx, outdir, remote_dir,
+                    progress, cfg, commit_hash=commit_hash,
+                    lore_cache=lore_cache,
+                ):
+                    formatted += 1
+                    from_alt += 1
+                else:
+                    placeholder = outdir / f"{pfx}-notfound.patch"
+                    placeholder.write_text(
+                        f"Commit {commit_hash} not found in upstream repo.\n"
+                    )
+                    not_found += 1
                 progress.update(task, advance=1)
                 continue
 
@@ -176,8 +223,118 @@ def format_upstream_patches(
 
             progress.update(task, advance=1)
 
-    console.print(
-        f"\n[bold green]{formatted}[/bold green] patches formatted"
-        + (f", [yellow]{not_found} not found[/yellow]" if not_found else "")
-    )
+    summary = f"\n[bold green]{formatted}[/bold green] patches formatted"
+    if from_lore:
+        summary += f", [bold cyan]{from_lore} from lore[/bold cyan]"
+    if from_alt:
+        summary += f", [bold cyan]{from_alt} from alt repo[/bold cyan]"
+    if not_found:
+        summary += f", [bold red]{not_found} not found[/bold red]"
+    console.print(summary)
     return True
+
+
+def _try_upstream_status_fallback(
+    rhel_patch: Optional[Path],
+    patch_num: int,
+    pfx: str,
+    outdir: Path,
+    remote_dir: Path,
+    progress,
+    cfg,
+    commit_hash: Optional[str] = None,
+    lore_cache: Optional[dict[str, list[Path]]] = None,
+) -> bool:
+    """Try to obtain an upstream patch via Upstream status: URL.
+
+    Handles two cases:
+      1. lore.kernel.org URL -- fetch thread, match by subject
+      2. git repo URL with commit hash -- fetch from alt repo and format
+
+    Returns True if a patch was successfully created.
+    """
+    if lore_cache is None:
+        lore_cache = {}
+
+    if not rhel_patch or not rhel_patch.exists():
+        return False
+
+    url = extract_upstream_status(rhel_patch)
+    if not url:
+        return False
+
+    # Case 1: lore.kernel.org -- fetch series and match by subject
+    if is_lore_url(url):
+        # Fetch the series once, cache for subsequent patches
+        if url not in lore_cache:
+            progress.console.print(
+                f"  [bold cyan]Fetching series from lore:[/bold cyan] {url}"
+            )
+            series = fetch_lore_series(url, outdir)
+            if not series:
+                # Fall back to single-patch download
+                progress.console.print(
+                    f"  [bold cyan]Series fetch failed, trying single patch[/bold cyan]"
+                )
+                dest = outdir / f"{pfx}-lore.patch"
+                if fetch_lore_patch(url, dest):
+                    lore_cache[url] = []
+                    progress.console.print(
+                        f"  [bold green]{dest.name}[/bold green]"
+                    )
+                    return True
+                progress.console.print(
+                    f"  [bold red]Failed to download from lore[/bold red]"
+                )
+                lore_cache[url] = []
+                return False
+            progress.console.print(
+                f"  [bold green]Got {len(series)} patches from series[/bold green]"
+            )
+            lore_cache[url] = series
+
+        cached = lore_cache[url]
+        if not cached:
+            return False
+
+        rhel_subject = extract_subject(rhel_patch)
+        matched = match_lore_patch_by_subject(rhel_subject, cached)
+        if matched:
+            dest = outdir / f"{pfx}-lore.patch"
+            import shutil
+            shutil.copy2(matched, dest)
+            progress.console.print(
+                f"  [bold green]{dest.name}[/bold green] (matched by subject)"
+            )
+            return True
+
+        progress.console.print(
+            f"  [bold red]No subject match in lore series for patch {patch_num}[/bold red]"
+        )
+        return False
+
+    # Case 2: git web URL -- extract commit and repo, fetch, format
+    alt_commit = commit_hash or extract_commit_from_url(url)
+    alt_repo = extract_repo_from_url(url)
+
+    if alt_commit and alt_repo:
+        progress.console.print(
+            f"  [bold cyan]Fetching {alt_commit[:12]} from {alt_repo}[/bold cyan]"
+        )
+        if fetch_commit_from_alt_repo(alt_commit, alt_repo, cwd=remote_dir):
+            result = git_format_patch(
+                alt_commit,
+                destdir=outdir,
+                start_number=patch_num,
+                cwd=remote_dir,
+            )
+            if result:
+                progress.console.print(
+                    f"  [bold green]{result}[/bold green]"
+                )
+                return True
+        progress.console.print(
+            f"  [bold red]Failed to fetch from alt repo[/bold red]"
+        )
+
+    return False
