@@ -38,11 +38,12 @@ def _compare_patch_pair(
     """Compare two patch files.
 
     Returns True if they match (no conflict), False if they differ.
-    When strict=True, only +/- lines are compared (ignoring context).
+    When strict=True, only +/- lines are compared (ignoring context),
+    but order is preserved -- matches patbatcmp's sequential comparison.
     """
     if strict:
-        rhel_lines = sorted(extract_change_lines(rhel_path))
-        us_lines = sorted(extract_change_lines(upstream_path))
+        rhel_lines = extract_change_lines(rhel_path)
+        us_lines = extract_change_lines(upstream_path)
         return rhel_lines == us_lines
 
     # Non-strict: compare all lines from first 'diff --git' onward
@@ -52,7 +53,6 @@ def _compare_patch_pair(
         if line.startswith("diff --git "):
             in_diff = True
         if in_diff:
-            # Skip index lines and hunk headers
             if line.startswith("index ") or line.startswith("@@ "):
                 continue
             rhel_diff_lines.append(line)
