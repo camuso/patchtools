@@ -619,7 +619,14 @@ def main_menu(cfg: Config):
                 if result in ("new_mr", "list_mr", "review"):
                     next_action = {"new_mr": "M", "list_mr": "m", "review": "P"}[result]
         elif choice == "m":
-            mrs = mr_list()
+            from rich.progress import Progress, SpinnerColumn, TextColumn
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold cyan]Fetching merge requests...[/bold cyan]"),
+                console=console, transient=True,
+            ) as spin:
+                spin.add_task("", total=None)
+                mrs = mr_list()
             mr_num = select_mr_from_list(mrs)
             if mr_num:
                 ok, last_conflict_count = _run_mr_pipeline(cfg, mr_num)
