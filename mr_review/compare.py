@@ -360,8 +360,8 @@ def interactive_compare(
         console.print(
             f"[bold]Patch {idx + 1}[/bold] of {total}"
         )
-        console.print(f"[bold]RHEL    : {rhel_file.name}[/bold]")
-        console.print(f"[bold]Upstream: {us_file.name}[/bold]")
+        console.print(f"[bold]RHEL    : {rhel_file}[/bold]")
+        console.print(f"[bold]Upstream: {us_file}[/bold]")
 
         if conflict_info:
             ci = conflict_indices.index(idx) if idx in conflict_indices else 0
