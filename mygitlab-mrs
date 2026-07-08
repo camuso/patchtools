@@ -415,7 +415,7 @@ _fetch_mrs_page() {
 	tz_offset=$(date +"%Z (%z)")
 
 	local date_convert="def localdate: if . then (gsub(\"\\\\.[0-9]+Z\$\"; \"Z\") | fromdateiso8601 | strflocaltime(\"%Y-%m-%d %H:%M\") + \" $tz_offset\") else null end;"
-	local jira_extract='def jiraurl: ((.description // "") | capture("(?<url>https://issues\\.redhat\\.com/browse/[A-Z]+-[0-9]+)") | .url) // "missing";'
+	local jira_extract='def jiraurl: ((.description // "") | capture("(?<url>https://(issues\\.redhat\\.com|redhat\\.atlassian\\.net)/browse/[A-Z]+-[0-9]+)") | .url) // "missing";'
 
 	local jq_filter="$date_convert $jira_extract"'
 	.[] | {
