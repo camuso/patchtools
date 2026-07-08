@@ -45,13 +45,13 @@ declare -i b_count_only=0
 declare -i b_labels_action=1    # Show action-needed labels (default: on)
 declare -i b_labels_info=1      # Show informational labels (default: on)
 declare -i b_json=0             # Output as JSON
-declare assignee_filter=""      # Assignee username filter
-declare -a assignee_ids=()     # Resolved assignee user IDs (may be multiple candidates)
+declare author_filter=""        # Author username filter
+declare -a author_ids=()       # Resolved author user IDs (may be multiple candidates)
 declare usagestr="$(
 cat <<EOF
 $(basename "$0") [-so] [-sm] [-sc] [-p project] [-t text] [-a user] [-da date] [-db date] [-nl] [-j] [-c]
 
-List GitLab merge requests authored by you, or assigned to a specified developer.
+List GitLab merge requests authored by you, or by a specified developer.
 
 By default, all your MRs are returned with both action and informational labels shown.
 Use filter switches to narrow the results.
@@ -62,7 +62,7 @@ Filter Switches (all optional, can be combined):
   -sc         Include closed MRs
   -p project  Filter by project name (partial match, case-insensitive)
   -t text     Filter MR titles by text/regex (case-insensitive, multiple ANDed)
-  -a user     Show MRs assigned to the given user (username or "First Last" name)
+  -a user     Show MRs authored by the given user (username or "First Last" name)
   -da date    Filter MRs created after (since) the given date
   -db date    Filter MRs created before the given date
   -nl         No labels - suppress label output (labels shown by default)
@@ -108,13 +108,13 @@ Examples:
       Count open MRs in "rhel-9" projects with titles matching "net"
 
   $(basename "$0") -a jsmith -so
-      List open MRs assigned to user "jsmith"
+      List open MRs authored by user "jsmith"
 
   $(basename "$0") -a "John Smith" -so
-      List open MRs assigned to "John Smith" (matched by display name)
+      List open MRs authored by "John Smith" (matched by display name)
 
   $(basename "$0") -a jsmith -so -p "rhel-9"
-      List open MRs assigned to "jsmith" in "rhel-9" projects
+      List open MRs authored by "jsmith" in "rhel-9" projects
 
   $(basename "$0") -so -nl
       List open MRs without label output (labels are shown by default)
@@ -270,13 +270,13 @@ get_token() {
 # resolve_user
 # @description Resolve a GitLab username or display name to user ID(s).
 #   Tries exact username match first, then falls back to a name search.
-#   Populates the global assignee_ids array with candidate user IDs.
+#   Populates the global author_ids array with candidate user IDs.
 #
 # Arguments:
 # @arg $1 string GitLab username or display name (e.g., "jsmith" or "John Smith")
 #
 # Globals:
-# @set assignee_ids array Populated with matched user IDs
+# @set author_ids array Populated with matched user IDs
 #
 # Returns:
 # @exitcode 0 One or more users found
@@ -296,7 +296,7 @@ resolve_user() {
 		matched_name=$(echo "$response" | jq -r '.[0].name')
 		matched_user=$(echo "$response" | jq -r '.[0].username')
 		echo "Matched: $matched_name (@$matched_user)" >&2
-		assignee_ids=("$user_id")
+		author_ids=("$user_id")
 		return 0
 	fi
 
@@ -312,8 +312,8 @@ resolve_user() {
 		return 1
 	fi
 
-	# Populate assignee_ids with all matches
-	mapfile -t assignee_ids < <(echo "$response" | jq -r '.[].id')
+	# Populate author_ids with all matches
+	mapfile -t author_ids < <(echo "$response" | jq -r '.[].id')
 
 	if (( match_count == 1 )); then
 		local matched_name matched_user
@@ -375,40 +375,244 @@ convert_date() {
 #
 list_mrs() {
 	local -a all_results=()
+	local -i state_count=$((b_state_open + b_state_merged + b_state_closed))
 
-	# When assignee filter is set, resolve user(s) and query by assignee
-	# Otherwise, default to MRs created by the current user
-	if [[ -n "$assignee_filter" ]]; then
-		resolve_user "$assignee_filter" || return 1
+	# Strategy: use project-level API only when searching for another author's MRs.
+	# For your own MRs, instance-level scope=created_by_me is more reliable.
+	if [[ -n "$author_filter" ]] && [[ -n "$project_filter" ]]; then
+		_query_by_project
+	elif [[ -n "$author_filter" ]]; then
+		resolve_user "$author_filter" || return 1
+		_query_by_author_ids
 	else
-		assignee_ids=("")
+		author_ids=("")
+		_query_by_author_ids
 	fi
 
-	# Build base URL with date filters
-	local base_url="https://gitlab.com/api/v4/merge_requests?per_page=100"
+	return $?
+}
 
-	# Add date filters to API call (more efficient than client-side filtering)
+# _fetch_mrs_page
+# @description Fetch and filter a single page of MR results.
+#   Applies jq transforms for all configured filters.
+#   Appends matching results to all_results array.
+#
+# Arguments:
+# @arg $1 string JSON response from GitLab API
+#
+# Globals (read):
+# @set b_state_open, b_state_merged, b_state_closed, state_count
+# @set project_filter, title_filters, author_filter
+# @set b_labels_action, b_labels_info
+#
+# Globals (write):
+# @set all_results array Accumulated MR results
+#
+_fetch_mrs_page() {
+	local response="$1"
+	local -a jq_args=()
+	local tz_offset
+	tz_offset=$(date +"%Z (%z)")
+
+	local date_convert="def localdate: if . then (gsub(\"\\\\.[0-9]+Z\$\"; \"Z\") | fromdateiso8601 | strflocaltime(\"%Y-%m-%d %H:%M\") + \" $tz_offset\") else null end;"
+	local jira_extract='def jiraurl: ((.description // "") | capture("(?<url>https://issues\\.redhat\\.com/browse/[A-Z]+-[0-9]+)") | .url) // "missing";'
+
+	local jq_filter="$date_convert $jira_extract"'
+	.[] | {
+		project: (.references.full // .web_url),
+		title: .title,
+		state: .state,
+		author: .author.username,
+		author_name: .author.name,
+		assignee: (.assignee.username // "unassigned"),
+		created_at: (.created_at | localdate),
+		updated_at: (.updated_at | localdate),
+		merged_at: (.merged_at | localdate),
+		url: .web_url,
+		jira: jiraurl'
+
+	if (( b_labels_action )); then
+		jq_filter+=',
+		labels_action: [.labels[] | select(
+			(test("::OK$") | not) and
+			(test("::None$") | not) and
+			(test("^Subsystem:") | not) and
+			(test("^Dependencies::") | not)
+		)]'
+	fi
+
+	if (( b_labels_info )); then
+		jq_filter+=',
+		labels_info: [.labels[] | select(
+			test("^Subsystem:") or test("^Dependencies::")
+		)]'
+	fi
+
+	jq_filter+='}'
+
+	# State filter
+	if (( state_count > 0 && state_count < 3 )); then
+		local -a state_conditions=()
+		(( b_state_open )) && state_conditions+=('.state == "opened"')
+		(( b_state_merged )) && state_conditions+=('.state == "merged"')
+		(( b_state_closed )) && state_conditions+=('.state == "closed"')
+
+		local state_expr="" first=true
+		for cond in "${state_conditions[@]}"; do
+			$first && state_expr="$cond" || state_expr="$state_expr or $cond"
+			first=false
+		done
+		jq_filter+=" | select($state_expr)"
+	fi
+
+	# Project filter (client-side, for instance-level queries)
+	if [[ -n "$project_filter" ]]; then
+		jq_args+=(--arg pf "$project_filter")
+		jq_filter+=' | select((.project // "") | test($pf; "i"))'
+	fi
+
+	# Author filter (client-side, matches username or display name)
+	if [[ -n "$author_filter" ]]; then
+		jq_args+=(--arg af "$author_filter")
+		jq_filter+=' | select((.author // "") + " " + (.author_name // "") | test($af; "i"))'
+	fi
+
+	# Title filters (multiple -t are ANDed)
+	local -i filter_idx=0
+	for filter in "${title_filters[@]}"; do
+		jq_args+=(--arg "tf$filter_idx" "$filter")
+		jq_filter+=" | select((.title // \"\") | test(\$tf$filter_idx; \"i\"))"
+		((filter_idx++))
+	done
+
+	local page_results
+	page_results=$(echo "$response" | jq "${jq_args[@]}" "$jq_filter")
+
+	if [[ -n "$page_results" ]]; then
+		all_results+=("$page_results")
+	fi
+}
+
+# _query_by_project
+# @description Find projects matching -p filter and query their MRs directly.
+#   This approach is more reliable for finding other users' MRs because it
+#   doesn't require resolving user IDs from a global search.
+#
+_query_by_project() {
+	local -a project_ids=()
+	local search_response
+
+	# The API searches project names, not paths. Extract the last path component
+	# for the API search, then filter results by full path client-side.
+	local search_term="${project_filter##*/}"
+
+	echo "Searching for projects matching '$project_filter'..." >&2
+	search_response=$(curl -s --header "PRIVATE-TOKEN: $token" \
+		"https://gitlab.com/api/v4/projects?search=$search_term&membership=true&per_page=100")
+
+	if ! echo "$search_response" | jq -e 'type == "array"' > /dev/null 2>&1; then
+		echo "Error searching for projects." >&2
+		return 1
+	fi
+
+	# Filter by full path if the user specified a path-like filter (contains /)
+	mapfile -t project_ids < <(echo "$search_response" | \
+		jq -r --arg pf "$project_filter" \
+		'.[] | select(.path_with_namespace | test($pf; "i")) | .id')
+
+	if (( ${#project_ids[@]} == 0 )); then
+		echo "No projects found matching '$project_filter'." >&2
+		return 0
+	fi
+
+	local -i proj_count=${#project_ids[@]}
+	echo "Found $proj_count project(s), querying merge requests..." >&2
+
+	# Build date filter params
+	local date_params=""
+	if [[ -n "$date_after" ]]; then
+		local iso_after
+		iso_after=$(convert_date "$date_after")
+		date_params+="&created_after=$iso_after"
+	fi
+	if [[ -n "$date_before" ]]; then
+		local iso_before
+		iso_before=$(convert_date "$date_before")
+		date_params+="&created_before=$iso_before"
+	fi
+
+	# Clear project_filter - project filtering already done at API level.
+	# The project-level MR response uses local references (e.g. !11) that
+	# won't match the filter string.
+	local saved_project_filter="$project_filter"
+	project_filter=""
+
+	local -a all_authors=()
+	for pid in "${project_ids[@]}"; do
+		local -i page=1
+		while true; do
+			local response
+			response=$(curl -s --header "PRIVATE-TOKEN: $token" \
+				"https://gitlab.com/api/v4/projects/$pid/merge_requests?per_page=100&state=all${date_params}&page=$page")
+
+			if ! echo "$response" | jq -e 'type == "array"' > /dev/null 2>&1; then
+				break
+			fi
+
+			local -i count
+			count=$(echo "$response" | jq 'length')
+			(( count == 0 )) && break
+
+			# Collect unique authors for hint if filter produces no results
+			if [[ -n "$author_filter" ]]; then
+				local page_authors
+				page_authors=$(echo "$response" | jq -r '.[] | "\(.author.username) (\(.author.name))"' | sort -u)
+				while IFS= read -r a; do
+					[[ -n "$a" ]] && all_authors+=("$a")
+				done <<< "$page_authors"
+			fi
+
+			_fetch_mrs_page "$response"
+			((page++))
+		done
+	done
+
+	project_filter="$saved_project_filter"
+
+	# If author filter was set but produced no results, show available authors
+	if [[ -n "$author_filter" ]] && (( ${#all_results[@]} == 0 && ${#all_authors[@]} > 0 )); then
+		echo "No MRs matched author '$author_filter'." >&2
+		echo "Authors with MRs in matching projects:" >&2
+		printf '%s\n' "${all_authors[@]}" | sort -u | while IFS= read -r line; do
+			echo "  $line" >&2
+		done
+		return 0
+	fi
+
+	_output_results
+}
+
+# _query_by_author_ids
+# @description Query instance-level MRs by resolved author IDs.
+#
+_query_by_author_ids() {
+	local base_url="https://gitlab.com/api/v4/merge_requests?per_page=100&state=all"
+
 	if [[ -n "$date_after" ]]; then
 		local iso_after
 		iso_after=$(convert_date "$date_after")
 		base_url+="&created_after=$iso_after"
 	fi
-
 	if [[ -n "$date_before" ]]; then
 		local iso_before
 		iso_before=$(convert_date "$date_before")
 		base_url+="&created_before=$iso_before"
 	fi
 
-	# Determine state filtering strategy
-	local -i state_count=$((b_state_open + b_state_merged + b_state_closed))
-	base_url+="&state=all"
-
-	# Query MRs for each candidate user ID (single iteration when no -a or unique match)
-	for uid in "${assignee_ids[@]}"; do
+	for uid in "${author_ids[@]}"; do
 		local api_url="$base_url"
 		if [[ -n "$uid" ]]; then
-			api_url+="&scope=all&assignee_id=$uid"
+			api_url+="&scope=all&author_id=$uid"
 		else
 			api_url+="&scope=created_by_me"
 		fi
@@ -419,7 +623,6 @@ list_mrs() {
 			response=$(curl -s --header "PRIVATE-TOKEN: $token" \
 				"${api_url}&page=$page")
 
-			# Check if response is a valid JSON array
 			if ! echo "$response" | jq -e 'type == "array"' > /dev/null 2>&1; then
 				local error_msg
 				error_msg=$(echo "$response" | jq -r '.message // .error // empty' 2>/dev/null)
@@ -433,118 +636,30 @@ list_mrs() {
 
 			local -i count
 			count=$(echo "$response" | jq 'length')
+			(( count == 0 )) && break
 
-			if (( count == 0 )); then
-				break
-			fi
-
-		# Build jq arguments for safe variable passing
-		local -a jq_args=()
-		# Helper function to convert UTC to local time with offset
-		# Strip milliseconds before parsing (e.g., .500Z -> Z)
-		# Get timezone offset from system (jq's %z is unreliable)
-		local tz_offset
-		tz_offset=$(date +"%Z (%z)")
-		
-		local date_convert="def localdate: if . then (gsub(\"\\\\.[0-9]+Z\$\"; \"Z\") | fromdateiso8601 | strflocaltime(\"%Y-%m-%d %H:%M\") + \" $tz_offset\") else null end;"
-		
-		# Helper to extract Jira URL from description
-		local jira_extract='def jiraurl: ((.description // "") | capture("(?<url>https://issues\\.redhat\\.com/browse/[A-Z]+-[0-9]+)") | .url) // "missing";'
-		
-		local jq_filter="$date_convert $jira_extract"'
-		.[] | {
-			project: (.references.full // .web_url),
-			title: .title,
-			state: .state,
-			author: .author.username,
-			assignee: (.assignee.username // "unassigned"),
-			created_at: (.created_at | localdate),
-			updated_at: (.updated_at | localdate),
-			merged_at: (.merged_at | localdate),
-			url: .web_url,
-			jira: jiraurl'
-
-		# Add action labels if requested (not ::OK, not ::None, not Subsystem:, not Dependencies::)
-		if (( b_labels_action )); then
-			jq_filter+=',
-			labels_action: [.labels[] | select(
-				(test("::OK$") | not) and
-				(test("::None$") | not) and
-				(test("^Subsystem:") | not) and
-				(test("^Dependencies::") | not)
-			)]'
-		fi
-
-		# Add informational labels if requested (Subsystem:, Dependencies::)
-		if (( b_labels_info )); then
-			jq_filter+=',
-			labels_info: [.labels[] | select(
-				test("^Subsystem:") or test("^Dependencies::")
-			)]'
-		fi
-
-		jq_filter+='}'
-
-		# Add state filter if some (but not all or none) states are selected
-		if (( state_count > 0 && state_count < 3 )); then
-			# Build state filter expression
-			local -a state_conditions=()
-			(( b_state_open )) && state_conditions+=('.state == "opened"')
-			(( b_state_merged )) && state_conditions+=('.state == "merged"')
-			(( b_state_closed )) && state_conditions+=('.state == "closed"')
-
-			# Join conditions with " or "
-			local state_expr=""
-			local first=true
-			for cond in "${state_conditions[@]}"; do
-				$first && state_expr="$cond" || state_expr="$state_expr or $cond"
-				first=false
-			done
-			jq_filter+=" | select($state_expr)"
-		fi
-
-		# Add project filter if specified
-		if [[ -n "$project_filter" ]]; then
-			jq_args+=(--arg pf "$project_filter")
-			jq_filter+=' | select((.project // "") | test($pf; "i"))'
-		fi
-
-		# Add title filters if specified (multiple -t are ANDed)
-		local -i filter_idx=0
-		for filter in "${title_filters[@]}"; do
-			jq_args+=(--arg "tf$filter_idx" "$filter")
-			jq_filter+=" | select((.title // \"\") | test(\$tf$filter_idx; \"i\"))"
-			((filter_idx++))
-		done
-
-		# Collect results
-		local page_results
-		page_results=$(echo "$response" | jq "${jq_args[@]}" "$jq_filter")
-
-		if [[ -n "$page_results" ]]; then
-			all_results+=("$page_results")
-		fi
-
-		((page++))
+			_fetch_mrs_page "$response"
+			((page++))
 		done
 	done
 
-	# Output results
+	_output_results
+}
+
+# _output_results
+# @description Format and output collected MR results.
+#
+_output_results() {
 	if (( ${#all_results[@]} == 0 )); then
 		if (( b_count_only )); then
 			echo "0"
 		elif (( ! b_json )); then
-			if [[ -n "$assignee_filter" ]] && (( ${#assignee_ids[@]} > 1 )); then
-				echo "No merge requests found from any of the ${#assignee_ids[@]} matched users."
-			else
-				echo "No merge requests found matching your criteria."
-			fi
+			echo "No merge requests found matching your criteria."
 		fi
 		return 0
 	fi
 
 	if (( b_count_only )); then
-		# Count the number of JSON objects in all results
 		local -i total=0
 		for result in "${all_results[@]}"; do
 			local -i cnt
@@ -553,18 +668,16 @@ list_mrs() {
 		done
 		echo "$total"
 	elif (( b_json )); then
-		# JSON output
 		for result in "${all_results[@]}"; do
 			echo "$result"
 		done
 	else
-		# Human-readable output with colors
 		for result in "${all_results[@]}"; do
-			echo "$result" | jq -r --arg MNU "$MNU" --arg INF "$INF" --arg STA "$STA" --arg WRN "$WRN" --arg OFF "$OFF" --arg asgn "$assignee_filter" '
+			echo "$result" | jq -r --arg MNU "$MNU" --arg INF "$INF" --arg STA "$STA" --arg WRN "$WRN" --arg OFF "$OFF" --arg aflt "$author_filter" '
 				"\($MNU)\(.title)\($OFF)",
 				"  \($INF)Project:\($OFF) \(.project)",
 				"  \($INF)State:\($OFF) \(.state)",
-				(if $asgn != "" then "  \($INF)Author:\($OFF) \(.author)" else empty end),
+				(if $aflt != "" then "  \($INF)Author:\($OFF) \(.author)" else empty end),
 				"  \($INF)Assignee:\($OFF) \(.assignee)",
 				"  \($INF)Created:\($OFF) \(.created_at)",
 				"  \($INF)Updated:\($OFF) \(.updated_at)",
@@ -596,7 +709,7 @@ list_mrs() {
 # @set date_after string After date filter
 # @set date_before string Before date filter
 # @set b_count_only int Count only flag
-# @set assignee_filter string Assignee username filter
+# @set author_filter string Author username filter
 #
 # Returns:
 # @exitcode 0 Success
@@ -637,7 +750,7 @@ parse_args() {
 			if [[ -z "$1" || "$1" == -* ]]; then
 				exitme 1 "Error: -a requires a GitLab username or name"
 			fi
-			assignee_filter="$1"
+			author_filter="$1"
 			;;
 		-da)
 				shift
