@@ -156,38 +156,41 @@ def mr_get_commits(
     if origin is None:
         origin = _get_origin()
 
-    # Check for dependencies in MR comments.
-    # Extract just the value after "Dependencies::" using the same
-    # approach as the bash tool: grep -o 'Dependencies::[^,]*'
-    has_deps = False
-    base_commit = "OK"
+    # Always try lab first -- it knows exactly which commits belong
+    # to the MR, regardless of dependencies or rebases.
+    r = _run_lab(
+        "mr", "show", origin, mr_number, "-p", "--reverse",
+        check=False,
+    )
+    if r.returncode != 0:
+        console.print(f"[bold red]lab mr show -p failed (rc={r.returncode})[/bold red]")
+        if r.stderr.strip():
+            console.print(f"[bold red]  {r.stderr.strip()}[/bold red]")
+    commits = []
+    for line in r.stdout.splitlines():
+        if line.startswith("commit "):
+            commits.append(line.split()[1])
+
+    if commits:
+        bp_commits_file.write_text("\n".join(commits) + "\n")
+        return len(commits)
+
+    # Fallback for dependency-based MRs where lab returns no commits:
+    # check out the MR branch and use git log from the dependency base.
+    import re
+    base_commit = None
     if mrcomments:
-        import re
         for m in re.finditer(r"Dependencies::([^,\s]*)", mrcomments):
             dep_val = m.group(1).strip()
             if dep_val.lower() not in ("ok", "none", ""):
-                has_deps = True
                 base_commit = dep_val
                 break
 
-    if not has_deps:
-        r = _run_lab(
-            "mr", "show", origin, mr_number, "-p", "--reverse",
-            check=False,
+    if base_commit:
+        console.print(
+            f"[bold cyan]lab returned no commits; "
+            f"trying dependency base {base_commit}[/bold cyan]"
         )
-        if r.returncode != 0:
-            console.print(f"[bold red]lab mr show -p failed (rc={r.returncode})[/bold red]")
-            if r.stderr.strip():
-                console.print(f"[bold red]  {r.stderr.strip()}[/bold red]")
-        commits = []
-        for line in r.stdout.splitlines():
-            if line.startswith("commit "):
-                commits.append(line.split()[1])
-
-        bp_commits_file.write_text("\n".join(commits) + "\n" if commits else "")
-        return len(commits)
-    else:
-        # Checkout MR branch to resolve dependencies
         orig_branch = git_get_current_branch()
         _run_lab("mr", "checkout", mr_number, check=False)
         new_branch = git_get_current_branch()
@@ -197,16 +200,15 @@ def mr_get_commits(
             "--format=commit %H",
             check=False,
         )
-        commits = []
         for line in r.stdout.splitlines():
             if line.startswith("commit "):
                 commits.append(line.split()[1])
 
-        bp_commits_file.write_text("\n".join(commits) + "\n" if commits else "")
-
         run_git("checkout", orig_branch, check=False)
         run_git("branch", "-D", new_branch, check=False)
-        return len(commits)
+
+    bp_commits_file.write_text("\n".join(commits) + "\n" if commits else "")
+    return len(commits)
 
 
 def mr_extract_patches(
