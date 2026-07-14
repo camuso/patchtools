@@ -64,6 +64,7 @@ declare -i b_labels=1           # Show labels (default: on)
 declare -i b_description=0      # Show issue description
 # Common bot name patterns (case-insensitive match)
 declare BOT_PATTERN="bot|automation|jenkins|bugzilla|jira|sync|service.account|system"
+declare -i b_summary=0          # Summary-only output (count + summary line)
 declare -i b_json=0             # Output as JSON
 declare -i b_verbose=0          # Verbose output
 declare -i b_my_changes=0       # Only show issues where I made changes
@@ -105,6 +106,7 @@ ${HDR}OPTIONS${OFF}
     ${MNU}-W${OFF}            Show Watchers
     ${MNU}-nl${OFF}           No Labels (suppress label display)
     ${MNU}-dx${OFF}           Show Description (issue body text)
+    ${MNU}-S${OFF}            Summary only (numbered list: key + summary)
     ${MNU}-j${OFF}            Output as JSON
     ${MNU}-v${OFF}            Verbose output
     ${MNU}-n${OFF} NUM        Max results (default: $MAX_RESULTS)
@@ -847,12 +849,40 @@ format_results() {
         echo -e "${HDR}Found $filtered_count issue(s) where you made changes (of $total updated)${OFF}"
         echo ""
         
-        for issue in "${filtered_issues[@]}"; do
-            format_issue "$issue"
-        done
+        if ((b_summary)); then
+            local -i count=0
+            for issue in "${filtered_issues[@]}"; do
+                ((count++))
+                local key summary status
+                key=$(echo "$issue" | jq -r '.key')
+                summary=$(echo "$issue" | jq -r '.fields.summary')
+                status=$(echo "$issue" | jq -r '.fields.status.name')
+                echo -e "${MNU}${count}.${OFF} ${INF}${key}${OFF} [${status}] ${summary}"
+            done
+        else
+            for issue in "${filtered_issues[@]}"; do
+                format_issue "$issue"
+            done
+        fi
         return
     fi
     
+    # Summary-only mode: numbered list with key + summary
+    if ((b_summary)); then
+        echo -e "${HDR}Found $total issue(s) in $project${OFF}"
+        echo ""
+        local -i count=0
+        echo "$results" | jq -c '.issues[]' | while read -r issue; do
+            ((count++))
+            local key summary status
+            key=$(echo "$issue" | jq -r '.key')
+            summary=$(echo "$issue" | jq -r '.fields.summary')
+            status=$(echo "$issue" | jq -r '.fields.status.name')
+            echo -e "${MNU}${count}.${OFF} ${INF}${key}${OFF} [${status}] ${summary}"
+        done
+        return
+    fi
+
     # Default: show all issues
     echo -e "${HDR}Found $total issue(s) in $project${OFF}"
     echo ""
@@ -901,7 +931,7 @@ parse_opts() {
     done
     set -- "${args[@]}"
     
-    while getopts "p:R:t:l:s:q:d:cCHBmArWjvn:h" opt; do
+    while getopts "p:R:t:l:s:q:d:cCHBmArWSjvn:h" opt; do
         case $opt in
             p) project="$OPTARG" ;;
             R) role="$OPTARG" ;;
@@ -918,6 +948,7 @@ parse_opts() {
             A) b_assignee=1 ;;
             r) b_reporter=1 ;;
             W) b_watchers=1 ;;
+            S) b_summary=1 ;;
             j) b_json=1 ;;
             v) b_verbose=1 ;;
             n) MAX_RESULTS="$OPTARG" ;;
