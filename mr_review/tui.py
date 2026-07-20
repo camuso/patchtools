@@ -235,6 +235,12 @@ def config_menu(cfg: Config):
         console.print(f"  [bold]s[/bold]  Auto seek fixes      : [bold]{'ON' if cfg.seek_fixes else 'OFF'}[/bold]")
         console.print(f"  [bold]t[/bold]  Mega-merge threshold : [bold]{cfg.mega_merge_threshold}[/bold]")
         console.print(f"  [bold]m[/bold]  Mega-merge strategy  : [bold]{cfg.mega_merge_default_strategy}[/bold]")
+        console.print()
+        console.print(f"  [bold cyan]Review Prompts[/bold cyan]")
+        console.print(f"  [bold]1[/bold]  Ask before continuing: [bold]{'ON' if cfg.ask_continue else 'OFF'}[/bold]")
+        console.print(f"  [bold]2[/bold]  Ask before replacing : [bold]{'ON' if cfg.ask_replace else 'OFF'}[/bold]")
+        console.print(f"  [bold]3[/bold]  Ask before MR actions: [bold]{'ON' if cfg.ask_commit else 'OFF'}[/bold]")
+        console.print(f"  [bold]4[/bold]  Show comments first  : [bold]{'ON' if cfg.show_comments else 'OFF'}[/bold]")
         console.print(f"  [bold]q[/bold]  Return to main menu")
 
         from .utils import prompt_key
@@ -282,6 +288,14 @@ def config_menu(cfg: Config):
                 default=cfg.mega_merge_default_strategy,
             )
             cfg.set("mega_merge_default_strategy", strat)
+        elif choice == "1":
+            cfg.set("b_ask_continue", not cfg.ask_continue)
+        elif choice == "2":
+            cfg.set("b_ask_replace", not cfg.ask_replace)
+        elif choice == "3":
+            cfg.set("b_ask_commit", not cfg.ask_commit)
+        elif choice == "4":
+            cfg.set("b_show_comments", not cfg.show_comments)
 
         cfg.save()
 
@@ -361,7 +375,7 @@ def acknack_menu(cfg: Config, conflict_count: int = 0) -> Optional[str]:
                             break
 
             with_comment = (choice == "A")
-            if confirm_key(f"  Approve MR {mr_num}?"):
+            if not cfg.ask_commit or confirm_key(f"  Approve MR {mr_num}?"):
                 if mr_approve(mr_num, with_comment=with_comment):
                     action = "Approved with comment" if with_comment else "Approved"
                     cfg.set("b_acked", True)
@@ -373,7 +387,7 @@ def acknack_menu(cfg: Config, conflict_count: int = 0) -> Optional[str]:
                 else:
                     console.print("[bold red]Approve failed.[/bold red]")
         elif choice == "b":
-            if confirm_key(f"  Block MR {mr_num}?"):
+            if not cfg.ask_commit or confirm_key(f"  Block MR {mr_num}?"):
                 if mr_block(mr_num):
                     cfg.set("b_nacked", True)
                     cfg.set("b_acked", False)
@@ -382,7 +396,7 @@ def acknack_menu(cfg: Config, conflict_count: int = 0) -> Optional[str]:
                     update_history(mr_num, "Blocked/Discussion", patch_count, conflict_count)
                     console.print(f"[bold red]MR {mr_num} blocked.[/bold red]")
         elif choice == "u":
-            if confirm_key(f"  Unapprove MR {mr_num}?"):
+            if not cfg.ask_commit or confirm_key(f"  Unapprove MR {mr_num}?"):
                 if mr_unapprove(mr_num):
                     cfg.set("b_acked", False)
                     cfg.set("b_reviewed", True)

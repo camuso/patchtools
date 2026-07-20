@@ -39,11 +39,16 @@ TEMPLATE_KEYS: list[tuple[str, str]] = [
     # New keys for mr-review
     ("mega_merge_threshold", "10"),
     ("mega_merge_default_strategy", "prompt"),
+    ("b_ask_continue", "false"),
+    ("b_ask_replace", "false"),
+    ("b_ask_commit", "false"),
+    ("b_show_comments", "true"),
 ]
 
 BOOL_KEYS = {
     "b_rename_infiles", "b_fmt_upstream", "b_verbose", "b_mrcomments",
     "b_seekfixes", "b_reviewed", "b_acked", "b_nacked", "b_unapp",
+    "b_ask_continue", "b_ask_replace", "b_ask_commit", "b_show_comments",
 }
 
 INT_KEYS = {
@@ -179,6 +184,22 @@ class Config:
         self.config_path = self.data_dir / "patchreview.conf"
         self._items = OrderedDict()
         self._load()
+
+    @property
+    def ask_continue(self) -> bool:
+        return self.get_bool("b_ask_continue")
+
+    @property
+    def ask_replace(self) -> bool:
+        return self.get_bool("b_ask_replace")
+
+    @property
+    def ask_commit(self) -> bool:
+        return self.get_bool("b_ask_commit")
+
+    @property
+    def show_comments(self) -> bool:
+        return self.get_bool("b_show_comments")
 
     @property
     def current_mr(self) -> str:

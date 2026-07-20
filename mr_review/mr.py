@@ -263,25 +263,28 @@ def mr_extract_patches(
     mrcomments_file = outdir / "mrcomments.log"
     mrcomments_file.write_text(mrcomments)
 
-    # Check if already approved
+    from .utils import confirm, display_in_pager
+
+    # Check if user has already reviewed/approved this MR
+    already_reviewed = False
     lab_user = _get_lab_user()
     if lab_user and "Approved By" in mrcomments:
         for line in mrcomments.splitlines():
             if "Approved By" in line and lab_user in line:
+                already_reviewed = True
                 console.print(
                     f"[yellow]You have already approved MR {mr_number}.[/yellow]"
                 )
-                from .utils import confirm
-                if not confirm("Continue with review anyway?"):
-                    return False
                 break
 
-    # View comments in pager so user can search
-    from .utils import display_in_pager
-    display_in_pager(mrcomments)
-    from .utils import confirm
-    if not confirm("Continue with review?"):
-        return False
+    # Show comments in pager (configurable)
+    if cfg.show_comments:
+        display_in_pager(mrcomments)
+
+    # Ask before continuing (configurable, but always ask if already reviewed)
+    if cfg.ask_continue or already_reviewed:
+        if not confirm("Continue with review?"):
+            return False
 
     # Check existing patches
     existing = list(indir.glob("*.patch"))
@@ -290,15 +293,14 @@ def mr_extract_patches(
             f"[yellow]There are already {len(existing)} patch files "
             f"in {indir}[/yellow]"
         )
-        from .utils import confirm
-        if confirm("Replace them?"):
-            for f in indir.iterdir():
-                if f.is_file():
-                    f.unlink()
-            for f in outdir.glob("*.patch"):
+        if cfg.ask_replace:
+            if not confirm("Replace them?"):
+                return False
+        for f in indir.iterdir():
+            if f.is_file():
                 f.unlink()
-        else:
-            return False
+        for f in outdir.glob("*.patch"):
+            f.unlink()
 
     # Extract commits
     with Progress(

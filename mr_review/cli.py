@@ -154,9 +154,9 @@ def mr_approve_cmd(mr_number, comment):
     from .utils import confirm
     from .mr import mr_approve
 
-    if confirm(f"Approve MR {mr_number}?"):
+    cfg = _load_config()
+    if not cfg.ask_commit or confirm(f"Approve MR {mr_number}?"):
         if mr_approve(mr_number, with_comment=comment):
-            cfg = _load_config()
             cfg.set("b_acked", True)
             cfg.set("b_nacked", False)
             cfg.set("b_reviewed", True)
@@ -175,9 +175,9 @@ def mr_block_cmd(mr_number):
     from .utils import confirm
     from .mr import mr_block
 
-    if confirm(f"Block MR {mr_number}?"):
+    cfg = _load_config()
+    if not cfg.ask_commit or confirm(f"Block MR {mr_number}?"):
         if mr_block(mr_number):
-            cfg = _load_config()
             cfg.set("b_nacked", True)
             cfg.set("b_acked", False)
             cfg.set("b_reviewed", True)
