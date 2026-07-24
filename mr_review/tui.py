@@ -535,6 +535,15 @@ def main_menu(cfg: Config):
             cfg.set("outdir", p)
             cfg.save()
 
+    if not cfg.remote_dir:
+        console.print("[yellow]Upstream directory not set.[/yellow]")
+        rd, repo, branch = prompt_remote_dir_and_branch(cfg)
+        if rd:
+            cfg.set("remote_dir", rd)
+            cfg.set("remote_repo", repo)
+            cfg.set("remote_branch", branch)
+            cfg.save()
+
     if not cfg.editor or cfg.editor not in ("vimdiff", "meld", "tkdiff", "emacs"):
         cfg.set("editor", prompt_editor())
         cfg.save()
