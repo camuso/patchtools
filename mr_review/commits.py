@@ -57,17 +57,23 @@ class MegaMergeGroup:
 def _extract_raw_hashes(commit_log: str) -> list[str]:
     """Extract unique 40-char hex hashes from commit log text.
 
-    Skips hashes that appear on lines mentioning 'revert' (case insensitive).
+    Only considers lines containing 'commit' or 'cherry-picked from'
+    (matching the bash patchreview behavior), which avoids picking up
+    the RHEL commit hash from the 'From <hash>' line at the top of
+    git format-patch output.
+
+    Skips lines mentioning 'revert' (case insensitive).
     Preserves order of first appearance.
     """
     seen = set()
     result = []
     for line in commit_log.splitlines():
+        if not re.search(r"\b(commit|cherry.picked from)\b", line, re.IGNORECASE):
+            continue
         if re.search(r"\brevert\b", line, re.IGNORECASE):
             continue
         for m in HASH_RE.finditer(line):
             h = m.group()
-            # Filter out all-zero hashes
             if int(h, 16) == 0:
                 continue
             if h not in seen:
