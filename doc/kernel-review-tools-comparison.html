@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RHEL Kernel Review Tools: Where mr-review Fits</title>
+<style>
+  body {
+    font-family: "Google Sans", "Segoe UI", Roboto, Arial, sans-serif;
+    max-width: 960px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: #202124;
+    line-height: 1.6;
+  }
+  h1 {
+    color: #1a73e8;
+    border-bottom: 2px solid #1a73e8;
+    padding-bottom: 8px;
+    font-size: 24pt;
+  }
+  h2 {
+    color: #1967d2;
+    margin-top: 32px;
+    font-size: 16pt;
+  }
+  h3 {
+    color: #185abc;
+    font-size: 13pt;
+    margin-top: 24px;
+  }
+  p, li {
+    font-size: 11pt;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 16px 0;
+    font-size: 10.5pt;
+  }
+  th {
+    background-color: #1a73e8;
+    color: white;
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 600;
+  }
+  td {
+    padding: 8px 14px;
+    border-bottom: 1px solid #dadce0;
+    vertical-align: top;
+  }
+  tr:nth-child(even) {
+    background-color: #f8f9fa;
+  }
+  tr:hover {
+    background-color: #e8f0fe;
+  }
+  .role-label {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 10pt;
+  }
+  .role-review { background-color: #e8f5e9; color: #1b5e20; }
+  .role-manage { background-color: #e3f2fd; color: #0d47a1; }
+  .role-backend { background-color: #fff3e0; color: #e65100; }
+  .role-platform { background-color: #f3e5f5; color: #6a1b9a; }
+  .summary-box {
+    background-color: #f1f3f4;
+    border-left: 4px solid #1a73e8;
+    padding: 16px 20px;
+    margin: 20px 0;
+    border-radius: 0 8px 8px 0;
+  }
+  .callout-box {
+    background-color: #e8f5e9;
+    border-left: 4px solid #1b5e20;
+    padding: 16px 20px;
+    margin: 20px 0;
+    border-radius: 0 8px 8px 0;
+  }
+  ul { margin: 4px 0; padding-left: 24px; }
+  code {
+    background-color: #f1f3f4;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: "Roboto Mono", "Consolas", monospace;
+    font-size: 10pt;
+  }
+  .check { color: #1b5e20; font-weight: 600; }
+  .cross { color: #b71c1c; font-weight: 600; }
+  .partial { color: #e65100; font-weight: 600; }
+  .footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid #dadce0;
+    color: #5f6368;
+    font-size: 9pt;
+  }
+</style>
+</head>
+<body>
+
+<h1>RHEL Kernel Review Tools: Where mr-review Fits</h1>
+
+<div class="summary-box">
+  <strong>Summary:</strong> <code>revumatic</code> is the officially recommended TUI for
+  RHEL kernel MR reviews, with Kerneloscope integration, in-line commenting, and
+  full GitLab workflow support.
+  <code>mr-review</code> is an independent tool born from a specific reviewer's
+  workflow preferences &mdash; particularly the use of external diff editors
+  (vimdiff, meld) for patch-level comparison, batch conflict filtering, and
+  mega-merge handling. It is not part of the official toolchain.
+  This document places <code>mr-review</code> in context among the officially
+  supported tools: <code>revumatic</code>, <code>Kerneloscope</code>,
+  <code>lab</code>, <code>rhstatus</code>, and the GitLab WebUI.
+</div>
+
+<h2>Tool Overview</h2>
+
+<h3><span class="role-label role-review">Patch Review</span> &nbsp; mr-review &mdash; Local Patch-Level Comparison</h3>
+<p>
+  <code>mr-review</code> is a Python-based review tool that manages the complete
+  MR review lifecycle: extracting patches from GitLab Merge Requests, formatting
+  upstream counterparts, detecting differences, seeking missing fixes, presenting
+  only the conflicts for human inspection, and taking action on the MR. It evolved
+  from the long-standing <code>patchreview</code> bash tool, adding mega-merge
+  handling, lore.kernel.org fallback, configurable prompts, and a rich terminal UI.
+</p>
+<p>
+  <code>mr-review</code> operates entirely locally &mdash; it needs only
+  <code>git</code>, <code>lab</code>, and a diff editor. It does not use the GitLab
+  API directly or require Kerneloscope access.
+</p>
+<p><strong>Typical usage:</strong></p>
+<p><code>cd /work/c10s/kernel &amp;&amp; mr-review</code></p>
+<p>or directly: <code>mr-review mr 2816</code></p>
+
+<h4>mr-review Feature Detail</h4>
+<ul>
+  <li><strong>Smart batch comparison:</strong> All RHEL patches are compared against
+      their upstream counterparts in batch. Patches that are <em>identical</em> to
+      upstream are silently passed. Only patches with actual content differences
+      (conflicts) are flagged for review, with possible false positives marked
+      separately. This lets a reviewer focus on what matters.</li>
+  <li><strong>Interactive diff viewer:</strong> Conflicts are presented one at a time
+      in the user's preferred diff editor (vimdiff, meld, tkdiff, or emacs).
+      Navigation keys allow replaying the last diff, going back one diff, jumping
+      to a specific patch, substituting a different upstream commit, toggling
+      conflict-only mode, and viewing missing fixes &mdash; all without leaving
+      the viewer loop.</li>
+  <li><strong>Missing Fixes: detection:</strong> For each upstream commit in the MR,
+      <code>mr-review</code> searches upstream history (bounded by commit date for
+      performance) for <code>Fixes:</code> tags referencing that commit. Any fixing
+      commit not present in the MR series is flagged as a missing fix. Results are
+      viewable from the diff viewer (<code>f</code> key) or as a standalone
+      operation.</li>
+  <li><strong>MR actions:</strong> After reviewing, the MR review menu offers:
+      <strong>Approve</strong>, <strong>Approve with comment</strong>,
+      <strong>Block</strong> (start a discussion), <strong>Unapprove</strong>
+      (retract approval), and <strong>Comment only</strong>. The tool detects
+      prior approval and warns before duplicating it.</li>
+  <li><strong>Review history:</strong> Every MR action is recorded in a persistent
+      history log with timestamp, action taken, patch count, and conflict count
+      (e.g., <code>Approved : 14 patches, 3 conflicts</code>). Since conflicts
+      require direct human inspection, the conflict count reflects the actual
+      human effort expended on a review.</li>
+  <li><strong>Mega-merge handling:</strong> When a single RHEL patch contains many
+      upstream commits (e.g., DRM bulk merges with hundreds of commits), four
+      strategies are offered: group by subsystem, filter by files touched,
+      skip as bulk import, or paginated manual selection with search.</li>
+  <li><strong>Upstream fallback chain:</strong> If an upstream commit is not found in
+      the configured local tree, <code>mr-review</code> checks the RHEL patch's
+      <code>Upstream status:</code> line. For lore.kernel.org URLs, it downloads
+      the full mbox thread and matches patches by subject. For alternate git repo
+      URLs, it temporarily fetches the commit from the remote.</li>
+  <li><strong>Configurable prompts:</strong> Four review-flow prompts can be toggled
+      on or off: ask before continuing, ask before replacing patches, ask before
+      committing MR actions, and show comments in pager. If the user has already
+      reviewed the MR, the continuation prompt appears regardless of config.</li>
+  <li><strong>Kernel repo discovery:</strong> The <code>W</code> key scans the
+      filesystem from <code>/</code> for kernel git repositories (directories with
+      both <code>.git</code> and <code>Kconfig</code>), caches the results, and
+      presents a selectable list for quick repo switching.</li>
+</ul>
+
+<h3><span class="role-label role-review">Patch Review</span> &nbsp; revumatic &mdash; Official Red Hat Review TUI</h3>
+<p>
+  <code>revumatic</code> is the officially recommended terminal-based review tool
+  for RHEL kernel development. It provides a full-screen TUI built around the GitLab
+  API and integrates with Kerneloscope for commit tracking, missing-fixes detection,
+  and upstream comparison. It supports in-line commenting on code, blocking threads,
+  TODO list management, subsystem filtering, and side-by-side diff views &mdash;
+  all within the terminal.
+</p>
+<p>
+  <code>revumatic</code> is maintained under the CentOS Stream kernel utilities and
+  distributed via COPR. It uses <code>pygit2</code> for git operations and speaks
+  directly to the GitLab API rather than going through <code>lab</code>.
+</p>
+<p><strong>Typical usage:</strong></p>
+<p><code>revumatic</code> &nbsp; or &nbsp; <code>revumatic 2816</code></p>
+
+<h3><span class="role-label role-backend">Backend Service</span> &nbsp; Kerneloscope &mdash; Commit Tracking Database</h3>
+<p>
+  <code>Kerneloscope</code> is a Red Hat-internal service that indexes commits across
+  all RHEL, CentOS Stream, and upstream kernel trees. It provides an RPC API for
+  querying whether a commit has been backported, finding which trees contain a given
+  commit, and identifying missing fixes. Both <code>revumatic</code> and the CKI
+  webhook infrastructure query Kerneloscope to power their automated checks.
+</p>
+<p>
+  Kerneloscope is not a review tool itself &mdash; it is the data layer that other
+  tools consume.
+</p>
+
+<h3><span class="role-label role-manage">MR Management</span> &nbsp; lab &mdash; GitLab Command-Line Interface</h3>
+<p>
+  <code>lab</code> is the standard CLI for interacting with GitLab &mdash; creating,
+  listing, checking out, approving, and commenting on merge requests. It is the
+  foundation that <code>mr-review</code> builds on for all MR operations. It does not
+  perform patch comparison or upstream tracking.
+</p>
+<p><strong>Typical usage:</strong></p>
+<p><code>lab mr list origin --state opened --all</code></p>
+
+<h3><span class="role-label role-manage">MR Management</span> &nbsp; rhstatus &mdash; Status Dashboard</h3>
+<p>
+  <code>rhstatus</code> aggregates data from GitLab and Jira to provide a color-coded
+  terminal report of a developer's TODO list, open merge requests, and their
+  webhook-driven approval status. It is a monitoring tool, not a review tool.
+</p>
+
+<h3><span class="role-label role-platform">Platform</span> &nbsp; GitLab WebUI &mdash; Web-Based Review</h3>
+<p>
+  The GitLab web interface is the universal baseline. All MR operations &mdash;
+  viewing diffs, commenting, approving, blocking &mdash; can be done through the
+  browser. However, it shows only the RHEL-side changes and has no facility for
+  comparing a RHEL patch against its upstream original.
+</p>
+
+<h2>Feature Comparison: Review Capabilities</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Capability</th>
+      <th>revumatic</th>
+      <th>GitLab WebUI</th>
+      <th>mr-review</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>RHEL vs upstream patch comparison</strong></td>
+      <td><span class="check">&#10003;</span> Built-in side-by-side view</td>
+      <td><span class="cross">&#10007;</span> Shows RHEL diff only</td>
+      <td><span class="check">&#10003;</span> Full &mdash; external diff editor (vimdiff, meld, etc.)</td>
+    </tr>
+    <tr>
+      <td><strong>Upstream commit source</strong></td>
+      <td>Local git tree + Kerneloscope + git.kernel.org fallback</td>
+      <td>N/A</td>
+      <td>Local git tree + lore.kernel.org fallback + alt repo fetch</td>
+    </tr>
+    <tr>
+      <td><strong>Missing Fixes: detection</strong></td>
+      <td><span class="check">&#10003;</span> Kerneloscope-based + local fallback;
+          insertable into MR comments (<code>Ctrl+t</code>)</td>
+      <td><span class="partial">~</span> CKI webhook posts results as MR comments</td>
+      <td><span class="check">&#10003;</span> Date-bounded git log search; results
+          viewable from diff viewer (<code>f</code> key) or standalone; only
+          truly missing fixes reported</td>
+    </tr>
+    <tr>
+      <td><strong>Mega-merge handling</strong></td>
+      <td><span class="partial">~</span> Subsystem and file filtering</td>
+      <td><span class="cross">&#10007;</span></td>
+      <td><span class="check">&#10003;</span> Four strategies: group, filter, skip, manual</td>
+    </tr>
+    <tr>
+      <td><strong>Batch conflict detection</strong></td>
+      <td><span class="check">&#10003;</span> Highlights upstream differences with
+          false-positive detection</td>
+      <td><span class="cross">&#10007;</span></td>
+      <td><span class="check">&#10003;</span> Compares all patches; silently passes
+          identical ones; flags only true conflicts with false-positive markers</td>
+    </tr>
+    <tr>
+      <td><strong>Conflict-only review</strong></td>
+      <td><span class="cross">&#10007;</span> Sequential review of all commits</td>
+      <td><span class="cross">&#10007;</span></td>
+      <td><span class="check">&#10003;</span> Diff viewer skips clean patches;
+          toggleable conflict-only navigation mode</td>
+    </tr>
+    <tr>
+      <td><strong>Interactive diff viewer</strong></td>
+      <td><span class="check">&#10003;</span> Built-in side-by-side terminal view</td>
+      <td><span class="check">&#10003;</span> Web-based diff viewer</td>
+      <td><span class="check">&#10003;</span> External editor (vimdiff, meld, tkdiff, emacs)
+          with replay, go-back, jump-to, commit substitution</td>
+    </tr>
+    <tr>
+      <td><strong>In-line commenting</strong></td>
+      <td><span class="check">&#10003;</span> On code lines; threads can block merge until resolved</td>
+      <td><span class="check">&#10003;</span></td>
+      <td><span class="cross">&#10007;</span></td>
+    </tr>
+    <tr>
+      <td><strong>MR actions</strong></td>
+      <td><span class="check">&#10003;</span> Approve, Block, Comment</td>
+      <td><span class="check">&#10003;</span> Full GitLab action set</td>
+      <td><span class="check">&#10003;</span> Approve, Approve with comment, Block,
+          Unapprove, Comment only &mdash; with duplicate-approval detection</td>
+    </tr>
+    <tr>
+      <td><strong>TODO list integration</strong></td>
+      <td><span class="check">&#10003;</span></td>
+      <td><span class="check">&#10003;</span></td>
+      <td><span class="cross">&#10007;</span></td>
+    </tr>
+    <tr>
+      <td><strong>KABI issue detection</strong></td>
+      <td><span class="check">&#10003;</span></td>
+      <td><span class="partial">~</span> Via webhook labels</td>
+      <td><span class="cross">&#10007;</span></td>
+    </tr>
+    <tr>
+      <td><strong>Dependency detection</strong></td>
+      <td><span class="check">&#10003;</span> Parses Dependencies:: field</td>
+      <td><span class="partial">~</span> Via webhook labels</td>
+      <td><span class="check">&#10003;</span> Parses Dependencies:: field</td>
+    </tr>
+    <tr>
+      <td><strong>Jira integration</strong></td>
+      <td><span class="check">&#10003;</span></td>
+      <td><span class="partial">~</span> Via webhook links</td>
+      <td><span class="cross">&#10007;</span></td>
+    </tr>
+    <tr>
+      <td><strong>Review history tracking</strong></td>
+      <td><span class="check">&#10003;</span> Local history file</td>
+      <td><span class="check">&#10003;</span> GitLab activity log</td>
+      <td><span class="check">&#10003;</span> Persistent log per MR: timestamp, action,
+          patch count, conflict count (e.g., &ldquo;Approved : 14 patches, 3 conflicts&rdquo;);
+          viewable, searchable, clearable from history menu</td>
+    </tr>
+    <tr>
+      <td><strong>Configurable review flow</strong></td>
+      <td><span class="partial">~</span> Configuration UI for preferences</td>
+      <td><span class="cross">&#10007;</span></td>
+      <td><span class="check">&#10003;</span> Toggle: show comments, ask before
+          continuing, ask before replacing, ask before MR actions; always prompts
+          if MR was already reviewed</td>
+    </tr>
+    <tr>
+      <td><strong>Kernel repo discovery</strong></td>
+      <td><span class="check">&#10003;</span> Filesystem scan with caching</td>
+      <td>N/A</td>
+      <td>Manual repo path</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Focus Areas</h2>
+
+<p>
+  The two primary review tools &mdash; <code>mr-review</code> and
+  <code>revumatic</code> &mdash; overlap in MR handling but diverge in their
+  core strengths:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Dimension</th>
+      <th>revumatic</th>
+      <th>mr-review</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Primary strength</strong></td>
+      <td>Full GitLab workflow integration &mdash; TODO lists, in-line comments,
+          status labels, Kerneloscope-powered analysis</td>
+      <td>Deep patch-level forensics &mdash; extracting upstream commits,
+          formatting patches, comparing line-by-line in a real diff editor</td>
+    </tr>
+    <tr>
+      <td><strong>Review style</strong></td>
+      <td>Online, API-first &mdash; talks directly to GitLab and Kerneloscope
+          APIs</td>
+      <td>Offline, local-first &mdash; works entirely from local git trees
+          and the <code>lab</code> CLI</td>
+    </tr>
+    <tr>
+      <td><strong>Diff experience</strong></td>
+      <td>Built-in side-by-side terminal renderer</td>
+      <td>External editors (vimdiff, meld, tkdiff, emacs) with full
+          editor capabilities</td>
+    </tr>
+    <tr>
+      <td><strong>Upstream fallback chain</strong></td>
+      <td>Local tree &rarr; Kerneloscope &rarr; git.kernel.org</td>
+      <td>Local tree &rarr; lore.kernel.org mbox &rarr; alternate git repo URL</td>
+    </tr>
+    <tr>
+      <td><strong>Conflict workflow</strong></td>
+      <td>Per-commit upstream diff highlighting with false-positive detection</td>
+      <td>Batch comparison flags all conflicts with false-positive detection,
+          then interactive viewer with replay/back/substitute</td>
+    </tr>
+    <tr>
+      <td><strong>Mega-merge support</strong></td>
+      <td>Subsystem and file filtering</td>
+      <td>Purpose-built &mdash; four strategies for handling
+          hundreds of commits in a single patch</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Dependency Comparison</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Requirement</th>
+      <th>revumatic</th>
+      <th>GitLab WebUI</th>
+      <th>mr-review</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Runtime</strong></td>
+      <td>Python 3.6+ (<code>pygit2</code>, custom GitLab lib)</td>
+      <td>Web browser</td>
+      <td>Python 3.6+ (<code>click</code>, <code>rich</code>)</td>
+    </tr>
+    <tr>
+      <td><strong>GitLab interaction</strong></td>
+      <td>Native GitLab API (built-in library)</td>
+      <td>Native</td>
+      <td><code>lab</code> CLI</td>
+    </tr>
+    <tr>
+      <td><strong>Git library</strong></td>
+      <td><code>pygit2</code></td>
+      <td>N/A</td>
+      <td>Subprocess calls to <code>git</code> (no dependencies)</td>
+    </tr>
+    <tr>
+      <td><strong>Upstream data</strong></td>
+      <td>Local tree (optional) + Kerneloscope (optional)</td>
+      <td>N/A</td>
+      <td>Local upstream git tree (required)</td>
+    </tr>
+    <tr>
+      <td><strong>Network services</strong></td>
+      <td>GitLab API + Kerneloscope API</td>
+      <td>GitLab only</td>
+      <td>GitLab (via lab) + lore.kernel.org (fallback only)</td>
+    </tr>
+    <tr>
+      <td><strong>Installation</strong></td>
+      <td>COPR package (<code>sudo dnf copr enable ...</code>)</td>
+      <td>None</td>
+      <td>Clone repo, auto-installs Python deps on first run</td>
+    </tr>
+    <tr>
+      <td><strong>Configuration</strong></td>
+      <td><code>~/.revumatic/</code> config + GitLab Personal Access Token</td>
+      <td>GitLab account</td>
+      <td>Interactive first-run setup; per-repo <code>.data/patchreview.conf</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>When to Use Each Tool</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Scenario</th>
+      <th>Recommended Tool</th>
+      <th>Why</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Comparing individual RHEL patches against upstream originals in a
+          full-featured diff editor</td>
+      <td><span class="role-label role-review">mr-review</span></td>
+      <td>Purpose-built for this. Formats both sides and launches vimdiff/meld
+          with navigation, replay, and commit substitution.</td>
+    </tr>
+    <tr>
+      <td>Reviewing a mega-merge MR with hundreds of upstream commits in one patch</td>
+      <td><span class="role-label role-review">mr-review</span></td>
+      <td>Dedicated mega-merge strategies (group by subsystem, filter by files,
+          paginated selection) that other tools lack.</td>
+    </tr>
+    <tr>
+      <td>Full GitLab workflow: TODO list, in-line commenting, blocking threads,
+          label tracking</td>
+      <td><span class="role-label role-review">revumatic</span></td>
+      <td>Native GitLab API integration with full commenting and thread support
+          inside the terminal.</td>
+    </tr>
+    <tr>
+      <td>Detecting KABI issues and missing dependencies alongside code review</td>
+      <td><span class="role-label role-review">revumatic</span></td>
+      <td>Kerneloscope integration enables cross-tree analysis that local tools
+          cannot replicate.</td>
+    </tr>
+    <tr>
+      <td>Reviewing patches when upstream commits are not in your local tree
+          and Kerneloscope is unavailable</td>
+      <td><span class="role-label role-review">mr-review</span></td>
+      <td>Falls back to lore.kernel.org mbox download and alternate git repo
+          fetching without requiring any backend service.</td>
+    </tr>
+    <tr>
+      <td>Quick approval or comment from a web browser</td>
+      <td><span class="role-label role-platform">GitLab WebUI</span></td>
+      <td>No setup, no tools &mdash; just a browser. Adequate when upstream
+          comparison is not needed.</td>
+    </tr>
+    <tr>
+      <td>Monitoring the status of your open MRs and TODO items</td>
+      <td><span class="role-label role-manage">rhstatus</span></td>
+      <td>Aggregates GitLab + Jira into a quick terminal dashboard.</td>
+    </tr>
+    <tr>
+      <td>Scripting GitLab operations (list, checkout, approve, comment)</td>
+      <td><span class="role-label role-manage">lab</span></td>
+      <td>The standard CLI for all GitLab MR operations. Used by mr-review
+          under the hood.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Ecosystem Map</h2>
+
+<p>
+  The RHEL kernel toolchain forms a layered ecosystem spanning backporting,
+  review, and workflow management:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Layer</th>
+      <th>Tool</th>
+      <th>Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Platform</strong></td>
+      <td>GitLab + CKI Webhooks</td>
+      <td>MR hosting, automated label/comment bots, CI gating</td>
+    </tr>
+    <tr>
+      <td><strong>Data</strong></td>
+      <td>Kerneloscope</td>
+      <td>Cross-tree commit index, backport tracking, missing-fixes queries</td>
+    </tr>
+    <tr>
+      <td><strong>CLI Foundation</strong></td>
+      <td>lab</td>
+      <td>GitLab operations from the terminal (create, list, approve, comment)</td>
+    </tr>
+    <tr>
+      <td><strong>Status</strong></td>
+      <td>rhstatus</td>
+      <td>Dashboard aggregating GitLab + Jira status for a developer's workload</td>
+    </tr>
+    <tr>
+      <td><strong>Backport</strong></td>
+      <td><a href="https://gitlab.cee.redhat.com/tcamuso/isb">isb</a></td>
+      <td>Intelligent Subsystem Backport: automated multi-commit cherry-pick
+          workflow with interactive conflict resolution (patchpal / editor),
+          commit list editing, single-step mode, session management, build
+          testing, and patch generation. Produces the MRs that review tools
+          then evaluate.</td>
+    </tr>
+    <tr>
+      <td><strong>Review</strong></td>
+      <td>revumatic</td>
+      <td>Full-screen TUI: TODO list, in-line comments, Kerneloscope analysis,
+          side-by-side diff, label tracking</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  <code>mr-review</code> sits outside the official toolchain. It uses
+  <code>lab</code> for GitLab operations but is otherwise independent &mdash;
+  a standalone tool for patch-level forensics built around external diff
+  editors, batch conflict detection, and mega-merge strategies.
+</p>
+
+<h2>Why mr-review Exists</h2>
+
+<p>
+  <code>revumatic</code> is the officially recommended and supported review tool for
+  RHEL kernel development. Most reviewers should use it. <code>mr-review</code> is
+  not a replacement or alternative &mdash; it is a personal tool that grew out of
+  specific workflow preferences:
+</p>
+
+<ul>
+  <li><strong>External diff editors:</strong> The author's review workflow relies on
+      <code>vimdiff</code> and <code>meld</code> for patch inspection, with their
+      full editor capabilities (syntax highlighting, folding, search, editing).
+      <code>mr-review</code> extracts both RHEL and upstream patches as files and
+      launches the preferred editor directly. <code>revumatic</code> provides a
+      built-in side-by-side terminal view instead.</li>
+  <li><strong>Conflict-first review:</strong> For MRs with many patches, the author
+      prefers to batch-compare all patches first, then review <em>only</em> the
+      conflicts. Patches identical to upstream are silently passed.
+      <code>mr-review</code> was built around this workflow.</li>
+  <li><strong>Mega-merge handling:</strong> The original <code>patchreview</code> bash
+      tool could not handle MRs containing hundreds of upstream commits in a single
+      patch (e.g., DRM bulk merges). This was the immediate trigger for rewriting
+      the tool in Python with dedicated mega-merge strategies.</li>
+  <li><strong>No Kerneloscope dependency:</strong> <code>mr-review</code> operates
+      entirely from local git trees and the <code>lab</code> CLI. This was not a
+      design goal so much as a consequence of the tool's lineage from the pre-Kerneloscope
+      <code>patchreview</code> bash script.</li>
+</ul>
+
+<p>
+  <code>revumatic</code> provides significant capabilities that <code>mr-review</code>
+  does not attempt: in-line code commenting, TODO list management, KABI analysis,
+  Jira integration, Kerneloscope-powered cross-tree queries, and the full GitLab
+  collaboration workflow. For the broader RHEL kernel developer community,
+  <code>revumatic</code> is the right tool.
+</p>
+
+<h2>Links</h2>
+<ul>
+  <li><strong>mr-review:</strong> <a href="https://gitlab.cee.redhat.com/tcamuso/patchtools">gitlab.cee.redhat.com/tcamuso/patchtools</a></li>
+  <li><strong>revumatic:</strong> <a href="https://gitlab.com/redhat/centos-stream/src/kernel/utils/revumatic">gitlab.com/redhat/centos-stream/src/kernel/utils/revumatic</a></li>
+  <li><strong>Kerneloscope:</strong> Internal Red Hat service (CKI project)</li>
+  <li><strong>lab:</strong> <a href="https://github.com/zaquestion/lab">github.com/zaquestion/lab</a>
+      &nbsp;|&nbsp; <a href="https://redhat.gitlab.io/centos-stream/src/kernel/documentation/docs/lab.html">RHEL kernel docs</a></li>
+  <li><strong>rhstatus:</strong> <a href="https://gitlab.com/prarit/rhstatus">gitlab.com/prarit/rhstatus</a></li>
+  <li><strong>RHEL Kernel Workflow:</strong> <a href="https://redhat.gitlab.io/centos-stream/src/kernel/documentation/docs/rhel_kernel_workflow.html">Official documentation</a></li>
+</ul>
+
+<div class="footer">
+  Document prepared by Tony Camuso &lt;tcamuso@redhat.com&gt; &mdash; July 2026
+</div>
+
+</body>
+</html>
