@@ -5,7 +5,7 @@ mr-review \- kernel patch review tool with GitLab MR integration
 .SH SYNOPSIS
 .B mr-review
 .PP
-.B mr-review mr review
+.B mr-review mr
 .I MR_NUMBER
 .PP
 .B mr-review mr list
@@ -228,7 +228,7 @@ Re-run the batch comparison to refresh the conflict list.
 .B q
 Quit the diff viewer.
 .SH CLI SUBCOMMANDS
-.SS "mr review MR_NUMBER"
+.SS "mr MR_NUMBER"
 Run the full review pipeline for a specific MR: extract patches,
 format upstream, seek missing fixes, compare, and present the
 MR review menu.

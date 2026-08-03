@@ -762,7 +762,7 @@ counterparts, helping reviewers identify differences.
 
 [bold cyan]Command line usage:[/bold cyan]
   [bold]mr-review[/bold]                       Interactive mode
-  [bold]mr-review mr review <number>[/bold]    Review specific MR
+  [bold]mr-review mr <number>[/bold]           Review specific MR
   [bold]mr-review mr list[/bold]               List MRs
   [bold]mr-review format[/bold]                Format upstream patches
   [bold]mr-review seek[/bold]                  Seek missing fixes

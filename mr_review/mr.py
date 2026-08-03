@@ -373,7 +373,10 @@ def mr_approve(mr_number: str, with_comment: bool = False) -> bool:
         args.extend(["--with-comment", "--force-linebreak"])
     args.append(mr_number)
 
-    r = _run_lab(*args, check=False)
+    if with_comment:
+        r = subprocess.run(["lab"] + args, check=False)
+    else:
+        r = _run_lab(*args, check=False)
     return r.returncode == 0
 
 
@@ -387,7 +390,10 @@ def mr_unapprove(mr_number: str) -> bool:
 def mr_block(mr_number: str) -> bool:
     """Block/start discussion on a merge request."""
     origin = _get_origin()
-    r = _run_lab("mr", "discussion", origin, mr_number, check=False)
+    r = subprocess.run(
+        ["lab", "mr", "discussion", origin, mr_number],
+        check=False,
+    )
     return r.returncode == 0
 
 

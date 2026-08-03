@@ -53,10 +53,16 @@ def main(ctx):
 # mr — MR operations
 # ---------------------------------------------------------------------------
 
-@main.group()
-def mr():
-    """Merge Request operations."""
-    pass
+@main.group(invoke_without_command=True)
+@click.argument("mr_number", required=False)
+@click.pass_context
+def mr(ctx, mr_number):
+    """Merge Request operations.
+
+    When called as 'mr-review mr <number>', runs the full review pipeline.
+    """
+    if ctx.invoked_subcommand is None and mr_number:
+        ctx.invoke(mr_review, mr_number=mr_number)
 
 
 @mr.command("review")
