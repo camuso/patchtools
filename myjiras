@@ -123,8 +123,12 @@ ${HDR}TITLE FILTER (-t)${OFF}
       ${MNU}-t 'intel|ish' -t 'stream-10'${OFF}
       Matches titles with (intel OR ish) AND stream-10
 
-    ${WRN}Limitations:${OFF} No true regex (.*+^$), no character classes [a-z],
-    no anchors. For complex patterns, use -j and filter with jq.
+    ${WRN}Limitations:${OFF}
+      - Jira matches ${MNU}whole words only${OFF}, not substrings.
+        'Angular' matches, but 'Angula' does not.
+        Use wildcards for partial matches: ${MNU}'Angula*'${OFF}, ${MNU}'CVE*'${OFF}
+      - No true regex (.*+^$), no character classes [a-z], no anchors.
+        For complex patterns, use -j and filter with jq.
 
     ${WRN}Note:${OFF} Terms with dots/hyphens (e.g., '10.2') may need wildcards
     to match hyphenated forms like 'RHEL-10.2'. Use ${MNU}'*10.2*'${OFF} instead.
