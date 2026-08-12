@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
-from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.table import Table
 from rich.text import Text
@@ -156,19 +155,20 @@ def select_repo(cfg: Config) -> bool:
 
     cwd = os.getcwd()
 
+    S = "      "  # 6-space submenu indent
     while True:
-        console.print(f"\n  [bold cyan]Kernel Repositories[/bold cyan]")
+        console.print(f"\n{S}[bold]Kernel Repositories[/bold]")
         for i, repo in enumerate(repos, 1):
             marker = "  <-- current" if os.path.realpath(repo) == os.path.realpath(cwd) else ""
-            console.print(f"  [bold bright_magenta]{i:3d}[/bold bright_magenta]  [bold bright_magenta]{repo}[/bold bright_magenta][bold green]{marker}[/bold green]")
+            console.print(f"{S}[bold bright_magenta]{i:3d}[/bold bright_magenta]  [bold bright_magenta]{repo}[/bold bright_magenta][bold green]{marker}[/bold green]")
 
-        console.print(f"\n  [bold]R[/bold]  Rescan filesystem")
-        console.print(f"  [bold]q[/bold]  Cancel")
+        console.print(f"\n{S}[bold]R[/bold]  Rescan filesystem")
+        console.print(f"{S}[bold]q[/bold]  Cancel")
 
         if len(repos) < 10:
-            choice = prompt_key("\n  Enter number, R, or q")
+            choice = prompt_key(f"\n{S}Enter number, R, or q")
         else:
-            choice = Prompt.ask("\n  Enter number, R, or q").strip()
+            choice = Prompt.ask(f"\n{S}Enter number, R, or q").strip()
 
         if choice.lower() == "q":
             return False
@@ -218,33 +218,31 @@ def select_repo(cfg: Config) -> bool:
 
 def config_menu(cfg: Config):
     """Interactive configuration menu."""
+    S = "      "  # 6-space submenu indent
     while True:
         remote_str = f"{cfg.remote_dir} : {cfg.remote_repo}/{cfg.remote_branch}"
 
-        console.print(Panel(
-            "[bold]Configuration[/bold]",
-            subtitle=_context_line(cfg),
-            style="cyan",
-        ))
-        console.print(f"  [bold]d[/bold]  Patch directory      : [bold]{cfg.indir or '(not set)'}[/bold]")
-        console.print(f"  [bold]w[/bold]  Work directory       : [bold]{cfg.outdir or '(not set)'}[/bold]")
-        console.print(f"  [bold]u[/bold]  Upstream dir/branch  : [bold]{remote_str}[/bold]")
-        console.print(f"  [bold]e[/bold]  Diff editor          : [bold]{cfg.editor}[/bold]")
-        console.print(f"  [bold]f[/bold]  Patch validation fuzz: [bold]{cfg.patchvalfuzz}[/bold]")
-        console.print(f"  [bold]v[/bold]  Verbose mode         : [bold]{'ON' if cfg.verbose else 'OFF'}[/bold]")
-        console.print(f"  [bold]s[/bold]  Auto seek fixes      : [bold]{'ON' if cfg.seek_fixes else 'OFF'}[/bold]")
-        console.print(f"  [bold]t[/bold]  Mega-merge threshold : [bold]{cfg.mega_merge_threshold}[/bold]")
-        console.print(f"  [bold]m[/bold]  Mega-merge strategy  : [bold]{cfg.mega_merge_default_strategy}[/bold]")
+        console.print(f"\n{S}[bold]Configuration[/bold]")
+        console.print(f"{S}[bold cyan]{_context_line(cfg)}[/bold cyan]")
+        console.print(f"{S}[bold]d[/bold]  Patch directory      : [bold]{cfg.indir or '(not set)'}[/bold]")
+        console.print(f"{S}[bold]w[/bold]  Work directory       : [bold]{cfg.outdir or '(not set)'}[/bold]")
+        console.print(f"{S}[bold]u[/bold]  Upstream dir/branch  : [bold]{remote_str}[/bold]")
+        console.print(f"{S}[bold]e[/bold]  Diff editor          : [bold]{cfg.editor}[/bold]")
+        console.print(f"{S}[bold]f[/bold]  Patch validation fuzz: [bold]{cfg.patchvalfuzz}[/bold]")
+        console.print(f"{S}[bold]v[/bold]  Verbose mode         : [bold]{'ON' if cfg.verbose else 'OFF'}[/bold]")
+        console.print(f"{S}[bold]s[/bold]  Auto seek fixes      : [bold]{'ON' if cfg.seek_fixes else 'OFF'}[/bold]")
+        console.print(f"{S}[bold]t[/bold]  Mega-merge threshold : [bold]{cfg.mega_merge_threshold}[/bold]")
+        console.print(f"{S}[bold]m[/bold]  Mega-merge strategy  : [bold]{cfg.mega_merge_default_strategy}[/bold]")
         console.print()
-        console.print(f"  [bold cyan]Review Prompts[/bold cyan]")
-        console.print(f"  [bold]1[/bold]  Ask before continuing: [bold]{'ON' if cfg.ask_continue else 'OFF'}[/bold]")
-        console.print(f"  [bold]2[/bold]  Ask before replacing : [bold]{'ON' if cfg.ask_replace else 'OFF'}[/bold]")
-        console.print(f"  [bold]3[/bold]  Ask before MR actions: [bold]{'ON' if cfg.ask_commit else 'OFF'}[/bold]")
-        console.print(f"  [bold]4[/bold]  Show comments first  : [bold]{'ON' if cfg.show_comments else 'OFF'}[/bold]")
-        console.print(f"  [bold]q[/bold]  Return to main menu")
+        console.print(f"{S}[bold cyan]Review Prompts[/bold cyan]")
+        console.print(f"{S}[bold]1[/bold]  Ask before continuing: [bold]{'ON' if cfg.ask_continue else 'OFF'}[/bold]")
+        console.print(f"{S}[bold]2[/bold]  Ask before replacing : [bold]{'ON' if cfg.ask_replace else 'OFF'}[/bold]")
+        console.print(f"{S}[bold]3[/bold]  Ask before MR actions: [bold]{'ON' if cfg.ask_commit else 'OFF'}[/bold]")
+        console.print(f"{S}[bold]4[/bold]  Show comments first  : [bold]{'ON' if cfg.show_comments else 'OFF'}[/bold]")
+        console.print(f"{S}[bold]q[/bold]  Return to main menu")
 
         from .utils import prompt_key
-        choice = prompt_key("\n  Enter one of the above")
+        choice = prompt_key(f"\n{S}Enter one of the above")
 
         if choice == "q":
             cfg.save()
@@ -320,12 +318,10 @@ def acknack_menu(cfg: Config, conflict_count: int = 0) -> Optional[str]:
         console.print("[yellow]No MR currently selected.[/yellow]")
         return None
 
+    S = "      "  # 6-space submenu indent
     while True:
-        console.print(Panel(
-            f"[bold]Merge Request Review: MR {mr_num}[/bold]",
-            subtitle=_context_line(cfg),
-            style="cyan",
-        ))
+        console.print(f"\n{S}[bold]Merge Request Review: MR {mr_num}[/bold]")
+        console.print(f"{S}[bold cyan]{_context_line(cfg)}[/bold cyan]")
 
         reviewed = cfg.get_bool("b_reviewed")
         acked = cfg.get_bool("b_acked")
@@ -333,25 +329,25 @@ def acknack_menu(cfg: Config, conflict_count: int = 0) -> Optional[str]:
 
         if reviewed:
             if acked:
-                console.print(f"  Status: [bold green]Approved[/bold green]")
+                console.print(f"{S}Status: [bold green]Approved[/bold green]")
             elif nacked:
-                console.print(f"  Status: [bold red]Blocked[/bold red]")
+                console.print(f"{S}Status: [bold red]Blocked[/bold red]")
 
-        console.print(f"  [bold]a[/bold]  Approve")
-        console.print(f"  [bold]A[/bold]  Approve with comment")
-        console.print(f"  [bold]b[/bold]  Block and start discussion")
-        console.print(f"  [bold]u[/bold]  Unapprove")
-        console.print(f"  [bold]c[/bold]  Comment only")
-        console.print(f"  [bold]v[/bold]  View comments for {mr_num}")
-        console.print(f"  [bold]H[/bold]  Review history")
-        console.print(f"  [bold]W[/bold]  Select a working repo")
-        console.print(f"  [bold]M[/bold]  Review another MR")
-        console.print(f"  [bold]m[/bold]  Display list of MRs")
-        console.print(f"  [bold]P[/bold]  Review diffs for {mr_num}")
-        console.print(f"  [bold]q[/bold]  Return to main menu")
+        console.print(f"{S}[bold]a[/bold]  Approve")
+        console.print(f"{S}[bold]A[/bold]  Approve with comment")
+        console.print(f"{S}[bold]b[/bold]  Block and start discussion")
+        console.print(f"{S}[bold]u[/bold]  Unapprove")
+        console.print(f"{S}[bold]c[/bold]  Comment only")
+        console.print(f"{S}[bold]v[/bold]  View comments for {mr_num}")
+        console.print(f"{S}[bold]H[/bold]  Review history")
+        console.print(f"{S}[bold]W[/bold]  Select a working repo")
+        console.print(f"{S}[bold]M[/bold]  Review another MR")
+        console.print(f"{S}[bold]m[/bold]  Display list of MRs")
+        console.print(f"{S}[bold]P[/bold]  Review diffs for {mr_num}")
+        console.print(f"{S}[bold]q[/bold]  Return to main menu")
 
         from .utils import prompt_key, confirm as confirm_key
-        choice = prompt_key("\n  Enter one of the above")
+        choice = prompt_key(f"\n{S}Enter one of the above")
 
         from .history import update_history
         patch_count = len(get_patch_files(cfg.indir)) if cfg.indir else 0
@@ -433,20 +429,18 @@ def _history_menu(cfg: Config):
     )
     from .utils import prompt_key, confirm as confirm_key, display_in_pager
 
+    S = "      "  # 6-space submenu indent
     while True:
-        console.print(Panel(
-            "[bold]Review History[/bold]",
-            subtitle=_context_line(cfg),
-            style="cyan",
-        ))
-        console.print(f"  File: [bold]{HISTORY_FILE}[/bold]")
-        console.print(f"  [bold]v[/bold]  View all review history")
-        console.print(f"  [bold]m[/bold]  View history for current MR: [bold]{cfg.current_mr or '(none)'}[/bold]")
-        console.print(f"  [bold]s[/bold]  Specify a different MR history to view")
-        console.print(f"  [bold]C[/bold]  Clear MR review history")
-        console.print(f"  [bold]q[/bold]  Return")
+        console.print(f"\n{S}[bold]Review History[/bold]")
+        console.print(f"{S}[bold cyan]{_context_line(cfg)}[/bold cyan]")
+        console.print(f"{S}File: [bold]{HISTORY_FILE}[/bold]")
+        console.print(f"{S}[bold]v[/bold]  View all review history")
+        console.print(f"{S}[bold]m[/bold]  View history for current MR: [bold]{cfg.current_mr or '(none)'}[/bold]")
+        console.print(f"{S}[bold]s[/bold]  Specify a different MR history to view")
+        console.print(f"{S}[bold]C[/bold]  Clear MR review history")
+        console.print(f"{S}[bold]q[/bold]  Return")
 
-        choice = prompt_key("\n  Enter one of the above")
+        choice = prompt_key(f"\n{S}Enter one of the above")
 
         if choice == "q":
             return
@@ -520,21 +514,8 @@ def main_menu(cfg: Config):
         )
         return
 
-    # Ensure essential directories exist
-    if not cfg.indir:
-        console.print("[yellow]Patch directory not set.[/yellow]")
-        p = prompt_directory("Patch directory")
-        if p:
-            cfg.set("indir", p)
-            cfg.save()
-
-    if not cfg.outdir:
-        console.print("[yellow]Work directory not set.[/yellow]")
-        p = prompt_directory("Work directory")
-        if p:
-            cfg.set("outdir", p)
-            cfg.save()
-
+    # Ensure essential directories and settings exist.
+    # On first run, ask upstream first, then patch/work dirs with defaults.
     if not cfg.remote_dir:
         console.print("[yellow]Upstream directory not set.[/yellow]")
         rd, repo, branch = prompt_remote_dir_and_branch(cfg)
@@ -542,6 +523,22 @@ def main_menu(cfg: Config):
             cfg.set("remote_dir", rd)
             cfg.set("remote_repo", repo)
             cfg.set("remote_branch", branch)
+            cfg.save()
+
+    default_indir = Path(cfg.repo_dir) / ".patches"
+    if not cfg.indir:
+        console.print(f"[yellow]Patch directory not set.[/yellow]")
+        p = prompt_directory("Patch directory", default_indir)
+        if p:
+            cfg.set("indir", p)
+            cfg.save()
+
+    default_outdir = Path(cfg.repo_dir) / ".patches" / "tmp"
+    if not cfg.outdir:
+        console.print(f"[yellow]Work directory not set.[/yellow]")
+        p = prompt_directory("Work directory", default_outdir)
+        if p:
+            cfg.set("outdir", p)
             cfg.save()
 
     if not cfg.editor or cfg.editor not in ("vimdiff", "meld", "tkdiff", "emacs"):
@@ -571,17 +568,14 @@ def main_menu(cfg: Config):
 
             mr_status = ""
             if cfg.current_mr:
-                mr_status = f" MR [bold]{cfg.current_mr}[/bold]"
+                mr_status = f"  MR [bold]{cfg.current_mr}[/bold]"
                 if cfg.get_bool("b_acked"):
                     mr_status += " [green]Approved[/green]"
                 elif cfg.get_bool("b_nacked"):
                     mr_status += " [bold red]Blocked[/bold red]"
 
-            console.print(Panel(
-                f"[bold]mr-review v{__version__}[/bold]{mr_status}",
-                subtitle=_context_line(cfg),
-                style="cyan",
-            ))
+            console.print(f"\n  [bold]mr-review v{__version__}[/bold]{mr_status}")
+            console.print(f"  [bold cyan]{_context_line(cfg)}[/bold cyan]")
             console.print(f"  [bold]c[/bold]  Config menu")
             console.print(f"      Most recent tag      : [bold]{last_tag}[/bold]")
             console.print(f"      Current head         : [bold]{head}[/bold]")
