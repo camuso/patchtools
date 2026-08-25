@@ -1,0 +1,170 @@
+#!/bin/bash
+#
+# myforks - List GitLab.com forks you own
+#
+# Default: forks whose upstream is under gitlab.com/redhat/
+# Requires jq and a token in ~/.config/lab/lab.toml (same as mygitlab-mrs).
+#
+
+[ -n "$MYDIR" ] || {
+	declare MYDIR=
+	MYDIR="$(dirname "$(readlink -f "$0")")"
+}
+
+declare config_file="$HOME/.config/lab/lab.toml"
+declare token=""
+declare -i b_all=0
+declare usagestr="$(
+cat <<EOF
+$(basename "$0") [-a]
+
+List GitLab.com projects you own that are forks.
+
+  (default)  Only forks whose upstream path starts with redhat/
+  -a         All owned forks, any upstream
+  -h         Show this help
+
+Uses the token from $config_file
+\0
+EOF
+)"
+
+#** usage: print info and instructions to screen
+#
+# Global
+# 	usagestr
+#*
+usage() {
+	echo -e "$usagestr"
+}
+
+#** control_c: control-c trap
+#
+# Global
+#   CTLC_EXIT - bash environment variable
+#*
+control_c() {
+	echo -e "\nCtrl-c detected\nCleaning up and exiting."
+	exit ${CTLC_EXIT:-1}
+}
+
+#** exitme
+#
+# Arguments
+#   $1 - exit code
+#   $2 - optional message
+#*
+exitme() {
+	local -i code="$1"
+	local msg="$2"
+
+	((code == 0)) && exit "$code"
+	[[ -n "$msg" ]] && echo -e "$msg" >&2
+	usage
+	exit "$code"
+}
+
+#** get_token: extract API token from lab.toml
+#
+# Global
+#   config_file
+#   token
+#*
+get_token() {
+	[[ -f "$config_file" ]] || \
+		exitme 1 "Error: lab config not found: $config_file"
+
+	token=$(
+		awk -F'=' '
+			/^[[:space:]]*(token|api_token)[[:space:]]*=/ {
+				val=$2
+				gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+				gsub(/#.*/, "", val)
+				gsub(/^"[[:space:]]*|[[:space:]]*"$/, "", val)
+				gsub(/^'\''[[:space:]]*|[[:space:]]*'\''$/, "", val)
+				if (val != "") { print val; exit }
+			}
+		' "$config_file"
+	)
+
+	[[ -n "$token" ]] || \
+		exitme 1 "Error: Could not extract token from $config_file"
+}
+
+#** list_owned_projects: paginate GET /projects?owned=true
+#
+# Global
+#   token
+#*
+list_owned_projects() {
+	local page=1
+	local body
+	local code
+	local count
+
+	while :; do
+		body=$(mktemp) || exitme 1 "Error: mktemp failed"
+		code=$(curl -sS -o "$body" -w "%{http_code}" \
+			--header "PRIVATE-TOKEN: $token" \
+			"https://gitlab.com/api/v4/projects?owned=true&per_page=100&page=${page}")
+
+		if [[ "$code" != "200" ]]; then
+			echo "GitLab API error (HTTP $code):" >&2
+			cat "$body" >&2
+			rm -f "$body"
+			exitme 1
+		fi
+
+		if ! jq -e 'type == "array"' "$body" >/dev/null; then
+			echo "Unexpected GitLab response:" >&2
+			cat "$body" >&2
+			rm -f "$body"
+			exitme 1
+		fi
+
+		cat "$body"
+		count=$(jq 'length' "$body")
+		rm -f "$body"
+		((count < 100)) && break
+		page=$((page + 1))
+	done
+}
+
+#** main
+#*
+main() {
+	local filter
+
+	trap control_c SIGINT
+
+	command -v jq >/dev/null || exitme 1 "Error: jq is required"
+
+	while [[ -n "$1" ]]; do
+		case "$1" in
+			-a) b_all=1 ;;
+			-h|--help) usage; exit 0 ;;
+			*) exitme 1 "Error: unknown option: $1" ;;
+		esac
+		shift
+	done
+
+	get_token
+
+	if ((b_all)); then
+		filter='select(.forked_from_project != null)'
+	else
+		filter='select((.forked_from_project.path_with_namespace // "") | startswith("redhat/"))'
+	fi
+
+	# slurp (-s) so pagination pages concatenate into one array
+	list_owned_projects | jq -s -r "
+		add
+		| .[]
+		| $filter
+		| \"\(.path_with_namespace)  <-  \(.forked_from_project.path_with_namespace)\"
+	"
+
+	exitme 0
+}
+
+main "$@"
