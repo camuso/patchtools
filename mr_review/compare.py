@@ -539,6 +539,9 @@ def run_compare(cfg: Config) -> tuple[bool, int]:
     conflicts = batch_compare(indir, outdir, output_file=mm_file)
     display_conflicts(conflicts, len(get_patch_files(indir)))
 
-    # Enter interactive mode
+    if not conflicts:
+        return True, 0
+
+    # Enter interactive mode only when there are conflicts to review
     ok = interactive_compare(cfg, conflicts=conflicts)
     return ok, len(conflicts)

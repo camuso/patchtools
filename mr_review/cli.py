@@ -88,6 +88,11 @@ def mr_review(mr_number):
             next_action = None
             _ok, last_conflict_count = run_compare(cfg)
             result = acknack_menu(cfg, last_conflict_count)
+        elif next_action == "D":
+            next_action = None
+            from .compare import interactive_compare
+            interactive_compare(cfg)
+            result = acknack_menu(cfg, last_conflict_count)
         elif next_action == "m":
             next_action = None
             display_mr_list(mr_list())
@@ -107,8 +112,8 @@ def mr_review(mr_number):
             _ok, last_conflict_count = run_compare(cfg)
             result = acknack_menu(cfg, last_conflict_count)
 
-        if result in ("new_mr", "list_mr", "review"):
-            next_action = {"new_mr": "M", "list_mr": "m", "review": "P"}[result]
+        if result in ("new_mr", "list_mr", "review", "review_all"):
+            next_action = {"new_mr": "M", "list_mr": "m", "review": "P", "review_all": "D"}[result]
         else:
             return
 

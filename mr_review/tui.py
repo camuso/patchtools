@@ -344,6 +344,7 @@ def acknack_menu(cfg: Config, conflict_count: int = 0) -> Optional[str]:
         console.print(f"{S}[bold]M[/bold]  Review another MR")
         console.print(f"{S}[bold]m[/bold]  Display list of MRs")
         console.print(f"{S}[bold]P[/bold]  Review diffs for {mr_num}")
+        console.print(f"{S}[bold]D[/bold]  Review all diffs (conflicts or not)")
         console.print(f"{S}[bold]q[/bold]  Return to main menu")
 
         from .utils import prompt_key, confirm as confirm_key
@@ -416,6 +417,8 @@ def acknack_menu(cfg: Config, conflict_count: int = 0) -> Optional[str]:
             return "list_mr"
         elif choice == "P":
             return "review"
+        elif choice == "D":
+            return "review_all"
 
 
 # ---------------------------------------------------------------------------
@@ -595,6 +598,7 @@ def main_menu(cfg: Config):
             console.print(f"  [bold]F[/bold]  Format upstream patches")
             console.print(f"  [bold]S[/bold]  Seek missing fixes")
             console.print(f"  [bold]P[/bold]  Compare patches")
+            console.print(f"  [bold]D[/bold]  Review all diffs (conflicts or not)")
             console.print(f"  [bold]H[/bold]  Review history")
             console.print(f"  [bold]h[/bold]  Help")
             console.print(f"  [bold]q[/bold]  Quit")
@@ -633,8 +637,8 @@ def main_menu(cfg: Config):
             ok, last_conflict_count = _run_mr_pipeline(cfg, mr_num)
             if ok:
                 result = acknack_menu(cfg, last_conflict_count)
-                if result in ("new_mr", "list_mr", "review"):
-                    next_action = {"new_mr": "M", "list_mr": "m", "review": "P"}[result]
+                if result in ("new_mr", "list_mr", "review", "review_all"):
+                    next_action = {"new_mr": "M", "list_mr": "m", "review": "P", "review_all": "D"}[result]
         elif choice == "m":
             from rich.progress import Progress, SpinnerColumn, TextColumn
             with Progress(
@@ -649,8 +653,8 @@ def main_menu(cfg: Config):
                 ok, last_conflict_count = _run_mr_pipeline(cfg, mr_num)
                 if ok:
                     result = acknack_menu(cfg, last_conflict_count)
-                    if result in ("new_mr", "list_mr", "review"):
-                        next_action = {"new_mr": "M", "list_mr": "m", "review": "P"}[result]
+                    if result in ("new_mr", "list_mr", "review", "review_all"):
+                        next_action = {"new_mr": "M", "list_mr": "m", "review": "P", "review_all": "D"}[result]
         elif choice == "v":
             from .utils import display_in_pager
             if cfg.current_mr:
@@ -666,8 +670,8 @@ def main_menu(cfg: Config):
         elif choice == "a":
             if cfg.current_mr:
                 result = acknack_menu(cfg, last_conflict_count)
-                if result in ("new_mr", "list_mr", "review"):
-                    next_action = {"new_mr": "M", "list_mr": "m", "review": "P"}[result]
+                if result in ("new_mr", "list_mr", "review", "review_all"):
+                    next_action = {"new_mr": "M", "list_mr": "m", "review": "P", "review_all": "D"}[result]
             else:
                 console.print("[yellow]No MR selected. Use M first.[/yellow]")
         elif choice == "H":
@@ -678,6 +682,17 @@ def main_menu(cfg: Config):
             seek_missing_fixes(cfg)
         elif choice == "P":
             _ok, last_conflict_count = run_compare(cfg)
+            if cfg.current_mr:
+                result = acknack_menu(cfg, last_conflict_count)
+                if result in ("new_mr", "list_mr", "review", "review_all"):
+                    next_action = {"new_mr": "M", "list_mr": "m", "review": "P", "review_all": "D"}[result]
+        elif choice == "D":
+            from .compare import interactive_compare
+            interactive_compare(cfg)
+            if cfg.current_mr:
+                result = acknack_menu(cfg, last_conflict_count)
+                if result in ("new_mr", "list_mr", "review", "review_all"):
+                    next_action = {"new_mr": "M", "list_mr": "m", "review": "P", "review_all": "D"}[result]
         elif choice == "h":
             _show_help()
 
@@ -723,6 +738,7 @@ counterparts, helping reviewers identify differences.
   [bold]F[/bold]   Format upstream patches
   [bold]S[/bold]   Seek missing fixes
   [bold]P[/bold]   Compare patches
+  [bold]D[/bold]   Review all diffs (conflicts or not)
   [bold]H[/bold]   Review history
   [bold]h[/bold]   This help
   [bold]q[/bold]   Quit
@@ -738,6 +754,7 @@ counterparts, helping reviewers identify differences.
   [bold]M[/bold]   Review another MR
   [bold]m[/bold]   Display list of MRs
   [bold]P[/bold]   Review diffs
+  [bold]D[/bold]   Review all diffs (conflicts or not)
   [bold]H[/bold]   Review history
   [bold]q[/bold]   Return to main menu
 
