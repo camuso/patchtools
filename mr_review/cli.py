@@ -167,14 +167,15 @@ def mr_approve_cmd(mr_number, comment):
 
     cfg = _load_config()
     if not cfg.ask_commit or confirm(f"Approve MR {mr_number}?"):
-        if mr_approve(mr_number, with_comment=comment):
+        ok, err = mr_approve(mr_number, with_comment=comment)
+        if ok:
             cfg.set("b_acked", True)
             cfg.set("b_nacked", False)
             cfg.set("b_reviewed", True)
             cfg.save()
             console.print(f"[green]MR {mr_number} approved.[/green]")
         else:
-            console.print("[bold red]Approve failed.[/bold red]")
+            console.print(f"[bold red]Approve failed: {err}[/bold red]")
 
 
 @mr.command("block")

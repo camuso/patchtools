@@ -373,7 +373,8 @@ def acknack_menu(cfg: Config, conflict_count: int = 0) -> Optional[str]:
 
             with_comment = (choice == "A")
             if not cfg.ask_commit or confirm_key(f"  Approve MR {mr_num}?"):
-                if mr_approve(mr_num, with_comment=with_comment):
+                ok, err = mr_approve(mr_num, with_comment=with_comment)
+                if ok:
                     action = "Approved with comment" if with_comment else "Approved"
                     cfg.set("b_acked", True)
                     cfg.set("b_nacked", False)
@@ -382,7 +383,7 @@ def acknack_menu(cfg: Config, conflict_count: int = 0) -> Optional[str]:
                     update_history(mr_num, action, patch_count, conflict_count)
                     console.print(f"[green]MR {mr_num} approved.[/green]")
                 else:
-                    console.print("[bold red]Approve failed.[/bold red]")
+                    console.print(f"[bold red]Approve failed: {err}[/bold red]")
         elif choice == "b":
             if not cfg.ask_commit or confirm_key(f"  Block MR {mr_num}?"):
                 if mr_block(mr_num):

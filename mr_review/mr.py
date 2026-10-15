@@ -365,8 +365,11 @@ def mr_extract_patches(
     return True
 
 
-def mr_approve(mr_number: str, with_comment: bool = False) -> bool:
-    """Approve a merge request."""
+def mr_approve(mr_number: str, with_comment: bool = False) -> tuple[bool, str]:
+    """Approve a merge request.
+
+    Returns (success, error_message).
+    """
     origin = _get_origin()
     args = ["mr", "approve", origin]
     if with_comment:
@@ -374,10 +377,18 @@ def mr_approve(mr_number: str, with_comment: bool = False) -> bool:
     args.append(mr_number)
 
     if with_comment:
-        r = subprocess.run(["lab"] + args, check=False)
+        # Let editor interact with terminal; capture stderr via pipe
+        r = subprocess.run(
+            ["lab"] + args, check=False,
+            stderr=subprocess.PIPE, text=True,
+        )
     else:
         r = _run_lab(*args, check=False)
-    return r.returncode == 0
+
+    if r.returncode != 0:
+        err = (getattr(r, "stderr", "") or getattr(r, "stdout", "") or "").strip()
+        return False, err or f"lab exited with code {r.returncode}"
+    return True, ""
 
 
 def mr_unapprove(mr_number: str) -> bool:
