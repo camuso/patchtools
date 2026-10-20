@@ -1,14 +1,16 @@
-"""GitLab Merge Request integration via the lab CLI.
+"""GitLab Merge Request integration via direct REST API.
 
-Wraps 'lab mr' subcommands for listing, showing, extracting patches,
-and approving/blocking merge requests.
+Uses the gitlab_api module for all GitLab communication.
+No dependency on the lab CLI.  Credentials are read from
+~/.config/lab/lab.toml for backward compatibility.
 """
 
 from __future__ import annotations
 
 import os
-import shutil
+import re
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -16,11 +18,17 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
+from . import gitlab_api
+from .gitlab_api import GitLabAPIError
 from .config import Config
 from .utils import run_git, git_get_current_branch
 
 console = Console()
 
+
+# -------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------
 
 def _get_origin() -> str:
     """Extract the first remote name from .git/config."""
@@ -30,33 +38,27 @@ def _get_origin() -> str:
     for line in config_path.read_text().splitlines():
         line = line.strip()
         if line.startswith("[remote"):
-            # [remote "origin"]  ->  origin
             name = line.split('"')[1] if '"' in line else "origin"
             return name
     return "origin"
 
 
-def _check_lab():
-    """Verify lab CLI is available."""
-    if not shutil.which("lab"):
-        console.print(
-            "[bold red]lab CLI is required but not installed.[/bold red]\n"
-            "Install with: [bold]sudo dnf install lab[/bold]\n"
-            "Repo: sudo dnf copr enable bmeneguele/rhkernel-devtools"
-        )
-        return False
-    return True
+def _get_project_path(origin: Optional[str] = None) -> Optional[str]:
+    """Derive the GitLab project path from the git remote URL."""
+    if origin is None:
+        origin = _get_origin()
+    r = run_git("remote", "get-url", origin, check=False)
+    if r.returncode != 0:
+        return None
+    return gitlab_api.project_path_from_remote(r.stdout.strip())
 
 
-def _check_lab_config():
-    """Verify lab.toml config exists."""
-    config_file = Path.home() / ".config" / "lab" / "lab.toml"
-    if not config_file.exists():
+def _check_api() -> bool:
+    """Verify we have a GitLab token configured."""
+    if not gitlab_api.get_token():
         console.print(
-            f"[bold red]lab configuration not found at {config_file}[/bold red]\n\n"
-            "Create it with:\n"
-            "[bold]mkdir -p ~/.config/lab[/bold]\n"
-            "Then add to [bold]~/.config/lab/lab.toml[/bold]:\n\n"
+            "[bold red]No GitLab token found.[/bold red]\n"
+            "Add one to [bold]~/.config/lab/lab.toml[/bold] under [core]:\n\n"
             "  [core]\n"
             '    host = "https://gitlab.com"\n'
             '    token = "<your-gitlab-token>"\n'
@@ -66,25 +68,72 @@ def _check_lab_config():
     return True
 
 
-def _get_lab_user() -> Optional[str]:
-    """Extract username from lab.toml."""
-    config_file = Path.home() / ".config" / "lab" / "lab.toml"
-    if not config_file.exists():
+def _edit_text(prompt_header: str = "") -> Optional[str]:
+    """Open $EDITOR for the user to compose text; return the result.
+
+    Returns the text entered, or None if the user left it empty / aborted.
+    Works the same way as ``git commit`` — writes a temp file with an
+    optional header comment, opens the editor, reads the result.
+    """
+    editor = os.environ.get("EDITOR") or os.environ.get("VISUAL") or "vi"
+    header = ""
+    if prompt_header:
+        header = "\n".join(f"# {line}" for line in prompt_header.splitlines())
+        header += "\n# Lines starting with '#' will be stripped.\n\n"
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, prefix="mr-review-",
+        ) as tmp:
+            tmp.write(header)
+            tmp_path = tmp.name
+
+        subprocess.run([editor, tmp_path], check=True)
+
+        text = Path(tmp_path).read_text()
+        lines = [ln for ln in text.splitlines() if not ln.startswith("#")]
+        result = "\n".join(lines).strip()
+        return result if result else None
+    except (subprocess.CalledProcessError, FileNotFoundError):
         return None
-    for line in config_file.read_text().splitlines():
-        if "user" in line and "=" in line:
-            val = line.split("=", 1)[1].strip().strip('"').strip("'")
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
+def _fetch_mr_ref(mr_iid: int, origin: str) -> bool:
+    """Fetch the MR head ref so its commits are available locally.
+
+    Uses GitLab's refs/merge-requests/<iid>/head convention.
+    """
+    r = run_git(
+        "fetch", origin,
+        f"refs/merge-requests/{mr_iid}/head",
+        check=False,
+    )
+    return r.returncode == 0
+
+
+def _parse_dependency(mrcomments: Optional[str]) -> Optional[str]:
+    """Extract the dependency base commit from MR comments text.
+
+    Looks for ``Dependencies::<sha>`` where sha is NOT 'OK' or 'none'.
+    Returns the base commit SHA, or None if there is no dependency.
+    """
+    if not mrcomments:
+        return None
+    for m in re.finditer(r"Dependencies::([^,\s]*)", mrcomments):
+        val = m.group(1).strip()
+        if val.lower() not in ("ok", "none", ""):
             return val
     return None
 
 
-def _run_lab(*args: str, check: bool = True) -> subprocess.CompletedProcess:
-    """Run a lab command."""
-    cmd = ["lab"] + list(args)
-    return subprocess.run(
-        cmd, capture_output=True, text=True, check=check,
-    )
-
+# -------------------------------------------------------------------
+# MR listing
+# -------------------------------------------------------------------
 
 def mr_list(
     specifier: Optional[str] = None,
@@ -94,33 +143,52 @@ def mr_list(
 
     Returns list of (mr_number, description) tuples.
     """
-    if not _check_lab() or not _check_lab_config():
+    if not _check_api():
         return []
 
     if origin is None:
         origin = _get_origin()
 
-    if specifier is None:
-        specifier = "--state opened --all"
+    project = _get_project_path(origin)
+    if not project:
+        console.print("[bold red]Could not determine GitLab project path.[/bold red]")
+        return []
 
-    cmd_parts = ["mr", "list", origin] + specifier.split()
-    r = _run_lab(*cmd_parts, check=False)
+    # Parse specifier into API parameters
+    state = "opened"
+    author = None
+    target = None
+    if specifier:
+        parts = specifier.split()
+        for i, p in enumerate(parts):
+            if p == "--state" and i + 1 < len(parts):
+                state = parts[i + 1]
+            elif p == "--author" and i + 1 < len(parts):
+                author = parts[i + 1]
+            elif p in ("-t", "--target") and i + 1 < len(parts):
+                target = parts[i + 1]
+
+    try:
+        mrs_data = gitlab_api.list_mrs(
+            project, state=state, author=author, target_branch=target,
+        )
+    except GitLabAPIError as exc:
+        console.print(f"[bold red]GitLab API error: {exc}[/bold red]")
+        return []
 
     results = []
-    for line in r.stdout.strip().splitlines():
-        if not line.strip():
-            continue
-        line = line.lstrip("!")
-        parts = line.split(None, 1)
-        if parts:
-            mr_num = parts[0]
-            desc = parts[1] if len(parts) > 1 else ""
-            results.append((mr_num, desc))
+    for mr in mrs_data:
+        mr_num = str(mr["iid"])
+        desc = mr.get("title", "")
+        results.append((mr_num, desc))
 
-    # Sort by MR number
     results.sort(key=lambda x: int(x[0]) if x[0].isdigit() else 0)
     return results
 
+
+# -------------------------------------------------------------------
+# MR show (comments / details)
+# -------------------------------------------------------------------
 
 def mr_show(
     mr_number: str,
@@ -132,15 +200,32 @@ def mr_show(
     if origin is None:
         origin = _get_origin()
 
-    args = ["mr", "show", origin, mr_number]
-    if full:
-        args.append("--full")
-    elif comments_only:
-        args.append("--comments")
+    project = _get_project_path(origin)
+    if not project:
+        return ""
 
-    r = _run_lab(*args, check=False)
-    return r.stdout
+    iid = int(mr_number)
+    try:
+        mr_data = gitlab_api.get_mr(project, iid)
+        notes = gitlab_api.get_mr_notes(project, iid)
+        try:
+            approvals = gitlab_api.get_mr_approvals(project, iid)
+        except GitLabAPIError:
+            approvals = None
+        return gitlab_api.format_mr_text(
+            mr_data, notes,
+            approvals=approvals,
+            full=full,
+            comments_only=comments_only,
+        )
+    except GitLabAPIError as exc:
+        console.print(f"[bold red]API error fetching MR {mr_number}: {exc}[/bold red]")
+        return ""
 
+
+# -------------------------------------------------------------------
+# MR commit extraction (the critical patch-retrieval path)
+# -------------------------------------------------------------------
 
 def mr_get_commits(
     mr_number: str,
@@ -150,66 +235,93 @@ def mr_get_commits(
 ) -> int:
     """Extract commit hashes from MR into bp_commits_file.
 
-    Handles dependency-based checkout when needed.
-    Returns number of commits found.
+    Strategy:
+      1. Check for Dependencies:: in mrcomments.
+      2. Normal MR  → API /commits gives us the exact set.
+      3. Dependency MR → fetch the MR ref, then
+         ``git log <dep_base>..FETCH_HEAD`` to isolate new commits.
+
+    In both cases we ``git fetch`` the MR ref so that the commits
+    are available locally for ``git format-patch`` later.
+
+    Returns the number of commits found.
     """
     if origin is None:
         origin = _get_origin()
 
-    # Always try lab first -- it knows exactly which commits belong
-    # to the MR, regardless of dependencies or rebases.
-    r = _run_lab(
-        "mr", "show", origin, mr_number, "-p", "--reverse",
-        check=False,
-    )
-    if r.returncode != 0:
-        console.print(f"[bold red]lab mr show -p failed (rc={r.returncode})[/bold red]")
-        if r.stderr.strip():
-            console.print(f"[bold red]  {r.stderr.strip()}[/bold red]")
-    commits = []
-    for line in r.stdout.splitlines():
-        if line.startswith("commit "):
-            commits.append(line.split()[1])
+    project = _get_project_path(origin)
+    iid = int(mr_number)
 
-    if commits:
-        bp_commits_file.write_text("\n".join(commits) + "\n")
-        return len(commits)
+    dep_base = _parse_dependency(mrcomments)
 
-    # Fallback for dependency-based MRs where lab returns no commits:
-    # check out the MR branch and use git log from the dependency base.
-    import re
-    base_commit = None
-    if mrcomments:
-        for m in re.finditer(r"Dependencies::([^,\s]*)", mrcomments):
-            dep_val = m.group(1).strip()
-            if dep_val.lower() not in ("ok", "none", ""):
-                base_commit = dep_val
-                break
-
-    if base_commit:
+    # ------------------------------------------------------------------
+    # Dependency MR: we must filter out the dependency's commits
+    # ------------------------------------------------------------------
+    if dep_base:
         console.print(
-            f"[bold cyan]lab returned no commits; "
-            f"trying dependency base {base_commit}[/bold cyan]"
+            f"[bold cyan]Dependency MR — base {dep_base}; "
+            f"fetching MR ref to isolate new commits.[/bold cyan]"
         )
-        orig_branch = git_get_current_branch()
-        _run_lab("mr", "checkout", mr_number, check=False)
-        new_branch = git_get_current_branch()
+        if not _fetch_mr_ref(iid, origin):
+            console.print(
+                "[bold red]git fetch of MR ref failed.[/bold red]"
+            )
+            bp_commits_file.write_text("")
+            return 0
 
         r = run_git(
-            "log", "--reverse", f"{base_commit}..HEAD",
-            "--format=commit %H",
-            check=False,
+            "log", "--reverse", f"{dep_base}..FETCH_HEAD",
+            "--format=%H", check=False,
         )
-        for line in r.stdout.splitlines():
-            if line.startswith("commit "):
-                commits.append(line.split()[1])
+        commits = [h.strip() for h in r.stdout.splitlines() if h.strip()]
 
-        run_git("checkout", orig_branch, check=False)
-        run_git("branch", "-D", new_branch, check=False)
+        if not commits:
+            console.print(
+                f"[yellow]No commits found between {dep_base[:12]} "
+                f"and FETCH_HEAD.[/yellow]"
+            )
 
-    bp_commits_file.write_text("\n".join(commits) + "\n" if commits else "")
+        bp_commits_file.write_text(
+            "\n".join(commits) + "\n" if commits else ""
+        )
+        return len(commits)
+
+    # ------------------------------------------------------------------
+    # Normal MR: get commit list from the API
+    # ------------------------------------------------------------------
+    commits: list[str] = []
+
+    if project:
+        try:
+            api_commits = gitlab_api.get_mr_commits(project, iid)
+            commits = [c["id"] for c in reversed(api_commits)]
+        except GitLabAPIError as exc:
+            console.print(
+                f"[bold red]API error fetching commits: {exc}[/bold red]"
+            )
+
+    if not commits:
+        bp_commits_file.write_text("")
+        return 0
+
+    # Make sure the commits exist locally for git format-patch
+    from .utils import git_show_exists
+    if not git_show_exists(commits[0]):
+        if not _fetch_mr_ref(iid, origin):
+            console.print(
+                "[bold red]git fetch of MR ref failed — "
+                "commits not available locally.[/bold red]"
+            )
+            bp_commits_file.write_text("")
+            return 0
+
+    bp_commits_file.write_text("\n".join(commits) + "\n")
     return len(commits)
 
+
+# -------------------------------------------------------------------
+# Full patch extraction pipeline
+# -------------------------------------------------------------------
 
 def mr_extract_patches(
     mr_number: str,
@@ -220,7 +332,7 @@ def mr_extract_patches(
     Full flow: get commits, format into patch files.
     Returns True on success.
     """
-    if not _check_lab() or not _check_lab_config():
+    if not _check_api():
         return False
 
     indir = cfg.indir
@@ -235,12 +347,11 @@ def mr_extract_patches(
     origin = _get_origin()
     bp_commits_file = outdir / "bp-commits.log"
 
-    # Show which project we're querying
     r = run_git("remote", "get-url", origin, check=False)
     repo_url = r.stdout.strip() if r.returncode == 0 else "(unknown)"
     console.print(f"\n[bold]MR {mr_number}[/bold] from [bold]{repo_url}[/bold]")
 
-    # Get MR comments first
+    # Get MR comments via API
     from rich.progress import Progress, SpinnerColumn, TextColumn
     with Progress(
         SpinnerColumn(),
@@ -265,9 +376,8 @@ def mr_extract_patches(
 
     from .utils import confirm, display_in_pager
 
-    # Check if user has already reviewed/approved this MR
     already_reviewed = False
-    lab_user = _get_lab_user()
+    lab_user = gitlab_api.get_user()
     if lab_user and "Approved By" in mrcomments:
         for line in mrcomments.splitlines():
             if "Approved By" in line and lab_user in line:
@@ -277,16 +387,13 @@ def mr_extract_patches(
                 )
                 break
 
-    # Show comments in pager (configurable)
     if cfg.show_comments:
         display_in_pager(mrcomments)
 
-    # Ask before continuing (configurable, but always ask if already reviewed)
     if cfg.ask_continue or already_reviewed:
         if not confirm("Continue with review?"):
             return False
 
-    # Check existing patches
     existing = list(indir.glob("*.patch"))
     if existing:
         console.print(
@@ -315,7 +422,6 @@ def mr_extract_patches(
         )
 
     if patch_count == 0:
-        # Show which repo lab queried so user can spot wrong-directory errors
         r = run_git("remote", "get-url", origin, check=False)
         repo_url = r.stdout.strip() if r.returncode == 0 else "(unknown)"
         console.print(f"[bold red]No patches found for MR {mr_number}[/bold red]")
@@ -328,7 +434,6 @@ def mr_extract_patches(
 
     console.print(f"Found [bold]{patch_count}[/bold] commits")
 
-    # Format the RHEL patches from commits
     from rich.progress import Progress, BarColumn, TextColumn, MofNCompleteColumn
     from .utils import run_git as _run_git
     commits = [
@@ -365,58 +470,96 @@ def mr_extract_patches(
     return True
 
 
+# -------------------------------------------------------------------
+# Approve / unapprove (API-based)
+# -------------------------------------------------------------------
+
 def mr_approve(mr_number: str, with_comment: bool = False) -> tuple[bool, str]:
     """Approve a merge request.
 
     Returns (success, error_message).
     """
     origin = _get_origin()
-    args = ["mr", "approve", origin]
-    if with_comment:
-        args.extend(["--with-comment", "--force-linebreak"])
-    args.append(mr_number)
+    project = _get_project_path(origin)
+    if not project:
+        return False, "Cannot determine GitLab project path"
+
+    iid = int(mr_number)
+
+    try:
+        gitlab_api.approve_mr(project, iid)
+    except GitLabAPIError as exc:
+        return False, str(exc)
 
     if with_comment:
-        # Let editor interact with terminal; capture stderr via pipe
-        r = subprocess.run(
-            ["lab"] + args, check=False,
-            stderr=subprocess.PIPE, text=True,
-        )
-    else:
-        r = _run_lab(*args, check=False)
+        comment = _edit_text(f"Approval comment for MR !{mr_number}")
+        if comment:
+            try:
+                gitlab_api.add_note(project, iid, comment)
+            except GitLabAPIError as exc:
+                return True, f"Approved, but comment failed: {exc}"
 
-    if r.returncode != 0:
-        err = (getattr(r, "stderr", "") or getattr(r, "stdout", "") or "").strip()
-        return False, err or f"lab exited with code {r.returncode}"
     return True, ""
 
 
 def mr_unapprove(mr_number: str) -> bool:
     """Unapprove a merge request."""
     origin = _get_origin()
-    r = _run_lab("mr", "unapprove", origin, mr_number, check=False)
-    return r.returncode == 0
+    project = _get_project_path(origin)
+    if not project:
+        return False
+    try:
+        gitlab_api.unapprove_mr(project, int(mr_number))
+        return True
+    except GitLabAPIError:
+        return False
 
 
 def mr_block(mr_number: str) -> bool:
-    """Block/start discussion on a merge request."""
+    """Block a merge request by starting a discussion thread."""
     origin = _get_origin()
-    r = subprocess.run(
-        ["lab", "mr", "discussion", origin, mr_number],
-        check=False,
-    )
-    return r.returncode == 0
+    project = _get_project_path(origin)
+    if not project:
+        console.print("[bold red]Cannot determine GitLab project path.[/bold red]")
+        return False
+
+    body = _edit_text(f"Discussion / block comment for MR !{mr_number}")
+    if not body:
+        console.print("[yellow]Empty comment — block cancelled.[/yellow]")
+        return False
+
+    try:
+        gitlab_api.create_discussion(project, int(mr_number), body)
+        return True
+    except GitLabAPIError as exc:
+        console.print(f"[bold red]Failed to create discussion: {exc}[/bold red]")
+        return False
 
 
 def mr_comment(mr_number: str) -> bool:
-    """Add a comment to a merge request (interactive)."""
+    """Add a comment to a merge request (opens editor)."""
     origin = _get_origin()
-    r = subprocess.run(
-        ["lab", "mr", "note", origin, mr_number, "--force-linebreak"],
-        check=False,
-    )
-    return r.returncode == 0
+    project = _get_project_path(origin)
+    if not project:
+        console.print("[bold red]Cannot determine GitLab project path.[/bold red]")
+        return False
 
+    body = _edit_text(f"Comment on MR !{mr_number}")
+    if not body:
+        console.print("[yellow]Empty comment — cancelled.[/yellow]")
+        return False
+
+    try:
+        gitlab_api.add_note(project, int(mr_number), body)
+        return True
+    except GitLabAPIError as exc:
+        console.print(f"[bold red]Failed to post comment: {exc}[/bold red]")
+        return False
+
+
+# -------------------------------------------------------------------
+# Display helpers
+# -------------------------------------------------------------------
 
 def display_mr_list(mrs: list[tuple[str, str]]):
     """Display MR list in a Rich table."""

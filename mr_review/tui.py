@@ -359,8 +359,8 @@ def acknack_menu(cfg: Config, conflict_count: int = 0) -> Optional[str]:
             # Check cached MR comments for prior approval
             mrcomments_file = cfg.outdir / "mrcomments.log" if cfg.outdir else None
             if mrcomments_file and mrcomments_file.exists():
-                from .mr import _get_lab_user
-                lab_user = _get_lab_user()
+                from .gitlab_api import get_user
+                lab_user = get_user()
                 comments_text = mrcomments_file.read_text(errors="replace")
                 if lab_user and "Approved By" in comments_text:
                     for cline in comments_text.splitlines():
