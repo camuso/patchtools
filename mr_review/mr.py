@@ -489,6 +489,25 @@ def mr_approve(mr_number: str, with_comment: bool = False) -> tuple[bool, str]:
     try:
         gitlab_api.approve_mr(project, iid)
     except GitLabAPIError as exc:
+        if exc.status in (401, 409):
+            # Distinguish "already approved" from a real auth problem
+            try:
+                approvals = gitlab_api.get_mr_approvals(project, iid)
+                me = gitlab_api.get_user()
+                approved_by = [
+                    u.get("user", {}).get("username", "")
+                    for u in approvals.get("approved_by", [])
+                ]
+                if me and me in approved_by:
+                    return False, (
+                        f"MR !{mr_number} is already approved by you ({me})."
+                    )
+                return False, (
+                    f"Permission denied: your token may lack approval rights "
+                    f"for MR !{mr_number}."
+                )
+            except GitLabAPIError:
+                pass
         return False, str(exc)
 
     if with_comment:
