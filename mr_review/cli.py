@@ -106,7 +106,42 @@ def mr_review(mr_number):
 
             if not mr_extract_patches(current_mr, cfg):
                 return
-            format_upstream_patches(cfg)
+            fmt_ok = format_upstream_patches(cfg)
+
+            # Check for commits that could not be extracted or formatted
+            from .tui import _collect_missing_commits
+            missing = _collect_missing_commits(cfg.indir, cfg.outdir)
+            if missing:
+                from .utils import confirm as confirm_key
+                console.print(
+                    f"\n[bold red]{len(missing)} upstream patch(es) could not "
+                    f"be formatted.[/bold red]"
+                )
+                console.print("[bold red]Missing upstream commits:[/bold red]")
+                for num, commit in missing:
+                    console.print(f"  [bold]{num}[/bold]: {commit}")
+                console.print(
+                    "\n[yellow]Hint: the upstream repo may be missing a "
+                    "remote or branch containing these commits.\n"
+                    "Use 'git remote add' and 'git fetch' in your upstream "
+                    "tree, then retry.[/yellow]"
+                )
+                if not confirm_key("Continue with review despite missing upstream patches?"):
+                        result = acknack_menu(cfg, 0)
+                        if result in ("new_mr", "list_mr", "review", "review_all"):
+                            next_action = {"new_mr": "M", "list_mr": "m", "review": "P", "review_all": "D"}[result]
+                        else:
+                            return
+                        continue
+
+            if not fmt_ok:
+                result = acknack_menu(cfg, 0)
+                if result in ("new_mr", "list_mr", "review", "review_all"):
+                    next_action = {"new_mr": "M", "list_mr": "m", "review": "P", "review_all": "D"}[result]
+                else:
+                    return
+                continue
+
             if cfg.seek_fixes:
                 seek_missing_fixes(cfg)
             _ok, last_conflict_count = run_compare(cfg)

@@ -487,6 +487,41 @@ def _history_menu(cfg: Config):
 # Main interactive menu
 # ---------------------------------------------------------------------------
 
+def _collect_missing_commits(
+    indir: Optional[Path], outdir: Optional[Path],
+) -> list[tuple[str, str]]:
+    """Collect missing upstream commits from placeholder files.
+
+    Checks both indir (extract-failed) and outdir (notfound/nocommit)
+    for failed patches.  Returns list of (patch_number, commit_hash).
+    """
+    import re
+    missing: list[tuple[str, str]] = []
+    hash_re = re.compile(r"[0-9a-f]{40}")
+
+    # Extract-failed files in indir contain "Failed to format commit: <hash>"
+    if indir and indir.is_dir():
+        for f in sorted(indir.glob("*-extract-failed.patch")):
+            num = f.name.split("-")[0]
+            text = f.read_text(errors="replace")
+            m = hash_re.search(text)
+            commit = m.group() if m else "(unknown)"
+            missing.append((num, commit))
+
+    # Notfound files in outdir contain "Commit <hash> not found"
+    if outdir and outdir.is_dir():
+        for f in sorted(outdir.glob("*-notfound.patch")):
+            num = f.name.split("-")[0]
+            text = f.read_text(errors="replace")
+            m = hash_re.search(text)
+            commit = m.group() if m else "(unknown)"
+            # Avoid duplicates if same patch number already listed
+            if not any(n == num for n, _ in missing):
+                missing.append((num, commit))
+
+    return missing
+
+
 def main_menu(cfg: Config):
     """Main interactive menu loop."""
     from .format import format_upstream_patches
@@ -500,12 +535,36 @@ def main_menu(cfg: Config):
     def _run_mr_pipeline(cfg: Config, mr_num: str) -> tuple[bool, int]:
         """Run the full review pipeline for a single MR (extract, format,
         seek fixes, compare).  Returns (success, conflict_count)."""
+        from .utils import confirm as confirm_key, get_patch_files as _get_patches
         if not cfg.editor or cfg.editor not in ("vimdiff", "meld", "tkdiff", "emacs"):
             cfg.set("editor", prompt_editor())
             cfg.save()
         if not mr_extract_patches(mr_num, cfg):
             return False, 0
-        format_upstream_patches(cfg)
+        fmt_ok = format_upstream_patches(cfg)
+
+        # Check for commits that could not be extracted or formatted
+        missing = _collect_missing_commits(cfg.indir, cfg.outdir)
+        if missing:
+            console.print(
+                f"\n[bold red]{len(missing)} upstream patch(es) could not "
+                f"be formatted.[/bold red]"
+            )
+            console.print("[bold red]Missing upstream commits:[/bold red]")
+            for num, commit in missing:
+                console.print(f"  [bold]{num}[/bold]: {commit}")
+            console.print(
+                "\n[yellow]Hint: the upstream repo may be missing a "
+                "remote or branch containing these commits.\n"
+                "Use 'git remote add' and 'git fetch' in your upstream "
+                "tree, then retry.[/yellow]"
+            )
+            if not confirm_key("Continue with review despite missing upstream patches?"):
+                return True, 0
+
+        if not fmt_ok:
+            return True, 0
+
         if cfg.seek_fixes:
             seek_missing_fixes(cfg)
         _ok, n_conflicts = run_compare(cfg)

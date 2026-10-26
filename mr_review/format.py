@@ -57,6 +57,16 @@ def _parse_commits_file(commits_file: Path) -> list[tuple[str, str, bool]]:
     return entries
 
 
+def _patch_subject(patch_path: Optional[Path]) -> str:
+    """Extract the subject line from a patch file."""
+    if not patch_path or not patch_path.exists():
+        return "(unknown)"
+    for ln in patch_path.read_text(errors="replace").splitlines():
+        if ln.startswith("Subject:"):
+            return ln.split("]")[-1].strip() if "]" in ln else ln[8:].strip()
+    return "(no subject)"
+
+
 def format_upstream_patches(
     cfg: Config,
     force: bool = False,
@@ -174,9 +184,12 @@ def format_upstream_patches(
                     formatted += 1
                     from_lore += 1
                 else:
+                    subj = _patch_subject(rhel_patch)
                     placeholder = outdir / f"{pfx}-nocommit.patch"
                     placeholder.write_text(
                         f"No upstream commit detected for patch {patch_num}.\n"
+                        f"RHEL patch: {rhel_patch.name if rhel_patch else '?'}\n"
+                        f"Subject: {subj}\n"
                     )
                 progress.update(task, advance=1)
                 continue
@@ -198,9 +211,12 @@ def format_upstream_patches(
                     formatted += 1
                     from_alt += 1
                 else:
+                    subj = _patch_subject(rhel_patch)
                     placeholder = outdir / f"{pfx}-notfound.patch"
                     placeholder.write_text(
                         f"Commit {commit_hash} not found in upstream repo.\n"
+                        f"RHEL patch: {rhel_patch.name if rhel_patch else '?'}\n"
+                        f"Subject: {subj}\n"
                     )
                     not_found += 1
                 progress.update(task, advance=1)
