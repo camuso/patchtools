@@ -367,11 +367,11 @@ def prompt_key(message: str, valid: Optional[set[str]] = None) -> str:
 
 def confirm(message: str, default: bool = False) -> bool:
     """Ask a yes/no question, single keypress, no Enter required."""
-    hint = "[Y/n]" if default else "[y/N]"
+    hint = "(Y/n)" if default else "(y/n)"
     from rich.console import Console
     con = Console()
 
-    con.print(f"{message} {hint}", end=" ")
+    con.print(f"{message} {hint}:", end=" ")
     while True:
         ch = readchar().lower()
         if ch in ("y", "n"):
