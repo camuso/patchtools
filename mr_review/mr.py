@@ -26,6 +26,20 @@ from .utils import run_git, git_get_current_branch
 console = Console()
 
 
+def _subject_slug(patch_text: str, max_len: int = 60) -> str:
+    """Extract the subject from patch text and turn it into a filename slug.
+
+    Mimics git format-patch naming: lowercase, spaces/special chars become
+    hyphens, truncated to max_len.
+    """
+    for line in patch_text.splitlines():
+        if line.startswith("Subject:"):
+            subj = line.split("]")[-1].strip() if "]" in line else line[8:].strip()
+            slug = re.sub(r"[^a-zA-Z0-9]+", "-", subj).strip("-").lower()
+            return slug[:max_len].rstrip("-")
+    return ""
+
+
 # -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
@@ -304,16 +318,16 @@ def mr_get_commits(
         bp_commits_file.write_text("")
         return 0
 
-    # Make sure the commits exist locally for git format-patch
+    # Try to make the commits available locally for git format-patch.
+    # If the fetch fails, proceed anyway — the extraction loop will
+    # fall back to the GitLab API for any commit not locally reachable.
     from .utils import git_show_exists
     if not git_show_exists(commits[0]):
         if not _fetch_mr_ref(iid, origin):
             console.print(
-                "[bold red]git fetch of MR ref failed — "
-                "commits not available locally.[/bold red]"
+                "[yellow]git fetch of MR ref failed — "
+                "will fetch patches from GitLab API.[/yellow]"
             )
-            bp_commits_file.write_text("")
-            return 0
 
     bp_commits_file.write_text("\n".join(commits) + "\n")
     return len(commits)
@@ -436,6 +450,7 @@ def mr_extract_patches(
 
     from rich.progress import Progress, BarColumn, TextColumn, MofNCompleteColumn
     from .utils import run_git as _run_git
+    project = _get_project_path(origin)
     commits = [
         line.strip() for line in bp_commits_file.read_text().splitlines()
         if line.strip()
@@ -455,10 +470,28 @@ def mr_extract_patches(
                 check=False,
             )
             if result.returncode != 0:
+                # Local format-patch failed; fetch full patch from GitLab API
                 pfx = f"{i:04d}"
-                (indir / f"{pfx}-extract-failed.patch").write_text(
-                    f"Failed to format commit: {commit}\n"
-                )
+                fetched = False
+                if project:
+                    try:
+                        patch_text = gitlab_api.get_commit_patch(
+                            project, commit,
+                        )
+                        if patch_text and "diff --git" in patch_text:
+                            slug = _subject_slug(patch_text)
+                            fname = f"{pfx}-{slug}.patch" if slug else f"{pfx}-{commit[:12]}.patch"
+                            (indir / fname).write_text(patch_text)
+                            fetched = True
+                    except GitLabAPIError as exc:
+                        console.print(
+                            f"[yellow]  API fallback for {commit[:12]}: "
+                            f"{exc}[/yellow]"
+                        )
+                if not fetched:
+                    (indir / f"{pfx}-extract-failed.patch").write_text(
+                        f"Failed to format commit: {commit}\n"
+                    )
             progress.update(task, advance=1)
 
     cfg.set("current_mr", mr_number)

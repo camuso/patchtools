@@ -231,6 +231,13 @@ def add_note(project: str, iid: int, body: str) -> dict:
     )
 
 
+def get_commit_patch(project: str, sha: str) -> str:
+    """Fetch a commit as a git-format-patch style email from GitLab."""
+    return _get_text(
+        f"/projects/{_encode(project)}/repository/commits/{sha}.patch"
+    )
+
+
 def create_discussion(project: str, iid: int, body: str) -> dict:
     """Create a new discussion thread (blocking/unresolved) on the MR."""
     return _request(
