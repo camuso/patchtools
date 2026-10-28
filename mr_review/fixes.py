@@ -41,11 +41,21 @@ def _is_valid_hash(h: str) -> bool:
 
 
 def _find_patch_by_number(patch_dir: Path, num: int) -> Optional[Path]:
-    """Find a patch file by its leading number."""
+    """Find a patch file by its leading number.
+
+    Handles filenames like 0001-subject.patch and also
+    prefixed forms like v0-0001-subject.patch.
+    """
     prefix = f"{num:04d}"
     for f in sorted(patch_dir.glob("*.patch")):
-        if f.name.startswith(prefix):
+        name = f.name
+        if name.startswith(prefix):
             return f
+        # Handle vN- prefix: strip it and check again
+        if re.match(r"v\d+-", name):
+            stripped = re.sub(r"^v\d+-", "", name)
+            if stripped.startswith(prefix):
+                return f
     return None
 
 
