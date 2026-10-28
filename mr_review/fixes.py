@@ -54,11 +54,30 @@ def _check_omitted(
     mr_commitlog: str,
     mrcomments: str,
 ) -> bool:
-    """Check if a fix was intentionally omitted."""
-    pattern = re.compile(r"omitted.fix", re.IGNORECASE)
+    """Check if a fix was intentionally omitted.
+
+    Recognizes:
+      - 'Omitted fix' / 'omitted-fix' (any casing)
+      - 'Missing Fix:' stanzas in the commit log
+    Matches against both the full short hash and any prefix >= 7 chars.
+    """
+    # Match against both the full id and a 7-char prefix
+    candidates = {fix_hash}
+    if len(fix_hash) >= 7:
+        candidates.add(fix_hash[:12])
+        candidates.add(fix_hash[:7])
+
     for text in (mr_commitlog, mrcomments):
-        if pattern.search(text) and fix_hash in text:
-            return True
+        if not text:
+            continue
+        for line in text.splitlines():
+            lower = line.lower()
+            if not any(c in line for c in candidates):
+                continue
+            if re.search(r"omitted.fix", lower):
+                return True
+            if re.search(r"missing\s*fix\s*:", lower):
+                return True
     return False
 
 
