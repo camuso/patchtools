@@ -139,9 +139,9 @@ def _parse_missingfix(
     Mirrors bash parse_missingfix().
 
     Returns:
-        0 - fix is accounted for
-        1 - intentionally omitted or in series/downstream
-        2 - truly missing
+        0 - fix is accounted for (in series or already downstream)
+        1 - intentionally omitted (reported in green)
+        2 - truly missing (reported in red)
     """
     fix_hash_match = SHORT_HASH_RE.search(fix_line)
     if not fix_hash_match:
@@ -150,12 +150,21 @@ def _parse_missingfix(
 
     # 1. Intentionally omitted?
     if _check_omitted(fix_id, mr_commitlog, mrcomments):
+        with missing_file.open("a") as f:
+            f.write(
+                f"INTENTIONALLY OMITTED: "
+                f"{fix_line} for {index_frac}\n"
+            )
+        console.print(
+            f"  [bold green]INTENTIONALLY OMITTED:[/bold green] "
+            f"{fix_line} for {index_frac}"
+        )
         return 1
 
     # 2. Fix is in the upstream commits list for this MR series?
     for cline in commits_file_text.splitlines():
         if fix_id in cline:
-            return 1
+            return 0
 
     # 3. Already merged downstream? Search the current (RHEL) branch
     #    for "commit <fix_id>" since the commit date.
@@ -167,7 +176,7 @@ def _parse_missingfix(
         cwd=None, check=False,
     )
     if r.stdout.strip():
-        return 1
+        return 0
 
     # 4. Truly missing
     with missing_file.open("a") as f:
@@ -238,6 +247,7 @@ def seek_missing_fixes(cfg: Config) -> Path:
 
     missing_file.write_text("")
     warning_count = 0
+    omitted_count = 0
 
     with Progress(
         TextColumn("[progress.description]{task.description}"),
@@ -281,7 +291,9 @@ def seek_missing_fixes(cfg: Config) -> Path:
                     mrcomments,
                     missing_file,
                 )
-                if result == 2:
+                if result == 1:
+                    omitted_count += 1
+                elif result == 2:
                     warning_count += 1
 
             progress.update(task, advance=1)
@@ -291,8 +303,15 @@ def seek_missing_fixes(cfg: Config) -> Path:
             f"\n[bold red]WARNING: {warning_count} missing fix(es) "
             f"found![/bold red]"
         )
-        console.print(f"Details in: {missing_file}")
-    else:
+    if omitted_count:
+        console.print(
+            f"[bold green]{omitted_count} fix(es) intentionally "
+            f"omitted.[/bold green]"
+        )
+    if not warning_count and not omitted_count:
         console.print("\n[bold green]No missing fixes found.[/bold green]")
+
+    if warning_count or omitted_count:
+        console.print(f"Details in: {missing_file}")
 
     return missing_file
