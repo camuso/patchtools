@@ -169,8 +169,9 @@ def format_upstream_patches(
             if is_skipped:
                 placeholder = outdir / f"{pfx}-nocommit.patch"
                 placeholder.write_text(
-                    f"No upstream commit detected for patch {patch_num}.\n"
-                    f"Skipped: mega-merge\n"
+                    "Cannot find upstream commit in any of your "
+                    "upstream branches\n"
+                    f"(patch {patch_num} skipped: mega-merge)\n"
                 )
                 progress.update(task, advance=1)
                 continue
@@ -187,10 +188,13 @@ def format_upstream_patches(
                     subj = _patch_subject(rhel_patch)
                     placeholder = outdir / f"{pfx}-nocommit.patch"
                     placeholder.write_text(
-                        f"No upstream commit detected for patch {patch_num}.\n"
+                        "Cannot find upstream commit in any of your "
+                        "upstream branches\n"
+                        f"(no upstream commit cited for patch {patch_num})\n"
                         f"RHEL patch: {rhel_patch.name if rhel_patch else '?'}\n"
                         f"Subject: {subj}\n"
                     )
+                    not_found += 1
                 progress.update(task, advance=1)
                 continue
 
@@ -214,7 +218,8 @@ def format_upstream_patches(
                     subj = _patch_subject(rhel_patch)
                     placeholder = outdir / f"{pfx}-notfound.patch"
                     placeholder.write_text(
-                        f"Commit {commit_hash} not found in upstream repo.\n"
+                        f"Cannot find {commit_hash} in any of your "
+                        f"upstream branches\n"
                         f"RHEL patch: {rhel_patch.name if rhel_patch else '?'}\n"
                         f"Subject: {subj}\n"
                     )
@@ -235,7 +240,12 @@ def format_upstream_patches(
                     progress.console.print(f"  [bold]{result}[/bold]")
             else:
                 placeholder = outdir / f"{pfx}-inv.patch"
-                placeholder.write_text(f"invalid commit: {commit_hash}\n")
+                placeholder.write_text(
+                    f"Cannot find {commit_hash} in any of your "
+                    f"upstream branches\n"
+                    f"(git format-patch failed)\n"
+                )
+                not_found += 1
 
             progress.update(task, advance=1)
 

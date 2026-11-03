@@ -29,12 +29,16 @@ console = Console()
 
 
 def _context_line(cfg: Config) -> str:
-    """Build a repo/MR context string for panel subtitles."""
-    repo = str(cfg.repo_dir)
+    """Build a cwd/repo/MR context string shown on every menu refresh.
+
+    Always uses the live working directory so the user can see which
+    directory is active after switching repos or changing directories.
+    """
+    cwd = os.getcwd()
     mr = cfg.current_mr
     if mr:
-        return f"repo: {repo}  MR: {mr}"
-    return f"repo: {repo}"
+        return f"cwd: {cwd}  MR: {mr}"
+    return f"cwd: {cwd}"
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +162,7 @@ def select_repo(cfg: Config) -> bool:
     S = "      "  # 6-space submenu indent
     while True:
         console.print(f"\n{S}[bold]Kernel Repositories[/bold]")
+        console.print(f"{S}[bold cyan]{_context_line(cfg)}[/bold cyan]")
         for i, repo in enumerate(repos, 1):
             marker = "  <-- current" if os.path.realpath(repo) == os.path.realpath(cwd) else ""
             console.print(f"{S}[bold bright_magenta]{i:3d}[/bold bright_magenta]  [bold bright_magenta]{repo}[/bold bright_magenta][bold green]{marker}[/bold green]")

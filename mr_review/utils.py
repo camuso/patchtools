@@ -271,6 +271,37 @@ def extract_change_lines(patch_path: str | Path) -> list[str]:
     return lines
 
 
+def extract_hunk_lines(patch_path: str | Path) -> list[str]:
+    """Extract hunk body lines: context, additions, and deletions.
+
+    Includes space-prefixed context lines as well as +/- change lines.
+    Skips diff headers, file paths, index, and @@ markers.
+
+    Context matters for review: the same logical change applied against
+    different surrounding code (e.g. ERRATA_MIDR_ALL_VERSIONS vs
+    ERRATA_MIDR_RANGE_LIST) must surface as a conflict even when the
+    +/- lines alone match.
+    """
+    lines: list[str] = []
+    in_diff = False
+    for line in Path(patch_path).read_text(errors="replace").splitlines():
+        if line.startswith("diff --git "):
+            in_diff = True
+            continue
+        if not in_diff:
+            continue
+        if line.startswith(("index ", "@@ ", "--- ", "+++ ")):
+            continue
+        if line.startswith("-- "):  # git format-patch signature
+            break
+        if not line:
+            continue
+        first = line[0]
+        if first in (" ", "+", "-"):
+            lines.append(line)
+    return lines
+
+
 def is_prologue(patch_path: str | Path) -> bool:
     """Check if a patch is a 0/N prologue."""
     subject = extract_subject(patch_path)
@@ -278,8 +309,42 @@ def is_prologue(patch_path: str | Path) -> bool:
     return m is not None
 
 
+_PLACEHOLDER_SUFFIXES = (
+    "-extract-failed.patch",
+    "-nocommit.patch",
+    "-notfound.patch",
+    "-inv.patch",
+    "-no.patch",
+)
+
+
+def is_placeholder_patch(patch_path: str | Path) -> bool:
+    """True for stub patches written when extract/format failed."""
+    name = Path(patch_path).name
+    return any(name.endswith(s) for s in _PLACEHOLDER_SUFFIXES)
+
+
+def is_real_patch(patch_path: str | Path) -> bool:
+    """True if the file looks like a git format-patch (has diff --git).
+
+    Matches bash patbatcmp's is_patch(): placeholders without a diff
+    are not real patches and must be treated as conflicts.
+    """
+    try:
+        for line in Path(patch_path).read_text(errors="replace").splitlines():
+            if line.startswith("diff --git "):
+                return True
+    except OSError:
+        return False
+    return False
+
+
 def get_patch_files(directory: str | Path) -> list[Path]:
-    """Return sorted list of .patch files in directory, excluding prologues."""
+    """Return sorted list of .patch files in directory, excluding prologues.
+
+    Includes nocommit/notfound placeholders so they pair with RHEL patches
+    and are reported as conflicts (matching bash patbatcmp).
+    """
     d = Path(directory)
     if not d.is_dir():
         return []

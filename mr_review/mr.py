@@ -318,15 +318,22 @@ def mr_get_commits(
         bp_commits_file.write_text("")
         return 0
 
-    # Try to make the commits available locally for git format-patch.
-    # If the fetch fails, proceed anyway — the extraction loop will
-    # fall back to the GitLab API for any commit not locally reachable.
+    # Fetch the MR ref whenever ANY commit is missing locally.
+    # Checking only commits[0] is wrong: earlier commits may already
+    # be on the local branch while later MR-only commits are not.
+    # Repository commit API also 404s for unmerged MR commits, so
+    # the local MR ref is the reliable source for format-patch.
     from .utils import git_show_exists
-    if not git_show_exists(commits[0]):
+    missing_local = [c for c in commits if not git_show_exists(c)]
+    if missing_local:
+        console.print(
+            f"[bold cyan]Fetching MR !{iid} ref "
+            f"({len(missing_local)} commit(s) not local)...[/bold cyan]"
+        )
         if not _fetch_mr_ref(iid, origin):
             console.print(
                 "[yellow]git fetch of MR ref failed — "
-                "will fetch patches from GitLab API.[/yellow]"
+                "will try GitLab API per missing commit.[/yellow]"
             )
 
     bp_commits_file.write_text("\n".join(commits) + "\n")
@@ -455,6 +462,7 @@ def mr_extract_patches(
         line.strip() for line in bp_commits_file.read_text().splitlines()
         if line.strip()
     ]
+    mr_ref_fetched = False
     with Progress(
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
@@ -469,8 +477,22 @@ def mr_extract_patches(
                 commit, "-o", str(indir),
                 check=False,
             )
+            if result.returncode != 0 and not mr_ref_fetched:
+                # Late MR-only commits are often missing until the
+                # merge-request ref is fetched; retry once after that.
+                if _fetch_mr_ref(int(mr_number), origin):
+                    mr_ref_fetched = True
+                    result = _run_git(
+                        "format-patch", "-1", "-k", "--no-renames",
+                        "--start-number", str(i),
+                        commit, "-o", str(indir),
+                        check=False,
+                    )
+                else:
+                    mr_ref_fetched = True  # don't keep retrying a failed fetch
             if result.returncode != 0:
-                # Local format-patch failed; fetch full patch from GitLab API
+                # Still missing: try GitLab repository commit API
+                # (works only for commits already in the project tree).
                 pfx = f"{i:04d}"
                 fetched = False
                 if project:
@@ -480,7 +502,10 @@ def mr_extract_patches(
                         )
                         if patch_text and "diff --git" in patch_text:
                             slug = _subject_slug(patch_text)
-                            fname = f"{pfx}-{slug}.patch" if slug else f"{pfx}-{commit[:12]}.patch"
+                            fname = (
+                                f"{pfx}-{slug}.patch" if slug
+                                else f"{pfx}-{commit[:12]}.patch"
+                            )
                             (indir / fname).write_text(patch_text)
                             fetched = True
                     except GitLabAPIError as exc:

@@ -6,6 +6,7 @@ Replaces patbatcmp (batch line-by-line comparison) and patcmp
 
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,7 +17,14 @@ from rich.prompt import Prompt, IntPrompt
 from rich.table import Table
 
 from .config import Config
-from .utils import extract_change_lines, extract_diff_files, get_patch_files
+from .utils import (
+    extract_change_lines,
+    extract_diff_files,
+    extract_hunk_lines,
+    get_patch_files,
+    is_placeholder_patch,
+    is_real_patch,
+)
 
 console = Console()
 
@@ -33,41 +41,28 @@ class ConflictInfo:
 def _compare_patch_pair(
     rhel_path: Path,
     upstream_path: Path,
-    strict: bool = True,
+    strict: bool = False,
 ) -> bool:
     """Compare two patch files.
 
     Returns True if they match (no conflict), False if they differ.
-    When strict=True, only +/- lines are compared (ignoring context),
-    but order is preserved -- matches patbatcmp's sequential comparison.
+
+    Default (strict=False) compares hunk context as well as +/- lines,
+    so tree divergence around an otherwise identical change is still
+    reported (e.g. different surrounding ERRATA_MIDR_* macros).
+
+    When strict=True, only +/- lines are compared (legacy patbatcmp -s).
+
+    If either side lacks 'diff --git' (nocommit/notfound placeholder),
+    that is a conflict.
     """
+    if not is_real_patch(rhel_path) or not is_real_patch(upstream_path):
+        return False
+
     if strict:
-        rhel_lines = extract_change_lines(rhel_path)
-        us_lines = extract_change_lines(upstream_path)
-        return rhel_lines == us_lines
+        return extract_change_lines(rhel_path) == extract_change_lines(upstream_path)
 
-    # Non-strict: compare all lines from first 'diff --git' onward
-    in_diff = False
-    rhel_diff_lines = []
-    for line in rhel_path.read_text(errors="replace").splitlines():
-        if line.startswith("diff --git "):
-            in_diff = True
-        if in_diff:
-            if line.startswith("index ") or line.startswith("@@ "):
-                continue
-            rhel_diff_lines.append(line)
-
-    in_diff = False
-    us_diff_lines = []
-    for line in upstream_path.read_text(errors="replace").splitlines():
-        if line.startswith("diff --git "):
-            in_diff = True
-        if in_diff:
-            if line.startswith("index ") or line.startswith("@@ "):
-                continue
-            us_diff_lines.append(line)
-
-    return rhel_diff_lines == us_diff_lines
+    return extract_hunk_lines(rhel_path) == extract_hunk_lines(upstream_path)
 
 
 def _check_possible_fp(rhel_path: Path, upstream_path: Path) -> bool:
@@ -75,7 +70,8 @@ def _check_possible_fp(rhel_path: Path, upstream_path: Path) -> bool:
 
     A conflict is possibly false if the downstream patch has no
     Conflicts: stanza, both patches modify the same files, and the
-    actual change lines (sorted) are identical.
+    actual +/- change lines (sorted) are identical — i.e. only hunk
+    context differs due to tree divergence.
     """
     # If submitter documented conflicts, trust it as real
     rhel_text = rhel_path.read_text(errors="replace")
@@ -96,11 +92,13 @@ def batch_compare(
     rhel_dir: Path,
     upstream_dir: Path,
     output_file: Optional[Path] = None,
-    strict: bool = True,
+    strict: bool = False,
 ) -> list[ConflictInfo]:
     """Batch compare all patch pairs between two directories.
 
     Returns list of ConflictInfo for patches that differ.
+    By default includes hunk context in the comparison so reviewers
+    are not blind to tree-divergence around identical +/- changes.
     """
     rhel_patches = get_patch_files(rhel_dir)
     us_patches = get_patch_files(upstream_dir)
@@ -127,8 +125,16 @@ def batch_compare(
         rp = rhel_patches[i]
         up = us_patches[i]
 
-        if not _compare_patch_pair(rp, up, strict=strict):
-            fp = _check_possible_fp(rp, up)
+        code_match = _compare_patch_pair(rp, up, strict=strict)
+        rhel_header = rp.read_text(errors="replace").split("diff --git")[0]
+        has_conflicts_stanza = "Conflicts:" in rhel_header
+
+        # Conflict if code/context differs, upstream missing, or Conflicts:
+        if not code_match or has_conflicts_stanza:
+            if is_placeholder_patch(up) or not is_real_patch(up):
+                fp = False
+            else:
+                fp = _check_possible_fp(rp, up)
             conflicts.append(ConflictInfo(
                 patch_index=i + 1,
                 rhel_path=rp,
@@ -178,15 +184,23 @@ def display_conflicts(conflicts: list[ConflictInfo], total_patches: int):
     )
     table.add_column("#", style="bold", width=4)
     table.add_column("Patch", width=6, justify="right")
-    table.add_column("File")
+    table.add_column("RHEL file")
+    table.add_column("Upstream")
     table.add_column("FP?", width=4)
 
+    missing_us = 0
     for i, c in enumerate(conflicts, 1):
         fp_mark = "[bold cyan]?[/bold cyan]" if c.possible_fp else ""
+        if is_placeholder_patch(c.upstream_path) or not is_real_patch(c.upstream_path):
+            us_label = f"[bold red]{c.upstream_path.name}[/bold red]"
+            missing_us += 1
+        else:
+            us_label = c.upstream_path.name
         table.add_row(
             str(i),
             str(c.patch_index),
             c.rhel_path.name,
+            us_label,
             fp_mark,
         )
 
@@ -194,6 +208,11 @@ def display_conflicts(conflicts: list[ConflictInfo], total_patches: int):
     console.print(
         f"\nTotal conflicts with upstream: [bold]{len(conflicts)}[/bold]"
     )
+    if missing_us:
+        console.print(
+            f"[bold red]Missing upstream patches: {missing_us}[/bold red] "
+            f"(no commit / commit not in your upstream tree)"
+        )
     if fp_count:
         console.print(
             f"Possible false positives [?]: [bold cyan]{fp_count}[/bold cyan] "
@@ -330,6 +349,9 @@ def interactive_compare(
     last_rhel = None  # last pair shown in diff editor
     last_us = None
     last_idx = None   # patch index of last viewed diff
+    # When reviewing all patches (D / no conflict list), open the
+    # first pair immediately — waiting for an extra key is confusing.
+    auto_launch = conflicts is None
 
     while True:
         idx = nav_list[pos]
@@ -348,7 +370,7 @@ def interactive_compare(
                     conflict_info = c
                     break
 
-        ctx = f"repo: {cfg.repo_dir}"
+        ctx = f"cwd: {os.getcwd()}"
         if cfg.current_mr:
             ctx += f"  MR: {cfg.current_mr}"
         from rich.panel import Panel
@@ -363,12 +385,26 @@ def interactive_compare(
         console.print(f"[bold]RHEL    : {rhel_file}[/bold]")
         console.print(f"[bold]Upstream: {us_file}[/bold]")
 
+        if is_placeholder_patch(us_file) or not is_real_patch(us_file):
+            console.print(
+                "[bold red]Missing upstream patch — open the pair to "
+                "review the RHEL patch.[/bold red]"
+            )
+            for line in us_file.read_text(errors="replace").strip().splitlines():
+                console.print(f"  [bold yellow]{line}[/bold yellow]")
+
         if conflict_info:
             ci = conflict_indices.index(idx) if idx in conflict_indices else 0
             console.print(
                 f"[bold red]Conflict {ci + 1}[/bold red] of "
                 f"[bold red]{len(conflict_indices)}[/bold red]"
             )
+            rhel_header = rhel_file.read_text(errors="replace").split("diff --git")[0]
+            if "Conflicts:" in rhel_header:
+                console.print(
+                    "[bold yellow]  RHEL commit log contains Conflicts: "
+                    "stanza[/bold yellow]"
+                )
             if conflict_info.possible_fp:
                 console.print("[bold cyan]  [?] Possible false positive[/bold cyan]")
 
@@ -399,7 +435,12 @@ def interactive_compare(
         )
 
         from .utils import prompt_key
-        choice = prompt_key("\n  Your choice")
+        if auto_launch:
+            auto_launch = False
+            choice = ""  # fall through to launch diff
+            console.print()
+        else:
+            choice = prompt_key("\n  Your choice")
 
         if choice == "q":
             break
@@ -543,5 +584,6 @@ def run_compare(cfg: Config) -> tuple[bool, int]:
         return True, 0
 
     # Enter interactive mode only when there are conflicts to review
+    # (includes missing-upstream placeholders, matching bash patbatcmp).
     ok = interactive_compare(cfg, conflicts=conflicts)
     return ok, len(conflicts)
