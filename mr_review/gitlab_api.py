@@ -232,10 +232,60 @@ def add_note(project: str, iid: int, body: str) -> dict:
 
 
 def get_commit_patch(project: str, sha: str) -> str:
-    """Fetch a commit as a git-format-patch style email from GitLab."""
+    """Fetch a commit as a git-format-patch style email from GitLab.
+
+    Only works for commits reachable from project branches.  Unmerged
+    MR commits often 404 here — use :func:`get_mr_series_patch` instead.
+    """
     return _get_text(
         f"/projects/{_encode(project)}/repository/commits/{sha}.patch"
     )
+
+
+def get_mr_series_patch(project: str, iid: int) -> str:
+    """Download the full MR as a git-format-patch mbox via the web .patch URL.
+
+    Works for unmerged MR commits that the repository commits API cannot
+    see.  Requires a valid PRIVATE-TOKEN (same as other API calls).
+    """
+    token = get_token()
+    if not token:
+        raise GitLabAPIError("No GitLab token configured.")
+    # Web UI path, not /api/v4 — but accepts PRIVATE-TOKEN.
+    url = f"{get_host().rstrip('/')}/{project}/-/merge_requests/{iid}.patch"
+    req = urllib.request.Request(url, headers={"PRIVATE-TOKEN": token})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise GitLabAPIError(
+            f"GitLab MR patch {exc.code} for !{iid}: {detail}",
+            status=exc.code,
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise GitLabAPIError(f"GitLab connection error: {exc.reason}") from exc
+
+
+def split_mr_series_patches(mbox_text: str) -> dict[str, str]:
+    """Split an MR .patch mbox into {commit_sha: patch_text}.
+
+    Keys are the 40-char hashes from each ``From <sha> ...`` header.
+    """
+    patches: dict[str, str] = {}
+    # git format-patch / MR .patch separates messages with "From <40hex> "
+    parts = re.split(r"(?=^From [0-9a-f]{40} )", mbox_text, flags=re.MULTILINE)
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        m = re.match(r"From ([0-9a-f]{40}) ", part)
+        if not m:
+            continue
+        if "diff --git" not in part:
+            continue
+        patches[m.group(1)] = part + "\n"
+    return patches
 
 
 def create_discussion(project: str, iid: int, body: str) -> dict:

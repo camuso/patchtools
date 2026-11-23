@@ -120,13 +120,23 @@ def _edit_text(prompt_header: str = "") -> Optional[str]:
 def _fetch_mr_ref(mr_iid: int, origin: str) -> bool:
     """Fetch the MR head ref so its commits are available locally.
 
-    Uses GitLab's refs/merge-requests/<iid>/head convention.
+    Tries the configured remote first (usually SSH).  If that fails,
+    retries over HTTPS using the GitLab token from lab.toml so we can
+    still format-patch unmerged MR commits without a working SSH key.
     """
-    r = run_git(
-        "fetch", origin,
-        f"refs/merge-requests/{mr_iid}/head",
-        check=False,
-    )
+    ref = f"refs/merge-requests/{mr_iid}/head"
+    r = run_git("fetch", origin, ref, check=False)
+    if r.returncode == 0:
+        return True
+
+    # SSH/remote failed — try HTTPS with PRIVATE-TOKEN as oauth2 password
+    project = _get_project_path(origin)
+    token = gitlab_api.get_token()
+    if not project or not token:
+        return False
+    host = gitlab_api.get_host().rstrip("/").replace("https://", "").replace("http://", "")
+    url = f"https://oauth2:{token}@{host}/{project}.git"
+    r = run_git("fetch", url, ref, check=False)
     return r.returncode == 0
 
 
@@ -348,9 +358,10 @@ def mr_extract_patches(
     mr_number: str,
     cfg: Config,
 ) -> bool:
-    """Extract patches from an MR into indir.
+    """Download patches from a GitLab MR into indir.
 
-    Full flow: get commits, format into patch files.
+    Always pulls the MR's .patch series from GitLab (unmerged MRs).
+    Upstream formatting is a separate later step.
     Returns True on success.
     """
     if not _check_api():
@@ -430,94 +441,68 @@ def mr_extract_patches(
         for f in outdir.glob("*.patch"):
             f.unlink()
 
-    # Extract commits
+    project = _get_project_path(origin)
+    if not project:
+        console.print("[bold red]Cannot determine GitLab project path.[/bold red]")
+        return False
+
+    # Always download patch files directly from the MR on GitLab.
+    # We review unmerged MRs; local format-patch is the wrong tool for that.
     with Progress(
         SpinnerColumn(),
-        TextColumn("[bold cyan]Fetching patches from MR {task.description}...[/bold cyan]"),
+        TextColumn(
+            "[bold cyan]Downloading MR !{task.description} "
+            "patches from GitLab...[/bold cyan]"
+        ),
         console=console, transient=True,
     ) as progress:
         progress.add_task(mr_number, total=None)
-        patch_count = mr_get_commits(
-            mr_number, bp_commits_file,
-            mrcomments=mrcomments, origin=origin,
-        )
+        try:
+            mbox = gitlab_api.get_mr_series_patch(project, int(mr_number))
+            series = gitlab_api.split_mr_series_patches(mbox)
+        except GitLabAPIError as exc:
+            console.print(
+                f"[bold red]Failed to download patches for "
+                f"MR !{mr_number}: {exc}[/bold red]"
+            )
+            return False
 
-    if patch_count == 0:
-        r = run_git("remote", "get-url", origin, check=False)
-        repo_url = r.stdout.strip() if r.returncode == 0 else "(unknown)"
-        console.print(f"[bold red]No patches found for MR {mr_number}[/bold red]")
-        console.print(f"[bold red]Repo: {repo_url}[/bold red]")
+    if not series:
         console.print(
-            "[yellow]Make sure you are running from the correct "
-            "git repo for this MR.[/yellow]"
+            f"[bold red]No patches found in MR !{mr_number}[/bold red]\n"
+            f"[yellow]Repo: {repo_url}[/yellow]\n"
+            "[yellow]Make sure this MR belongs to the current repo.[/yellow]"
         )
         return False
 
-    console.print(f"Found [bold]{patch_count}[/bold] commits")
+    # Preserve series order as returned by GitLab (.patch is oldest-first)
+    ordered = list(series.items())
+    bp_commits_file.write_text("\n".join(sha for sha, _ in ordered) + "\n")
 
-    from rich.progress import Progress, BarColumn, TextColumn, MofNCompleteColumn
-    from .utils import run_git as _run_git
-    project = _get_project_path(origin)
-    commits = [
-        line.strip() for line in bp_commits_file.read_text().splitlines()
-        if line.strip()
-    ]
-    mr_ref_fetched = False
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
+    from rich.progress import (
+        Progress as Prog, BarColumn, TextColumn as TC, MofNCompleteColumn,
+    )
+    with Prog(
+        TC("[progress.description]{task.description}"),
         BarColumn(),
         MofNCompleteColumn(),
         console=console,
     ) as progress:
-        task = progress.add_task("Extracting patches...", total=len(commits))
-        for i, commit in enumerate(commits, 1):
-            result = _run_git(
-                "format-patch", "-1", "-k", "--no-renames",
-                "--start-number", str(i),
-                commit, "-o", str(indir),
-                check=False,
+        task = progress.add_task("Writing patches...", total=len(ordered))
+        for i, (sha, patch_text) in enumerate(ordered, 1):
+            pfx = f"{i:04d}"
+            slug = _subject_slug(patch_text)
+            fname = (
+                f"{pfx}-{slug}.patch" if slug
+                else f"{pfx}-{sha[:12]}.patch"
             )
-            if result.returncode != 0 and not mr_ref_fetched:
-                # Late MR-only commits are often missing until the
-                # merge-request ref is fetched; retry once after that.
-                if _fetch_mr_ref(int(mr_number), origin):
-                    mr_ref_fetched = True
-                    result = _run_git(
-                        "format-patch", "-1", "-k", "--no-renames",
-                        "--start-number", str(i),
-                        commit, "-o", str(indir),
-                        check=False,
-                    )
-                else:
-                    mr_ref_fetched = True  # don't keep retrying a failed fetch
-            if result.returncode != 0:
-                # Still missing: try GitLab repository commit API
-                # (works only for commits already in the project tree).
-                pfx = f"{i:04d}"
-                fetched = False
-                if project:
-                    try:
-                        patch_text = gitlab_api.get_commit_patch(
-                            project, commit,
-                        )
-                        if patch_text and "diff --git" in patch_text:
-                            slug = _subject_slug(patch_text)
-                            fname = (
-                                f"{pfx}-{slug}.patch" if slug
-                                else f"{pfx}-{commit[:12]}.patch"
-                            )
-                            (indir / fname).write_text(patch_text)
-                            fetched = True
-                    except GitLabAPIError as exc:
-                        console.print(
-                            f"[yellow]  API fallback for {commit[:12]}: "
-                            f"{exc}[/yellow]"
-                        )
-                if not fetched:
-                    (indir / f"{pfx}-extract-failed.patch").write_text(
-                        f"Failed to format commit: {commit}\n"
-                    )
+            (indir / fname).write_text(patch_text)
             progress.update(task, advance=1)
+
+    console.print(
+        f"Downloaded [bold]{len(ordered)}[/bold] patch(es) from "
+        f"MR !{mr_number}"
+    )
 
     cfg.set("current_mr", mr_number)
     cfg.set("b_reviewed", False)

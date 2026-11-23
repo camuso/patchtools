@@ -47,11 +47,12 @@ def _compare_patch_pair(
 
     Returns True if they match (no conflict), False if they differ.
 
-    Default (strict=False) compares hunk context as well as +/- lines,
-    so tree divergence around an otherwise identical change is still
-    reported (e.g. different surrounding ERRATA_MIDR_* macros).
+    Default includes hunk context as well as +/- lines, while still
+    ignoring commit logs, ---/+++ paths, index, and @@ markers.
+    Context differences matter for review (tree divergence around an
+    otherwise identical change).
 
-    When strict=True, only +/- lines are compared (legacy patbatcmp -s).
+    When strict=True, only +/- lines are compared (patbatcmp -s).
 
     If either side lacks 'diff --git' (nocommit/notfound placeholder),
     that is a conflict.
@@ -97,8 +98,9 @@ def batch_compare(
     """Batch compare all patch pairs between two directories.
 
     Returns list of ConflictInfo for patches that differ.
-    By default includes hunk context in the comparison so reviewers
-    are not blind to tree-divergence around identical +/- changes.
+    Default compares hunk context and +/- lines (commit logs,
+    ---/+++, index, @@ ignored). Missing upstream or a Conflicts:
+    stanza also forces a conflict for interactive review.
     """
     rhel_patches = get_patch_files(rhel_dir)
     us_patches = get_patch_files(upstream_dir)
@@ -129,7 +131,7 @@ def batch_compare(
         rhel_header = rp.read_text(errors="replace").split("diff --git")[0]
         has_conflicts_stanza = "Conflicts:" in rhel_header
 
-        # Conflict if code/context differs, upstream missing, or Conflicts:
+        # Conflict if hunk/context differs, upstream missing, or Conflicts:
         if not code_match or has_conflicts_stanza:
             if is_placeholder_patch(up) or not is_real_patch(up):
                 fp = False
