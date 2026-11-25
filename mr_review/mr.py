@@ -446,20 +446,19 @@ def mr_extract_patches(
         console.print("[bold red]Cannot determine GitLab project path.[/bold red]")
         return False
 
-    # Always download patch files directly from the MR on GitLab.
-    # We review unmerged MRs; local format-patch is the wrong tool for that.
+    # Always download patch files via the GitLab REST API (not the web
+    # UI .patch URL — Cloudflare often challenges that with a 403).
     with Progress(
         SpinnerColumn(),
         TextColumn(
             "[bold cyan]Downloading MR !{task.description} "
-            "patches from GitLab...[/bold cyan]"
+            "patches from GitLab API...[/bold cyan]"
         ),
         console=console, transient=True,
     ) as progress:
         progress.add_task(mr_number, total=None)
         try:
-            mbox = gitlab_api.get_mr_series_patch(project, int(mr_number))
-            series = gitlab_api.split_mr_series_patches(mbox)
+            series = gitlab_api.download_mr_patches(project, int(mr_number))
         except GitLabAPIError as exc:
             console.print(
                 f"[bold red]Failed to download patches for "
@@ -475,7 +474,7 @@ def mr_extract_patches(
         )
         return False
 
-    # Preserve series order as returned by GitLab (.patch is oldest-first)
+    # download_mr_patches returns oldest-first
     ordered = list(series.items())
     bp_commits_file.write_text("\n".join(sha for sha, _ in ordered) + "\n")
 

@@ -235,36 +235,137 @@ def get_commit_patch(project: str, sha: str) -> str:
     """Fetch a commit as a git-format-patch style email from GitLab.
 
     Only works for commits reachable from project branches.  Unmerged
-    MR commits often 404 here — use :func:`get_mr_series_patch` instead.
+    MR commits often 404 here — use :func:`download_mr_patches` instead.
     """
     return _get_text(
         f"/projects/{_encode(project)}/repository/commits/{sha}.patch"
     )
 
 
-def get_mr_series_patch(project: str, iid: int) -> str:
-    """Download the full MR as a git-format-patch mbox via the web .patch URL.
+def _format_patch_date(iso_date: str) -> str:
+    """Convert GitLab ISO date to an email Date: header value."""
+    from datetime import datetime
 
-    Works for unmerged MR commits that the repository commits API cannot
-    see.  Requires a valid PRIVATE-TOKEN (same as other API calls).
-    """
-    token = get_token()
-    if not token:
-        raise GitLabAPIError("No GitLab token configured.")
-    # Web UI path, not /api/v4 — but accepts PRIVATE-TOKEN.
-    url = f"{get_host().rstrip('/')}/{project}/-/merge_requests/{iid}.patch"
-    req = urllib.request.Request(url, headers={"PRIVATE-TOKEN": token})
+    if not iso_date:
+        return ""
+    # e.g. 2026-11-23T01:29:22.000-05:00 or ...Z
+    text = iso_date.replace("Z", "+00:00")
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            return resp.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise GitLabAPIError(
-            f"GitLab MR patch {exc.code} for !{iid}: {detail}",
-            status=exc.code,
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise GitLabAPIError(f"GitLab connection error: {exc.reason}") from exc
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return iso_date
+    return dt.strftime("%a, %d %b %Y %H:%M:%S %z")
+
+
+def _diffs_to_patch_body(diffs: list[dict]) -> str:
+    """Turn GitLab compare/diff objects into a unified-diff body."""
+    parts: list[str] = []
+    for d in diffs:
+        old = d.get("old_path") or d.get("new_path") or "unknown"
+        new = d.get("new_path") or old
+        parts.append(f"diff --git a/{old} b/{new}\n")
+        if d.get("new_file"):
+            mode = d.get("b_mode") or "100644"
+            parts.append(f"new file mode {mode}\n")
+            parts.append("--- /dev/null\n")
+            parts.append(f"+++ b/{new}\n")
+        elif d.get("deleted_file"):
+            mode = d.get("a_mode") or "100644"
+            parts.append(f"deleted file mode {mode}\n")
+            parts.append(f"--- a/{old}\n")
+            parts.append("+++ /dev/null\n")
+        else:
+            if d.get("renamed_file"):
+                parts.append(f"rename from {old}\n")
+                parts.append(f"rename to {new}\n")
+            parts.append(f"--- a/{old}\n")
+            parts.append(f"+++ b/{new}\n")
+        diff = d.get("diff") or ""
+        if diff and not diff.endswith("\n"):
+            diff += "\n"
+        parts.append(diff)
+    return "".join(parts)
+
+
+def _commit_and_diffs_to_patch(commit: dict, diffs: list[dict]) -> str:
+    """Build a git-format-patch style email from API commit + diffs."""
+    sha = commit["id"]
+    author = commit.get("author_name") or "unknown"
+    email = commit.get("author_email") or "unknown"
+    date = _format_patch_date(
+        commit.get("authored_date") or commit.get("created_at") or ""
+    )
+    title = (commit.get("title") or "").strip()
+    message = commit.get("message") or title
+    # Body under Subject: is the commit message without duplicating title
+    body = message
+    if title and body.startswith(title):
+        body = body[len(title):].lstrip("\n")
+    if body and not body.endswith("\n"):
+        body += "\n"
+
+    header = (
+        f"From {sha} Mon Sep 17 00:00:00 2001\n"
+        f"From: {author} <{email}>\n"
+        f"Date: {date}\n"
+        f"Subject: [PATCH] {title}\n"
+        f"\n"
+        f"{body}"
+        f"---\n"
+    )
+    return header + _diffs_to_patch_body(diffs)
+
+
+def _commit_diffs(project: str, sha: str) -> list[dict]:
+    """Fetch file diffs for a commit (paginated)."""
+    enc = _encode(project)
+    return _paginated(f"/projects/{enc}/repository/commits/{sha}/diff")
+
+
+def download_mr_patches(project: str, iid: int) -> dict[str, str]:
+    """Download MR patches via the GitLab REST API (oldest-first).
+
+    Uses /merge_requests/:iid/commits plus /repository/commits/:sha/diff
+    for each commit.  Avoids the web UI ``/-/merge_requests/:iid.patch``
+    URL, which Cloudflare often blocks with a 403 challenge page.
+    """
+    commits = get_mr_commits(project, iid)
+    if not commits:
+        return {}
+
+    # API returns newest-first; review wants oldest-first numbering
+    commits = list(reversed(commits))
+    patches: dict[str, str] = {}
+
+    for commit in commits:
+        sha = commit["id"]
+        try:
+            diffs = _commit_diffs(project, sha)
+        except GitLabAPIError as exc:
+            raise GitLabAPIError(
+                f"Failed to diff {sha[:12]} for MR !{iid}: {exc}",
+                status=getattr(exc, "status", 0),
+            ) from exc
+
+        for d in diffs:
+            if d.get("too_large") or d.get("collapsed"):
+                raise GitLabAPIError(
+                    f"Diff for {sha[:12]} in MR !{iid} is too large "
+                    f"or collapsed ({d.get('new_path') or d.get('old_path')})"
+                )
+
+        patches[sha] = _commit_and_diffs_to_patch(commit, diffs)
+
+    return patches
+
+
+def get_mr_series_patch(project: str, iid: int) -> str:
+    """Return MR patches concatenated as an mbox (API-based).
+
+    Kept for callers that expect a single mbox string.
+    """
+    patches = download_mr_patches(project, iid)
+    return "".join(patches.values())
 
 
 def split_mr_series_patches(mbox_text: str) -> dict[str, str]:
@@ -273,7 +374,6 @@ def split_mr_series_patches(mbox_text: str) -> dict[str, str]:
     Keys are the 40-char hashes from each ``From <sha> ...`` header.
     """
     patches: dict[str, str] = {}
-    # git format-patch / MR .patch separates messages with "From <40hex> "
     parts = re.split(r"(?=^From [0-9a-f]{40} )", mbox_text, flags=re.MULTILINE)
     for part in parts:
         part = part.strip()
@@ -282,7 +382,7 @@ def split_mr_series_patches(mbox_text: str) -> dict[str, str]:
         m = re.match(r"From ([0-9a-f]{40}) ", part)
         if not m:
             continue
-        if "diff --git" not in part:
+        if "diff --git" not in part and "Subject:" not in part:
             continue
         patches[m.group(1)] = part + "\n"
     return patches
